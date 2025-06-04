@@ -5,6 +5,8 @@ mxd is a minimal implementation of a [Hotline](https://hotline.fandom.com/wiki/V
 It currently implements the bare essentials for accepting TCP connections and
 authenticating users stored in a SQLite database using Diesel with its async
 extension. Passwords are stored using Argon2 with a random salt for security.
+Argon2 parameters can be tuned with the `--argon2-m-cost`, `--argon2-t-cost`,
+and `--argon2-p-cost` command line options.
 Commands are read line by line using Tokio's `BufReader` and a simple `LOGIN`
 command is supported. Invalid `LOGIN` requests result in an `ERR` response.
 Each client session stays open so multiple commands can be processed until the

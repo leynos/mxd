@@ -27,6 +27,18 @@ struct Cli {
     #[arg(long, default_value = "mxd.db")]
     database: String,
 
+    /// Argon2 memory cost in KiB
+    #[arg(long, default_value_t = Params::DEFAULT_M_COST)]
+    argon2_m_cost: u32,
+
+    /// Argon2 iterations
+    #[arg(long, default_value_t = Params::DEFAULT_T_COST)]
+    argon2_t_cost: u32,
+
+    /// Argon2 parallelism
+    #[arg(long, default_value_t = Params::DEFAULT_P_COST)]
+    argon2_p_cost: u32,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -42,6 +54,13 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
+    let params = ParamsBuilder::new()
+        .m_cost(cli.argon2_m_cost)
+        .t_cost(cli.argon2_t_cost)
+        .p_cost(cli.argon2_p_cost)
+        .build()?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
     let pool = establish_pool(&cli.database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
@@ -49,7 +68,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     if let Some(Commands::CreateUser { username, password }) = cli.command {
-        let hashed = hash_password(&password);
+        let hashed = hash_password(&argon2, &password)?;
         let new_user = models::NewUser {
             username: &username,
             password: &hashed,
@@ -69,8 +88,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     loop {
         let (socket, peer) = listener.accept().await?;
         let pool = pool.clone();
+        let argon2 = argon2.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_client(socket, peer, pool).await {
+            if let Err(e) = handle_client(socket, peer, pool, argon2).await {
                 eprintln!("connection error: {}", e);
             }
         });
@@ -81,6 +101,7 @@ async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
+    argon2: Argon2<'static>,
 ) -> Result<(), Box<dyn Error>> {
     let (reader, mut writer) = io::split(socket);
     let mut lines = BufReader::new(reader).lines();
