@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
 
 mod db;
 mod models;
@@ -41,6 +42,56 @@ pub(crate) fn hash_password(pw: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+#[cfg(unix)]
+async fn shutdown_signal() {
+    let mut sigterm =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {},
+        _ = sigterm.recv() => {},
+    }
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to install Ctrl-C handler");
+}
+
+async fn run_server(listener: TcpListener, pool: DbPool) -> Result<(), Box<dyn Error>> {
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);
+    let mut tasks: Vec<JoinHandle<()>> = Vec::new();
+
+    loop {
+        tokio::select! {
+            res = listener.accept() => {
+                let (socket, peer) = res?;
+                let pool = pool.clone();
+                let mut shutdown_rx = shutdown_tx.subscribe();
+                tasks.push(tokio::spawn(async move {
+                    if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
+                        eprintln!("connection error: {}", e);
+                    }
+                }));
+            }
+            _ = shutdown_signal() => {
+                println!("shutdown signal received");
+                break;
+            }
+        }
+    }
+
+    // notify all client tasks to exit
+    let _ = shutdown_tx.send(());
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -69,59 +120,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(&addr).await?;
     println!("mxd listening on {}", addr);
 
-    let (shutdown_tx, _) = broadcast::channel::<()>(1);
-
-    #[cfg(unix)]
-    {
-        let mut sigterm =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-        loop {
-            tokio::select! {
-                res = listener.accept() => {
-                    let (socket, peer) = res?;
-                    let pool = pool.clone();
-                    let mut shutdown_rx = shutdown_tx.subscribe();
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
-                            eprintln!("connection error: {}", e);
-                        }
-                    });
-                }
-                _ = tokio::signal::ctrl_c() => {
-                    println!("SIGINT received, shutting down");
-                    break;
-                }
-                _ = sigterm.recv() => {
-                    println!("SIGTERM received, shutting down");
-                    break;
-                }
-            }
-        }
-    }
-
-    #[cfg(not(unix))]
-    {
-        loop {
-            tokio::select! {
-                res = listener.accept() => {
-                    let (socket, peer) = res?;
-                    let pool = pool.clone();
-                    let mut shutdown_rx = shutdown_tx.subscribe();
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
-                            eprintln!("connection error: {}", e);
-                        }
-                    });
-                }
-                _ = tokio::signal::ctrl_c() => {
-                    println!("SIGINT received, shutting down");
-                    break;
-                }
-            }
-        }
-    }
-
-    let _ = shutdown_tx.send(());
+    run_server(listener, pool).await?;
     Ok(())
 }
 
