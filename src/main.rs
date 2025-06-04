@@ -3,7 +3,6 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 
-use sha2::{Digest, Sha256};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -11,9 +10,11 @@ mod commands;
 mod db;
 mod models;
 mod schema;
+mod users;
 
 use commands::Command;
 use db::{DbPool, create_user, establish_pool, run_migrations};
+use users::hash_password;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -36,11 +37,6 @@ enum Commands {
     CreateUser { username: String, password: String },
 }
 
-pub(crate) fn hash_password(pw: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(pw.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -97,7 +93,6 @@ async fn handle_client(
         if line.is_empty() {
             continue;
         }
-
         match Command::parse(line) {
             Ok(cmd) => {
                 cmd.dispatch(peer, &mut writer, pool.clone()).await?;
@@ -112,16 +107,3 @@ async fn handle_client(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::hash_password;
-
-    #[test]
-    fn test_hash_password() {
-        let hashed = hash_password("secret");
-        assert_eq!(
-            hashed,
-            "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b"
-        );
-    }
-}
