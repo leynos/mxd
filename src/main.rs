@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 use sha2::{Digest, Sha256};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
 
 mod db;
 mod models;
@@ -68,57 +69,115 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(&addr).await?;
     println!("mxd listening on {}", addr);
 
-    loop {
-        let (socket, peer) = listener.accept().await?;
-        let pool = pool.clone();
-        tokio::spawn(async move {
-            if let Err(e) = handle_client(socket, peer, pool).await {
-                eprintln!("connection error: {}", e);
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);
+
+    #[cfg(unix)]
+    {
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        loop {
+            tokio::select! {
+                res = listener.accept() => {
+                    let (socket, peer) = res?;
+                    let pool = pool.clone();
+                    let mut shutdown_rx = shutdown_tx.subscribe();
+                    tokio::spawn(async move {
+                        if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
+                            eprintln!("connection error: {}", e);
+                        }
+                    });
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    println!("SIGINT received, shutting down");
+                    break;
+                }
+                _ = sigterm.recv() => {
+                    println!("SIGTERM received, shutting down");
+                    break;
+                }
             }
-        });
+        }
     }
+
+    #[cfg(not(unix))]
+    {
+        loop {
+            tokio::select! {
+                res = listener.accept() => {
+                    let (socket, peer) = res?;
+                    let pool = pool.clone();
+                    let mut shutdown_rx = shutdown_tx.subscribe();
+                    tokio::spawn(async move {
+                        if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
+                            eprintln!("connection error: {}", e);
+                        }
+                    });
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    println!("SIGINT received, shutting down");
+                    break;
+                }
+            }
+        }
+    }
+
+    let _ = shutdown_tx.send(());
+    Ok(())
 }
 
 async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
+    shutdown: &mut broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
     let (reader, mut writer) = io::split(socket);
     let mut lines = BufReader::new(reader).lines();
 
     writer.write_all(b"MXD\n").await?;
 
-    // process commands until the client closes the connection
-    while let Some(line) = lines.next_line().await? {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
+    // process commands until the client closes the connection or shutdown is requested
+    loop {
+        tokio::select! {
+            line = lines.next_line() => {
+                match line? {
+                    Some(line) => {
+                        let line = line.trim();
+                        if line.is_empty() {
+                            continue;
+                        }
 
-        let mut parts = line.splitn(3, ' ');
-        match parts.next() {
-            Some("LOGIN") => {
-                let (username, password) = match (parts.next(), parts.next()) {
-                    (Some(u), Some(p)) if !u.is_empty() && !p.is_empty() => (u, p),
-                    _ => {
-                        writer.write_all(b"ERR Invalid LOGIN\n").await?;
-                        continue;
+                        let mut parts = line.splitn(3, ' ');
+                        match parts.next() {
+                            Some("LOGIN") => {
+                                let (username, password) = match (parts.next(), parts.next()) {
+                                    (Some(u), Some(p)) if !u.is_empty() && !p.is_empty() => (u, p),
+                                    _ => {
+                                        writer.write_all(b"ERR Invalid LOGIN\n").await?;
+                                        continue;
+                                    }
+                                };
+
+                                let hashed = hash_password(password);
+                                let mut conn = pool.get().await?;
+                                let user = get_user_by_name(&mut conn, username).await?;
+                                if user.map(|u| u.password == hashed).unwrap_or(false) {
+                                    writer.write_all(b"OK\n").await?;
+                                    println!("{} authenticated as {}", peer, username);
+                                } else {
+                                    writer.write_all(b"FAIL\n").await?;
+                                }
+                            }
+                            _ => {
+                                writer.write_all(b"ERR Unknown command\n").await?;
+                            }
+                        }
                     }
-                };
-
-                let hashed = hash_password(password);
-                let mut conn = pool.get().await?;
-                let user = get_user_by_name(&mut conn, username).await?;
-                if user.map(|u| u.password == hashed).unwrap_or(false) {
-                    writer.write_all(b"OK\n").await?;
-                    println!("{} authenticated as {}", peer, username);
-                } else {
-                    writer.write_all(b"FAIL\n").await?;
+                    None => break,
                 }
             }
-            _ => {
-                writer.write_all(b"ERR Unknown command\n").await?;
+            _ = shutdown.recv() => {
+                break;
             }
         }
     }
