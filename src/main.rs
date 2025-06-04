@@ -7,11 +7,13 @@ use sha2::{Digest, Sha256};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
+mod commands;
 mod db;
 mod models;
 mod schema;
 
-use db::{DbPool, create_user, establish_pool, get_user_by_name, run_migrations};
+use commands::Command;
+use db::{DbPool, create_user, establish_pool, run_migrations};
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -96,29 +98,14 @@ async fn handle_client(
             continue;
         }
 
-        let mut parts = line.splitn(3, ' ');
-        match parts.next() {
-            Some("LOGIN") => {
-                let (username, password) = match (parts.next(), parts.next()) {
-                    (Some(u), Some(p)) if !u.is_empty() && !p.is_empty() => (u, p),
-                    _ => {
-                        writer.write_all(b"ERR Invalid LOGIN\n").await?;
-                        continue;
-                    }
-                };
-
-                let hashed = hash_password(password);
-                let mut conn = pool.get().await?;
-                let user = get_user_by_name(&mut conn, username).await?;
-                if user.map(|u| u.password == hashed).unwrap_or(false) {
-                    writer.write_all(b"OK\n").await?;
-                    println!("{} authenticated as {}", peer, username);
-                } else {
-                    writer.write_all(b"FAIL\n").await?;
-                }
+        match Command::parse(line) {
+            Ok(cmd) => {
+                cmd.dispatch(peer, &mut writer, pool.clone()).await?;
             }
-            _ => {
-                writer.write_all(b"ERR Unknown command\n").await?;
+            Err(err) => {
+                writer
+                    .write_all(format!("ERR {}\n", err).as_bytes())
+                    .await?;
             }
         }
     }
