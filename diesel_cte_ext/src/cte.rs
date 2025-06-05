@@ -2,6 +2,24 @@ use diesel::backend::Backend;
 use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::result::QueryResult;
 
+fn push_identifiers<DB>(out: &mut AstPass<'_, '_, DB>, ids: &[&'static str]) -> QueryResult<()>
+where
+    DB: Backend,
+{
+    if ids.is_empty() {
+        return Ok(());
+    }
+    out.push_sql(" (");
+    for (i, id) in ids.iter().enumerate() {
+        if i > 0 {
+            out.push_sql(", ");
+        }
+        out.push_identifier(id)?;
+    }
+    out.push_sql(")");
+    Ok(())
+}
+
 /// Marker trait for backends that support `WITH RECURSIVE`.
 pub trait RecursiveBackend: Backend {}
 
@@ -53,16 +71,7 @@ where
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, DB>) -> QueryResult<()> {
         out.push_sql("WITH RECURSIVE ");
         out.push_identifier(self.cte_name)?;
-        if !self.columns.is_empty() {
-            out.push_sql(" (");
-            for (i, col) in self.columns.iter().enumerate() {
-                if i != 0 {
-                    out.push_sql(", ");
-                }
-                out.push_identifier(col)?;
-            }
-            out.push_sql(")");
-        }
+        push_identifiers(&mut out, self.columns)?;
         out.push_sql(" AS (");
         self.seed.walk_ast(out.reborrow())?;
         out.push_sql(" UNION ALL ");
