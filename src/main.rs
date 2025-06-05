@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
@@ -13,6 +13,7 @@ use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 mod commands;
 mod db;
 mod models;
+mod protocol;
 mod schema;
 mod users;
 
@@ -153,9 +154,18 @@ async fn handle_client(
     pool: DbPool,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<(), Box<dyn Error>> {
-    let (reader, mut writer) = io::split(socket);
-    let mut lines = BufReader::new(reader).lines();
+    let (mut reader, mut writer) = io::split(socket);
 
+    // perform protocol handshake
+    let mut buf = [0u8; protocol::HANDSHAKE_LEN];
+    reader.read_exact(&mut buf).await?;
+    if protocol::parse_handshake(&buf).is_err() {
+        protocol::write_handshake_reply(&mut writer, 1).await?;
+        return Ok(());
+    }
+    protocol::write_handshake_reply(&mut writer, 0).await?;
+
+    let mut lines = BufReader::new(reader).lines();
     writer.write_all(b"MXD\n").await?;
     // process commands until the client closes the connection or shutdown signal
     loop {
