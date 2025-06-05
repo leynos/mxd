@@ -33,3 +33,16 @@ impl From<TransactionType> for u16 {
         }
     }
 }
+
+impl std::fmt::Display for TransactionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransactionType::Error => f.write_str("Error"),
+            TransactionType::Login => f.write_str("Login"),
+            TransactionType::Agreement => f.write_str("Agreement"),
+            TransactionType::Agreed => f.write_str("Agreed"),
+            TransactionType::UserAccess => f.write_str("UserAccess"),
+            TransactionType::Other(v) => write!(f, "Other({v})"),
+        }
+    }
+}

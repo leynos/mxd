@@ -297,7 +297,6 @@ where
 }
 
 /// Decode the parameter block of a transaction into a vector of field id/data pairs.
-
 pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionError> {
     if buf.is_empty() {
         return Ok(Vec::new());
