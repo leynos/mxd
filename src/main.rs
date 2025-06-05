@@ -5,10 +5,10 @@ use clap::{Parser, Subcommand};
 
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
+use tokio::sync::watch;
 use tokio::task::JoinSet;
 
-use argon2::{Argon2, Algorithm, Params, ParamsBuilder, Version};
+use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 
 mod commands;
 mod db;
@@ -23,7 +23,7 @@ use users::hash_password;
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
         let mut term = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {},
@@ -71,7 +71,6 @@ enum Commands {
     CreateUser { username: String, password: String },
 }
 
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -107,7 +106,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(&addr).await?;
     println!("mxd listening on {}", addr);
 
-    let (shutdown_tx, _) = broadcast::channel(1);
+    let (shutdown_tx, mut shutdown_rx) = watch::channel(());
     let mut join_set = JoinSet::new();
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
@@ -119,14 +118,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 break;
             }
             res = listener.accept() => {
-                let (socket, peer) = res?;
-                let pool = pool.clone();
-                let mut rx = shutdown_tx.subscribe();
-                join_set.spawn(async move {
-                    if let Err(e) = handle_client(socket, peer, pool, rx).await {
-                        eprintln!("connection error: {}", e);
+                match res {
+                    Ok((socket, peer)) => {
+                        let pool = pool.clone();
+                        let mut rx = shutdown_rx.clone();
+                        join_set.spawn(async move {
+                            if let Err(e) = handle_client(socket, peer, pool, &mut rx).await {
+                                eprintln!("connection error from {}: {}", peer, e);
+                            }
+                        });
                     }
-                });
+                    Err(e) => {
+                        eprintln!("accept error: {}", e);
+                    }
+                }
             }
         }
     }
@@ -147,7 +152,7 @@ async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
-    mut shutdown: broadcast::Receiver<()>,
+    shutdown: &mut watch::Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
     let (reader, mut writer) = io::split(socket);
     let mut lines = BufReader::new(reader).lines();
@@ -178,11 +183,10 @@ async fn handle_client(
                     None => break,
                 }
             }
-            _ = shutdown.recv() => {
+            _ = shutdown.changed() => {
                 break;
             }
         }
     }
     Ok(())
 }
-
