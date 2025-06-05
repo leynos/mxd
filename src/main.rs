@@ -185,16 +185,14 @@ async fn handle_client(
 
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
-    let mut ctx = Context::new(peer, pool.clone());
+    let ctx = Context::new(peer, pool.clone());
     loop {
         tokio::select! {
             tx = tx_reader.read_transaction() => {
                 let tx = tx?;
                 let frame = tx.to_bytes();
-                handle_request(&mut ctx, &frame).await?;
-                for resp in ctx.take_responses() {
-                    tx_writer.write_transaction(&resp).await?;
-                }
+                let resp = handle_request(&ctx, &frame).await?;
+                tx_writer.write_transaction(&resp).await?;
             }
             _ = shutdown.changed() => {
                 break;
