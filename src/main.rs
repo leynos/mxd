@@ -3,17 +3,20 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 
-use sha2::{Digest, Sha256};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
+mod commands;
 mod db;
 mod models;
 mod schema;
+mod users;
 
-use db::{DbPool, create_user, establish_pool, get_user_by_name, run_migrations};
+use commands::Command;
+use db::{DbPool, create_user, establish_pool, run_migrations};
+use users::hash_password;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -26,6 +29,18 @@ struct Cli {
     #[arg(long, default_value = "mxd.db")]
     database: String,
 
+    /// Argon2 memory cost in KiB
+    #[arg(long, default_value_t = Params::DEFAULT_M_COST)]
+    argon2_m_cost: u32,
+
+    /// Argon2 iterations
+    #[arg(long, default_value_t = Params::DEFAULT_T_COST)]
+    argon2_t_cost: u32,
+
+    /// Argon2 parallelism
+    #[arg(long, default_value_t = Params::DEFAULT_P_COST)]
+    argon2_p_cost: u32,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -36,11 +51,6 @@ enum Commands {
     CreateUser { username: String, password: String },
 }
 
-pub(crate) fn hash_password(pw: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(pw.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
 
 #[cfg(unix)]
 async fn shutdown_signal() {
@@ -96,6 +106,13 @@ async fn run_server(listener: TcpListener, pool: DbPool) -> Result<(), Box<dyn E
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
+    let params = ParamsBuilder::new()
+        .m_cost(cli.argon2_m_cost)
+        .t_cost(cli.argon2_t_cost)
+        .p_cost(cli.argon2_p_cost)
+        .build()?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
     let pool = establish_pool(&cli.database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
@@ -103,7 +120,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     if let Some(Commands::CreateUser { username, password }) = cli.command {
-        let hashed = hash_password(&password);
+        let hashed = hash_password(&argon2, &password)?;
         let new_user = models::NewUser {
             username: &username,
             password: &hashed,
@@ -134,7 +151,6 @@ async fn handle_client(
     let mut lines = BufReader::new(reader).lines();
 
     writer.write_all(b"MXD\n").await?;
-
     // process commands until the client closes the connection or shutdown is requested
     loop {
         tokio::select! {
@@ -183,16 +199,3 @@ async fn handle_client(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::hash_password;
-
-    #[test]
-    fn test_hash_password() {
-        let hashed = hash_password("secret");
-        assert_eq!(
-            hashed,
-            "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b"
-        );
-    }
-}
