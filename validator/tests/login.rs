@@ -1,5 +1,6 @@
 use expectrl::{spawn, Regex};
 use std::io::{BufRead, BufReader};
+use std::time::{Duration, Instant};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use tempfile::TempDir;
@@ -68,10 +69,12 @@ fn login_validation() -> Result<(), Box<dyn std::error::Error>> {
         .spawn()?;
     let mut child = ChildGuard(child);
 
-    // wait for server to start by reading stdout
+    // wait for server to start by reading stdout with a timeout
     if let Some(out) = &mut child.0.stdout {
         let mut reader = BufReader::new(out);
         let mut line = String::new();
+        let timeout = Duration::from_secs(10);
+        let start = Instant::now();
         loop {
             line.clear();
             if reader.read_line(&mut line)? == 0 {
@@ -79,6 +82,9 @@ fn login_validation() -> Result<(), Box<dyn std::error::Error>> {
             }
             if line.contains("listening on") {
                 break;
+            }
+            if start.elapsed() > timeout {
+                panic!("timeout waiting for server to signal readiness");
             }
         }
     } else {
