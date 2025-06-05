@@ -167,6 +167,12 @@ async fn roundtrip_empty_payload() {
         total_size: 0,
         data_size: 0,
     };
+
+#[test]
+fn short_header_error() {
+    let err = FrameHeader::new(&[0u8; 10]).unwrap_err();
+    assert!(matches!(err, TransactionError::ShortBuffer));
+}
     let tx = Transaction {
         header,
         payload: Vec::new(),

@@ -27,18 +27,31 @@ async fn read_timeout_exact<R: AsyncRead + Unpin>(
     Ok(())
 }
 
-async fn write_timeout_all<W: AsyncWrite + Unpin>(
-    w: &mut W,
-    buf: &[u8],
-    timeout_dur: Duration,
-) -> Result<(), TransactionError> {
-    timeout(timeout_dur, w.write_all(buf))
-        .await
-        .map_err(|_| TransactionError::Timeout)??;
-    Ok(())
+/// Read a big-endian `u32` from the provided byte slice.
+///
+/// Returns an error if `buf` is shorter than four bytes.
+pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
+    if buf.len() < 4 {
+        return Err(TransactionError::ShortBuffer);
+    }
+    Ok(u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]))
 }
 
-/// Read a big-endian `u16` from the provided byte slice.
+    /// Parse a frame header from a byte slice.
+    pub fn new(buf: &[u8]) -> Result<Self, TransactionError> {
+        if buf.len() < HEADER_LEN {
+            return Err(TransactionError::ShortBuffer);
+        }
+        Ok(Self {
+            ty: read_u16(&buf[2..4])?,
+            id: read_u32(&buf[4..8])?,
+            error: read_u32(&buf[8..12])?,
+            total_size: read_u32(&buf[12..16])?,
+            data_size: read_u32(&buf[16..20])?,
+        })
+}
+
+    let hdr = FrameHeader::new(&hdr_buf)?;
 ///
 /// Returns an error if `buf` is shorter than two bytes.
 pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
