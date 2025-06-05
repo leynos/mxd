@@ -252,7 +252,9 @@ where
             .map_err(|_| TransactionError::Timeout)??;
             offset += chunk;
         }
-        self.writer.flush().await?;
+        timeout(self.timeout, self.writer.flush())
+            .await
+            .map_err(|_| TransactionError::Timeout)??;
         Ok(())
     }
 }
