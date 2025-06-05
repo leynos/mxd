@@ -63,7 +63,8 @@ async fn invalid_flags_error() {
     tx.header.flags = 1;
     let (mut a, mut b) = duplex(1024);
     let mut writer = TransactionWriter::new(&mut a);
-    assert!(writer.write_transaction(&tx).await.is_err());
+    let err = writer.write_transaction(&tx).await.unwrap_err();
+    assert!(matches!(err, TransactionError::InvalidFlags));
     let mut buf = [0u8; HEADER_LEN];
     tx.header.write_bytes(&mut buf);
     a.write_all(&buf).await.unwrap();
