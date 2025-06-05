@@ -8,7 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tokio::task::JoinSet;
 
-use argon2::Params;
+use argon2::{Argon2, Algorithm, Params, ParamsBuilder, Version};
 
 mod commands;
 mod db;
@@ -76,6 +76,13 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
+    let params = ParamsBuilder::new()
+        .m_cost(cli.argon2_m_cost)
+        .t_cost(cli.argon2_t_cost)
+        .p_cost(cli.argon2_p_cost)
+        .build()?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
     let pool = establish_pool(&cli.database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
@@ -83,7 +90,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     if let Some(Commands::CreateUser { username, password }) = cli.command {
-        let hashed = hash_password(&password);
+        let hashed = hash_password(&argon2, &password)?;
         let new_user = models::NewUser {
             username: &username,
             password: &hashed,
@@ -102,7 +109,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let mut join_set = JoinSet::new();
-    let mut shutdown = Box::pin(shutdown_signal());
+    let shutdown = shutdown_signal();
+    tokio::pin!(shutdown);
 
     loop {
         tokio::select! {
