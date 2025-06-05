@@ -14,3 +14,6 @@ This repository is written in Rust and uses Cargo for building and dependency ma
 10. **Check for `TODO` comments** and convert them into issues if more work is required.
 
 These practices will help maintain a high-quality codebase and make collaboration easier.
+
+**Behavioral tests for the `mxd` application should be placed in the repository
+top-level `tests/` directory (not under `validator/tests`).**

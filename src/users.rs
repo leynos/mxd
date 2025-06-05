@@ -1,7 +1,7 @@
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    password_hash::Error,
     Argon2,
+    password_hash::Error,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 
 pub(crate) fn hash_password(argon2: &Argon2, pw: &str) -> Result<String, Error> {

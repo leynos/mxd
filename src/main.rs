@@ -3,16 +3,18 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
+use tokio::time::timeout;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 
 mod commands;
 mod db;
 mod models;
+mod protocol;
 mod schema;
 mod users;
 
@@ -153,9 +155,30 @@ async fn handle_client(
     pool: DbPool,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<(), Box<dyn Error>> {
-    let (reader, mut writer) = io::split(socket);
-    let mut lines = BufReader::new(reader).lines();
+    let (mut reader, mut writer) = io::split(socket);
 
+    // perform protocol handshake with a timeout
+    let mut buf = [0u8; protocol::HANDSHAKE_LEN];
+    match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => return Err(Box::new(e)),
+        Err(_) => {
+            protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
+            return Ok(());
+        }
+    }
+    match protocol::parse_handshake(&buf) {
+        Ok(_) => {
+            protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_OK).await?;
+        }
+        Err(err) => {
+            let code = protocol::handshake_error_code(&err);
+            protocol::write_handshake_reply(&mut writer, code).await?;
+            return Ok(());
+        }
+    }
+
+    let mut lines = BufReader::new(reader).lines();
     writer.write_all(b"MXD\n").await?;
     // process commands until the client closes the connection or shutdown signal
     loop {

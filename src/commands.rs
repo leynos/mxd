@@ -11,8 +11,6 @@ pub enum Command {
     Unknown(String),
 }
 
-
-
 impl Command {
     pub fn parse(line: &str) -> Result<Self, &'static str> {
         let mut parts = line.splitn(3, ' ');
