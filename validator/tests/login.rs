@@ -33,7 +33,9 @@ fn login_validation() -> Result<(), Box<dyn std::error::Error>> {
             "--quiet",
             "--",
             "--database",
-            db_path.to_str().unwrap(),
+            db_path
+                .to_str()
+                .expect("Database path is not valid UTF-8"),
             "create-user",
             "test",
             "secret",
@@ -57,7 +59,9 @@ fn login_validation() -> Result<(), Box<dyn std::error::Error>> {
             "--bind",
             &format!("127.0.0.1:{}", port),
             "--database",
-            db_path.to_str().unwrap(),
+            db_path
+                .to_str()
+                .expect("Database path is not valid UTF-8"),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
