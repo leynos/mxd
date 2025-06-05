@@ -25,10 +25,7 @@ pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
         c.run_pending_migrations(MIGRATIONS)
             .map(|_| ())
             .map_err(|e| {
-                DieselError::QueryBuilderError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                )))
+                DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string())))
             })
     })
     .await?;
