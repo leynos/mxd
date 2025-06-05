@@ -679,11 +679,10 @@ dependencies = [
  "diesel",
  "diesel-async",
  "diesel_migrations",
- "nix",
  "rand",
  "serde",
  "serde_json",
- "tempfile",
+ "test-util",
  "thiserror",
  "tokio",
 ]
@@ -1026,6 +1025,14 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "test-util"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "tempfile",
 ]
 
 [[package]]
