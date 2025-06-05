@@ -144,7 +144,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             eprintln!("task error: {}", e);
         }
     }
-
     Ok(())
 }
 
@@ -158,7 +157,6 @@ async fn handle_client(
     let mut lines = BufReader::new(reader).lines();
 
     writer.write_all(b"MXD\n").await?;
-
     // process commands until the client closes the connection or shutdown signal
     loop {
         tokio::select! {
@@ -176,7 +174,7 @@ async fn handle_client(
                             Err(err) => {
                                 writer
                                     .write_all(format!("ERR {}\n", err).as_bytes())
-                                    .await?;
+
                             }
                         }
                     }
