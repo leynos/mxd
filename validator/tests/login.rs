@@ -3,6 +3,10 @@ use std::io::{BufRead, BufReader};
 use std::time::{Duration, Instant};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
+#[cfg(unix)]
+use nix::sys::signal::{kill, Signal};
+#[cfg(unix)]
+use nix::unistd::Pid;
 use tempfile::TempDir;
 use which::which;
 
@@ -11,7 +15,14 @@ struct ChildGuard(Child);
 
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        let _ = self.0.kill();
+        #[cfg(unix)]
+        {
+            let _ = kill(Pid::from_raw(self.0.id() as i32), Signal::SIGTERM);
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = self.0.kill();
+        }
         let _ = self.0.wait();
     }
 }
@@ -99,6 +110,9 @@ fn login_validation() -> Result<(), Box<dyn std::error::Error>> {
     p.send_line("/quit")?;
     p.expect(Regex("OK"))?;
 
+    #[cfg(unix)]
+    kill(Pid::from_raw(child.0.id() as i32), Signal::SIGTERM)?;
+    #[cfg(not(unix))]
     child.0.kill()?;
     Ok(())
 }
