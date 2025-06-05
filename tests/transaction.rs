@@ -198,6 +198,26 @@ async fn oversized_payload() {
 }
 
 #[test]
+fn parse_transaction_rejects_large_frame() {
+    let payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 9,
+        id: 5,
+        error: 0,
+        total_size: payload.len() as u32,
+        data_size: payload.len() as u32,
+    };
+    let tx = Transaction { header, payload };
+    let frame = tx.to_bytes();
+    match parse_transaction(&frame).unwrap_err() {
+        TransactionError::PayloadTooLarge => {}
+        e => panic!("unexpected {e:?}"),
+    }
+}
+
+#[test]
 fn display_field_and_type() {
     use field_id::FieldId;
     use transaction_type::TransactionType;

@@ -113,6 +113,9 @@ pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
     }
     let hdr: &[u8; HEADER_LEN] = buf[0..HEADER_LEN].try_into().unwrap();
     let header = FrameHeader::from_bytes(hdr);
+    if header.total_size as usize > MAX_PAYLOAD_SIZE {
+        return Err(TransactionError::PayloadTooLarge);
+    }
     if buf.len() != HEADER_LEN + header.total_size as usize {
         return Err(TransactionError::SizeMismatch);
     }
@@ -142,6 +145,9 @@ async fn read_frame<R: AsyncRead + Unpin>(
     let mut hdr_buf = [0u8; HEADER_LEN];
     read_timeout_exact(rdr, &mut hdr_buf, timeout_dur).await?;
     let hdr = FrameHeader::from_bytes(&hdr_buf);
+    if hdr.total_size as usize > MAX_PAYLOAD_SIZE || hdr.data_size as usize > MAX_PAYLOAD_SIZE {
+        return Err(TransactionError::PayloadTooLarge);
+    }
     let mut data = vec![0u8; hdr.data_size as usize];
     read_timeout_exact(rdr, &mut data, timeout_dur).await?;
     Ok((hdr, data))
