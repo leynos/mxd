@@ -1,5 +1,9 @@
+#[path = "../src/field_id.rs"]
+mod field_id;
 #[path = "../src/transaction.rs"]
 mod transaction;
+#[path = "../src/transaction_type.rs"]
+mod transaction_type;
 use tokio::io::{AsyncWriteExt, duplex};
 use transaction::*;
 
@@ -119,6 +123,10 @@ async fn duplicate_field_error() {
     a.write_all(&tx.payload).await.unwrap();
     let mut reader = TransactionReader::new(&mut b);
     match reader.read_transaction().await.unwrap_err() {
+        TransactionError::DuplicateField(1) => {}
+        e => panic!("unexpected {e:?}"),
+    }
+}
 
 #[tokio::test]
 async fn writer_payload_too_large() {
@@ -170,10 +178,6 @@ async fn roundtrip_empty_payload() {
     let rx = reader.read_transaction().await.unwrap();
     assert_eq!(tx, rx);
 }
-        TransactionError::DuplicateField(1) => {}
-        e => panic!("unexpected {e:?}"),
-    }
-}
 
 #[tokio::test]
 async fn oversized_payload() {
@@ -191,4 +195,14 @@ async fn oversized_payload() {
         TransactionError::PayloadTooLarge => {}
         e => panic!("unexpected {e:?}"),
     }
+}
+
+#[test]
+fn display_field_and_type() {
+    use field_id::FieldId;
+    use transaction_type::TransactionType;
+    assert_eq!(FieldId::Login.to_string(), "Login");
+    assert_eq!(FieldId::Other(42).to_string(), "Other(42)");
+    assert_eq!(TransactionType::Login.to_string(), "Login");
+    assert_eq!(TransactionType::Other(99).to_string(), "Other(99)");
 }

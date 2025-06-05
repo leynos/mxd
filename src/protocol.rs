@@ -11,6 +11,8 @@ pub const REPLY_LEN: usize = 8;
 pub const PROTOCOL_ID: &[u8; 4] = b"TRTP";
 /// Protocol version supported by this server.
 pub const VERSION: u16 = 1;
+/// Hotline client version code used in login replies.
+pub const CLIENT_VERSION: u16 = 0x0097; // 151
 
 /// Handshake reply code for success.
 pub const HANDSHAKE_OK: u32 = 0;
