@@ -105,6 +105,36 @@ pub struct Transaction {
     pub payload: Vec<u8>,
 }
 
+/// Parse a transaction from a single frame of bytes.
+#[cfg_attr(test, allow(dead_code))]
+pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
+    if buf.len() < HEADER_LEN {
+        return Err(TransactionError::SizeMismatch);
+    }
+    let hdr: &[u8; HEADER_LEN] = buf[0..HEADER_LEN].try_into().unwrap();
+    let header = FrameHeader::from_bytes(hdr);
+    if buf.len() != HEADER_LEN + header.total_size as usize {
+        return Err(TransactionError::SizeMismatch);
+    }
+    let payload = buf[HEADER_LEN..].to_vec();
+    let tx = Transaction { header, payload };
+    validate_payload(&tx)?;
+    Ok(tx)
+}
+
+impl Transaction {
+    /// Serialize the transaction into a vector of bytes.
+    #[cfg_attr(test, allow(dead_code))]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(HEADER_LEN + self.payload.len());
+        let mut hdr = [0u8; HEADER_LEN];
+        self.header.write_bytes(&mut hdr);
+        buf.extend_from_slice(&hdr);
+        buf.extend_from_slice(&self.payload);
+        buf
+    }
+}
+
 async fn read_frame<R: AsyncRead + Unpin>(
     rdr: &mut R,
     timeout_dur: Duration,
@@ -297,6 +327,7 @@ where
 }
 
 /// Decode the parameter block of a transaction into a vector of field id/data pairs.
+#[cfg_attr(test, allow(dead_code))]
 pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionError> {
     if buf.is_empty() {
         return Ok(Vec::new());
@@ -334,6 +365,7 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
 }
 
 /// Build a parameter block from field id/data pairs.
+#[cfg_attr(test, allow(dead_code))]
 pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
     let mut buf = Vec::new();
     buf.extend_from_slice(&(params.len() as u16).to_be_bytes());

@@ -1,12 +1,8 @@
 use std::net::SocketAddr;
 
-use tokio::io::AsyncWriteExt;
-
 use crate::db::{DbPool, get_user_by_name};
 use crate::field_id::FieldId;
-use crate::transaction::{
-    FrameHeader, Transaction, TransactionWriter, decode_params, encode_params,
-};
+use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use crate::transaction_type::TransactionType;
 use crate::users::verify_password;
 
@@ -49,15 +45,11 @@ impl Command {
         }
     }
 
-    pub async fn dispatch<W>(
+    pub async fn process(
         self,
         peer: SocketAddr,
-        writer: &mut TransactionWriter<W>,
         pool: DbPool,
-    ) -> Result<(), Box<dyn std::error::Error>>
-    where
-        W: AsyncWriteExt + Unpin,
-    {
+    ) -> Result<Transaction, Box<dyn std::error::Error>> {
         match self {
             Command::Login {
                 username,
@@ -91,10 +83,10 @@ impl Command {
                     },
                     payload,
                 };
-                writer.write_transaction(&reply).await?;
                 if error == 0 {
                     println!("{} authenticated as {}", peer, username);
                 }
+                Ok(reply)
             }
             Command::Unknown { header } => {
                 let reply = Transaction {
@@ -109,10 +101,9 @@ impl Command {
                     },
                     payload: Vec::new(),
                 };
-                writer.write_transaction(&reply).await?;
                 println!("{} sent unknown transaction: {}", peer, header.ty);
+                Ok(reply)
             }
         }
-        Ok(())
     }
 }

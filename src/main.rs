@@ -14,6 +14,7 @@ use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 mod commands;
 mod db;
 mod field_id;
+mod handler;
 mod models;
 mod protocol;
 mod schema;
@@ -21,8 +22,8 @@ mod transaction;
 mod transaction_type;
 mod users;
 use crate::transaction::{TransactionReader, TransactionWriter};
+use handler::{Context, handle_request};
 
-use commands::Command;
 use db::{DbPool, create_user, establish_pool, run_migrations};
 use users::hash_password;
 
@@ -184,12 +185,16 @@ async fn handle_client(
 
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
+    let mut ctx = Context::new(peer, pool.clone());
     loop {
         tokio::select! {
             tx = tx_reader.read_transaction() => {
                 let tx = tx?;
-                let cmd = Command::from_transaction(tx)?;
-                cmd.dispatch(peer, &mut tx_writer, pool.clone()).await?;
+                let frame = tx.to_bytes();
+                handle_request(&mut ctx, &frame).await?;
+                for resp in ctx.take_responses() {
+                    tx_writer.write_transaction(&resp).await?;
+                }
             }
             _ = shutdown.changed() => {
                 break;
