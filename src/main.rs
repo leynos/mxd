@@ -106,7 +106,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(&addr).await?;
     println!("mxd listening on {}", addr);
 
-    let (shutdown_tx, mut shutdown_rx) = watch::channel(());
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut join_set = JoinSet::new();
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
@@ -137,7 +137,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // notify all tasks to shut down
-    let _ = shutdown_tx.send(());
+    let _ = shutdown_tx.send(true);
 
     while let Some(res) = join_set.join_next().await {
         if let Err(e) = res {
@@ -151,7 +151,7 @@ async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
-    shutdown: &mut watch::Receiver<()>,
+    shutdown: &mut watch::Receiver<bool>,
 ) -> Result<(), Box<dyn Error>> {
     let (reader, mut writer) = io::split(socket);
     let mut lines = BufReader::new(reader).lines();
@@ -174,7 +174,7 @@ async fn handle_client(
                             Err(err) => {
                                 writer
                                     .write_all(format!("ERR {}\n", err).as_bytes())
-
+                                    .await?;
                             }
                         }
                     }
