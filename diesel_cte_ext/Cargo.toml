@@ -1,0 +1,19 @@
+[package]
+name = "diesel_cte_ext"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+diesel = { version = "2", default-features = false }
+
+[features]
+default = []
+sqlite = ["diesel/sqlite"]
+postgres = ["diesel/postgres"]
+
+[dev-dependencies]
+diesel = { version = "2", features = ["sqlite", "postgres", "chrono"] }
+diesel-async = { version = "0.5", features = ["sqlite", "postgres", "tokio"] }
+postgresql_embedded = { version = "0.18.5", features = ["tokio", "blocking"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

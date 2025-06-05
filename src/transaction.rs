@@ -37,8 +37,8 @@ async fn write_timeout_all<W: AsyncWrite + Unpin>(
 }
 
 /// Read a big-endian u16 from the provided byte slice.
-pub fn read_u16(buf: &[u8; 2]) -> u16 {
-    u16::from_be_bytes(*buf)
+pub fn read_u16(buf: &[u8]) -> u16 {
+    u16::from_be_bytes([buf[0], buf[1]])
 }
 
 /// Read a big-endian u32 from the provided byte slice.

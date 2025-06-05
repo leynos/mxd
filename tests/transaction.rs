@@ -119,6 +119,10 @@ async fn duplicate_field_error() {
     a.write_all(&tx.payload).await.unwrap();
     let mut reader = TransactionReader::new(&mut b);
     match reader.read_transaction().await.unwrap_err() {
+        TransactionError::DuplicateField(1) => {}
+        e => panic!("unexpected {e:?}"),
+    }
+}
 
 #[tokio::test]
 async fn writer_payload_too_large() {
@@ -169,10 +173,6 @@ async fn roundtrip_empty_payload() {
     writer.write_transaction(&tx).await.unwrap();
     let rx = reader.read_transaction().await.unwrap();
     assert_eq!(tx, rx);
-}
-        TransactionError::DuplicateField(1) => {}
-        e => panic!("unexpected {e:?}"),
-    }
 }
 
 #[tokio::test]
