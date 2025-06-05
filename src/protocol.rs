@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use thiserror::Error;
 use tokio::io::{self, AsyncWriteExt};
 
@@ -9,6 +11,18 @@ pub const REPLY_LEN: usize = 8;
 pub const PROTOCOL_ID: &[u8; 4] = b"TRTP";
 /// Protocol version supported by this server.
 pub const VERSION: u16 = 1;
+
+/// Handshake reply code for success.
+pub const HANDSHAKE_OK: u32 = 0;
+/// Error code for an invalid protocol identifier.
+pub const HANDSHAKE_ERR_INVALID: u32 = 1;
+/// Error code for an unsupported protocol version.
+pub const HANDSHAKE_ERR_UNSUPPORTED_VERSION: u32 = 2;
+/// Error code when the handshake times out.
+pub const HANDSHAKE_ERR_TIMEOUT: u32 = 3;
+
+/// Timeout for reading the client handshake.
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Parsed handshake information.
 #[derive(Debug, PartialEq, Eq)]
@@ -48,7 +62,19 @@ pub fn parse_handshake(buf: &[u8; HANDSHAKE_LEN]) -> Result<Handshake, Handshake
     })
 }
 
+/// Convert a [`HandshakeError`] into a numeric error code for clients.
+pub fn handshake_error_code(err: &HandshakeError) -> u32 {
+    match err {
+        HandshakeError::InvalidProtocol => HANDSHAKE_ERR_INVALID,
+        HandshakeError::UnsupportedVersion(_) => HANDSHAKE_ERR_UNSUPPORTED_VERSION,
+    }
+}
+
 /// Write the handshake reply with the provided error code.
+///
+/// The reply consists of the protocol identifier followed by a 32-bit
+/// error code. [`HANDSHAKE_OK`] indicates success, while the other
+/// `HANDSHAKE_ERR_*` constants specify why the handshake failed.
 pub async fn write_handshake_reply<W>(writer: &mut W, error_code: u32) -> io::Result<()>
 where
     W: AsyncWriteExt + Unpin,
@@ -88,6 +114,10 @@ mod tests {
             parse_handshake(&buf),
             Err(HandshakeError::InvalidProtocol)
         ));
+        assert_eq!(
+            handshake_error_code(&HandshakeError::InvalidProtocol),
+            HANDSHAKE_ERR_INVALID
+        );
     }
 
     #[test]
@@ -99,5 +129,9 @@ mod tests {
             parse_handshake(&buf),
             Err(HandshakeError::UnsupportedVersion(2))
         ));
+        assert_eq!(
+            handshake_error_code(&HandshakeError::UnsupportedVersion(2)),
+            HANDSHAKE_ERR_UNSUPPORTED_VERSION
+        );
     }
 }

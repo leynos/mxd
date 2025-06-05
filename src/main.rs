@@ -7,6 +7,7 @@ use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
+use tokio::time::timeout;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 
@@ -156,14 +157,26 @@ async fn handle_client(
 ) -> Result<(), Box<dyn Error>> {
     let (mut reader, mut writer) = io::split(socket);
 
-    // perform protocol handshake
+    // perform protocol handshake with a timeout
     let mut buf = [0u8; protocol::HANDSHAKE_LEN];
-    reader.read_exact(&mut buf).await?;
-    if protocol::parse_handshake(&buf).is_err() {
-        protocol::write_handshake_reply(&mut writer, 1).await?;
-        return Ok(());
+    match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => return Err(Box::new(e)),
+        Err(_) => {
+            protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
+            return Ok(());
+        }
     }
-    protocol::write_handshake_reply(&mut writer, 0).await?;
+    match protocol::parse_handshake(&buf) {
+        Ok(_) => {
+            protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_OK).await?;
+        }
+        Err(err) => {
+            let code = protocol::handshake_error_code(&err);
+            protocol::write_handshake_reply(&mut writer, code).await?;
+            return Ok(());
+        }
+    }
 
     let mut lines = BufReader::new(reader).lines();
     writer.write_all(b"MXD\n").await?;
