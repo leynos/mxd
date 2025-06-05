@@ -2,6 +2,120 @@
 
 Hotline is a client/server system providing chat, private messaging, file sharing, and a bulletin-board style news system. Hotline Server v1.8.5 communicates with Hotline clients using a defined set of protocol transactions. This guide describes **every protocol transaction type** in Hotline 1.8.5 and explains how each one correlates with server functionality and what end-users experience. We group transactions by functionality (User Login & Presence, Chat, Private Messaging, File Services, News, Administration) for clarity. For each transaction, we provide its **ID and name**, its **purpose**, **initiator** (client or server), key **parameters** passed and results returned, the **server’s behavior**, and the **user-visible effect**. (Note: Tracker and HTTP tunneling-related transactions are omitted as requested.)
 
+## Binary Message Formats (Hotline Protocol v 1.8.5)
+
+All multi-byte integers are transmitted **big-endian (“network byte order”)**. No padding or alignment bytes are used: the fields follow one another exactly as listed.
+
+
+### 1  Session-initialisation handshake
+
+| Offset | Size (bytes) | Field               | Meaning                                                                          |
+| -----: | ------------ | ------------------- | -------------------------------------------------------------------------------- |
+|      0 | 4            | **Protocol ID**     | ASCII **“TRTP”** (0x54 52 54 50). Distinguishes Hotline from other TCP services. |
+|      4 | 4            | **Sub-protocol ID** | Application-specific tag (e.g. “CHAT”, “FILE”). Can be 0.                        |
+|      8 | 2            | **Version**         | Currently **0x0001**. A server should refuse versions it does not understand.    |
+|     10 | 2            | **Sub-version**     | Application-defined; often used for build/revision numbers.                      |
+
+**Direction:** Client → Server.
+The server replies immediately with:
+
+| Offset | Size | Field       | Meaning                                       |
+| -----: | ---- | ----------- | --------------------------------------------- |
+|      0 | 4    | Protocol ID | Must echo “TRTP”.                             |
+|      4 | 4    | Error code  | **0 = OK**. Non-zero → connection is dropped. |
+
+A compliant implementation simply waits for the four-byte error code and aborts if it is non-zero. No further data follow.&#x20;
+
+---
+
+### 2  General transaction frame
+
+Every request **and** reply after the handshake is wrapped in a fixed-length header followed by an optional parameter block.
+
+| Offset | Size | Field          | Notes                                                                                                                                                                                         |
+| -----: | ---- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|      0 | 1    | **Flags**      | Reserved – **always 0** for v 1.8.5.                                                                                                                                                          |
+|      1 | 1    | **Is-reply**   | **0 = request**, **1 = reply**.                                                                                                                                                               |
+|      2 | 2    | **Type**       | Transaction ID (see full list in protocol spec – e.g. 0x006B = *Login*).                                                                                                                      |
+|      4 | 4    | **ID**         | Client-chosen non-zero number. Replies **must echo** the same value. Allows out-of-order matching.                                                                                            |
+|      8 | 4    | **Error code** | Meaningful **only when Is-reply = 1** (0 = success).                                                                                                                                          |
+|     12 | 4    | **Total size** | Entire byte count of the transaction’s parameter block **across all fragments**.                                                                                                              |
+|     16 | 4    | **Data size**  | Size of the parameter bytes **in *this* fragment**. If `Data size < Total size`, further fragments with identical header values follow until the accumulated data length equals `Total size`. |
+
+*Header length = 20 bytes.*
+
+---
+
+#### 2.1 Parameter list (payload block)
+
+If `Data size > 0`, the parameter bytes begin with:
+
+| Offset | Size | Field           | Meaning                                       |
+| -----: | ---- | --------------- | --------------------------------------------- |
+|      0 | 2    | **Param-count** | Number of field/value pairs in this fragment. |
+
+Immediately afterwards, *Param-count* **records** follow:
+
+| Offset | Size         | Field      | Meaning                                                                                   |
+| -----: | ------------ | ---------- | ----------------------------------------------------------------------------------------- |
+|      0 | 2            | Field ID   | See master field-ID table (e.g. 0x0066 = *User Name*).                                    |
+|      2 | 2            | Field size | Length of the data portion in bytes.                                                      |
+|      4 | *Field size* | Field data | Raw value. Interpretation rules: integer (16- or 32-bit), ASCII string, or opaque binary. |
+
+Field IDs never repeat within a single transaction. Integers are unsigned; the sender may use 16-bit encoding if the value ≤ 0xFFFF, otherwise 32-bit.
+
+---
+
+### 3  Fragmentation rules
+
+* **Single-part transaction:** `Total size == Data size`; one frame only.
+* **Multi-part transaction:** the first fragment carries part 0. Subsequent fragments repeat the same header (with appropriate `Data size`) and deliver the remaining bytes until the sum of `Data size` values equals `Total size`. The parameter list header (2-byte *Param-count*) appears **only in the first fragment**. The receiver concatenates payloads before decoding parameters.
+* `ID` and `Type` never change across fragments; only the `Data size` field differs.
+
+---
+
+### 4  Reply semantics
+
+* A reply **must** keep the original `ID`, set **Is-reply = 1**, and fill `Error code`.
+* If `Error code ≠ 0`, no parameter list is required; many implementations send an empty payload (`Total size = Data size = 0`).
+* Where a command has no meaningful return data, the server often omits the parameter block entirely.
+
+---
+
+### 5  Worked example (Login)
+
+| Field    | Hex value   | Comment                  |
+| -------- | ----------- | ------------------------ |
+| Flags    | 00          | —                        |
+| Is-reply | 00          | Request                  |
+| Type     | 00 6B       | 107 decimal – *Login*    |
+| ID       | 00 00 01 27 | Arbitrary (295)          |
+| Error    | 00 00 00 00 | Always zero in a request |
+| Total    | 00 00 00 14 | 20 bytes of parameters   |
+| Data     | 00 00 00 14 | All in one fragment      |
+
+Parameter block:
+
+|             Field ID | Size | Data (hex)     | Meaning      |
+| -------------------: | ---: | -------------- | ------------ |
+|    0069 (User Login) | 0005 | 61 64 6D 69 6E | “admin”      |
+| 006A (User Password) | 0000 | —              | empty        |
+|       00A0 (Version) | 0002 | 00 97          | 0x0097 (151) |
+
+Total frame length: 40 bytes. The server’s reply echoes `ID = 0x00000127`, sets **Is-reply = 1**, inserts its own parameter list, and may set `Error code` if the login fails.&#x20;
+
+---
+
+### 6 Implementation checklist
+
+1. **Validate before use** – always verify the Protocol ID, `Flags == 0`, and sensible sizes.
+2. **Allocate big-endian helpers** – it is safer to write explicit *readUInt16BE / readUInt32BE* helpers than rely on struct packing.
+3. **Never reuse transaction IDs** until a matching reply arrives or the connection is closed.
+4. **Graceful error path** – on any framing or length anomaly, send a single *Disconnect Message* (111) if possible, then drop the socket.
+5. **Unit-test fragmentation** – many clients send large parameter blocks (e.g. *Upload Folder*) in dozens of fragments.
+
+This guide gives you the precise binary envelope you must generate and parse; pair it with the full transaction catalogue to complete your Hotline server implementation.
+
 ## User Login and Presence
 
 ### Session Handshake (Before Transactions Begin)
