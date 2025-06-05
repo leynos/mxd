@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
 
-use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
@@ -16,7 +16,10 @@ mod db;
 mod models;
 mod protocol;
 mod schema;
+mod transaction;
+mod transaction_type;
 mod users;
+use crate::transaction::{TransactionReader, TransactionWriter};
 
 use commands::Command;
 use db::{DbPool, create_user, establish_pool, run_migrations};
@@ -178,31 +181,14 @@ async fn handle_client(
         }
     }
 
-    let mut lines = BufReader::new(reader).lines();
-    writer.write_all(b"MXD\n").await?;
-    // process commands until the client closes the connection or shutdown signal
+    let mut tx_reader = TransactionReader::new(reader);
+    let mut tx_writer = TransactionWriter::new(writer);
     loop {
         tokio::select! {
-            line = lines.next_line() => {
-                match line? {
-                    Some(line) => {
-                        let line = line.trim();
-                        if line.is_empty() {
-                            continue;
-                        }
-                        match Command::parse(line) {
-                            Ok(cmd) => {
-                                cmd.dispatch(peer, &mut writer, pool.clone()).await?;
-                            }
-                            Err(err) => {
-                                writer
-                                    .write_all(format!("ERR {}\n", err).as_bytes())
-                                    .await?;
-                            }
-                        }
-                    }
-                    None => break,
-                }
+            tx = tx_reader.read_transaction() => {
+                let tx = tx?;
+                let cmd = Command::from_transaction(tx)?;
+                cmd.dispatch(peer, &mut tx_writer, pool.clone()).await?;
             }
             _ = shutdown.changed() => {
                 break;

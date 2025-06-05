@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use test_util::TestServer;
@@ -21,9 +21,7 @@ fn handshake() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(&reply[0..4], b"TRTP");
     assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
 
-    let mut reader = BufReader::new(stream);
-    let mut line = String::new();
-    reader.read_line(&mut line)?;
-    assert_eq!(line.trim_end(), "MXD");
+    let mut tmp = [0u8; 1];
+    assert_eq!(stream.read(&mut tmp)?, 0);
     Ok(())
 }
