@@ -235,22 +235,31 @@ where
         }
         let mut offset = 0usize;
         let mut header = tx.header.clone();
-        while offset < tx.payload.len() {
-            let remaining = tx.payload.len() - offset;
-            let chunk = remaining.min(self.max_frame);
-            header.data_size = chunk as u32;
+        if tx.payload.is_empty() {
+            header.data_size = 0;
             let mut buf = [0u8; HEADER_LEN];
             header.write_bytes(&mut buf);
             timeout(self.timeout, self.writer.write_all(&buf))
                 .await
                 .map_err(|_| TransactionError::Timeout)??;
-            timeout(
-                self.timeout,
-                self.writer.write_all(&tx.payload[offset..offset + chunk]),
-            )
-            .await
-            .map_err(|_| TransactionError::Timeout)??;
-            offset += chunk;
+        } else {
+            while offset < tx.payload.len() {
+                let remaining = tx.payload.len() - offset;
+                let chunk = remaining.min(self.max_frame);
+                header.data_size = chunk as u32;
+                let mut buf = [0u8; HEADER_LEN];
+                header.write_bytes(&mut buf);
+                timeout(self.timeout, self.writer.write_all(&buf))
+                    .await
+                    .map_err(|_| TransactionError::Timeout)??;
+                timeout(
+                    self.timeout,
+                    self.writer.write_all(&tx.payload[offset..offset + chunk]),
+                )
+                .await
+                .map_err(|_| TransactionError::Timeout)??;
+                offset += chunk;
+            }
         }
         timeout(self.timeout, self.writer.flush())
             .await

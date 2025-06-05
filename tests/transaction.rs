@@ -119,6 +119,29 @@ async fn duplicate_field_error() {
     a.write_all(&tx.payload).await.unwrap();
     let mut reader = TransactionReader::new(&mut b);
     match reader.read_transaction().await.unwrap_err() {
+
+#[tokio::test]
+async fn roundtrip_empty_payload() {
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 3,
+        id: 42,
+        error: 0,
+        total_size: 0,
+        data_size: 0,
+    };
+    let tx = Transaction {
+        header,
+        payload: Vec::new(),
+    };
+    let (mut a, mut b) = duplex(1024);
+    let mut writer = TransactionWriter::new(&mut a);
+    let mut reader = TransactionReader::new(&mut b);
+    writer.write_transaction(&tx).await.unwrap();
+    let rx = reader.read_transaction().await.unwrap();
+    assert_eq!(tx, rx);
+}
         TransactionError::DuplicateField(1) => {}
         e => panic!("unexpected {e:?}"),
     }
