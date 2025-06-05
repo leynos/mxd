@@ -3,12 +3,15 @@ use std::net::SocketAddr;
 use tokio::io::AsyncWriteExt;
 
 use crate::db::{DbPool, get_user_by_name};
-use crate::hash_password;
+
+use crate::users::verify_password;
 
 pub enum Command {
     Login { username: String, password: String },
     Unknown(String),
 }
+
+
 
 impl Command {
     pub fn parse(line: &str) -> Result<Self, &'static str> {
@@ -40,12 +43,15 @@ impl Command {
     {
         match self {
             Command::Login { username, password } => {
-                let hashed = hash_password(&password);
                 let mut conn = pool.get().await?;
                 let user = get_user_by_name(&mut conn, &username).await?;
-                if user.map(|u| u.password == hashed).unwrap_or(false) {
-                    writer.write_all(b"OK\n").await?;
-                    println!("{} authenticated as {}", peer, username);
+                if let Some(u) = user {
+                    if verify_password(&u.password, &password) {
+                        writer.write_all(b"OK\n").await?;
+                        println!("{} authenticated as {}", peer, username);
+                    } else {
+                        writer.write_all(b"FAIL\n").await?;
+                    }
                 } else {
                     writer.write_all(b"FAIL\n").await?;
                 }
