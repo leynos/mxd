@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use thiserror::Error;
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+use crate::field_id::FieldId;
 use tokio::time::timeout;
 
 /// Length of a transaction frame header in bytes.
@@ -44,6 +46,12 @@ pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
         return Err(TransactionError::ShortBuffer);
     }
     Ok(u16::from_be_bytes([buf[0], buf[1]]))
+}
+
+/// Read a big-endian u32 from the provided byte slice.
+pub fn read_u32(buf: &[u8]) -> u32 {
+    let arr: [u8; 4] = buf.try_into().expect("slice with len 4");
+    u32::from_be_bytes(arr)
 }
 
 /// Write a big-endian u16 to the provided byte slice.
@@ -292,4 +300,54 @@ where
             .map_err(|_| TransactionError::Timeout)??;
         Ok(())
     }
+}
+
+/// Decode the parameter block of a transaction into a vector of field id/data pairs.
+pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionError> {
+    if buf.is_empty() {
+        return Ok(Vec::new());
+    }
+    if buf.len() < 2 {
+        return Err(TransactionError::SizeMismatch);
+    }
+    let count = read_u16(&buf[0..2]) as usize;
+    let mut offset = 2usize;
+    let mut params = Vec::with_capacity(count);
+    let mut seen = HashSet::new();
+    for _ in 0..count {
+        if offset + 4 > buf.len() {
+            return Err(TransactionError::SizeMismatch);
+        }
+        let field_id = read_u16(&buf[offset..offset + 2]);
+        let field_size = read_u16(&buf[offset + 2..offset + 4]) as usize;
+        offset += 4;
+        if offset + field_size > buf.len() {
+            return Err(TransactionError::SizeMismatch);
+        }
+        if !seen.insert(field_id) {
+            return Err(TransactionError::DuplicateField(field_id));
+        }
+        params.push((
+            FieldId::from(field_id),
+            buf[offset..offset + field_size].to_vec(),
+        ));
+        offset += field_size;
+    }
+    if offset != buf.len() {
+        return Err(TransactionError::SizeMismatch);
+    }
+    Ok(params)
+}
+
+/// Build a parameter block from field id/data pairs.
+pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&(params.len() as u16).to_be_bytes());
+    for (id, data) in params {
+        let raw: u16 = (*id).into();
+        buf.extend_from_slice(&raw.to_be_bytes());
+        buf.extend_from_slice(&(data.len() as u16).to_be_bytes());
+        buf.extend_from_slice(data);
+    }
+    buf
 }
