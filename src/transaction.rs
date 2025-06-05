@@ -143,6 +143,7 @@ impl<R> TransactionReader<R>
 where
     R: AsyncRead + Unpin,
 {
+    /// Create a new reader with default timeout and payload limits.
     pub fn new(reader: R) -> Self {
         Self {
             reader,
@@ -215,6 +216,7 @@ impl<W> TransactionWriter<W>
 where
     W: AsyncWrite + Unpin,
 {
+    /// Create a new writer with default timeout and size limits.
     pub fn new(writer: W) -> Self {
         Self {
             writer,

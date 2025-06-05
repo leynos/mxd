@@ -121,6 +121,34 @@ async fn duplicate_field_error() {
     match reader.read_transaction().await.unwrap_err() {
 
 #[tokio::test]
+async fn writer_payload_too_large() {
+    let count = 16u16;
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&count.to_be_bytes());
+    for i in 0..count {
+        payload.extend_from_slice(&(i + 1).to_be_bytes());
+        payload.extend_from_slice(&0xFFFFu16.to_be_bytes());
+        payload.extend(vec![0u8; 0xFFFF]);
+    }
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 1,
+        id: 99,
+        error: 0,
+        total_size: payload.len() as u32,
+        data_size: payload.len() as u32,
+    };
+    let tx = Transaction { header, payload };
+    let (mut w, _) = duplex(MAX_PAYLOAD_SIZE * 2);
+    let mut writer = TransactionWriter::new(&mut w);
+    match writer.write_transaction(&tx).await.unwrap_err() {
+        TransactionError::PayloadTooLarge => {}
+        e => panic!("unexpected {e:?}"),
+    }
+}
+
+#[tokio::test]
 async fn roundtrip_empty_payload() {
     let header = FrameHeader {
         flags: 0,
