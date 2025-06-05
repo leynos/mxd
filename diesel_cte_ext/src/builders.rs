@@ -1,6 +1,8 @@
 use crate::cte::{RecursiveBackend, WithRecursive};
 
 /// Build a recursive CTE query.
+use diesel::query_builder::QueryFragment;
+
 pub fn with_recursive<DB, Seed, Step, Body>(
     cte_name: &'static str,
     columns: &'static [&'static str],
@@ -10,6 +12,9 @@ pub fn with_recursive<DB, Seed, Step, Body>(
 ) -> WithRecursive<DB, Seed, Step, Body>
 where
     DB: RecursiveBackend,
+    Seed: QueryFragment<DB>,
+    Step: QueryFragment<DB>,
+    Body: QueryFragment<DB>,
 {
     WithRecursive {
         cte_name,
