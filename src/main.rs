@@ -13,6 +13,7 @@ use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 
 mod commands;
 mod db;
+mod field_id;
 mod models;
 mod protocol;
 mod schema;

@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use thiserror::Error;
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+use crate::field_id::FieldId;
 use tokio::time::timeout;
 
 /// Length of a transaction frame header in bytes.
@@ -295,7 +297,8 @@ where
 }
 
 /// Decode the parameter block of a transaction into a vector of field id/data pairs.
-pub fn decode_params(buf: &[u8]) -> Result<Vec<(u16, Vec<u8>)>, TransactionError> {
+
+pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionError> {
     if buf.is_empty() {
         return Ok(Vec::new());
     }
@@ -319,7 +322,10 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(u16, Vec<u8>)>, TransactionError
         if !seen.insert(field_id) {
             return Err(TransactionError::DuplicateField(field_id));
         }
-        params.push((field_id, buf[offset..offset + field_size].to_vec()));
+        params.push((
+            FieldId::from(field_id),
+            buf[offset..offset + field_size].to_vec(),
+        ));
         offset += field_size;
     }
     if offset != buf.len() {
@@ -329,11 +335,12 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(u16, Vec<u8>)>, TransactionError
 }
 
 /// Build a parameter block from field id/data pairs.
-pub fn encode_params(params: &[(u16, &[u8])]) -> Vec<u8> {
+pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
     let mut buf = Vec::new();
     buf.extend_from_slice(&(params.len() as u16).to_be_bytes());
     for (id, data) in params {
-        buf.extend_from_slice(&(*id as u16).to_be_bytes());
+        let raw: u16 = (*id).into();
+        buf.extend_from_slice(&raw.to_be_bytes());
         buf.extend_from_slice(&(data.len() as u16).to_be_bytes());
         buf.extend_from_slice(data);
     }

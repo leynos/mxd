@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use tokio::io::AsyncWriteExt;
 
 use crate::db::{DbPool, get_user_by_name};
+use crate::field_id::FieldId;
 use crate::transaction::{
     FrameHeader, Transaction, TransactionWriter, decode_params, encode_params,
 };
@@ -29,8 +30,12 @@ impl Command {
                 let mut password = None;
                 for (id, data) in params {
                     match id {
-                        105 => username = Some(String::from_utf8(data).map_err(|_| "utf8")?),
-                        106 => password = Some(String::from_utf8(data).map_err(|_| "utf8")?),
+                        FieldId::Login => {
+                            username = Some(String::from_utf8(data).map_err(|_| "utf8")?)
+                        }
+                        FieldId::Password => {
+                            password = Some(String::from_utf8(data).map_err(|_| "utf8")?)
+                        }
                         _ => {}
                     }
                 }
@@ -63,8 +68,10 @@ impl Command {
                 let user = get_user_by_name(&mut conn, &username).await?;
                 let (error, payload) = if let Some(u) = user {
                     if verify_password(&u.password, &password) {
-                        let params =
-                            encode_params(&[(160, &crate::protocol::CLIENT_VERSION.to_be_bytes())]);
+                        let params = encode_params(&[(
+                            FieldId::Version,
+                            &crate::protocol::CLIENT_VERSION.to_be_bytes(),
+                        )]);
                         (0u32, params)
                     } else {
                         (1u32, Vec::new())

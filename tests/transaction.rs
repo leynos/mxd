@@ -1,3 +1,5 @@
+#[path = "../src/field_id.rs"]
+mod field_id;
 #[path = "../src/transaction.rs"]
 mod transaction;
 use tokio::io::{AsyncWriteExt, duplex};
