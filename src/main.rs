@@ -5,6 +5,8 @@ use clap::{Parser, Subcommand};
 
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
 
 mod commands;
 mod db;
@@ -50,6 +52,56 @@ enum Commands {
 }
 
 
+#[cfg(unix)]
+async fn shutdown_signal() {
+    let mut sigterm =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {},
+        _ = sigterm.recv() => {},
+    }
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to install Ctrl-C handler");
+}
+
+async fn run_server(listener: TcpListener, pool: DbPool) -> Result<(), Box<dyn Error>> {
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);
+    let mut tasks: Vec<JoinHandle<()>> = Vec::new();
+
+    loop {
+        tokio::select! {
+            res = listener.accept() => {
+                let (socket, peer) = res?;
+                let pool = pool.clone();
+                let mut shutdown_rx = shutdown_tx.subscribe();
+                tasks.push(tokio::spawn(async move {
+                    if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
+                        eprintln!("connection error: {}", e);
+                    }
+                }));
+            }
+            _ = shutdown_signal() => {
+                println!("shutdown signal received");
+                break;
+            }
+        }
+    }
+
+    // notify all client tasks to exit
+    let _ = shutdown_tx.send(());
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -85,43 +137,62 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(&addr).await?;
     println!("mxd listening on {}", addr);
 
-    loop {
-        let (socket, peer) = listener.accept().await?;
-        let pool = pool.clone();
-        let argon2 = argon2.clone();
-        tokio::spawn(async move {
-            if let Err(e) = handle_client(socket, peer, pool, argon2).await {
-                eprintln!("connection error: {}", e);
-            }
-        });
-    }
+    run_server(listener, pool).await?;
+    Ok(())
 }
 
 async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
-    argon2: Argon2<'static>,
+    shutdown: &mut broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
     let (reader, mut writer) = io::split(socket);
     let mut lines = BufReader::new(reader).lines();
 
     writer.write_all(b"MXD\n").await?;
+    // process commands until the client closes the connection or shutdown is requested
+    loop {
+        tokio::select! {
+            line = lines.next_line() => {
+                match line? {
+                    Some(line) => {
+                        let line = line.trim();
+                        if line.is_empty() {
+                            continue;
+                        }
 
-    // process commands until the client closes the connection
-    while let Some(line) = lines.next_line().await? {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        match Command::parse(line) {
-            Ok(cmd) => {
-                cmd.dispatch(peer, &mut writer, pool.clone()).await?;
+                        let mut parts = line.splitn(3, ' ');
+                        match parts.next() {
+                            Some("LOGIN") => {
+                                let (username, password) = match (parts.next(), parts.next()) {
+                                    (Some(u), Some(p)) if !u.is_empty() && !p.is_empty() => (u, p),
+                                    _ => {
+                                        writer.write_all(b"ERR Invalid LOGIN\n").await?;
+                                        continue;
+                                    }
+                                };
+
+                                let hashed = hash_password(password);
+                                let mut conn = pool.get().await?;
+                                let user = get_user_by_name(&mut conn, username).await?;
+                                if user.map(|u| u.password == hashed).unwrap_or(false) {
+                                    writer.write_all(b"OK\n").await?;
+                                    println!("{} authenticated as {}", peer, username);
+                                } else {
+                                    writer.write_all(b"FAIL\n").await?;
+                                }
+                            }
+                            _ => {
+                                writer.write_all(b"ERR Unknown command\n").await?;
+                            }
+                        }
+                    }
+                    None => break,
+                }
             }
-            Err(err) => {
-                writer
-                    .write_all(format!("ERR {}\n", err).as_bytes())
-                    .await?;
+            _ = shutdown.recv() => {
+                break;
             }
         }
     }
