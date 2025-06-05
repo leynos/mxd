@@ -27,21 +27,38 @@ async fn read_timeout_exact<R: AsyncRead + Unpin>(
     Ok(())
 }
 
-async fn write_timeout_all<W: AsyncWrite + Unpin>(
-    w: &mut W,
-    buf: &[u8],
-    timeout_dur: Duration,
-) -> Result<(), TransactionError> {
-    timeout(timeout_dur, w.write_all(buf))
-        .await
-        .map_err(|_| TransactionError::Timeout)??;
-    Ok(())
+/// Read a big-endian `u32` from the provided byte slice.
+///
+/// Returns an error if `buf` is shorter than four bytes.
+pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
+    if buf.len() < 4 {
+        return Err(TransactionError::ShortBuffer);
+    }
+    Ok(u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]))
 }
 
-/// Read a big-endian u16 from the provided byte slice.
-pub fn read_u16(buf: &[u8]) -> u16 {
-    let arr: [u8; 2] = buf.try_into().expect("slice with len 2");
-    u16::from_be_bytes(arr)
+    /// Parse a frame header from a byte slice.
+    pub fn new(buf: &[u8]) -> Result<Self, TransactionError> {
+        if buf.len() < HEADER_LEN {
+            return Err(TransactionError::ShortBuffer);
+        }
+        Ok(Self {
+            ty: read_u16(&buf[2..4])?,
+            id: read_u32(&buf[4..8])?,
+            error: read_u32(&buf[8..12])?,
+            total_size: read_u32(&buf[12..16])?,
+            data_size: read_u32(&buf[16..20])?,
+        })
+}
+
+    let hdr = FrameHeader::new(&hdr_buf)?;
+///
+/// Returns an error if `buf` is shorter than two bytes.
+pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
+    if buf.len() < 2 {
+        return Err(TransactionError::ShortBuffer);
+    }
+    Ok(u16::from_be_bytes([buf[0], buf[1]]))
 }
 
 /// Read a big-endian u32 from the provided byte slice.
@@ -78,11 +95,11 @@ impl FrameHeader {
         Self {
             flags: buf[0],
             is_reply: buf[1],
-            ty: read_u16(&buf[2..4]),
-            id: read_u32(&buf[4..8]),
-            error: read_u32(&buf[8..12]),
-            total_size: read_u32(&buf[12..16]),
-            data_size: read_u32(&buf[16..20]),
+            ty: u16::from_be_bytes([buf[2], buf[3]]),
+            id: u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]),
+            error: u32::from_be_bytes([buf[8], buf[9], buf[10], buf[11]]),
+            total_size: u32::from_be_bytes([buf[12], buf[13], buf[14], buf[15]]),
+            data_size: u32::from_be_bytes([buf[16], buf[17], buf[18], buf[19]]),
         }
     }
 
@@ -141,6 +158,8 @@ pub enum TransactionError {
     SizeMismatch,
     #[error("duplicate field id {0}")]
     DuplicateField(u16),
+    #[error("buffer too short")]
+    ShortBuffer,
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
     #[error("I/O timeout")]
@@ -159,15 +178,15 @@ fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
     if tx.payload.len() < 2 {
         return Err(TransactionError::SizeMismatch);
     }
-    let param_count = read_u16(&tx.payload[0..2]) as usize;
+    let param_count = read_u16(&tx.payload[0..2])? as usize;
     let mut offset = 2;
     let mut seen = HashSet::new();
     for _ in 0..param_count {
         if offset + 4 > tx.payload.len() {
             return Err(TransactionError::SizeMismatch);
         }
-        let field_id = read_u16(&tx.payload[offset..offset + 2]);
-        let field_size = read_u16(&tx.payload[offset + 2..offset + 4]) as usize;
+        let field_id = read_u16(&tx.payload[offset..offset + 2])?;
+        let field_size = read_u16(&tx.payload[offset + 2..offset + 4])? as usize;
         offset += 4;
         if offset + field_size > tx.payload.len() {
             return Err(TransactionError::SizeMismatch);
