@@ -1,0 +1,8 @@
+[package]
+name = "test-util"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tempfile = "3"
+nix = { version = "0.27", features = ["signal"] }
