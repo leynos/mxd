@@ -14,6 +14,28 @@ pub const MAX_FRAME_DATA: usize = 32 * 1024; // 32 KiB
 /// Default I/O timeout when reading or writing transactions.
 pub const IO_TIMEOUT: Duration = Duration::from_secs(5);
 
+async fn read_timeout_exact<R: AsyncRead + Unpin>(
+    r: &mut R,
+    buf: &mut [u8],
+    timeout_dur: Duration,
+) -> Result<(), TransactionError> {
+    timeout(timeout_dur, r.read_exact(buf))
+        .await
+        .map_err(|_| TransactionError::Timeout)??;
+    Ok(())
+}
+
+async fn write_timeout_all<W: AsyncWrite + Unpin>(
+    w: &mut W,
+    buf: &[u8],
+    timeout_dur: Duration,
+) -> Result<(), TransactionError> {
+    timeout(timeout_dur, w.write_all(buf))
+        .await
+        .map_err(|_| TransactionError::Timeout)??;
+    Ok(())
+}
+
 /// Read a big-endian u16 from the provided byte slice.
 pub fn read_u16(buf: &[u8; 2]) -> u16 {
     u16::from_be_bytes(*buf)
@@ -77,6 +99,31 @@ impl FrameHeader {
 pub struct Transaction {
     pub header: FrameHeader,
     pub payload: Vec<u8>,
+}
+
+async fn read_frame<R: AsyncRead + Unpin>(
+    rdr: &mut R,
+    timeout_dur: Duration,
+) -> Result<(FrameHeader, Vec<u8>), TransactionError> {
+    let mut hdr_buf = [0u8; HEADER_LEN];
+    read_timeout_exact(rdr, &mut hdr_buf, timeout_dur).await?;
+    let hdr = FrameHeader::from_bytes(&hdr_buf);
+    let mut data = vec![0u8; hdr.data_size as usize];
+    read_timeout_exact(rdr, &mut data, timeout_dur).await?;
+    Ok((hdr, data))
+}
+
+async fn write_frame<W: AsyncWrite + Unpin>(
+    wtr: &mut W,
+    mut hdr: FrameHeader,
+    chunk: &[u8],
+    timeout_dur: Duration,
+) -> Result<(), TransactionError> {
+    hdr.data_size = chunk.len() as u32;
+    let mut buf = [0u8; HEADER_LEN];
+    hdr.write_bytes(&mut buf);
+    write_timeout_all(wtr, &buf, timeout_dur).await?;
+    write_timeout_all(wtr, chunk, timeout_dur).await
 }
 
 /// Errors that can occur when parsing or writing transactions.
@@ -154,11 +201,8 @@ where
 
     /// Read the next complete transaction from the underlying reader.
     pub async fn read_transaction(&mut self) -> Result<Transaction, TransactionError> {
-        let mut header_buf = [0u8; HEADER_LEN];
-        timeout(self.timeout, self.reader.read_exact(&mut header_buf))
-            .await
-            .map_err(|_| TransactionError::Timeout)??;
-        let mut header = FrameHeader::from_bytes(&header_buf);
+        let (first_hdr, mut payload) = read_frame(&mut self.reader, self.timeout).await?;
+        let mut header = first_hdr.clone();
         if header.flags != 0 {
             return Err(TransactionError::InvalidFlags);
         }
@@ -168,34 +212,23 @@ where
         if header.data_size > header.total_size {
             return Err(TransactionError::SizeMismatch);
         }
-        let mut payload = vec![0u8; header.data_size as usize];
-        timeout(self.timeout, self.reader.read_exact(&mut payload))
-            .await
-            .map_err(|_| TransactionError::Timeout)??;
         let mut remaining = header.total_size - header.data_size;
         while remaining > 0 {
-            timeout(self.timeout, self.reader.read_exact(&mut header_buf))
-                .await
-                .map_err(|_| TransactionError::Timeout)??;
-            let next = FrameHeader::from_bytes(&header_buf);
-            if next.flags != header.flags
-                || next.is_reply != header.is_reply
-                || next.ty != header.ty
-                || next.id != header.id
-                || next.error != header.error
-                || next.total_size != header.total_size
+            let (next_hdr, chunk) = read_frame(&mut self.reader, self.timeout).await?;
+            if next_hdr.ty != header.ty
+                || next_hdr.id != header.id
+                || next_hdr.error != header.error
+                || next_hdr.total_size != header.total_size
+                || next_hdr.flags != header.flags
+                || next_hdr.is_reply != header.is_reply
             {
                 return Err(TransactionError::SizeMismatch);
             }
-            if next.data_size > remaining {
+            if next_hdr.data_size > remaining {
                 return Err(TransactionError::SizeMismatch);
             }
-            let mut buf = vec![0u8; next.data_size as usize];
-            timeout(self.timeout, self.reader.read_exact(&mut buf))
-                .await
-                .map_err(|_| TransactionError::Timeout)??;
-            payload.extend_from_slice(&buf);
-            remaining -= next.data_size;
+            payload.extend_from_slice(&chunk);
+            remaining -= next_hdr.data_size;
         }
         header.data_size = header.total_size;
         let tx = Transaction { header, payload };
@@ -236,31 +269,20 @@ where
             return Err(TransactionError::PayloadTooLarge);
         }
         let mut offset = 0usize;
-        let mut header = tx.header.clone();
+        let header = tx.header.clone();
         if tx.payload.is_empty() {
-            header.data_size = 0;
-            let mut buf = [0u8; HEADER_LEN];
-            header.write_bytes(&mut buf);
-            timeout(self.timeout, self.writer.write_all(&buf))
-                .await
-                .map_err(|_| TransactionError::Timeout)??;
+            write_frame(&mut self.writer, header, &[], self.timeout).await?;
         } else {
             while offset < tx.payload.len() {
-                let remaining = tx.payload.len() - offset;
-                let chunk = remaining.min(self.max_frame);
-                header.data_size = chunk as u32;
-                let mut buf = [0u8; HEADER_LEN];
-                header.write_bytes(&mut buf);
-                timeout(self.timeout, self.writer.write_all(&buf))
-                    .await
-                    .map_err(|_| TransactionError::Timeout)??;
-                timeout(
+                let end = (offset + self.max_frame).min(tx.payload.len());
+                write_frame(
+                    &mut self.writer,
+                    header.clone(),
+                    &tx.payload[offset..end],
                     self.timeout,
-                    self.writer.write_all(&tx.payload[offset..offset + chunk]),
                 )
-                .await
-                .map_err(|_| TransactionError::Timeout)??;
-                offset += chunk;
+                .await?;
+                offset = end;
             }
         }
         timeout(self.timeout, self.writer.flush())
