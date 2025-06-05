@@ -1,24 +1,25 @@
 # mxd
 Marrakesh Express Daemon
 
-mxd is a minimal implementation of a [Hotline](https://hotline.fandom.com/wiki/Virtual1%27s_Hotline_Server_Protocol_Guide) server written in Rust.
-It currently implements the bare essentials for accepting TCP connections and
-authenticating users stored in a SQLite database using Diesel with its async
-extension. Passwords are stored using Argon2 with a random salt for security.
-Argon2 parameters can be tuned with the `--argon2-m-cost`, `--argon2-t-cost`,
-and `--argon2-p-cost` command line options.
-Commands are read line by line using Tokio's `BufReader` and a simple `LOGIN`
-command is supported. Invalid `LOGIN` requests result in an `ERR` response.
-Each client session stays open so multiple commands can be processed until the
-client disconnects.
+Hop aboard the Marrakesh Express — a compact but spirited
+[Hotline](https://hotline.fandom.com/wiki/Virtual1%27s_Hotline_Server_Protocol_Guide)
+server written in Rust. It speaks just enough of the protocol for that retro BBS
+flair. The server uses Tokio for async networking and Diesel's async extension to
+keep users safely stored in SQLite. Passwords are salted and hashed with Argon2,
+whose knobs are adjustable via `--argon2-m-cost`, `--argon2-t-cost`, and
+`--argon2-p-cost`.
 
-The server is asynchronous thanks to Tokio and is intended as a starting point
-for a more complete implementation of the Hotline protocol.
+Commands arrive line by line through a `BufReader`. At present only a `LOGIN`
+command is supported; invalid attempts earn an `ERR` reply. Each session remains
+open so multiple commands can be processed until the client disconnects.
+
+Tokio keeps everything asynchronous, and this project aims to be the skeleton
+for a more complete Hotline implementation. See the `docs/` directory for a dive
+into the protocol and how we juggle SQLite and PostgreSQL migrations.
 
 ## Running
 
-Build the project then run the daemon specifying the bind address and database p
-ath if desired:
+Build the project and run the daemon. Specify a bind address and database path if the defaults don't tickle your fancy:
 
 ```
 cargo build
@@ -41,12 +42,12 @@ cargo run -- create-user alice secret
 cargo test
 ```
 
+Integration tests live in the repository's `tests/` directory.
+
 
 ## Validation harness
 
-A separate crate named `validator` provides integration tests using the
-`shx` client and the `expectrl` crate. Install `shx` version 0.2.4 and ensure it
-is on your `PATH` before running the tests:
+The `validator` crate provides a compatibility check using the `shx` client and `expectrl` to ensure mxd speaks the Hotline protocol correctly. Install `shx` version 0.2.4 and make sure it's on your `PATH` before running:
 
 ```bash
 cd validator
