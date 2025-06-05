@@ -1,4 +1,4 @@
-use expectrl::{spawn, Regex};
+use expectrl::{Regex, spawn};
 use test_util::TestServer;
 use which::which;
 
@@ -32,7 +32,7 @@ fn login_validation() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     let port = server.port();
-    let mut p = spawn(&format!("shx 127.0.0.1 {}", port))?;
+    let mut p = spawn(format!("shx 127.0.0.1 {}", port))?;
     p.expect(Regex("MXD"))?;
     p.send_line("LOGIN test secret")?;
     p.expect(Regex("OK"))?;
