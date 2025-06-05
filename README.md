@@ -41,3 +41,14 @@ cargo run -- create-user alice secret
 cargo test
 ```
 
+
+## Validation harness
+
+A separate crate named `validator` provides integration tests using the
+`shx` client and the `expectrl` crate. Install `shx` version 0.2.4 and ensure it
+is on your `PATH` before running the tests:
+
+```bash
+cd validator
+cargo test
+```
