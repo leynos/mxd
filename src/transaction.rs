@@ -15,8 +15,8 @@ pub const MAX_FRAME_DATA: usize = 32 * 1024; // 32 KiB
 pub const IO_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Read a big-endian u16 from the provided byte slice.
-pub fn read_u16(buf: &[u8]) -> u16 {
-    u16::from_be_bytes([buf[0], buf[1]])
+pub fn read_u16(buf: &[u8; 2]) -> u16 {
+    u16::from_be_bytes(*buf)
 }
 
 /// Read a big-endian u32 from the provided byte slice.
