@@ -1,6 +1,4 @@
-use diesel::backend::Backend;
-
-use crate::cte::WithRecursive;
+use crate::cte::{RecursiveBackend, WithRecursive};
 
 /// Build a recursive CTE query.
 pub fn with_recursive<DB, Seed, Step, Body>(
@@ -11,7 +9,7 @@ pub fn with_recursive<DB, Seed, Step, Body>(
     body: Body,
 ) -> WithRecursive<DB, Seed, Step, Body>
 where
-    DB: Backend,
+    DB: RecursiveBackend,
 {
     WithRecursive {
         cte_name,

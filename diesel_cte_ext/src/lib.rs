@@ -7,3 +7,4 @@ pub mod builders;
 pub mod cte;
 
 pub use builders::with_recursive;
+pub use cte::RecursiveBackend;

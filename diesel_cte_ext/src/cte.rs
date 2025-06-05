@@ -2,6 +2,15 @@ use diesel::backend::Backend;
 use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::result::QueryResult;
 
+/// Marker trait for backends that support `WITH RECURSIVE`.
+pub trait RecursiveBackend: Backend {}
+
+#[cfg(feature = "sqlite")]
+impl RecursiveBackend for diesel::sqlite::Sqlite {}
+
+#[cfg(feature = "postgres")]
+impl RecursiveBackend for diesel::pg::Pg {}
+
 /// Representation of a recursive CTE query.
 #[derive(Debug, Clone)]
 pub struct WithRecursive<DB: Backend, Seed, Step, Body> {
@@ -15,11 +24,16 @@ pub struct WithRecursive<DB: Backend, Seed, Step, Body> {
 
 impl<DB, Seed, Step, Body> QueryId for WithRecursive<DB, Seed, Step, Body>
 where
-    DB: Backend,
+    DB: Backend + 'static,
+    Seed: 'static,
+    Step: 'static,
+    Body: 'static,
 {
-    type QueryId = (); // dynamic query id
-    const HAS_STATIC_QUERY_ID: bool = false;
+    type QueryId = Self;
+    const HAS_STATIC_QUERY_ID: bool = true;
 }
+
+
 
 impl<DB, Seed, Step, Body> Query for WithRecursive<DB, Seed, Step, Body>
 where
