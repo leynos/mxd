@@ -53,3 +53,23 @@ The `validator` crate provides a compatibility check using the `shx` client and 
 cd validator
 cargo test
 ```
+
+## Fuzzing
+
+A simple AFL++ harness lives in the `fuzz/` directory. To build it you need the AFL clang wrappers and sanitizers enabled:
+
+```bash
+# install afl++ and make sure afl-clang-fast is on your PATH
+export CC=afl-clang-fast
+export CXX=afl-clang-fast++
+export RUSTFLAGS="-Zsanitizer=address"
+
+# compile the instrumented binary
+cargo afl build -p fuzz
+
+# run the fuzzer
+cargo afl fuzz -i corpus -o findings target/debug/fuzz
+```
+
+The harness uses `__AFL_LOOP` to process test cases in persistent mode.
+
