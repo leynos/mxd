@@ -162,12 +162,57 @@ When a client first connects to a Hotline server, a handshake occurs to verify p
 
 **ID 354 – User Access** (`myTran_UserAccess`) is sent by the server typically right after login (after agreement). **Purpose:** To inform the client of the access privileges of the current user’s account. **Initiator:** Server.
 
-* **Parameters (Server→Client):** The server sends the user’s access rights as a bitmap (field 110 “User access”). This is a bitfield where each bit corresponds to a specific privilege (such as the ability to read/send chat, download files, create news posts, kick users, etc., according to the privilege list defined on the server). No other fields are sent.
+* **Parameters (Server→Client):** The server sends the user’s access rights as a bitmap (field 110 “User access”). See [Access Privilege Bits](#access-privilege-bits-field-110) for what each bit represents. No other fields are sent.
 * **Response:** The client does not reply to this (one-way notification).
 
 **Server behavior:** The server looks up the privileges associated with the user’s account (e.g. whether they are an admin or a normal user and what permissions they have). It then sends this transaction so the client knows what the user can or cannot do on the server. This could include general privileges (like “Send Chat”, “Download Files”, “Create Folders”) and possibly folder-specific or news-specific rights.
 
 **End-user experience:** This transaction itself isn’t visible to the user, but its effects are. The Hotline client will enable or disable interface features based on the privileges. For example, if the user does not have “Upload File” privilege, the upload button might be grayed out; if they have admin rights, admin functions become available. Essentially, the client tailors the UI and available actions according to what the server allowed, immediately after login.
+
+#### Access Privilege Bits (Field 110)
+
+The access bitmap sent in field 110 consists of individual privilege bits. These bits fall into three categories: *general* (user-level), *folder* (per-folder) and *bundle* (logical grouping). The meaning of each bit is listed below so implementations can translate the bitmap into permissions:
+
+| Bit | Privilege |
+| ---:| --------- |
+| 0 | Delete File |
+| 1 | Upload File |
+| 2 | Download File |
+| 3 | Rename File |
+| 4 | Move File |
+| 5 | Create Folder |
+| 6 | Delete Folder |
+| 7 | Rename Folder |
+| 8 | Move Folder |
+| 9 | Read Chat |
+| 10 | Send Chat |
+| 11 | Open Chat |
+| 12 | Close Chat |
+| 13 | Show in List |
+| 14 | Create User |
+| 15 | Delete User |
+| 16 | Open User |
+| 17 | Modify User |
+| 18 | Change Own Password |
+| 19 | Send Private Message |
+| 20 | News Read Article |
+| 21 | News Post Article |
+| 22 | Disconnect User |
+| 23 | Cannot be Disconnected |
+| 24 | Get Client Info |
+| 25 | Upload Anywhere |
+| 26 | Any Name |
+| 27 | No Agreement |
+| 28 | Set File Comment |
+| 29 | Set Folder Comment |
+| 30 | View Drop Boxes |
+| 31 | Make Alias |
+| 32 | Broadcast |
+| 33 | News Delete Article |
+| 34 | News Create Category |
+| 35 | News Delete Category |
+| 36 | News Create Folder |
+| 37 | News Delete Folder |
 
 ### Retrieving the User List (Transaction 300) – Client Initiates
 
@@ -710,7 +755,7 @@ These let an admin manage the server’s user database (the list of login accoun
 
 * **ID 350 – New User** (`myTran_NewUser`) allows the admin to create a new user account on the server. **Purpose:** Add a login account to the server’s list of allowed users. **Initiator:** Client (Admin).
 
-  * **Parameters:** The admin supplies the new account’s login name (105), password (106), full user name (102), and an **access privileges bitmap** (110). The login is the username used to log in; password will be stored (Hotline may store it plaintext or hashed – in protocol it’s likely plaintext or simply negated bytes in older style, but as far as the transaction, it’s provided). The user name (102) is the display name (often initially set the same as login or a more descriptive name). The access bitmap is crucial: it defines what privileges the account will have (e.g. admin, file access, etc.). Privileges are assigned by setting bits corresponding to those defined in the protocol (see Access Privileges list; for example, bit 16 = Modify User, etc.). In the admin UI, this corresponds to checking boxes for privileges, which then form this bitmap.
+  * **Parameters:** The admin supplies the new account’s login name (105), password (106), full user name (102), and an **access privileges bitmap** (110). The login is the username used to log in; password will be stored (Hotline may store it plaintext or hashed – in protocol it’s likely plaintext or simply negated bytes in older style, but as far as the transaction, it’s provided). The user name (102) is the display name (often initially set the same as login or a more descriptive name). The access bitmap is crucial: it defines what privileges the account will have (e.g. admin, file access, etc.). Privileges are assigned by setting bits according to [Access Privilege Bits](#access-privilege-bits-field-110). In the admin UI, this corresponds to checking boxes for privileges, which then form this bitmap.
   * **Response:** None direct.
 
   **Server behavior:** The server creates a new account entry in its user database (or memory if runtime). It will store the login, (likely hash the password internally or store it in config), the display name, and the privileges. If an account with that login already exists, the server would likely either overwrite or (more likely) not create and possibly return an error (maybe via an error transaction). But typically the admin client would prevent duplicates by checking the list first. No specific success message is sent; the admin client knows it succeeded if no error and the account appears in the list when fetched again.
@@ -729,7 +774,7 @@ These let an admin manage the server’s user database (the list of login accoun
 * **ID 352 – Get User** (`myTran_GetUser`) retrieves information about an existing user account. **Purpose:** To fetch the details of a specific user account (used when editing an account). **Initiator:** Client (Admin).
 
   * **Parameters:** The admin sends the login name (105) of the account they want to view.
-  * **Response:** The server replies with that account’s info: it returns the user’s full display name (102), the login (105) (interestingly, the protocol notes each character is bitwise negated in this field in the reply – an old obscure practice possibly for not sending plain text; the admin client will invert the bits again to get actual login), the password (106) (likely also negated or hashed similarly), and the access privileges bitmap (110).
+  * **Response:** The server replies with that account’s info: it returns the user’s full display name (102), the login (105) (interestingly, the protocol notes each character is bitwise negated in this field in the reply – an old obscure practice possibly for not sending plain text; the admin client will invert the bits again to get actual login), the password (106) (likely also negated or hashed similarly), and the access privileges bitmap (110). Refer to [Access Privilege Bits](#access-privilege-bits-field-110) to decode the bitmap.
 
   **Server behavior:** When an admin wants to edit an account, their client issues GetUser. The server looks up that account in its list and sends back the current stored values for name, login, (maybe an encoded password), and privileges. The weird negation (\~) of each character for login (and possibly password) is probably done so that if someone is sniffing the connection, they don’t see the literal credentials easily. (It’s not true encryption but a simple obfuscation – historically Hotline did that). The admin client will invert those bits to display the actual login and password in the UI.
 
@@ -737,7 +782,7 @@ These let an admin manage the server’s user database (the list of login accoun
 
 * **ID 353 – Set User** (`myTran_SetUser`) updates an existing user account’s information. **Purpose:** Save changes made to a user’s account (login, password, name, privileges). **Initiator:** Client (Admin).
 
-  * **Parameters:** The admin sends the account’s login (105) and new password (106) (if they changed it; if not changed, it might send the old one or some indicator), the new full name (102), and new access privileges bitmap (110). Essentially the same fields as NewUser, but targeted at an existing user identified by the login.
+  * **Parameters:** The admin sends the account’s login (105) and new password (106) (if they changed it; if not changed, it might send the old one or some indicator), the new full name (102), and new access privileges bitmap (110). These privilege bits are the same as those in [Access Privilege Bits](#access-privilege-bits-field-110). Essentially the same fields as NewUser, but targeted at an existing user identified by the login.
   * **Response:** None.
 
   **Server behavior:** The server finds that account and updates the provided fields. If the login itself was changed via this (e.g., renaming the account), it will update the account’s key (though some systems might treat login as immutable; Hotline allowed editing login names IIRC). The server then uses the new values henceforth. If the user corresponding to that account is currently online, the server might also update some of their session info: for example, if their privileges were changed, the server may immediately enforce that. In fact, when an admin edits privileges of a currently online user, the server will send that user a new **User Access (354)** transaction to update their permissions live. The protocol 354 is “Set access privileges for current user” initiated by server – likely the server uses it in this scenario. So if the admin removed someone’s ability to download files on the fly, the user might get a UserAccess update dropping that bit, and their client would grey out the download button immediately. (The documentation doesn’t explicitly tie 354 to SetUser, but logically that’s how a live change would be communicated.)
