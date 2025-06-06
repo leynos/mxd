@@ -52,17 +52,34 @@ pub async fn create_user(
     diesel::insert_into(users).values(user).execute(conn).await
 }
 
+pub async fn get_all_categories(
+    conn: &mut DbConnection,
+) -> QueryResult<Vec<crate::models::Category>> {
+    use crate::schema::news_categories::dsl::*;
+    news_categories.load::<crate::models::Category>(conn).await
+}
+
+pub async fn create_category(
+    conn: &mut DbConnection,
+    cat: &crate::models::NewCategory<'_>,
+) -> QueryResult<usize> {
+    use crate::schema::news_categories::dsl::*;
+    diesel::insert_into(news_categories)
+        .values(cat)
+        .execute(conn)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::NewUser;
+    use crate::models::{NewCategory, NewUser};
     use diesel_async::AsyncConnection;
 
     #[tokio::test]
     async fn test_create_and_get_user() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
         run_migrations(&mut conn).await.unwrap();
-
         let new_user = NewUser {
             username: "alice",
             password: "hash",
@@ -71,5 +88,16 @@ mod tests {
         let fetched = get_user_by_name(&mut conn, "alice").await.unwrap().unwrap();
         assert_eq!(fetched.username, "alice");
         assert_eq!(fetched.password, "hash");
+    }
+
+    #[tokio::test]
+    async fn test_create_and_get_category() {
+        let mut conn = DbConnection::establish(":memory:").await.unwrap();
+        run_migrations(&mut conn).await.unwrap();
+        let cat = NewCategory { name: "General" };
+        create_category(&mut conn, &cat).await.unwrap();
+        let cats = get_all_categories(&mut conn).await.unwrap();
+        assert_eq!(cats.len(), 1);
+        assert_eq!(cats[0].name, "General");
     }
 }

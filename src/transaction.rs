@@ -210,6 +210,8 @@ pub enum TransactionError {
 
 /// Validate the assembled transaction payload for duplicate fields and length
 /// correctness according to the protocol specification.
+const ALLOW_DUPLICATE_FIELDS: &[FieldId] = &[FieldId::NewsCategory];
+
 fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
     if tx.header.total_size as usize != tx.payload.len() {
         return Err(TransactionError::SizeMismatch);
@@ -233,7 +235,7 @@ fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
         if offset + field_size > tx.payload.len() {
             return Err(TransactionError::SizeMismatch);
         }
-        if !seen.insert(field_id) {
+        if !ALLOW_DUPLICATE_FIELDS.contains(&FieldId::from(field_id)) && !seen.insert(field_id) {
             return Err(TransactionError::DuplicateField(field_id));
         }
         offset += field_size;
@@ -385,13 +387,11 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
         if offset + field_size > buf.len() {
             return Err(TransactionError::SizeMismatch);
         }
-        if !seen.insert(field_id) {
+        let fid = FieldId::from(field_id);
+        if !ALLOW_DUPLICATE_FIELDS.contains(&fid) && !seen.insert(field_id) {
             return Err(TransactionError::DuplicateField(field_id));
         }
-        params.push((
-            FieldId::from(field_id),
-            buf[offset..offset + field_size].to_vec(),
-        ));
+        params.push((fid, buf[offset..offset + field_size].to_vec()));
         offset += field_size;
     }
     if offset != buf.len() {

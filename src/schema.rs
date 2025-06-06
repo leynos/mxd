@@ -5,3 +5,9 @@ diesel::table! {
         password -> Text,
     }
 }
+diesel::table! {
+    news_categories (id) {
+        id -> Integer,
+        name -> Text,
+    }
+}

@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use crate::db::{DbPool, get_user_by_name};
+use crate::db::{DbPool, get_all_categories, get_user_by_name};
 use crate::field_id::FieldId;
 use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use crate::transaction_type::TransactionType;
@@ -10,6 +10,10 @@ pub enum Command {
     Login {
         username: String,
         password: String,
+        header: FrameHeader,
+    },
+    GetNewsCategories {
+        path: Option<String>,
         header: FrameHeader,
     },
     Unknown {
@@ -38,6 +42,19 @@ impl Command {
                 Ok(Command::Login {
                     username: username.ok_or("missing username")?,
                     password: password.ok_or("missing password")?,
+                    header: tx.header,
+                })
+            }
+            TransactionType::NewsCategoryList => {
+                let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
+                let mut path = None;
+                for (id, data) in params {
+                    if let FieldId::NewsPath = id {
+                        path = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+                    }
+                }
+                Ok(Command::GetNewsCategories {
+                    path,
                     header: tx.header,
                 })
             }
@@ -86,6 +103,32 @@ impl Command {
                 if error == 0 {
                     println!("{} authenticated as {}", peer, username);
                 }
+                Ok(reply)
+            }
+            Command::GetNewsCategories { header, .. } => {
+                let mut conn = pool.get().await?;
+                let cats = get_all_categories(&mut conn).await?;
+                let pairs: Vec<(FieldId, Vec<u8>)> = cats
+                    .iter()
+                    .map(|c| (FieldId::NewsCategory, c.name.clone().into_bytes()))
+                    .collect();
+                let refs: Vec<(FieldId, &[u8])> = pairs
+                    .iter()
+                    .map(|(id, data)| (*id, data.as_slice()))
+                    .collect();
+                let payload = encode_params(&refs);
+                let reply = Transaction {
+                    header: FrameHeader {
+                        flags: 0,
+                        is_reply: 1,
+                        ty: header.ty,
+                        id: header.id,
+                        error: 0,
+                        total_size: payload.len() as u32,
+                        data_size: payload.len() as u32,
+                    },
+                    payload,
+                };
                 Ok(reply)
             }
             Command::Unknown { header } => {
