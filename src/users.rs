@@ -4,7 +4,7 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 
-pub(crate) fn hash_password(argon2: &Argon2, pw: &str) -> Result<String, Error> {
+pub fn hash_password(argon2: &Argon2, pw: &str) -> Result<String, Error> {
     let salt = SaltString::generate(&mut OsRng);
     Ok(argon2.hash_password(pw.as_bytes(), &salt)?.to_string())
 }

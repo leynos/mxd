@@ -11,21 +11,11 @@ use tokio::time::timeout;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 
-mod commands;
-mod db;
-mod field_id;
-mod handler;
-mod models;
-mod protocol;
-mod schema;
-mod transaction;
-mod transaction_type;
-mod users;
-use crate::transaction::{TransactionReader, TransactionWriter};
-use handler::{Context, handle_request};
-
-use db::{DbPool, create_user, establish_pool, run_migrations};
-use users::hash_password;
+use mxd::db::{DbPool, create_user, establish_pool, run_migrations};
+use mxd::handler::{Context, handle_request};
+use mxd::transaction::{TransactionReader, TransactionWriter};
+use mxd::users::hash_password;
+use mxd::{models, protocol};
 
 async fn shutdown_signal() {
     #[cfg(unix)]

@@ -3,6 +3,9 @@ name = "mxd"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 diesel = { version = "2", features = ["sqlite", "chrono"] }
