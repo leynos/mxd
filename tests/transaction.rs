@@ -1,11 +1,7 @@
-#[path = "../src/field_id.rs"]
-mod field_id;
-#[path = "../src/transaction.rs"]
-mod transaction;
-#[path = "../src/transaction_type.rs"]
-mod transaction_type;
+use mxd::field_id;
+use mxd::transaction::*;
+use mxd::transaction_type;
 use tokio::io::{AsyncWriteExt, duplex};
-use transaction::*;
 
 fn build_tx() -> Transaction {
     let mut payload = Vec::new();
@@ -168,11 +164,6 @@ async fn roundtrip_empty_payload() {
         data_size: 0,
     };
 
-#[test]
-fn short_header_error() {
-    let err = FrameHeader::new(&[0u8; 10]).unwrap_err();
-    assert!(matches!(err, TransactionError::ShortBuffer));
-}
     let tx = Transaction {
         header,
         payload: Vec::new(),
@@ -201,6 +192,12 @@ async fn oversized_payload() {
         TransactionError::PayloadTooLarge => {}
         e => panic!("unexpected {e:?}"),
     }
+}
+
+#[test]
+fn short_header_error() {
+    let err = FrameHeader::new(&[0u8; 10]).unwrap_err();
+    assert!(matches!(err, TransactionError::ShortBuffer));
 }
 
 #[test]
