@@ -1,11 +1,10 @@
 use std::net::SocketAddr;
 
-use crate::db::{DbPool, get_all_categories, get_user_by_name};
+use crate::db::{CategoryError, DbPool, get_all_categories, get_user_by_name};
 use crate::field_id::FieldId;
 use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use crate::transaction_type::TransactionType;
 use crate::users::verify_password;
-use diesel::result::Error as DieselError;
 
 pub enum Command {
     Login {
@@ -110,35 +109,31 @@ impl Command {
                 let mut conn = pool.get().await?;
                 let cats = match get_all_categories(&mut conn, path.as_deref()).await {
                     Ok(c) => c,
-                    Err(DieselError::NotFound) => {
+                    Err(CategoryError::PathFilteringUnimplemented) => {
                         // Non-root paths are currently unsupported, so we
-                        // return a NotFound error as a stub implementation.
+                        // return a stub error reply until filtering is added.
                         return Ok(Transaction {
-                            header: FrameHeader {
-                                flags: 0,
-                                is_reply: 1,
-                                ty: header.ty,
-                                id: header.id,
-                                error: 1,
-                                total_size: 0,
-                                data_size: 0,
-                            },
+                            header: reply_header(&header, 1, 0),
                             payload: Vec::new(),
                         });
                     }
-                    Err(e) => return Err(Box::new(e)),
+                    Err(CategoryError::Diesel(e)) => return Err(Box::new(e)),
                 };
-                let refs: Vec<(FieldId, &[u8])> = cats
-                    .iter()
-                    .map(|c| (FieldId::NewsCategory, c.name.as_bytes()))
-                    .collect();
-                let payload = encode_params(&refs);
-                let reply = Transaction {
-                    header: FrameHeader {
-                        flags: 0,
-                        is_reply: 1,
+                    header: reply_header(&header, 0, payload.len()),
                         ty: header.ty,
                         id: header.id,
+
+fn reply_header(src: &FrameHeader, error: u32, payload_len: usize) -> FrameHeader {
+    FrameHeader {
+        flags: 0,
+        is_reply: 1,
+        ty: src.ty,
+        id: src.id,
+        error,
+        total_size: payload_len as u32,
+        data_size: payload_len as u32,
+    }
+}
                         error: 0,
                         total_size: payload.len() as u32,
                         data_size: payload.len() as u32,

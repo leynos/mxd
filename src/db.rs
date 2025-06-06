@@ -52,22 +52,32 @@ pub async fn create_user(
     diesel::insert_into(users).values(user).execute(conn).await
 }
 
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum CategoryError {
+    #[error("path-based filtering not implemented")]
+    PathFilteringUnimplemented,
+    #[error(transparent)]
+    Diesel(#[from] diesel::result::Error),
+}
+
 pub async fn get_all_categories(
     conn: &mut DbConnection,
     path: Option<&str>,
-) -> QueryResult<Vec<crate::models::Category>> {
+) -> Result<Vec<crate::models::Category>, CategoryError> {
     if let Some(p) = path {
         if p != "/" {
-            // Path-based filtering isn't implemented yet, so treat any
-            // non-root path as missing and report `NotFound`.
-            return Err(diesel::result::Error::NotFound);
+            // Path-based filtering isn't implemented yet, so signal this
+            // explicitly with a dedicated error variant.
+            return Err(CategoryError::PathFilteringUnimplemented);
         }
     }
     use crate::schema::news_categories::dsl::*;
-    news_categories
+    Ok(news_categories
         .order(name.asc())
         .load::<crate::models::Category>(conn)
-        .await
+        .await?)
 }
 
 pub async fn create_category(
