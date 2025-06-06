@@ -56,7 +56,10 @@ pub async fn get_all_categories(
     conn: &mut DbConnection,
 ) -> QueryResult<Vec<crate::models::Category>> {
     use crate::schema::news_categories::dsl::*;
-    news_categories.load::<crate::models::Category>(conn).await
+    news_categories
+        .order(name.asc())
+        .load::<crate::models::Category>(conn)
+        .await
 }
 
 pub async fn create_category(

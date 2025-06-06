@@ -61,7 +61,7 @@ fn list_news_categories() -> Result<(), Box<dyn std::error::Error>> {
         payload: data,
     };
     let params = decode_params(&reply_tx.payload)?;
-    let mut names = params
+    let names = params
         .into_iter()
         .filter_map(|(id, d)| {
             if id == FieldId::NewsCategory {
@@ -71,7 +71,6 @@ fn list_news_categories() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .collect::<Vec<_>>();
-    names.sort();
     assert_eq!(names, vec!["General", "Updates"]);
     Ok(())
 }
