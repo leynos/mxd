@@ -1,0 +1,40 @@
+# diesel_cte_ext
+
+`diesel_cte_ext` adds a small helper for building recursive [Common Table Expressions](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-RECURSIVE) with Diesel. The crate exports the `with_recursive` function which constructs a query representing a `WITH RECURSIVE` block.
+
+```rust
+use diesel::dsl::sql;
+use diesel::sql_types::Integer;
+use diesel_cte_ext::with_recursive;
+
+let rows: Vec<i32> = with_recursive::<diesel::sqlite::Sqlite, _, _, _>(
+    "t",
+    &["n"],
+    sql::<Integer>("SELECT 1"),
+    sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+    sql::<Integer>("SELECT n FROM t"),
+)
+.load(&mut conn)?;
+```
+
+The builder works with either SQLite or PostgreSQL depending on the enabled Cargo feature. It can be used with synchronous or asynchronous Diesel connections.
+
+## Capabilities
+
+* Construct a single recursive CTE with a seed query, step query and body.
+* Tested with both SQLite and PostgreSQL back ends.
+* Compatible with Diesel 2.x synchronous and `diesel-async` connections.
+
+## Limitations
+
+* Only supports a single CTE block and requires manually listing column names.
+* No integration with Diesel's query DSL or schema inference.
+* Crate is unpublished and APIs may change without notice.
+
+## Next steps
+
+Future improvements could include typed column support, better integration with Diesel's query builder, and support for multiple chained CTEs.
+
+## Caveats
+
+This crate is experimental. Error handling is minimal and the API may evolve. Use at your own risk.
