@@ -49,6 +49,8 @@ erDiagram
     chat_rooms  ||--o{ chat_messages   : has
     users       ||--o{ chat_messages   : writes
     chat_rooms  ||--o{ chat_invites    : invites
+    users       ||--o{ chat_invites    : sends
+    users       ||--o{ chat_invites    : receives
 ```
 
 ---
