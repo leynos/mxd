@@ -229,3 +229,38 @@ fn display_field_and_type() {
     assert_eq!(TransactionType::Login.to_string(), "Login");
     assert_eq!(TransactionType::Other(99).to_string(), "Other(99)");
 }
+
+#[test]
+fn duplicate_news_category_fields_allowed() {
+    use field_id::FieldId;
+    use transaction_type::TransactionType;
+    let params = [
+        (FieldId::NewsCategory, b"General".as_ref()),
+        (FieldId::NewsCategory, b"Updates".as_ref()),
+    ];
+    let payload = encode_params(&params);
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: TransactionType::NewsCategoryNameList.into(),
+        id: 5,
+        error: 0,
+        total_size: payload.len() as u32,
+        data_size: payload.len() as u32,
+    };
+    let tx = Transaction { header, payload };
+    let frame = tx.to_bytes();
+    let parsed = parse_transaction(&frame).expect("parse");
+    let decoded = decode_params(&parsed.payload).expect("decode");
+    let names: Vec<String> = decoded
+        .into_iter()
+        .filter_map(|(id, d)| {
+            if id == FieldId::NewsCategory {
+                Some(String::from_utf8(d).unwrap())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(names, ["General", "Updates"]);
+}

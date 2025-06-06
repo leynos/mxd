@@ -37,7 +37,8 @@ fn list_news_categories() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(&reply[0..4], b"TRTP");
     assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
 
-    let payload = encode_params(&[]);
+    let params = vec![(FieldId::NewsPath, b"some/path".as_ref())];
+    let payload = encode_params(&params);
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
