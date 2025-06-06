@@ -12,7 +12,7 @@ pub enum Command {
         password: String,
         header: FrameHeader,
     },
-    GetNewsCategories {
+    GetNewsCategoryNameList {
         path: Option<String>,
         header: FrameHeader,
     },
@@ -45,7 +45,7 @@ impl Command {
                     header: tx.header,
                 })
             }
-            TransactionType::NewsCategoryList => {
+            TransactionType::NewsCategoryNameList => {
                 let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
                 let mut path = None;
                 for (id, data) in params {
@@ -53,7 +53,7 @@ impl Command {
                         path = Some(String::from_utf8(data).map_err(|_| "utf8")?);
                     }
                 }
-                Ok(Command::GetNewsCategories {
+                Ok(Command::GetNewsCategoryNameList {
                     path,
                     header: tx.header,
                 })
@@ -105,7 +105,7 @@ impl Command {
                 }
                 Ok(reply)
             }
-            Command::GetNewsCategories { header, .. } => {
+            Command::GetNewsCategoryNameList { header, .. } => {
                 let mut conn = pool.get().await?;
                 let cats = get_all_categories(&mut conn).await?;
                 let pairs: Vec<(FieldId, Vec<u8>)> = cats

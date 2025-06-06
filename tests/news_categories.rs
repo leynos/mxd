@@ -41,7 +41,7 @@ fn list_news_categories() -> Result<(), Box<dyn std::error::Error>> {
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
-        ty: TransactionType::NewsCategoryList.into(),
+        ty: TransactionType::NewsCategoryNameList.into(),
         id: 1,
         error: 0,
         total_size: payload.len() as u32,
