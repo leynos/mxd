@@ -54,7 +54,13 @@ pub async fn create_user(
 
 pub async fn get_all_categories(
     conn: &mut DbConnection,
+    path: Option<&str>,
 ) -> QueryResult<Vec<crate::models::Category>> {
+    if let Some(p) = path {
+        if p != "/" {
+            return Err(diesel::result::Error::NotFound);
+        }
+    }
     use crate::schema::news_categories::dsl::*;
     news_categories
         .order(name.asc())
@@ -99,7 +105,7 @@ mod tests {
         run_migrations(&mut conn).await.unwrap();
         let cat = NewCategory { name: "General" };
         create_category(&mut conn, &cat).await.unwrap();
-        let cats = get_all_categories(&mut conn).await.unwrap();
+        let cats = get_all_categories(&mut conn, None).await.unwrap();
         assert_eq!(cats.len(), 1);
         assert_eq!(cats[0].name, "General");
     }

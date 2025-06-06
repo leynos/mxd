@@ -5,6 +5,7 @@ use crate::field_id::FieldId;
 use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use crate::transaction_type::TransactionType;
 use crate::users::verify_password;
+use diesel::result::Error as DieselError;
 
 pub enum Command {
     Login {
@@ -105,9 +106,26 @@ impl Command {
                 }
                 Ok(reply)
             }
-            Command::GetNewsCategoryNameList { header, .. } => {
+            Command::GetNewsCategoryNameList { header, path } => {
                 let mut conn = pool.get().await?;
-                let cats = get_all_categories(&mut conn).await?;
+                let cats = match get_all_categories(&mut conn, path.as_deref()).await {
+                    Ok(c) => c,
+                    Err(DieselError::NotFound) => {
+                        return Ok(Transaction {
+                            header: FrameHeader {
+                                flags: 0,
+                                is_reply: 1,
+                                ty: header.ty,
+                                id: header.id,
+                                error: 1,
+                                total_size: 0,
+                                data_size: 0,
+                            },
+                            payload: Vec::new(),
+                        });
+                    }
+                    Err(e) => return Err(Box::new(e)),
+                };
                 let pairs: Vec<(FieldId, Vec<u8>)> = cats
                     .iter()
                     .map(|c| (FieldId::NewsCategory, c.name.clone().into_bytes()))
