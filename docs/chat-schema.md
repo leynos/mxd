@@ -8,7 +8,7 @@ The following schema maps the chat workflows described in the protocol to a rela
 erDiagram
     users {
         INTEGER id PK
-        TEXT    username UNIQUE
+        TEXT    username
         TEXT    password
     }
 
