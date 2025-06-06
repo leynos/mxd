@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream};
 
 use test_util::TestServer;
 
@@ -20,6 +20,11 @@ fn handshake() -> Result<(), Box<dyn std::error::Error>> {
     stream.read_exact(&mut reply)?;
     assert_eq!(&reply[0..4], b"TRTP");
     assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
+
+    // Close the write side to signal that no further data will be sent.
+    // This allows the server to terminate the connection immediately
+    // instead of waiting for a read timeout.
+    stream.shutdown(Shutdown::Write)?;
 
     let mut tmp = [0u8; 1];
     assert_eq!(stream.read(&mut tmp)?, 0);
