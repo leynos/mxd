@@ -366,7 +366,8 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
     if buf.len() < 2 {
         return Err(TransactionError::SizeMismatch);
     }
-    let count = read_u16(&buf[0..2])? as usize;
+    // read the parameter count; treat a short buffer as a size mismatch
+    let count = read_u16(&buf[0..2]).map_err(|_| TransactionError::SizeMismatch)? as usize;
     let mut offset = 2usize;
     let mut params = Vec::with_capacity(count);
     let mut seen = HashSet::new();
@@ -374,8 +375,12 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
         if offset + 4 > buf.len() {
             return Err(TransactionError::SizeMismatch);
         }
-        let field_id = read_u16(&buf[offset..offset + 2])?;
-        let field_size = read_u16(&buf[offset + 2..offset + 4])? as usize;
+        // errors here indicate the buffer length did not match the stated size,
+        // so map them to `SizeMismatch`
+        let field_id =
+            read_u16(&buf[offset..offset + 2]).map_err(|_| TransactionError::SizeMismatch)?;
+        let field_size = read_u16(&buf[offset + 2..offset + 4])
+            .map_err(|_| TransactionError::SizeMismatch)? as usize;
         offset += 4;
         if offset + field_size > buf.len() {
             return Err(TransactionError::SizeMismatch);
