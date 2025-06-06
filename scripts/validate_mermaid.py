@@ -6,62 +6,87 @@ from pathlib import Path
 import tempfile
 import os
 import json
+from typing import List
 
 RE = re.compile(r"```mermaid\n(.*?)\n```", re.DOTALL)
 
 
+def parse_blocks(text: str) -> List[str]:
+    """Return all mermaid code blocks found in the text."""
+    return RE.findall(text)
+
+
+def create_puppeteer_config() -> Path:
+    """Write a minimal Puppeteer config disabling sandboxing."""
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+        json.dump({"args": ["--no-sandbox"]}, fh)
+        fh.flush()
+        return Path(fh.name)
+
+
+def render_block(block: str, cfg_path: Path, path: Path, idx: int) -> bool:
+    """Render a single mermaid block using the CLI."""
+    with tempfile.NamedTemporaryFile("w", suffix=".mmd", delete=False) as fh:
+        fh.write(block)
+        fh.flush()
+        temp = Path(fh.name)
+
+    try:
+        proc = subprocess.run(
+            [
+                "npx",
+                "-y",
+                "mmdc",
+                "-p",
+                str(cfg_path),
+                "-i",
+                str(temp),
+                "-o",
+                str(temp) + ".svg",
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print(
+            "Error: 'npx' or the mermaid CLI is not installed.\n"
+            "Install Node.js and @mermaid-js/mermaid-cli to enable diagram validation.",
+            file=sys.stderr,
+        )
+        return False
+
+    success = proc.returncode == 0
+    if not success:
+        print(f"{path}: diagram {idx} failed to render", file=sys.stderr)
+        if proc.stderr:
+            print(proc.stderr, file=sys.stderr)
+
+    for ext in ("", ".svg"):
+        try:
+            os.remove(str(temp) + ext)
+        except OSError:
+            pass
+
+    return success
+
+
 def check_file(path: Path) -> bool:
-    text = path.read_text()
-    blocks = RE.findall(text)
+    blocks = parse_blocks(path.read_text())
     if not blocks:
         return True
+
+    cfg_path = create_puppeteer_config()
     ok = True
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as cfh:
-        json.dump({"args": ["--no-sandbox"]}, cfh)
-        cfh.flush()
-        cfg_path = cfh.name
+
     for idx, block in enumerate(blocks, 1):
-        with tempfile.NamedTemporaryFile("w", suffix=".mmd", delete=False) as fh:
-            fh.write(block)
-            fh.flush()
-            temp = fh.name
-        try:
-            proc = subprocess.run(
-                [
-                    "npx",
-                    "-y",
-                    "mmdc",
-                    "-p",
-                    cfg_path,
-                    "-i",
-                    temp,
-                    "-o",
-                    temp + ".svg",
-                ],
-                capture_output=True,
-                text=True,
-            )
-        except FileNotFoundError:
-            print(
-                "Error: 'npx' or the mermaid CLI is not installed.\n"
-                "Install Node.js and @mermaid-js/mermaid-cli to enable diagram validation.",
-                file=sys.stderr,
-            )
-            return False
-        if proc.returncode != 0:
-            print(f"{path}: diagram {idx} failed to render", file=sys.stderr)
-            if proc.stderr:
-                print(proc.stderr, file=sys.stderr)
+        if not render_block(block, cfg_path, path, idx):
             ok = False
-        for ext in ("", ".svg"):
-            try:
-                os.remove(temp + ext)
-            except OSError:
-                pass
+
     try:
         os.remove(cfg_path)
     except OSError:
         pass
+
     return ok
 
 
