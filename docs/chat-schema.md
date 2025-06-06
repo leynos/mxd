@@ -95,7 +95,7 @@ CREATE INDEX idx_chat_invites_invited ON chat_invites(invited_user_id);
 
 ### Why these tables?
 
-* **Chat rooms and messages** – Transactions `Send Chat (105)` and `Chat Message (106)` operate on a room context and carry options bits for alternate styles【F:docs/protocol.md†L284-L306】.
+* **Chat rooms and messages** – Transactions `Send Chat (105)` and `Chat Message (106)` operate on a room context and carry options bits for alternative styles【F:docs/protocol.md†L284-L306】.
 * **Joining and leaving** – `Join Chat (115)` and `Leave Chat (116)` maintain membership lists which map directly to `chat_participants`【F:docs/protocol.md†L309-L338】【F:docs/protocol.md†L339-L351】.
 * **Invitations** – Private chats are created and managed through `Invite New Chat (112)` and related transactions (113/114), so `chat_invites` records outstanding invitations and who sent them【F:docs/protocol.md†L364-L407】.
 * **Subjects** – `Set Chat Subject (120)` triggers `Notify Chat Subject (119)` to broadcast topic changes, stored in `chat_rooms.subject`【F:docs/protocol.md†L352-L361】.
