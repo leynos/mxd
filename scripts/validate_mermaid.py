@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 import tempfile
 import os
+import json
 
 RE = re.compile(r"```mermaid\n(.*?)\n```", re.DOTALL)
 
@@ -15,26 +16,52 @@ def check_file(path: Path) -> bool:
     if not blocks:
         return True
     ok = True
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as cfh:
+        json.dump({"args": ["--no-sandbox"]}, cfh)
+        cfh.flush()
+        cfg_path = cfh.name
     for idx, block in enumerate(blocks, 1):
         with tempfile.NamedTemporaryFile("w", suffix=".mmd", delete=False) as fh:
             fh.write(block)
+            fh.flush()
             temp = fh.name
         try:
-            subprocess.run(
-                ["npx", "-y", "mmdc", "-i", temp, "-o", temp + ".svg"],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            proc = subprocess.run(
+                [
+                    "npx",
+                    "-y",
+                    "mmdc",
+                    "-p",
+                    cfg_path,
+                    "-i",
+                    temp,
+                    "-o",
+                    temp + ".svg",
+                ],
+                capture_output=True,
+                text=True,
             )
-        except subprocess.CalledProcessError:
+        except FileNotFoundError:
+            print(
+                "Error: 'npx' or the mermaid CLI is not installed.\n"
+                "Install Node.js and @mermaid-js/mermaid-cli to enable diagram validation.",
+                file=sys.stderr,
+            )
+            return False
+        if proc.returncode != 0:
             print(f"{path}: diagram {idx} failed to render", file=sys.stderr)
+            if proc.stderr:
+                print(proc.stderr, file=sys.stderr)
             ok = False
-        finally:
-            for ext in ("", ".svg"):
-                try:
-                    os.remove(temp + ext)
-                except OSError:
-                    pass
+        for ext in ("", ".svg"):
+            try:
+                os.remove(temp + ext)
+            except OSError:
+                pass
+    try:
+        os.remove(cfg_path)
+    except OSError:
+        pass
     return ok
 
 
