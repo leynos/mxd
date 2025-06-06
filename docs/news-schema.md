@@ -8,7 +8,7 @@ The following is a compact, evidence-based design that maps Hotline’s hierarch
 erDiagram
     users {
         INTEGER id PK
-        TEXT    username UNIQUE
+        TEXT    username
         TEXT    password
     }
 
@@ -20,9 +20,8 @@ erDiagram
     }
 
     user_permissions {
-        INTEGER user_id FK
-        INTEGER permission_id FK
-        PRIMARY KEY (user_id, permission_id)
+        INTEGER user_id PK
+        INTEGER permission_id PK
     }
 
     news_bundles {
