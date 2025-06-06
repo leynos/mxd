@@ -8,7 +8,7 @@ import os
 import json
 from typing import List
 
-RE = re.compile(r"```mermaid\n(.*?)\n```", re.DOTALL)
+RE = re.compile(r"```mermaid\s*\n(.*?)```", re.DOTALL)
 
 
 def parse_blocks(text: str) -> List[str]:
