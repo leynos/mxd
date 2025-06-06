@@ -1,4 +1,4 @@
-extern "C" {
+unsafe extern "C" {
     fn __AFL_LOOP(cnt: u32) -> i32;
 }
 use std::io::{self, Read};

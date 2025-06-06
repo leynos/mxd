@@ -67,6 +67,9 @@ export RUSTFLAGS="-Zsanitizer=address"
 # compile the instrumented binary
 cargo afl build --manifest-path fuzz/Cargo.toml
 
+# prepare a corpus directory of initial inputs
+mkdir -p corpus
+
 # run the fuzzer
 cargo afl fuzz -i corpus -o findings fuzz/target/debug/fuzz
 Prepare the input corpus directory
