@@ -366,7 +366,7 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
     if buf.len() < 2 {
         return Err(TransactionError::SizeMismatch);
     }
-    let count = read_u16(&buf[0..2])? as usize;
+    let count = read_u16(&buf[0..2]).map_err(|_| TransactionError::SizeMismatch)? as usize;
     let mut offset = 2usize;
     let mut params = Vec::with_capacity(count);
     let mut seen = HashSet::new();
