@@ -21,10 +21,9 @@ erDiagram
     }
 
     chat_participants {
-        INTEGER chat_room_id FK
-        INTEGER user_id FK
+        INTEGER chat_room_id PK FK
+        INTEGER user_id      PK FK
         DATETIME joined_at
-        PRIMARY KEY (chat_room_id, user_id)
     }
 
     chat_messages {
