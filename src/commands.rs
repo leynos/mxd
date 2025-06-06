@@ -128,13 +128,9 @@ impl Command {
                     }
                     Err(e) => return Err(Box::new(e)),
                 };
-                let pairs: Vec<(FieldId, Vec<u8>)> = cats
+                let refs: Vec<(FieldId, &[u8])> = cats
                     .iter()
-                    .map(|c| (FieldId::NewsCategory, c.name.clone().into_bytes()))
-                    .collect();
-                let refs: Vec<(FieldId, &[u8])> = pairs
-                    .iter()
-                    .map(|(id, data)| (*id, data.as_slice()))
+                    .map(|c| (FieldId::NewsCategory, c.name.as_bytes()))
                     .collect();
                 let payload = encode_params(&refs);
                 let reply = Transaction {
