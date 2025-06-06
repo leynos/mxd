@@ -68,8 +68,18 @@ export RUSTFLAGS="-Zsanitizer=address"
 cargo afl build -p fuzz
 
 # run the fuzzer
-cargo afl fuzz -i corpus -o findings target/debug/fuzz
-```
+
+Prepare the input corpus directory
+
+Create a directory named 'corpus' if it does not exist. This directory should contain at least one seed input file to start fuzzing.
+
+`mkdir -p corpus`
+
+Add one or more initial seed files to 'corpus', e.g.:
+
+`echo "seed input" > corpus/seed.txt`
+
+`cargo afl fuzz -i corpus -o findings target/debug/fuzz`
 
 The harness uses `__AFL_LOOP` to process test cases in persistent mode.
 
