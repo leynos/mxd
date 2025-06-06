@@ -65,10 +65,10 @@ export CXX=afl-clang-fast++
 export RUSTFLAGS="-Zsanitizer=address"
 
 # compile the instrumented binary
-cargo afl build -p fuzz
+cargo afl build --manifest-path fuzz/Cargo.toml
 
 # run the fuzzer
-
+cargo afl fuzz -i corpus -o findings fuzz/target/debug/fuzz
 Prepare the input corpus directory
 
 Create a directory named 'corpus' if it does not exist. This directory should contain at least one seed input file to start fuzzing.
