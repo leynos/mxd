@@ -8,7 +8,7 @@ publish = false
 diesel = { version = "2", default-features = false }
 
 [features]
-default = []
+default = ["sqlite", "postgres"]
 sqlite = ["diesel/sqlite"]
 postgres = ["diesel/postgres"]
 
