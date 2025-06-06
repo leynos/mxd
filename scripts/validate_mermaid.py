@@ -58,8 +58,8 @@ def render_block(block: str, cfg_path: Path, path: Path, idx: int) -> bool:
     success = proc.returncode == 0
     if not success:
         print(f"{path}: diagram {idx} failed to render", file=sys.stderr)
-        if proc.stderr:
-            print(proc.stderr, file=sys.stderr)
+        # Surface the CLI error output to help diagnose syntax problems
+        print(proc.stderr, file=sys.stderr)
 
     for ext in ("", ".svg"):
         try:
