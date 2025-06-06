@@ -1,4 +1,7 @@
+#[cfg(feature = "postgres")]
+use diesel::pg::PgConnection;
 use diesel::prelude::*;
+#[cfg(feature = "sqlite")]
 use diesel::sqlite::SqliteConnection;
 use diesel_async::RunQueryDsl;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
@@ -8,7 +11,13 @@ use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
+#[cfg(all(feature = "sqlite", feature = "postgres"))]
+compile_error!("Choose either the `sqlite` or `postgres` feature, not both");
+
+#[cfg(feature = "sqlite")]
 pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
+#[cfg(feature = "postgres")]
+pub type DbConnection = SyncConnectionWrapper<PgConnection>;
 pub type DbPool = Pool<DbConnection>;
 
 pub async fn establish_pool(database_url: &str) -> DbPool {
