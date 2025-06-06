@@ -111,6 +111,8 @@ impl Command {
                 let cats = match get_all_categories(&mut conn, path.as_deref()).await {
                     Ok(c) => c,
                     Err(DieselError::NotFound) => {
+                        // Non-root paths are currently unsupported, so we
+                        // return a NotFound error as a stub implementation.
                         return Ok(Transaction {
                             header: FrameHeader {
                                 flags: 0,

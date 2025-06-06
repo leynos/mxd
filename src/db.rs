@@ -58,6 +58,8 @@ pub async fn get_all_categories(
 ) -> QueryResult<Vec<crate::models::Category>> {
     if let Some(p) = path {
         if p != "/" {
+            // Path-based filtering isn't implemented yet, so treat any
+            // non-root path as missing and report `NotFound`.
             return Err(diesel::result::Error::NotFound);
         }
     }
