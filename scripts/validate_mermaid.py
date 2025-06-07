@@ -66,7 +66,13 @@ def format_cli_error(stderr: str) -> str:
 
 
 async def render_block(
-    block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int
+    block: str,
+    tmpdir: Path,
+    cfg_path: Path,
+    path: Path,
+    idx: int,
+    semaphore: asyncio.Semaphore,
+    timeout: float = 30.0,
 ) -> bool:
     """Render a single mermaid block using the CLI asynchronously."""
     mmd = tmpdir / f"{path.stem}_{idx}.mmd"
@@ -77,20 +83,27 @@ async def render_block(
     cmd = get_mmdc_cmd(mmd, svg, cfg_path)
     cli = cmd[0]
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except FileNotFoundError:
-        print(
-            f"Error: '{cli}' not found. Node.js with npx and @mermaid-js/mermaid-cli is required.",
-            file=sys.stderr,
-        )
-        return False
+    async with semaphore:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            print(
+                f"Error: '{cli}' not found. Node.js with npx and @mermaid-js/mermaid-cli is required.",
+                file=sys.stderr,
+            )
+            return False
 
-    stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            print(f"{path}: diagram {idx} timed out", file=sys.stderr)
+            return False
 
     success = proc.returncode == 0
     if not success:
@@ -100,7 +113,7 @@ async def render_block(
     return success
 
 
-async def check_file(path: Path, cfg_path: Path) -> bool:
+async def check_file(path: Path, cfg_path: Path, semaphore: asyncio.Semaphore) -> bool:
     blocks = parse_blocks(path.read_text(encoding="utf-8"))
     if not blocks:
         return True
@@ -108,16 +121,17 @@ async def check_file(path: Path, cfg_path: Path) -> bool:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         tasks = [
-            render_block(block, tmp_path, cfg_path, path, idx)
+            render_block(block, tmp_path, cfg_path, path, idx, semaphore)
             for idx, block in enumerate(blocks, 1)
         ]
         results = await asyncio.gather(*tasks)
     return all(results)
 
 
-async def main(paths):
+async def main(paths, max_concurrent: int = 4):
+    semaphore = asyncio.Semaphore(max_concurrent)
     with create_puppeteer_config() as cfg_path:
-        tasks = [check_file(p, cfg_path) for p in paths]
+        tasks = [check_file(p, cfg_path, semaphore) for p in paths]
         results = await asyncio.gather(*tasks)
     return 0 if all(results) else 1
 
