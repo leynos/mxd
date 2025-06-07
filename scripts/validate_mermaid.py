@@ -9,39 +9,38 @@ import json
 import shutil
 from typing import List
 
+def get_mmdc_cmd(mmd: Path, svg: Path, cfg_path: Path) -> List[str]:
+    """Return the command to run mermaid-cli."""
+    cli = "mmdc" if shutil.which("mmdc") else "npx"
+    cmd = [cli]
+    if cli == "npx":
+        cmd += ["--yes", "@mermaid-js/mermaid-cli", "mmdc"]
+    cmd += ["-p", str(cfg_path), "-i", str(mmd), "-o", str(svg)]
+    return cmd
+
+
 def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int) -> bool:
     mmd = tmpdir / f"{path.stem}_{idx}.mmd"
     svg = mmd.with_suffix(".svg")
 
     mmd.write_text(block)
-    cli = "mmdc" if shutil.which("mmdc") else "npx"
-    cmd = [cli]
-    if cli == "npx":
-        cmd += ["--yes", "@mermaid-js/mermaid-cli", "mmdc"]
-    cmd += [
-        "-p",
-        str(cfg_path),
-        "-i",
-        str(mmd),
-        "-o",
-        str(svg),
-    ]
+    cmd = get_mmdc_cmd(mmd, svg, cfg_path)
+    cli = cmd[0]
 
         proc = subprocess.run(cmd, capture_output=True, text=True)
             f"Error: '{cli}' not found. Node.js with npx and @mermaid-js/mermaid-cli is required.",
-        temp = Path(fh.name)
-
-    try:
-        proc = subprocess.run(
-            [
-                "npx",
-                "-y",
-                "mmdc",
-                "-p",
-                str(cfg_path),
-                "-i",
-                str(temp),
-                "-o",
+        ok = True
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            for idx, block in enumerate(blocks, 1):
+                if not render_block(block, tmp_path, cfg_path, path, idx):
+                    ok = False
+        return ok
+    finally:
+        try:
+            os.remove(cfg_path)
+        except OSError:
+            pass
                 str(temp) + ".svg",
             ],
             capture_output=True,
