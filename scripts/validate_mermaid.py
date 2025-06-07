@@ -28,14 +28,13 @@ def parse_blocks(text: str) -> list[str]:
 
 def collect_markdown_files(paths: cabc.Iterable[Path]) -> cabc.Generator[Path]:
     """Expand directories into Markdown files recursively."""
-    files: list[Path] = []
     for p in paths:
         if p.is_dir():
-            for md in p.rglob("*.md"):
-                files.append(md)
+            for md in p.rglob("*"):
+                if md.is_file() and md.suffix.lower() == ".md":
+                    yield md
         else:
-            files.append(p)
-    return files
+            yield p
 
 
 @contextmanager
@@ -114,7 +113,7 @@ async def render_block(
 
         async with semaphore:
             try:
-                proc = await asyncio.create_subprocess_exec(
+                proc = await asyncio.create_subprocess_exec(  # nosemgrep: python.lang.security.audit.dangerous-asyncio-create-exec-audit
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -139,20 +138,6 @@ async def render_block(
         print(f"{path}: unexpected error in diagram {idx}", file=sys.stderr)
         traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
         return False
-
-
-async def report_results(results, path, idx):
-    ok = True
-    for res in results:
-        if isinstance(res, Exception):
-            print(f"{path}: unexpected error", file=sys.stderr)
-            traceback.print_exception(
-                type(res), res, res.__traceback__, file=sys.stderr
-            )
-            ok = False
-        elif not res:
-            ok = False
-    return ok
 
 
 def default_concurrency() -> int:
@@ -186,6 +171,16 @@ async def main(paths, max_concurrent):
     return 0 if all(results) else 1
 
 
+def positive_int(value: str) -> int:
+    """Type for argparse to ensure a positive integer (>=1)."""
+    ivalue = int(value)
+    if ivalue < 1:
+        raise argparse.ArgumentTypeError(
+            f"concurrency must be at least 1 (got {value})"
+        )
+    return ivalue
+
+
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -199,7 +194,7 @@ def parse_args():
     )
     parser.add_argument(
         "--concurrency",
-        type=int,
+        type=positive_int,
         default=default_concurrency(),
         help="Maximum number of concurrent mmdc processes",
     )
