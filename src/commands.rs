@@ -130,7 +130,8 @@ impl Command {
                     payload.extend_from_slice(&(c.name.len() as u16).to_be_bytes());
                     payload.extend_from_slice(c.name.as_bytes());
                 }
-        id: src.id,
+                let hdr = reply_header(&header, 0, payload.len());
+                    header: hdr,
         error,
         total_size: payload_len as u32,
         data_size: payload_len as u32,
