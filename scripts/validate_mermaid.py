@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
+import argparse
+import json
+import os
+from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
-from pathlib import Path
 import tempfile
-import os
-import json
-import shutil
 from typing import List, Optional
 
 RE = re.compile(
@@ -114,10 +115,14 @@ def main(paths):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    doc_paths = (
-        [Path(p) for p in args]
-        if args
-        else list(Path("docs").glob("*.md"))
+    parser = argparse.ArgumentParser(
+        description="Validate Mermaid diagrams in Markdown files"
     )
-    sys.exit(main(doc_paths))
+    parser.add_argument(
+        "paths",
+        type=Path,
+        nargs="+",
+        help="Markdown files to validate",
+    )
+    parsed = parser.parse_args()
+    sys.exit(main(parsed.paths))

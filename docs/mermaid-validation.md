@@ -13,14 +13,20 @@ npm install -g @mermaid-js/mermaid-cli
 
 ## Running the validator
 
-From the repository root run:
+From the repository root run the script with one or more Markdown paths:
 
 ```bash
-./scripts/validate_mermaid.py path/to/file.md
+./scripts/validate_mermaid.py docs/chat-schema.md docs/news-schema.md
 ```
 
-If no file arguments are given the script scans all `*.md` files under `docs/`.
-It extracts each ```mermaid` block and attempts to render it using `mmdc`.
+Shell expansion lets you validate everything in `docs/` at once:
+
+```bash
+./scripts/validate_mermaid.py docs/*.md
+```
+
+The script extracts each ```mermaid` block and attempts to render it using
+`mmdc`.
 Any syntax errors will cause the script to exit with a non-zero status. The
 failing diagram's line and a pointer to the error location are printed to help
 you fix the issue.
