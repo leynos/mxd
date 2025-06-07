@@ -62,7 +62,7 @@ pub enum CategoryError {
     Diesel(#[from] diesel::result::Error),
 }
 
-async fn resolve_bundle_path(
+async fn bundle_id_from_path(
     conn: &mut DbConnection,
     path: &str,
 ) -> Result<Option<i32>, CategoryError> {
@@ -92,7 +92,7 @@ pub async fn list_names_at_path(
     path: Option<&str>,
 ) -> Result<Vec<String>, CategoryError> {
     let bundle_id = if let Some(p) = path {
-        resolve_bundle_path(conn, p).await?
+        bundle_id_from_path(conn, p).await?
     } else {
         None
     };
