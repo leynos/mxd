@@ -8,26 +8,27 @@ import os
 import json
 from typing import List
 
-RE = re.compile(r"```mermaid\s*\n(.*?)```", re.DOTALL)
+def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int) -> bool:
+    mmd = tmpdir / f"{path.stem}_{idx}.mmd"
+    svg = mmd.with_suffix(".svg")
+
+    mmd.write_text(block)
+                str(mmd),
+                str(svg),
 
 
-def parse_blocks(text: str) -> List[str]:
-    """Return all mermaid code blocks found in the text."""
-    return RE.findall(text)
 
-
-def create_puppeteer_config() -> Path:
-    """Write a minimal Puppeteer config disabling sandboxing."""
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
-        json.dump({"args": ["--no-sandbox"]}, fh)
-        fh.flush()
-        return Path(fh.name)
-
-
-def render_block(block: str, cfg_path: Path, path: Path, idx: int) -> bool:
-    """Render a single mermaid block using the CLI."""
-    with tempfile.NamedTemporaryFile("w", suffix=".mmd", delete=False) as fh:
-        fh.write(block)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        for idx, block in enumerate(blocks, 1):
+            if not render_block(block, tmp_path, cfg_path, path, idx):
+                ok = False
+    args = sys.argv[1:]
+    doc_paths = (
+        [Path(p) for p in args]
+        if args
+        else list(Path("docs").glob("*.md"))
+    )
         fh.flush()
         temp = Path(fh.name)
 
