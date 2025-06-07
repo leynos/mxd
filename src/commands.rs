@@ -6,6 +6,9 @@ use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params}
 use crate::transaction_type::TransactionType;
 use crate::users::verify_password;
 
+/// Error code used when the requested news path is unsupported.
+pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 1;
+
 pub enum Command {
     Login {
         username: String,
@@ -113,7 +116,7 @@ impl Command {
                         // Non-root paths are currently unsupported, so we
                         // return a stub error reply until filtering is added.
                         return Ok(Transaction {
-                            header: reply_header(&header, 1, 0),
+                            header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
                             payload: Vec::new(),
                         });
                     }

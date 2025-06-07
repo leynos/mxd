@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use diesel_async::AsyncConnection;
+use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
 use mxd::db::{DbConnection, create_category, run_migrations};
 use mxd::field_id::FieldId;
 use mxd::models::NewCategory;
@@ -185,6 +186,6 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
     let mut hdr_buf = [0u8; 20];
     stream.read_exact(&mut hdr_buf)?;
     let hdr = FrameHeader::from_bytes(&hdr_buf);
-    assert_eq!(hdr.error, 1);
+    assert_eq!(hdr.error, NEWS_ERR_PATH_UNSUPPORTED);
     Ok(())
 }

@@ -213,6 +213,14 @@ fn duplicate_allowed(fid: &FieldId) -> bool {
     matches!(fid, FieldId::NewsCategory)
 }
 
+fn check_duplicate(fid: &FieldId, seen: &mut HashSet<u16>) -> Result<(), TransactionError> {
+    let raw: u16 = (*fid).into();
+    if !duplicate_allowed(fid) && !seen.insert(raw) {
+        return Err(TransactionError::DuplicateField(raw));
+    }
+    Ok(())
+}
+
 /// Validate the assembled transaction payload for duplicate fields and length
 /// correctness according to the protocol specification.
 fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
@@ -239,9 +247,7 @@ fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
             return Err(TransactionError::SizeMismatch);
         }
         let fid = FieldId::from(field_id);
-        if !duplicate_allowed(&fid) && !seen.insert(field_id) {
-            return Err(TransactionError::DuplicateField(field_id));
-        }
+        check_duplicate(&fid, &mut seen)?;
         offset += field_size;
     }
     if offset != tx.payload.len() {
@@ -392,9 +398,7 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
             return Err(TransactionError::SizeMismatch);
         }
         let fid = FieldId::from(field_id);
-        if !duplicate_allowed(&fid) && !seen.insert(field_id) {
-            return Err(TransactionError::DuplicateField(field_id));
-        }
+        check_duplicate(&fid, &mut seen)?;
         params.push((fid, buf[offset..offset + field_size].to_vec()));
         offset += field_size;
     }
