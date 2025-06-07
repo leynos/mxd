@@ -210,7 +210,7 @@ pub enum TransactionError {
 
 /// Determine whether duplicate instances of the given field id are permitted.
 fn duplicate_allowed(fid: &FieldId) -> bool {
-    matches!(fid, FieldId::NewsCategory)
+    matches!(*fid, FieldId::NewsCategory)
 }
 
 fn check_duplicate(fid: &FieldId, seen: &mut HashSet<u16>) -> Result<(), TransactionError> {
