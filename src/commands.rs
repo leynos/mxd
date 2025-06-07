@@ -122,19 +122,16 @@ impl Command {
                     }
                     Err(CategoryError::Diesel(e)) => return Err(Box::new(e)),
                 };
-                let mut payload = Vec::new();
-                payload.extend_from_slice(&(cats.len() as u16).to_be_bytes());
-                for c in &cats {
-                    let fid: u16 = FieldId::NewsCategory.into();
-                    payload.extend_from_slice(&fid.to_be_bytes());
-                    payload.extend_from_slice(&(c.name.len() as u16).to_be_bytes());
-                    payload.extend_from_slice(c.name.as_bytes());
-                }
-                let hdr = reply_header(&header, 0, payload.len());
-                    header: hdr,
-        error,
-        total_size: payload_len as u32,
-        data_size: payload_len as u32,
+                // Serialize each category name using the standard parameter
+                // encoding helper for consistency.
+                let params: Vec<(FieldId, &[u8])> = cats
+                    .iter()
+                    .map(|c| (FieldId::NewsCategory, c.name.as_bytes()))
+                    .collect();
+                let payload = encode_params(&params);
+                Ok(Transaction {
+                    header: reply_header(&header, 0, payload.len()),
+                })
     }
 }
                         error: 0,
