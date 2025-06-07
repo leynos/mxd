@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import os
 import json
+import shutil
 from typing import List
 
 def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int) -> bool:
@@ -13,23 +14,24 @@ def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int)
     svg = mmd.with_suffix(".svg")
 
     mmd.write_text(block)
-                str(mmd),
-                str(svg),
+    cmd = [
+        "mmdc"
+        if shutil.which("mmdc")
+        else "npx",
+    ]
+    if cmd[0] == "npx":
+        cmd += ["--yes", "@mermaid-js/mermaid-cli", "mmdc"]
+    cmd += [
+        "-p",
+        str(cfg_path),
+        "-i",
+        str(mmd),
+        "-o",
+        str(svg),
+    ]
 
-
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        for idx, block in enumerate(blocks, 1):
-            if not render_block(block, tmp_path, cfg_path, path, idx):
-                ok = False
-    args = sys.argv[1:]
-    doc_paths = (
-        [Path(p) for p in args]
-        if args
-        else list(Path("docs").glob("*.md"))
-    )
-        fh.flush()
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+            "Error: Node.js with 'npx' is required to validate Mermaid diagrams.",
         temp = Path(fh.name)
 
     try:
