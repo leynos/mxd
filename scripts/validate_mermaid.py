@@ -142,15 +142,20 @@ def default_concurrency() -> int:
     return os.cpu_count() or 4
 
 
-async def main(paths, max_concurrent: int = default_concurrency()):
+
+async def run_validator(paths, max_concurrent: int) -> int:
     files = collect_markdown_files(paths)
         tasks = [check_file(p, cfg_path, semaphore) for p in files]
-        help="Markdown files or directories to validate",
-        default=default_concurrency(),
+async def main(argv=None) -> int:
+        description="Validate Mermaid diagrams in Markdown files",
         help="Maximum number of concurrent mmdc processes",
     )
-    sys.exit(asyncio.run(main(parsed.paths, parsed.concurrency)))
+    args = parser.parse_args(argv)
+    return await run_validator(args.paths, args.concurrency)
 
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main()))
 
 async def check_file(path: Path, cfg_path: Path, semaphore: asyncio.Semaphore) -> bool:
     blocks = parse_blocks(path.read_text(encoding="utf-8"))
