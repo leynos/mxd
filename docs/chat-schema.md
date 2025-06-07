@@ -21,8 +21,8 @@ erDiagram
     }
 
     chat_participants {
-        INTEGER chat_room_id PK FK
-        INTEGER user_id      PK FK
+        INTEGER chat_room_id PK "FK"
+        INTEGER user_id      PK "FK"
         DATETIME joined_at
     }
 
