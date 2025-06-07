@@ -87,7 +87,7 @@ async def wait_for_proc(
         proc.kill()
         await proc.wait()
         print(f"{path}: diagram {idx} timed out", file=sys.stderr)
-        return False
+        return (False, b"")
     success = proc.returncode == 0
     return success, stderr
 
