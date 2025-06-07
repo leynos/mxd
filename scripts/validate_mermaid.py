@@ -79,7 +79,7 @@ def format_cli_error(stderr: str) -> str:
 
 async def wait_for_proc(
     proc: asyncio.subprocess.Process, path: Path, idx: int, timeout: float = 30.0
-) -> tuple[bool, str]:
+) -> tuple[bool, bytes]:
     """Wait for a process to complete and return its success status and stderr."""
     try:
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout)
