@@ -124,8 +124,8 @@ async def check_file(path: Path, cfg_path: Path, semaphore: asyncio.Semaphore) -
             render_block(block, tmp_path, cfg_path, path, idx, semaphore)
             for idx, block in enumerate(blocks, 1)
         ]
-        results = await asyncio.gather(*tasks)
-    return all(results)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    return all(result is True for result in results)
 
 
 async def main(paths, max_concurrent: int = 4):
