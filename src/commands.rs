@@ -1,15 +1,22 @@
 use std::net::SocketAddr;
 
-use crate::db::{DbPool, get_user_by_name};
+use crate::db::{CategoryError, DbPool, get_all_categories, get_user_by_name};
 use crate::field_id::FieldId;
 use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use crate::transaction_type::TransactionType;
 use crate::users::verify_password;
 
+/// Error code used when the requested news path is unsupported.
+pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 1;
+
 pub enum Command {
     Login {
         username: String,
         password: String,
+        header: FrameHeader,
+    },
+    GetNewsCategoryNameList {
+        path: Option<String>,
         header: FrameHeader,
     },
     Unknown {
@@ -38,6 +45,19 @@ impl Command {
                 Ok(Command::Login {
                     username: username.ok_or("missing username")?,
                     password: password.ok_or("missing password")?,
+                    header: tx.header,
+                })
+            }
+            TransactionType::NewsCategoryNameList => {
+                let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
+                let mut path = None;
+                for (id, data) in params {
+                    if let FieldId::NewsPath = id {
+                        path = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+                    }
+                }
+                Ok(Command::GetNewsCategoryNameList {
+                    path,
                     header: tx.header,
                 })
             }
@@ -86,6 +106,40 @@ impl Command {
                 if error == 0 {
                     println!("{} authenticated as {}", peer, username);
                 }
+                Ok(reply)
+            }
+            Command::GetNewsCategoryNameList { header, path } => {
+                let mut conn = pool.get().await?;
+                let cats = match get_all_categories(&mut conn, path.as_deref()).await {
+                    Ok(c) => c,
+                    Err(CategoryError::PathFilteringUnimplemented) => {
+                        // Non-root paths are currently unsupported, so we
+                        // return a stub error reply until filtering is added.
+                        return Ok(Transaction {
+                            header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
+                            payload: Vec::new(),
+                        });
+                    }
+                    Err(CategoryError::Diesel(e)) => return Err(Box::new(e)),
+                };
+                // Serialize each category name using the standard parameter
+                // encoding helper for consistency.
+                let params: Vec<(FieldId, &[u8])> = cats
+                    .iter()
+                    .map(|c| (FieldId::NewsCategory, c.name.as_bytes()))
+                    .collect();
+                let payload = encode_params(&params);
+                Ok(Transaction {
+                    header: reply_header(&header, 0, payload.len()),
+                })
+    }
+}
+                        error: 0,
+                        total_size: payload.len() as u32,
+                        data_size: payload.len() as u32,
+                    },
+                    payload,
+                };
                 Ok(reply)
             }
             Command::Unknown { header } => {
