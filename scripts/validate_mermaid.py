@@ -14,12 +14,9 @@ def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int)
     svg = mmd.with_suffix(".svg")
 
     mmd.write_text(block)
-    cmd = [
-        "mmdc"
-        if shutil.which("mmdc")
-        else "npx",
-    ]
-    if cmd[0] == "npx":
+    cli = "mmdc" if shutil.which("mmdc") else "npx"
+    cmd = [cli]
+    if cli == "npx":
         cmd += ["--yes", "@mermaid-js/mermaid-cli", "mmdc"]
     cmd += [
         "-p",
@@ -31,7 +28,7 @@ def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int)
     ]
 
         proc = subprocess.run(cmd, capture_output=True, text=True)
-            "Error: Node.js with 'npx' is required to validate Mermaid diagrams.",
+            f"Error: '{cli}' not found. Node.js with npx and @mermaid-js/mermaid-cli is required.",
         temp = Path(fh.name)
 
     try:
