@@ -108,7 +108,7 @@ async def render_block(
     success = proc.returncode == 0
     if not success:
         print(f"{path}: diagram {idx} failed to render", file=sys.stderr)
-        print(format_cli_error(stderr.decode()), file=sys.stderr)
+        print(format_cli_error(stderr.decode('utf-8', errors='replace')), file=sys.stderr)
 
     return success
 
