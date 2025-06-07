@@ -12,8 +12,11 @@ import typing
 from contextlib import contextmanager
 from pathlib import Path
 
-if typing.TYPE_CHECKING:
-    import collections.abc as cabc
+# Typing helpers from collections.abc are needed at runtime, not just for type
+# checking. The previous version imported them only under TYPE_CHECKING,
+# resulting in a NameError when the validator ran. Import unconditionally so the
+# ``cabc`` alias is always available.
+import collections.abc as cabc
 
 BLOCK_RE = re.compile(
     r"^```\s*mermaid\s*\n(.*?)\n```[ \t]*$",

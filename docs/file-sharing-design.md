@@ -49,38 +49,38 @@ erDiagram
     User {
         int id
         string username
-        bitmask global_access  // global privilege bits
-        // ... other fields ...
+        bitmask global_access "global privilege bits"
+        %% ... other fields ...
     }
     Group {
         int id
         string name
     }
     UserGroup {
-        int user_id FK -> User.id
-        int group_id FK -> Group.id
+        int user_id FK "-> User.id"
+        int group_id FK "-> Group.id"
     }
     FileNode {
         int id
-        enum type         // 'file', 'folder', 'alias'
+        enum type "file | folder | alias"
         varchar name
-        int parent_id FK -> FileNode.id  // null for root
-        int alias_target_id FK -> FileNode.id  // if type='alias'
-        varchar object_key   // storage key (for files only)
-        bigint size          // file size in bytes (0 for folders)
-        text comment         // file/folder comment/description
-        bool is_dropbox      // flag if this folder is a dropbox
+        int parent_id FK "-> FileNode.id (null for root)"
+        int alias_target_id FK "-> FileNode.id if type='alias'"
+        varchar object_key "storage key (for files only)"
+        bigint size "file size in bytes (0 for folders)"
+        text comment "file/folder comment/description"
+        bool is_dropbox "flag if this folder is a dropbox"
         timestamp created_at
         timestamp updated_at
-        int created_by FK -> User.id
+        int created_by FK "-> User.id"
     }
     Permission {
         int id
-        varchar resource_type  // e.g. 'file' or 'folder'
-        int resource_id FK -> FileNode.id
-        varchar principal_type // 'user' or 'group'
-        int principal_id       // FK -> User.id or Group.id
-        bitmask privileges     // permission bits allowed
+        varchar resource_type "e.g. 'file' or 'folder'"
+        int resource_id FK "-> FileNode.id"
+        varchar principal_type "'user' or 'group'"
+        int principal_id "FK -> User.id or Group.id"
+        bitmask privileges "permission bits allowed"
     }
 ```
 
