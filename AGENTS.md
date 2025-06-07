@@ -12,6 +12,7 @@ This repository is written in Rust and uses Cargo for building and dependency ma
 8. **Keep functions small and focused**; if a function grows too large, consider splitting it into helpers.
 9. **Commit messages should be descriptive**, explaining what was changed and why.
 10. **Check for `TODO` comments** and convert them into issues if more work is required.
+11. **Validate Markdown Mermaid diagrams** with `./scripts/validate_mermaid.py <paths>` before submitting documentation changes.
 
 These practices will help maintain a high-quality codebase and make collaboration easier.
 
