@@ -167,8 +167,15 @@ async def main(paths, max_concurrent):
     with create_puppeteer_config() as cfg_path:
         collected_files = collect_markdown_files(paths)
         tasks = [check_file(p, cfg_path, semaphore) for p in collected_files]
-        results = await asyncio.gather(*tasks)
-    return 0 if all(results) else 1
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        all_success = True
+        for result in results:
+            if isinstance(result, Exception):
+                print(f"Validation task raised an exception: {result}")
+                all_success = False
+            elif not result:
+                all_success = False
+        return 0 if all_success else 1
 
 
 def positive_int(value: str) -> int:
