@@ -119,15 +119,14 @@ impl Command {
                     }
                     Err(CategoryError::Diesel(e)) => return Err(Box::new(e)),
                 };
-                    header: reply_header(&header, 0, payload.len()),
-                        ty: header.ty,
-                        id: header.id,
-
-fn reply_header(src: &FrameHeader, error: u32, payload_len: usize) -> FrameHeader {
-    FrameHeader {
-        flags: 0,
-        is_reply: 1,
-        ty: src.ty,
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&(cats.len() as u16).to_be_bytes());
+                for c in &cats {
+                    let fid: u16 = FieldId::NewsCategory.into();
+                    payload.extend_from_slice(&fid.to_be_bytes());
+                    payload.extend_from_slice(&(c.name.len() as u16).to_be_bytes());
+                    payload.extend_from_slice(c.name.as_bytes());
+                }
         id: src.id,
         error,
         total_size: payload_len as u32,
