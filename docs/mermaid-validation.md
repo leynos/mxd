@@ -21,7 +21,9 @@ From the repository root run:
 
 If no file arguments are given the script scans all `*.md` files under `docs/`.
 It extracts each ```mermaid` block and attempts to render it using `mmdc`.
-Any syntax errors will cause the script to exit with a non-zero status and print which diagram failed along with the CLI error output.
+Any syntax errors will cause the script to exit with a non-zero status. The
+failing diagram's line and a pointer to the error location are printed to help
+you fix the issue.
 
 If the required tools are missing the validator explains that Node.js and `@mermaid-js/mermaid-cli` must be installed.
 

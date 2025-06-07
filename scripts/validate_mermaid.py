@@ -7,7 +7,7 @@ import tempfile
 import os
 import json
 import shutil
-from typing import List
+from typing import List, Optional
 
 RE = re.compile(r"```mermaid\n(.*?)\n```", re.DOTALL)
 
@@ -25,6 +25,7 @@ def create_puppeteer_config() -> Path:
     """Yield a Puppeteer config path and remove it on exit."""
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
         json.dump({"args": ["--no-sandbox"]}, fh)
+        fh.flush()
         name = fh.name
     path = Path(name)
     try:
@@ -44,6 +45,19 @@ def get_mmdc_cmd(mmd: Path, svg: Path, cfg_path: Path) -> List[str]:
         cmd += ["--yes", "@mermaid-js/mermaid-cli", "mmdc"]
     cmd += ["-p", str(cfg_path), "-i", str(mmd), "-o", str(svg)]
     return cmd
+
+
+def format_cli_error(stderr: str) -> str:
+    """Extract a concise parse error message from mmdc output."""
+    lines = stderr.splitlines()
+    for i, line in enumerate(lines):
+        m = re.search(r"Parse error on line (\d+):", line)
+        if m and i + 2 < len(lines):
+            snippet = lines[i + 1]
+            pointer = lines[i + 2]
+            detail = lines[i + 3] if i + 3 < len(lines) else ""
+            return f"Parse error on line {m.group(1)}:\n{snippet}\n{pointer}\n{detail}"
+    return stderr.strip()
 
 
 def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int) -> bool:
@@ -68,8 +82,7 @@ def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int)
     success = proc.returncode == 0
     if not success:
         print(f"{path}: diagram {idx} failed to render", file=sys.stderr)
-        # Surface the CLI error output to help diagnose syntax problems
-        print(proc.stderr, file=sys.stderr)
+        print(format_cli_error(proc.stderr), file=sys.stderr)
 
     return success
 
