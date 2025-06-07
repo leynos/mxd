@@ -72,6 +72,6 @@ pub struct NewArticle<'a> {
     pub poster: Option<&'a str>,
     pub posted_at: NaiveDateTime,
     pub flags: i32,
-    pub data_flavor: &'a str,
-    pub data: &'a str,
+    pub data_flavor: Option<&'a str>,
+    pub data: Option<&'a str>,
 }
