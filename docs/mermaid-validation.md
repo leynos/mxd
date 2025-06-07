@@ -19,14 +19,16 @@ From the repository root run the script with one or more Markdown paths:
 ./scripts/validate_mermaid.py docs/chat-schema.md docs/news-schema.md
 ```
 
-Shell expansion lets you validate everything in `docs/` at once:
+You can pass directories and the validator will search for Markdown files
+recursively. Shell expansion lets you validate everything in `docs/` at once:
 
 ```bash
 ./scripts/validate_mermaid.py docs/*.md
 ```
 
 For machines with many cores, increasing the concurrency can speed up
-validation. Use the `--concurrency` flag to set the number of diagrams
+validation. By default the script uses the number of CPU cores detected on
+your system. Use the `--concurrency` flag to override the number of diagrams
 rendered in parallel:
 
 ```bash

@@ -10,7 +10,7 @@ import traceback
 import subprocess
 import sys
 import tempfile
-from typing import List
+from typing import Iterable, List
 
 RE = re.compile(
     r"^```\s*mermaid\s*\n(.*?)\n```[ \t]*$",
@@ -21,6 +21,18 @@ RE = re.compile(
 def parse_blocks(text: str) -> List[str]:
     """Return all mermaid code blocks found in the text."""
     return RE.findall(text)
+
+
+def collect_markdown_files(paths: Iterable[Path]) -> List[Path]:
+    """Expand directories into Markdown files recursively."""
+    files: List[Path] = []
+    for p in paths:
+        if p.is_dir():
+            for md in p.rglob("*.md"):
+                files.append(md)
+        else:
+            files.append(p)
+    return files
 
 
 from contextlib import contextmanager
@@ -125,10 +137,16 @@ async def render_block(
             elif not res:
                 ok = False
     return ok
-    parser.add_argument(
-        "--concurrency",
-        type=int,
-        default=os.cpu_count() or 4,
+def default_concurrency() -> int:
+    """Return a sensible default for the concurrency limit."""
+    return os.cpu_count() or 4
+
+
+async def main(paths, max_concurrent: int = default_concurrency()):
+    files = collect_markdown_files(paths)
+        tasks = [check_file(p, cfg_path, semaphore) for p in files]
+        help="Markdown files or directories to validate",
+        default=default_concurrency(),
         help="Maximum number of concurrent mmdc processes",
     )
     sys.exit(asyncio.run(main(parsed.paths, parsed.concurrency)))
