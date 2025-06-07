@@ -151,6 +151,69 @@ pub async fn create_bundle(
         .await
 }
 
+pub async fn create_article(
+    conn: &mut DbConnection,
+    art: &crate::models::NewArticle<'_>,
+) -> QueryResult<usize> {
+    use crate::schema::news_articles::dsl::*;
+    diesel::insert_into(news_articles)
+        .values(art)
+        .execute(conn)
+        .await
+}
+
+async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i32, CategoryError> {
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return Err(CategoryError::InvalidPath);
+    }
+    let mut parent_bundle: Option<i32> = None;
+    let mut parts = trimmed.split('/').peekable();
+    while let Some(part) = parts.next() {
+        if parts.peek().is_some() {
+            use crate::schema::news_bundles::dsl as b;
+            let found = b::news_bundles
+                .filter(b::name.eq(part))
+                .filter(b::parent_bundle_id.eq(parent_bundle))
+                .first::<crate::models::Bundle>(conn)
+                .await
+                .optional()?;
+            match found {
+                Some(bun) => parent_bundle = Some(bun.id),
+                None => return Err(CategoryError::InvalidPath),
+            }
+        } else {
+            use crate::schema::news_categories::dsl as c;
+            let found = c::news_categories
+                .filter(c::name.eq(part))
+                .filter(c::bundle_id.eq(parent_bundle))
+                .first::<crate::models::Category>(conn)
+                .await
+                .optional()?;
+            return match found {
+                Some(cat) => Ok(cat.id),
+                None => Err(CategoryError::InvalidPath),
+            };
+        }
+    }
+    Err(CategoryError::InvalidPath)
+}
+
+pub async fn list_article_titles(
+    conn: &mut DbConnection,
+    path: &str,
+) -> Result<Vec<String>, CategoryError> {
+    let cat_id = category_id_from_path(conn, path).await?;
+    use crate::schema::news_articles::dsl as a;
+    let titles = a::news_articles
+        .filter(a::category_id.eq(cat_id))
+        .order(a::posted_at.asc())
+        .select(a::title)
+        .load::<String>(conn)
+        .await?;
+    Ok(titles)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
