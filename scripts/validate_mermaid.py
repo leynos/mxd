@@ -9,7 +9,10 @@ import json
 import shutil
 from typing import List, Optional
 
-RE = re.compile(r"```mermaid\n(.*?)\n```", re.DOTALL)
+RE = re.compile(
+    r"^```\s*mermaid\s*\n(.*?)\n```[ \t]*$",
+    re.DOTALL | re.MULTILINE,
+)
 
 
 def parse_blocks(text: str) -> List[str]:
@@ -88,7 +91,7 @@ def render_block(block: str, tmpdir: Path, cfg_path: Path, path: Path, idx: int)
 
 
 def check_file(path: Path) -> bool:
-    blocks = parse_blocks(path.read_text())
+    blocks = parse_blocks(path.read_text(encoding="utf-8"))
     if not blocks:
         return True
 
