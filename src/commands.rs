@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use crate::db::{CategoryError, DbPool, get_all_categories, get_user_by_name};
+use crate::db::{CategoryError, DbPool, get_user_by_name, list_names_at_path};
 use crate::field_id::FieldId;
 use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use crate::transaction_type::TransactionType;
@@ -110,11 +110,9 @@ impl Command {
             }
             Command::GetNewsCategoryNameList { header, path } => {
                 let mut conn = pool.get().await?;
-                let cats = match get_all_categories(&mut conn, path.as_deref()).await {
+                let names = match list_names_at_path(&mut conn, path.as_deref()).await {
                     Ok(c) => c,
-                    Err(CategoryError::PathFilteringUnimplemented) => {
-                        // Non-root paths are currently unsupported, so we
-                        // return a stub error reply until filtering is added.
+                    Err(CategoryError::InvalidPath) => {
                         return Ok(Transaction {
                             header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
                             payload: Vec::new(),
@@ -122,25 +120,15 @@ impl Command {
                     }
                     Err(CategoryError::Diesel(e)) => return Err(Box::new(e)),
                 };
-                // Serialize each category name using the standard parameter
-                // encoding helper for consistency.
-                let params: Vec<(FieldId, &[u8])> = cats
+                let params: Vec<(FieldId, &[u8])> = names
                     .iter()
-                    .map(|c| (FieldId::NewsCategory, c.name.as_bytes()))
+                    .map(|c| (FieldId::NewsCategory, c.as_bytes()))
                     .collect();
                 let payload = encode_params(&params);
                 Ok(Transaction {
                     header: reply_header(&header, 0, payload.len()),
-                })
-    }
-}
-                        error: 0,
-                        total_size: payload.len() as u32,
-                        data_size: payload.len() as u32,
-                    },
                     payload,
-                };
-                Ok(reply)
+                })
             }
             Command::Unknown { header } => {
                 let reply = Transaction {
@@ -159,5 +147,17 @@ impl Command {
                 Ok(reply)
             }
         }
+    }
+}
+
+fn reply_header(req: &FrameHeader, payload_error: u32, payload_len: usize) -> FrameHeader {
+    FrameHeader {
+        flags: 0,
+        is_reply: 1,
+        ty: req.ty,
+        id: req.id,
+        error: payload_error,
+        total_size: payload_len as u32,
+        data_size: payload_len as u32,
     }
 }

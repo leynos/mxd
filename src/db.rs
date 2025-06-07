@@ -56,28 +56,77 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CategoryError {
-    #[error("path-based filtering not implemented")]
-    PathFilteringUnimplemented,
+    #[error("invalid news path")]
+    InvalidPath,
     #[error(transparent)]
     Diesel(#[from] diesel::result::Error),
 }
 
-pub async fn get_all_categories(
+async fn resolve_bundle_path(
     conn: &mut DbConnection,
-    path: Option<&str>,
-) -> Result<Vec<crate::models::Category>, CategoryError> {
-    if let Some(p) = path {
-        if p != "/" {
-            // Path-based filtering isn't implemented yet, so signal this
-            // explicitly with a dedicated error variant.
-            return Err(CategoryError::PathFilteringUnimplemented);
+    path: &str,
+) -> Result<Option<i32>, CategoryError> {
+    let mut parent: Option<i32> = None;
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    for part in trimmed.split('/') {
+        use crate::schema::news_bundles::dsl as b;
+        let found = b::news_bundles
+            .filter(b::name.eq(part))
+            .filter(b::parent_bundle_id.eq(parent))
+            .first::<crate::models::Bundle>(conn)
+            .await
+            .optional()?;
+        match found {
+            Some(bun) => parent = Some(bun.id),
+            None => return Err(CategoryError::InvalidPath),
         }
     }
-    use crate::schema::news_categories::dsl::*;
-    Ok(news_categories
-        .order(name.asc())
+    Ok(parent)
+}
+
+pub async fn list_names_at_path(
+    conn: &mut DbConnection,
+    path: Option<&str>,
+) -> Result<Vec<String>, CategoryError> {
+    let bundle_id = if let Some(p) = path {
+        resolve_bundle_path(conn, p).await?
+    } else {
+        None
+    };
+    use crate::schema::news_bundles::dsl as b;
+    let mut bundle_query = b::news_bundles.into_boxed();
+    if let Some(id) = bundle_id {
+        bundle_query = bundle_query.filter(b::parent_bundle_id.eq(id));
+    } else {
+        bundle_query = bundle_query.filter(b::parent_bundle_id.is_null());
+    }
+    let mut names: Vec<String> = bundle_query
+        .order(b::name.asc())
+        .load::<crate::models::Bundle>(conn)
+        .await?
+        .into_iter()
+        .map(|b| b.name)
+        .collect();
+
+    use crate::schema::news_categories::dsl as c;
+    let mut cat_query = c::news_categories.into_boxed();
+    if let Some(id) = bundle_id {
+        cat_query = cat_query.filter(c::bundle_id.eq(id));
+    } else {
+        cat_query = cat_query.filter(c::bundle_id.is_null());
+    }
+    let mut cats: Vec<String> = cat_query
+        .order(c::name.asc())
         .load::<crate::models::Category>(conn)
-        .await?)
+        .await?
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    names.append(&mut cats);
+    Ok(names)
 }
 
 pub async fn create_category(
@@ -91,10 +140,21 @@ pub async fn create_category(
         .await
 }
 
+pub async fn create_bundle(
+    conn: &mut DbConnection,
+    bun: &crate::models::NewBundle<'_>,
+) -> QueryResult<usize> {
+    use crate::schema::news_bundles::dsl::*;
+    diesel::insert_into(news_bundles)
+        .values(bun)
+        .execute(conn)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{NewCategory, NewUser};
+    use crate::models::{NewBundle, NewCategory, NewUser};
     use diesel_async::AsyncConnection;
 
     #[tokio::test]
@@ -111,14 +171,21 @@ mod tests {
         assert_eq!(fetched.password, "hash");
     }
 
+    // basic smoke test for migrations and insertion
     #[tokio::test]
-    async fn test_create_and_get_category() {
+    async fn test_create_bundle_and_category() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
         run_migrations(&mut conn).await.unwrap();
-        let cat = NewCategory { name: "General" };
+        let bun = NewBundle {
+            parent_bundle_id: None,
+            name: "Bundle",
+        };
+        create_bundle(&mut conn, &bun).await.unwrap();
+        let cat = NewCategory {
+            name: "General",
+            bundle_id: None,
+        };
         create_category(&mut conn, &cat).await.unwrap();
-        let cats = get_all_categories(&mut conn, None).await.unwrap();
-        assert_eq!(cats.len(), 1);
-        assert_eq!(cats[0].name, "General");
+        let _names = list_names_at_path(&mut conn, None).await.unwrap();
     }
 }

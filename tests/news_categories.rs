@@ -3,7 +3,7 @@ use std::net::TcpStream;
 
 use diesel_async::AsyncConnection;
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
-use mxd::db::{DbConnection, create_category, run_migrations};
+use mxd::db::{DbConnection, create_bundle, create_category, run_migrations};
 use mxd::field_id::FieldId;
 use mxd::models::NewCategory;
 use mxd::transaction::encode_params;
@@ -18,8 +18,30 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
         rt.block_on(async {
             let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
             run_migrations(&mut conn).await?;
-            create_category(&mut conn, &NewCategory { name: "General" }).await?;
-            create_category(&mut conn, &NewCategory { name: "Updates" }).await?;
+            create_bundle(
+                &mut conn,
+                &mxd::models::NewBundle {
+                    parent_bundle_id: None,
+                    name: "Bundle",
+                },
+            )
+            .await?;
+            create_category(
+                &mut conn,
+                &NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+            create_category(
+                &mut conn,
+                &NewCategory {
+                    name: "Updates",
+                    bundle_id: None,
+                },
+            )
+            .await?;
             Ok(())
         })
     })?;
@@ -73,7 +95,7 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .collect::<Vec<_>>();
-    assert_eq!(names, vec!["General", "Updates"]);
+    assert_eq!(names, vec!["Bundle", "General", "Updates"]);
     Ok(())
 }
 
@@ -84,8 +106,30 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
         rt.block_on(async {
             let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
             run_migrations(&mut conn).await?;
-            create_category(&mut conn, &NewCategory { name: "General" }).await?;
-            create_category(&mut conn, &NewCategory { name: "Updates" }).await?;
+            create_bundle(
+                &mut conn,
+                &mxd::models::NewBundle {
+                    parent_bundle_id: None,
+                    name: "Bundle",
+                },
+            )
+            .await?;
+            create_category(
+                &mut conn,
+                &NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+            create_category(
+                &mut conn,
+                &NewCategory {
+                    name: "Updates",
+                    bundle_id: None,
+                },
+            )
+            .await?;
             Ok(())
         })
     })?;
@@ -138,7 +182,7 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .collect::<Vec<_>>();
-    assert_eq!(names, vec!["General", "Updates"]);
+    assert_eq!(names, vec!["Bundle", "General", "Updates"]);
     Ok(())
 }
 
@@ -149,7 +193,14 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
         rt.block_on(async {
             let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
             run_migrations(&mut conn).await?;
-            create_category(&mut conn, &NewCategory { name: "General" }).await?;
+            create_category(
+                &mut conn,
+                &NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
             Ok(())
         })
     })?;
