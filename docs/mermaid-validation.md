@@ -25,6 +25,14 @@ Shell expansion lets you validate everything in `docs/` at once:
 ./scripts/validate_mermaid.py docs/*.md
 ```
 
+For machines with many cores, increasing the concurrency can speed up
+validation. Use the `--concurrency` flag to set the number of diagrams
+rendered in parallel:
+
+```bash
+./scripts/validate_mermaid.py --concurrency 8 docs/*.md
+```
+
 The script extracts each ```mermaid` block and attempts to render it using
 `mmdc`.
 Any syntax errors will cause the script to exit with a non-zero status. The

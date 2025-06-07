@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import shutil
 import asyncio
+import traceback
 import subprocess
 import sys
 import tempfile
@@ -78,39 +79,59 @@ async def render_block(
     mmd = tmpdir / f"{path.stem}_{idx}.mmd"
     svg = mmd.with_suffix(".svg")
 
-    mmd.write_text(block)
+    try:
+        mmd.write_text(block)
 
-    cmd = get_mmdc_cmd(mmd, svg, cfg_path)
-    cli = cmd[0]
+        cmd = get_mmdc_cmd(mmd, svg, cfg_path)
+        cli = cmd[0]
 
-    async with semaphore:
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-        except FileNotFoundError:
-            print(
-                f"Error: '{cli}' not found. Node.js with npx and @mermaid-js/mermaid-cli is required.",
-                file=sys.stderr,
-            )
-            return False
+        async with semaphore:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except FileNotFoundError:
+                print(
+                    f"Error: '{cli}' not found. Node.js with npx and @mermaid-js/mermaid-cli is required.",
+                    file=sys.stderr,
+                )
+                return False
 
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            print(f"{path}: diagram {idx} timed out", file=sys.stderr)
-            return False
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                print(f"{path}: diagram {idx} timed out", file=sys.stderr)
+                return False
+
+    except Exception as exc:
+        print(f"{path}: unexpected error in diagram {idx}", file=sys.stderr)
+        traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
+        return False
 
     success = proc.returncode == 0
     if not success:
         print(f"{path}: diagram {idx} failed to render", file=sys.stderr)
-        print(format_cli_error(stderr.decode('utf-8', errors='replace')), file=sys.stderr)
-
-    return success
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        ok = True
+        for res in results:
+            if isinstance(res, Exception):
+                print(f"{path}: unexpected error", file=sys.stderr)
+                traceback.print_exception(type(res), res, res.__traceback__, file=sys.stderr)
+                ok = False
+            elif not res:
+                ok = False
+    return ok
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=os.cpu_count() or 4,
+        help="Maximum number of concurrent mmdc processes",
+    )
+    sys.exit(asyncio.run(main(parsed.paths, parsed.concurrency)))
 
 
 async def check_file(path: Path, cfg_path: Path, semaphore: asyncio.Semaphore) -> bool:
