@@ -241,14 +241,10 @@ async fn handle_article_data(
     if let Some(p) = article.poster {
         params.push((FieldId::NewsPoster, p.into_bytes()));
     }
+    #[allow(deprecated)]
     params.push((
         FieldId::NewsDate,
-        article
-            .posted_at
-            .and_utc()
-            .timestamp()
-            .to_be_bytes()
-            .to_vec(),
+        article.posted_at.timestamp().to_be_bytes().to_vec(),
     ));
     if let Some(prev) = article.prev_article_id {
         params.push((FieldId::NewsPrevId, prev.to_be_bytes().to_vec()));
