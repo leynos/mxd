@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -41,4 +42,36 @@ pub struct Bundle {
 pub struct NewBundle<'a> {
     pub parent_bundle_id: Option<i32>,
     pub name: &'a str,
+}
+
+#[derive(Queryable, Debug)]
+pub struct Article {
+    pub id: i32,
+    pub category_id: i32,
+    pub parent_article_id: Option<i32>,
+    pub prev_article_id: Option<i32>,
+    pub next_article_id: Option<i32>,
+    pub first_child_article_id: Option<i32>,
+    pub title: String,
+    pub poster: Option<String>,
+    pub posted_at: NaiveDateTime,
+    pub flags: i32,
+    pub data_flavor: Option<String>,
+    pub data: Option<String>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::news_articles)]
+pub struct NewArticle<'a> {
+    pub category_id: i32,
+    pub parent_article_id: Option<i32>,
+    pub prev_article_id: Option<i32>,
+    pub next_article_id: Option<i32>,
+    pub first_child_article_id: Option<i32>,
+    pub title: &'a str,
+    pub poster: Option<&'a str>,
+    pub posted_at: NaiveDateTime,
+    pub flags: i32,
+    pub data_flavor: Option<&'a str>,
+    pub data: Option<&'a str>,
 }

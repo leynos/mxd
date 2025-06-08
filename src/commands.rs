@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use crate::db::{CategoryError, DbPool, get_user_by_name, list_names_at_path};
+use crate::db::{CategoryError, DbPool, get_user_by_name, list_article_titles, list_names_at_path};
 use crate::field_id::FieldId;
 use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use crate::transaction_type::TransactionType;
@@ -17,6 +17,10 @@ pub enum Command {
     },
     GetNewsCategoryNameList {
         path: Option<String>,
+        header: FrameHeader,
+    },
+    GetNewsArticleNameList {
+        path: String,
         header: FrameHeader,
     },
     Unknown {
@@ -58,6 +62,19 @@ impl Command {
                 }
                 Ok(Command::GetNewsCategoryNameList {
                     path,
+                    header: tx.header,
+                })
+            }
+            TransactionType::NewsArticleNameList => {
+                let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
+                let mut path = None;
+                for (id, data) in params {
+                    if let FieldId::NewsPath = id {
+                        path = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+                    }
+                }
+                Ok(Command::GetNewsArticleNameList {
+                    path: path.ok_or("missing path")?,
                     header: tx.header,
                 })
             }
@@ -123,6 +140,28 @@ impl Command {
                 let params: Vec<(FieldId, &[u8])> = names
                     .iter()
                     .map(|c| (FieldId::NewsCategory, c.as_bytes()))
+                    .collect();
+                let payload = encode_params(&params);
+                Ok(Transaction {
+                    header: reply_header(&header, 0, payload.len()),
+                    payload,
+                })
+            }
+            Command::GetNewsArticleNameList { header, path } => {
+                let mut conn = pool.get().await?;
+                let names = match list_article_titles(&mut conn, &path).await {
+                    Ok(c) => c,
+                    Err(CategoryError::InvalidPath) => {
+                        return Ok(Transaction {
+                            header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
+                            payload: Vec::new(),
+                        });
+                    }
+                    Err(CategoryError::Diesel(e)) => return Err(Box::new(e)),
+                };
+                let params: Vec<(FieldId, &[u8])> = names
+                    .iter()
+                    .map(|t| (FieldId::NewsArticle, t.as_bytes()))
                     .collect();
                 let payload = encode_params(&params);
                 Ok(Transaction {
