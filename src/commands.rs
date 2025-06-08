@@ -37,6 +37,10 @@ pub enum Command {
         article_id: i32,
         header: FrameHeader,
     },
+    /// Request contained a payload when none was expected.
+    InvalidPayload {
+        header: FrameHeader,
+    },
     Unknown {
         header: FrameHeader,
     },
@@ -44,7 +48,11 @@ pub enum Command {
 
 impl Command {
     pub fn from_transaction(tx: Transaction) -> Result<Self, &'static str> {
-        match TransactionType::from(tx.header.ty) {
+        let ty = TransactionType::from(tx.header.ty);
+        if !ty.allows_payload() && !tx.payload.is_empty() {
+            return Ok(Command::InvalidPayload { header: tx.header });
+        }
+        match ty {
             TransactionType::Login => {
                 let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
                 let mut username = None;
@@ -112,13 +120,7 @@ impl Command {
                 password,
                 header,
             } => handle_login(peer, session, pool, username, password, header).await,
-            Command::GetFileNameList { header, payload } => {
-                if !payload.is_empty() {
-                    return Ok(Transaction {
-                        header: reply_header(&header, 1, 0),
-                        payload: Vec::new(),
-                    });
-                }
+            Command::GetFileNameList { header, .. } => {
                 let user_id = match session.user_id {
                     Some(id) => id,
                     None => {
@@ -151,6 +153,10 @@ impl Command {
                 path,
                 article_id,
             } => handle_article_data(pool, header, path, article_id).await,
+            Command::InvalidPayload { header } => Ok(Transaction {
+                header: reply_header(&header, 1, 0),
+                payload: Vec::new(),
+            }),
             Command::Unknown { header } => Ok(handle_unknown(peer, header)),
         }
     }
