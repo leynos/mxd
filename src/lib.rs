@@ -2,6 +2,7 @@ pub mod commands;
 pub mod db;
 pub mod field_id;
 pub mod handler;
+pub mod header_util;
 pub mod login;
 pub mod models;
 pub mod protocol;
