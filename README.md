@@ -58,6 +58,8 @@ cargo test
 
 A simple AFL++ harness lives in the `fuzz/` directory.
 
+The harness uses AFL++'s persistent mode via the `__AFL_LOOP` macro, which allows the target function to be fuzzed repeatedly in a single process. This greatly improves fuzzing efficiency by reducing process startup overhead.
+
 ### Running with `cargo afl`
 
 ```bash
