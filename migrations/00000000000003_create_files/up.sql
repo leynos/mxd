@@ -10,3 +10,5 @@ CREATE TABLE file_acl (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     PRIMARY KEY (file_id, user_id)
 );
+
+CREATE INDEX idx_file_acl_user_file ON file_acl (user_id, file_id);

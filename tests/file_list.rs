@@ -25,17 +25,39 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
                 password: &hashed,
             };
             create_user(&mut conn, &new_user).await.unwrap();
-            let new_file = NewFileEntry {
-                name: "readme.txt",
-                object_key: "1",
-                size: 10,
-            };
-            create_file(&mut conn, &new_file).await.unwrap();
-            let acl = NewFileAcl {
-                file_id: 1,
-                user_id: 1,
-            };
-            add_file_acl(&mut conn, &acl).await.unwrap();
+            let files = [
+                NewFileEntry {
+                    name: "fileA.txt",
+                    object_key: "1",
+                    size: 1,
+                },
+                NewFileEntry {
+                    name: "fileB.txt",
+                    object_key: "2",
+                    size: 1,
+                },
+                NewFileEntry {
+                    name: "fileC.txt",
+                    object_key: "3",
+                    size: 1,
+                },
+            ];
+            for file in &files {
+                create_file(&mut conn, file).await.unwrap();
+            }
+            let acls = [
+                NewFileAcl {
+                    file_id: 1,
+                    user_id: 1,
+                },
+                NewFileAcl {
+                    file_id: 3,
+                    user_id: 1,
+                },
+            ];
+            for acl in &acls {
+                add_file_acl(&mut conn, acl).await.unwrap();
+            }
             Ok(())
         })
     })?;
@@ -110,6 +132,6 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .collect();
-    assert_eq!(names, vec!["readme.txt"]);
+    assert_eq!(names, vec!["fileA.txt", "fileC.txt"]);
     Ok(())
 }
