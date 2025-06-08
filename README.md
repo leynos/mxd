@@ -95,3 +95,14 @@ docker run --rm \
 ```
 
 Crash files will appear under `artifacts/main/crashes`.
+
+The `src/bin/gen_corpus.rs` utility rebuilds the seed files placed in
+`fuzz/corpus/` from the transactions crafted in the integration tests.
+Run it whenever you want to refresh or extend the corpus. A simple
+`Makefile` provides a convenience target so you only need to run:
+
+```bash
+make corpus
+```
+
+Add new transactions to the tool to grow the set of starting inputs.
