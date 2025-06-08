@@ -1,9 +1,10 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use diesel_async::AsyncConnection;
+use diesel::prelude::*;
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
-use mxd::db::{DbConnection, create_article, create_category, run_migrations};
+use mxd::db::{DbConnection, create_category, run_migrations};
 use mxd::field_id::FieldId;
 use mxd::models::NewCategory;
 use mxd::transaction::{FrameHeader, Transaction, decode_params, encode_params};
@@ -82,10 +83,10 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
                 },
             )
             .await?;
+            use mxd::schema::news_articles::dsl as a;
             let posted = NaiveDateTime::from_timestamp_opt(1000, 0).unwrap();
-            create_article(
-                &mut conn,
-                &NewArticle {
+            diesel::insert_into(a::news_articles)
+                .values(&NewArticle {
                     category_id: 1,
                     parent_article_id: None,
                     prev_article_id: None,
@@ -97,13 +98,12 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
                     flags: 0,
                     data_flavor: "text/plain",
                     data: "a",
-                },
-            )
-            .await?;
+                })
+                .execute(&mut conn)
+                .await?;
             let posted2 = NaiveDateTime::from_timestamp_opt(2000, 0).unwrap();
-            create_article(
-                &mut conn,
-                &NewArticle {
+            diesel::insert_into(a::news_articles)
+                .values(&NewArticle {
                     category_id: 1,
                     parent_article_id: None,
                     prev_article_id: Some(1),
@@ -115,9 +115,9 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
                     flags: 0,
                     data_flavor: "text/plain",
                     data: "b",
-                },
-            )
-            .await?;
+                })
+                .execute(&mut conn)
+                .await?;
             Ok(())
         })
     })?;

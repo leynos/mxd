@@ -151,17 +151,6 @@ pub async fn create_bundle(
         .await
 }
 
-pub async fn create_article(
-    conn: &mut DbConnection,
-    art: &crate::models::NewArticle<'_>,
-) -> QueryResult<usize> {
-    use crate::schema::news_articles::dsl::*;
-    diesel::insert_into(news_articles)
-        .values(art)
-        .execute(conn)
-        .await
-}
-
 pub async fn get_article(
     conn: &mut DbConnection,
     path: &str,
@@ -233,7 +222,8 @@ pub async fn list_article_titles(
         .order(a::posted_at.asc())
         .select(a::title)
         .load::<String>(conn)
-        .await?;
+        .await
+        .map_err(CategoryError::Diesel)?;
     Ok(titles)
 }
 
