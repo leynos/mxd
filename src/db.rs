@@ -151,17 +151,6 @@ pub async fn create_bundle(
         .await
 }
 
-pub async fn create_article(
-    conn: &mut DbConnection,
-    art: &crate::models::NewArticle<'_>,
-) -> QueryResult<usize> {
-    use crate::schema::news_articles::dsl::*;
-    diesel::insert_into(news_articles)
-        .values(art)
-        .execute(conn)
-        .await
-}
-
 async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i32, CategoryError> {
     let trimmed = path.trim_matches('/');
     if trimmed.is_empty() {
