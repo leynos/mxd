@@ -1,15 +1,13 @@
 use std::net::SocketAddr;
 
-use crate::db::{
-    CategoryError, DbConnection, DbPool, get_user_by_name, list_article_titles, list_names_at_path,
-};
+use crate::db::{CategoryError, DbConnection, DbPool, list_article_titles, list_names_at_path};
 use crate::field_id::FieldId;
+use crate::login::handle_login;
 use crate::transaction::{
     FrameHeader, Transaction, decode_params, decode_params_map, encode_params, first_param_string,
     required_param_i32, required_param_string,
 };
 use crate::transaction_type::TransactionType;
-use crate::users::verify_password;
 use futures_util::future::BoxFuture;
 
 /// Error code used when the requested news path is unsupported.
@@ -112,7 +110,7 @@ impl Command {
                 username,
                 password,
                 header,
-            } => handle_login(peer, pool, username, password, header).await,
+            } => handle_login(peer, session, pool, username, password, header).await,
             Command::GetFileNameList { header, payload } => {
                 if !payload.is_empty() {
                     return Ok(Transaction {
@@ -196,38 +194,6 @@ where
         }),
         Err(CategoryError::Diesel(e)) => Err(Box::new(e)),
     }
-}
-
-async fn handle_login(
-    peer: SocketAddr,
-    pool: DbPool,
-    username: String,
-    password: String,
-    header: FrameHeader,
-) -> Result<Transaction, Box<dyn std::error::Error>> {
-    let mut conn = pool.get().await?;
-    let user = get_user_by_name(&mut conn, &username).await?;
-    let (error, payload) = if let Some(u) = user {
-        if verify_password(&u.password, &password) {
-            let params = encode_params(&[(
-                FieldId::Version,
-                &crate::protocol::CLIENT_VERSION.to_be_bytes(),
-            )]);
-            (0u32, params)
-        } else {
-            (1u32, Vec::new())
-        }
-    } else {
-        (1u32, Vec::new())
-    };
-    let reply = Transaction {
-        header: reply_header(&header, error, payload.len()),
-        payload,
-    };
-    if error == 0 {
-        println!("{peer} authenticated as {username}");
-    }
-    Ok(reply)
 }
 
 async fn handle_category_list(

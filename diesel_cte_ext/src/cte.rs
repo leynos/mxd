@@ -51,8 +51,6 @@ where
     const HAS_STATIC_QUERY_ID: bool = true;
 }
 
-
-
 impl<DB, Seed, Step, Body> Query for WithRecursive<DB, Seed, Step, Body>
 where
     DB: Backend,
