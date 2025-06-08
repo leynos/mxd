@@ -1,0 +1,27 @@
+# Ignore version control
+.git
+.gitignore
+
+# Ignore documentation
+docs/
+*.md
+
+# Ignore tests
+tests/
+test/
+*/tests/
+*/test/
+
+# Ignore build artifacts
+target/
+*.pyc
+*.o
+*.so
+*.a
+*.out
+*.log
+
+# Ignore editor and OS files
+*.swp
+*.swo
+.DS_Store

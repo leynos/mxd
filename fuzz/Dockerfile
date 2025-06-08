@@ -5,9 +5,9 @@ COPY . .
 
 ENV CC=afl-clang-fast
 ENV CXX=afl-clang-fast++
-ENV RUSTFLAGS="-Z sanitizer=address"
+RUN cargo afl build --manifest-path fuzz/Cargo.toml
 
-RUN cargo afl build --manifest-path fuzz/Cargo.toml --release
+COPY --from=builder /mxd/fuzz/target/debug/fuzz /usr/local/bin/fuzz
 
 FROM aflplusplus/aflplusplus:latest
 COPY --from=builder /mxd/fuzz/target/release/fuzz /usr/local/bin/fuzz
