@@ -178,42 +178,31 @@ async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i3
     let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
     let len = parts.len();
 
-    // Build a UNION table of path segments using parameter binding to avoid SQL injection
-    let mut seg_sql = String::new();
-    for (i, _) in parts.iter().enumerate() {
-        if i > 0 {
-            seg_sql.push_str(" UNION ALL ");
-        }
-        seg_sql.push_str(&format!("SELECT {} AS idx, ? AS name", i + 1));
-    }
+    // Represent the path as a JSON array so the recursive query can iterate over
+    // each segment without constructing SQL through string concatenation.
+    let json = serde_json::to_string(&parts).expect("serialize path segments");
 
     use diesel::sql_query;
     let seed = sql_query("SELECT 0 AS idx, NULL AS id");
 
-    let mut step_sql = String::from("SELECT tree.idx + 1 AS idx, b.id AS id FROM tree JOIN (");
-    step_sql.push_str(&seg_sql);
-    step_sql.push_str(
-        ") AS seg ON seg.idx = tree.idx + 1 \
-        LEFT JOIN news_bundles b ON b.name = seg.name AND \
-            ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)",
-    );
-    let mut step = sql_query(step_sql).into_boxed::<diesel::sqlite::Sqlite>();
-    for part in &parts {
-        step = step.bind::<Text, _>(part.clone());
-    }
+    // Step advances the tree by joining the next path segment from json_each
+    // against the bundles table.
+    let step_sql = "SELECT tree.idx + 1 AS idx, b.id AS id \
+FROM tree \
+JOIN json_each(?) seg ON seg.key = tree.idx \
+LEFT JOIN news_bundles b ON b.name = seg.value AND \
+  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
+    let step = sql_query(step_sql).bind::<Text, _>(json.clone());
 
-    let mut body_sql =
-        String::from("SELECT id FROM news_categories WHERE name = (SELECT name FROM (");
-    body_sql.push_str(&seg_sql);
-    body_sql.push_str(&format!(
-        ") AS seg WHERE idx = {}) AND bundle_id IS (SELECT id FROM tree WHERE idx = {})",
-        len,
-        len - 1
-    ));
-    let mut body = sql_query(body_sql).into_boxed::<diesel::sqlite::Sqlite>();
-    for part in &parts {
-        body = body.bind::<Text, _>(part.clone());
-    }
+    // Body selects the category matching the final path segment and bundle.
+    let body_sql = "SELECT c.id AS id \
+FROM news_categories c \
+JOIN json_each(?) seg ON seg.key = ? \
+WHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)";
+    let body = sql_query(body_sql)
+        .bind::<Text, _>(json)
+        .bind::<Integer, _>((len - 1) as i32)
+        .bind::<Integer, _>((len - 1) as i32);
 
     let query =
         with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);

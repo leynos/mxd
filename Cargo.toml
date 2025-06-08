@@ -19,6 +19,7 @@ argon2 = { version = "0.5", features = ["std"] }
 rand = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 diesel_cte_ext = { path = "diesel_cte_ext" }
+futures-util = "0.3"
 
 [dev-dependencies]
 test-util = { path = "test-util" }
