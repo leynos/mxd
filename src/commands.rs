@@ -5,7 +5,8 @@ use crate::db::{
 };
 use crate::field_id::FieldId;
 use crate::transaction::{
-    FrameHeader, Transaction, decode_params, decode_params_map, encode_params,
+    FrameHeader, Transaction, decode_params, decode_params_map, encode_params, first_param_string,
+    required_param_i32, required_param_string,
 };
 use crate::transaction_type::TransactionType;
 use crate::users::verify_password;
@@ -72,11 +73,7 @@ impl Command {
             }),
             TransactionType::NewsCategoryNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
-                let path = params
-                    .get(&FieldId::NewsPath)
-                    .and_then(|v| v.first())
-                    .map(|v| String::from_utf8(v.clone()).map_err(|_| "utf8"))
-                    .transpose()?;
+                let path = first_param_string(&params, FieldId::NewsPath)?;
                 Ok(Command::GetNewsCategoryNameList {
                     path,
                     header: tx.header,
@@ -84,28 +81,18 @@ impl Command {
             }
             TransactionType::NewsArticleNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
-                let path = params
-                    .get(&FieldId::NewsPath)
-                    .and_then(|v| v.first())
-                    .ok_or("missing path")?;
+                let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
                 Ok(Command::GetNewsArticleNameList {
-                    path: String::from_utf8(path.clone()).map_err(|_| "utf8")?,
+                    path,
                     header: tx.header,
                 })
             }
             TransactionType::NewsArticleData => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
-                let path = params
-                    .get(&FieldId::NewsPath)
-                    .and_then(|v| v.first())
-                    .ok_or("missing path")?;
-                let id_bytes = params
-                    .get(&FieldId::NewsArticleId)
-                    .and_then(|v| v.first())
-                    .ok_or("missing id")?;
-                let id = i32::from_be_bytes(id_bytes.as_slice().try_into().map_err(|_| "id")?);
+                let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
+                let id = required_param_i32(&params, FieldId::NewsArticleId, "missing id", "id")?;
                 Ok(Command::GetNewsArticleData {
-                    path: String::from_utf8(path.clone()).map_err(|_| "utf8")?,
+                    path,
                     article_id: id,
                     header: tx.header,
                 })
@@ -238,7 +225,7 @@ async fn handle_login(
         payload,
     };
     if error == 0 {
-        println!("{} authenticated as {}", peer, username);
+        println!("{peer} authenticated as {username}");
     }
     Ok(reply)
 }

@@ -96,8 +96,8 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
                     poster: None,
                     posted_at: posted,
                     flags: 0,
-                    data_flavor: "text/plain",
-                    data: "a",
+                    data_flavor: Some("text/plain"),
+                    data: Some("a"),
                 })
                 .execute(&mut conn)
                 .await?;
@@ -113,8 +113,8 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
                     poster: None,
                     posted_at: posted2,
                     flags: 0,
-                    data_flavor: "text/plain",
-                    data: "b",
+                    data_flavor: Some("text/plain"),
+                    data: Some("b"),
                 })
                 .execute(&mut conn)
                 .await?;
@@ -205,8 +205,8 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
                     poster: Some("alice"),
                     posted_at: posted,
                     flags: 0,
-                    data_flavor: "text/plain",
-                    data: "hello",
+                    data_flavor: Some("text/plain"),
+                    data: Some("hello"),
                 })
                 .execute(&mut conn)
                 .await?;
