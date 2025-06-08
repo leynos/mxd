@@ -1,9 +1,12 @@
 use std::fs::{self, File};
 use std::io::Write;
+use std::path::Path;
 
 use mxd::field_id::FieldId;
 use mxd::transaction::{FrameHeader, Transaction, encode_params};
 use mxd::transaction_type::TransactionType;
+
+const CORPUS_DIR: &str = "fuzz/corpus";
 
 fn login_tx() -> Transaction {
     let params = [
@@ -89,7 +92,7 @@ fn news_article_data_tx() -> Transaction {
     Transaction { header, payload }
 }
 
-fn save_tx(tx: Transaction, path: &str) -> std::io::Result<()> {
+fn save_tx(tx: Transaction, path: &Path) -> std::io::Result<()> {
     let bytes = tx.to_bytes();
     let mut f = File::create(path)?;
     f.write_all(&bytes)?;
@@ -97,17 +100,15 @@ fn save_tx(tx: Transaction, path: &str) -> std::io::Result<()> {
 }
 
 fn main() -> std::io::Result<()> {
-    fs::create_dir_all("fuzz/corpus")?;
-    save_tx(login_tx(), "fuzz/corpus/login.bin")?;
-    save_tx(get_file_list_tx(), "fuzz/corpus/get_file_list.bin")?;
-    save_tx(
-        news_category_root_tx(),
-        "fuzz/corpus/news_category_root.bin",
-    )?;
+    fs::create_dir_all(CORPUS_DIR)?;
+    let dir = Path::new(CORPUS_DIR);
+    save_tx(login_tx(), &dir.join("login.bin"))?;
+    save_tx(get_file_list_tx(), &dir.join("get_file_list.bin"))?;
+    save_tx(news_category_root_tx(), &dir.join("news_category_root.bin"))?;
     save_tx(
         news_article_titles_tx(),
-        "fuzz/corpus/news_article_titles.bin",
+        &dir.join("news_article_titles.bin"),
     )?;
-    save_tx(news_article_data_tx(), "fuzz/corpus/news_article_data.bin")?;
+    save_tx(news_article_data_tx(), &dir.join("news_article_data.bin"))?;
     Ok(())
 }
