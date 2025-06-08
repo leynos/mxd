@@ -5,7 +5,7 @@ COPY . .
 
 ENV CC=afl-clang-fast
 ENV CXX=afl-clang-fast++
-ENV RUSTFLAGS="-Zsanitizer=address"
+ENV RUSTFLAGS="-Z sanitizer=address"
 
 RUN cargo afl build --manifest-path fuzz/Cargo.toml --release
 
