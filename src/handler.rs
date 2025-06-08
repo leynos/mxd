@@ -11,20 +11,9 @@ pub struct Context {
 }
 
 /// Session state for a single connection.
+#[derive(Default)]
 pub struct Session {
     pub user_id: Option<i32>,
-}
-
-impl Session {
-    pub fn new() -> Self {
-        Self { user_id: None }
-    }
-}
-
-impl Default for Session {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl Context {

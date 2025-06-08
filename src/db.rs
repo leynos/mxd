@@ -244,13 +244,14 @@ pub async fn create_file(
 pub async fn add_file_acl(
     conn: &mut DbConnection,
     acl: &crate::models::NewFileAcl,
-) -> QueryResult<usize> {
+) -> QueryResult<bool> {
     use crate::schema::file_acl::dsl::*;
     diesel::insert_into(file_acl)
         .values(acl)
         .on_conflict_do_nothing()
         .execute(conn)
         .await
+        .map(|rows| rows > 0)
 }
 
 pub async fn list_files_for_user(

@@ -1,3 +1,5 @@
+pub const FILE_NAME_LIST_ID: u16 = 200;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionType {
     Error,
@@ -19,7 +21,7 @@ impl From<u16> for TransactionType {
             107 => Self::Login,
             109 => Self::Agreement,
             121 => Self::Agreed,
-            200 => Self::GetFileNameList,
+            FILE_NAME_LIST_ID => Self::GetFileNameList,
             354 => Self::UserAccess,
             370 => Self::NewsCategoryNameList,
             371 => Self::NewsArticleNameList,
@@ -36,7 +38,7 @@ impl From<TransactionType> for u16 {
             TransactionType::Login => 107,
             TransactionType::Agreement => 109,
             TransactionType::Agreed => 121,
-            TransactionType::GetFileNameList => 200,
+            TransactionType::GetFileNameList => FILE_NAME_LIST_ID,
             TransactionType::UserAccess => 354,
             TransactionType::NewsCategoryNameList => 370,
             TransactionType::NewsArticleNameList => 371,

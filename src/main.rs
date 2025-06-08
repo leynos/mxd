@@ -176,7 +176,7 @@ async fn handle_client(
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
     let ctx = Context::new(peer, pool.clone());
-    let mut session = Session::new();
+    let mut session = Session::default();
     loop {
         tokio::select! {
             tx = tx_reader.read_transaction() => {

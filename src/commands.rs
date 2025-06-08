@@ -136,7 +136,7 @@ impl Command {
                 let files = crate::db::list_files_for_user(&mut conn, user_id).await?;
                 let params: Vec<(FieldId, &[u8])> = files
                     .iter()
-                    .map(|f| (FieldId::FileNameWithInfo, f.name.as_bytes()))
+                    .map(|f| (FieldId::FileName, f.name.as_bytes()))
                     .collect();
                 let payload = encode_params(&params);
                 Ok(Transaction {

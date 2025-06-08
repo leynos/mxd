@@ -125,7 +125,7 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
     let names: Vec<String> = params
         .into_iter()
         .filter_map(|(id, d)| {
-            if id == FieldId::FileNameWithInfo {
+            if id == FieldId::FileName {
                 Some(String::from_utf8(d).unwrap())
             } else {
                 None
