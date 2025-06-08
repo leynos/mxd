@@ -210,7 +210,10 @@ pub enum TransactionError {
 
 /// Determine whether duplicate instances of the given field id are permitted.
 fn duplicate_allowed(fid: &FieldId) -> bool {
-    matches!(*fid, FieldId::NewsCategory | FieldId::NewsArticle | FieldId::FileName)
+    matches!(
+        *fid,
+        FieldId::NewsCategory | FieldId::NewsArticle | FieldId::FileName
+    )
 }
 
 fn check_duplicate(fid: &FieldId, seen: &mut HashSet<u16>) -> Result<(), TransactionError> {
@@ -433,4 +436,39 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
         buf.extend_from_slice(data);
     }
     buf
+}
+
+/// Return the first value for `field` in a parameter map as a `String`.
+///
+/// Returns `Ok(None)` if the field is absent and an error if the bytes are not
+/// valid UTF-8.
+pub fn first_param_string(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+    field: FieldId,
+) -> Result<Option<String>, &'static str> {
+    match map.get(&field).and_then(|v| v.first()) {
+        Some(bytes) => Ok(Some(String::from_utf8(bytes.clone()).map_err(|_| "utf8")?)),
+        None => Ok(None),
+    }
+}
+
+/// Return the first value for `field` as a `String` or an error if missing.
+pub fn required_param_string(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+    field: FieldId,
+    missing_err: &'static str,
+) -> Result<String, &'static str> {
+    first_param_string(map, field)?.ok_or(missing_err)
+}
+
+/// Decode the first value for `field` as a big-endian `i32`.
+pub fn required_param_i32(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+    field: FieldId,
+    missing_err: &'static str,
+    parse_err: &'static str,
+) -> Result<i32, &'static str> {
+    let bytes = map.get(&field).and_then(|v| v.first()).ok_or(missing_err)?;
+    let arr: [u8; 4] = bytes.as_slice().try_into().map_err(|_| parse_err)?;
+    Ok(i32::from_be_bytes(arr))
 }

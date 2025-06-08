@@ -24,6 +24,6 @@ fn handshake_unsupported_version() -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     let bytes = reader.read_line(&mut line)?;
-    assert_eq!(bytes, 0, "unexpected server data: {}", line);
+    assert_eq!(bytes, 0, "unexpected server data: {line}");
     Ok(())
 }

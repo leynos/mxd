@@ -95,13 +95,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         create_user(&mut conn, &new_user)
             .await
             .expect("failed to create user");
-        println!("User {} created", username);
+        println!("User {username} created");
         return Ok(());
     }
 
     let addr = cli.bind;
     let listener = TcpListener::bind(&addr).await?;
-    println!("mxd listening on {}", addr);
+    println!("mxd listening on {addr}");
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut join_set = JoinSet::new();
@@ -121,12 +121,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         let mut rx = shutdown_rx.clone();
                         join_set.spawn(async move {
                             if let Err(e) = handle_client(socket, peer, pool, &mut rx).await {
-                                eprintln!("connection error from {}: {}", peer, e);
+                                eprintln!("connection error from {peer}: {e}");
                             }
                         });
                     }
                     Err(e) => {
-                        eprintln!("accept error: {}", e);
+                        eprintln!("accept error: {e}");
                     }
                 }
             }
@@ -138,7 +138,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     while let Some(res) = join_set.join_next().await {
         if let Err(e) = res {
-            eprintln!("task error: {}", e);
+            eprintln!("task error: {e}");
         }
     }
     Ok(())
