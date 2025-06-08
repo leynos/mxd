@@ -28,3 +28,5 @@ mxd.db
 
 # Cargo chef
 recipe.json
+# Fuzzing corpus binaries
+fuzz/corpus/*.bin
