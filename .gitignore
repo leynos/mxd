@@ -25,3 +25,6 @@ target/
 
 /target
 mxd.db
+
+# Cargo chef
+recipe.json
