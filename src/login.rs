@@ -4,6 +4,7 @@ use crate::db::{DbPool, get_user_by_name};
 use crate::field_id::FieldId;
 use crate::transaction::{FrameHeader, Transaction, encode_params};
 use crate::users::verify_password;
+use tracing::{info, warn};
 
 /// Construct a reply header mirroring the request header fields and setting the
 /// payload size and error code.
@@ -49,7 +50,9 @@ pub async fn handle_login(
         payload,
     };
     if error == 0 {
-        println!("{peer} authenticated as {username}");
+        info!(%peer, %username, "authenticated");
+    } else {
+        warn!(%peer, %username, "authentication failed");
     }
     Ok(reply)
 }
