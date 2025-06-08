@@ -14,6 +14,13 @@ pub enum TransactionType {
     Other(u16),
 }
 
+impl TransactionType {
+    /// Return true if this transaction type may include a payload.
+    pub fn allows_payload(self) -> bool {
+        !matches!(self, TransactionType::GetFileNameList)
+    }
+}
+
 impl From<u16> for TransactionType {
     fn from(v: u16) -> Self {
         match v {

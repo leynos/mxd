@@ -47,6 +47,8 @@ impl TestServer {
         let mut child = Command::new("cargo")
             .args([
                 "run",
+                "--bin",
+                "mxd",
                 "--manifest-path",
                 manifest_path,
                 "--quiet",
