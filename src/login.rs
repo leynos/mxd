@@ -5,6 +5,7 @@ use crate::field_id::FieldId;
 use crate::header_util::reply_header;
 use crate::transaction::{FrameHeader, Transaction, encode_params};
 use crate::users::verify_password;
+use tracing::{info, warn};
 
 /// Handle a user login request.
 pub async fn handle_login(
@@ -36,7 +37,9 @@ pub async fn handle_login(
         payload,
     };
     if error == 0 {
-        println!("{peer} authenticated as {username}");
+        info!(%peer, %username, "authenticated");
+    } else {
+        warn!(%peer, %username, "authentication failed");
     }
     Ok(reply)
 }
