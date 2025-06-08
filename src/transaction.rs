@@ -210,7 +210,7 @@ pub enum TransactionError {
 
 /// Determine whether duplicate instances of the given field id are permitted.
 fn duplicate_allowed(fid: &FieldId) -> bool {
-    matches!(*fid, FieldId::NewsCategory)
+    matches!(*fid, FieldId::NewsCategory | FieldId::NewsArticle)
 }
 
 fn check_duplicate(fid: &FieldId, seen: &mut HashSet<u16>) -> Result<(), TransactionError> {
@@ -406,6 +406,19 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
         return Err(TransactionError::SizeMismatch);
     }
     Ok(params)
+}
+
+/// Decode the parameter block into a map keyed by `FieldId`.
+pub fn decode_params_map(
+    buf: &[u8],
+) -> Result<std::collections::HashMap<FieldId, Vec<Vec<u8>>>, TransactionError> {
+    let params = decode_params(buf)?;
+    let mut map: std::collections::HashMap<FieldId, Vec<Vec<u8>>> =
+        std::collections::HashMap::new();
+    for (fid, value) in params {
+        map.entry(fid).or_default().push(value);
+    }
+    Ok(map)
 }
 
 /// Build a parameter block from field id/data pairs.

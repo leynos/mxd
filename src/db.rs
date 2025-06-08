@@ -151,6 +151,88 @@ pub async fn create_bundle(
         .await
 }
 
+pub async fn get_article(
+    conn: &mut DbConnection,
+    path: &str,
+    article_id: i32,
+) -> Result<Option<crate::models::Article>, CategoryError> {
+    use crate::schema::news_articles::dsl as a;
+    let cat_id = category_id_from_path(conn, path).await?;
+    let found = a::news_articles
+        .filter(a::category_id.eq(cat_id))
+        .filter(a::id.eq(article_id))
+        .first::<crate::models::Article>(conn)
+        .await
+        .optional()?;
+    Ok(found)
+}
+
+async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i32, CategoryError> {
+    use diesel::sql_types::{Integer, Text};
+    use diesel_cte_ext::with_recursive;
+
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return Err(CategoryError::InvalidPath);
+    }
+    let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
+    let len = parts.len();
+
+    // Represent the path as a JSON array so the recursive query can iterate over
+    // each segment without constructing SQL through string concatenation.
+    let json = serde_json::to_string(&parts).expect("serialize path segments");
+
+    use diesel::sql_query;
+    let seed = sql_query("SELECT 0 AS idx, NULL AS id");
+
+    // Step advances the tree by joining the next path segment from json_each
+    // against the bundles table.
+    let step_sql = "SELECT tree.idx + 1 AS idx, b.id AS id \
+FROM tree \
+JOIN json_each(?) seg ON seg.key = tree.idx \
+LEFT JOIN news_bundles b ON b.name = seg.value AND \
+  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
+    let step = sql_query(step_sql).bind::<Text, _>(json.clone());
+
+    // Body selects the category matching the final path segment and bundle.
+    let body_sql = "SELECT c.id AS id \
+FROM news_categories c \
+JOIN json_each(?) seg ON seg.key = ? \
+WHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)";
+    let body = sql_query(body_sql)
+        .bind::<Text, _>(json)
+        .bind::<Integer, _>((len - 1) as i32)
+        .bind::<Integer, _>((len - 1) as i32);
+
+    let query =
+        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
+
+    #[derive(QueryableByName)]
+    struct CatId {
+        #[diesel(sql_type = Integer)]
+        id: i32,
+    }
+
+    let res: Option<CatId> = query.get_result(conn).await.optional()?;
+    res.map(|c| c.id).ok_or(CategoryError::InvalidPath)
+}
+
+pub async fn list_article_titles(
+    conn: &mut DbConnection,
+    path: &str,
+) -> Result<Vec<String>, CategoryError> {
+    let cat_id = category_id_from_path(conn, path).await?;
+    use crate::schema::news_articles::dsl as a;
+    let titles = a::news_articles
+        .filter(a::category_id.eq(cat_id))
+        .order(a::posted_at.asc())
+        .select(a::title)
+        .load::<String>(conn)
+        .await
+        .map_err(CategoryError::Diesel)?;
+    Ok(titles)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

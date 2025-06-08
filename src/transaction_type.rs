@@ -6,6 +6,8 @@ pub enum TransactionType {
     Agreed,
     UserAccess,
     NewsCategoryNameList,
+    NewsArticleNameList,
+    NewsArticleData,
     Other(u16),
 }
 
@@ -18,6 +20,8 @@ impl From<u16> for TransactionType {
             121 => Self::Agreed,
             354 => Self::UserAccess,
             370 => Self::NewsCategoryNameList,
+            371 => Self::NewsArticleNameList,
+            400 => Self::NewsArticleData,
             other => Self::Other(other),
         }
     }
@@ -32,6 +36,8 @@ impl From<TransactionType> for u16 {
             TransactionType::Agreed => 121,
             TransactionType::UserAccess => 354,
             TransactionType::NewsCategoryNameList => 370,
+            TransactionType::NewsArticleNameList => 371,
+            TransactionType::NewsArticleData => 400,
             TransactionType::Other(v) => v,
         }
     }
@@ -46,6 +52,8 @@ impl std::fmt::Display for TransactionType {
             TransactionType::Agreed => f.write_str("Agreed"),
             TransactionType::UserAccess => f.write_str("UserAccess"),
             TransactionType::NewsCategoryNameList => f.write_str("NewsCategoryNameList"),
+            TransactionType::NewsArticleNameList => f.write_str("NewsArticleNameList"),
+            TransactionType::NewsArticleData => f.write_str("NewsArticleData"),
             TransactionType::Other(v) => write!(f, "Other({v})"),
         }
     }
