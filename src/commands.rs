@@ -40,7 +40,7 @@ pub enum Command {
         header: FrameHeader,
     },
     /// Request contained a payload when none was expected. The server
-    /// responds with [`ERR_INVALID_PAYLOAD`].
+    /// responds with [`crate::commands::ERR_INVALID_PAYLOAD`].
     InvalidPayload {
         header: FrameHeader,
     },
