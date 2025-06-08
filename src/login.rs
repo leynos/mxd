@@ -2,22 +2,9 @@ use std::net::SocketAddr;
 
 use crate::db::{DbPool, get_user_by_name};
 use crate::field_id::FieldId;
+use crate::header_util::reply_header;
 use crate::transaction::{FrameHeader, Transaction, encode_params};
 use crate::users::verify_password;
-
-/// Construct a reply header mirroring the request header fields and setting the
-/// payload size and error code.
-fn reply_header(req: &FrameHeader, payload_error: u32, payload_len: usize) -> FrameHeader {
-    FrameHeader {
-        flags: 0,
-        is_reply: 1,
-        ty: req.ty,
-        id: req.id,
-        error: payload_error,
-        total_size: payload_len as u32,
-        data_size: payload_len as u32,
-    }
-}
 
 /// Handle a user login request.
 pub async fn handle_login(
