@@ -3,6 +3,9 @@ FROM aflplusplus/aflplusplus:latest AS builder
 WORKDIR /mxd
 COPY . .
 
+# Build the seed corpus included in the repository
+RUN make corpus
+
 ENV CC=afl-clang-fast
 ENV CXX=afl-clang-fast++
 RUN cargo afl build --manifest-path fuzz/Cargo.toml
