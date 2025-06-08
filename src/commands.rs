@@ -2,7 +2,9 @@ use std::net::SocketAddr;
 
 use crate::db::{CategoryError, DbPool, get_user_by_name, list_article_titles, list_names_at_path};
 use crate::field_id::FieldId;
-use crate::transaction::{FrameHeader, Transaction, decode_params, encode_params};
+use crate::transaction::{
+    FrameHeader, Transaction, decode_params, decode_params_map, encode_params,
+};
 use crate::transaction_type::TransactionType;
 use crate::users::verify_password;
 
@@ -21,6 +23,11 @@ pub enum Command {
     },
     GetNewsArticleNameList {
         path: String,
+        header: FrameHeader,
+    },
+    GetNewsArticleData {
+        path: String,
+        article_id: i32,
         header: FrameHeader,
     },
     Unknown {
@@ -53,28 +60,32 @@ impl Command {
                 })
             }
             TransactionType::NewsCategoryNameList => {
-                let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
-                let mut path = None;
-                for (id, data) in params {
-                    if let FieldId::NewsPath = id {
-                        path = Some(String::from_utf8(data).map_err(|_| "utf8")?);
-                    }
-                }
+                let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
+                let path = params
+                    .get(&FieldId::NewsPath)
+                    .map(|v| String::from_utf8(v.clone()).map_err(|_| "utf8"))
+                    .transpose()?;
                 Ok(Command::GetNewsCategoryNameList {
                     path,
                     header: tx.header,
                 })
             }
             TransactionType::NewsArticleNameList => {
-                let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
-                let mut path = None;
-                for (id, data) in params {
-                    if let FieldId::NewsPath = id {
-                        path = Some(String::from_utf8(data).map_err(|_| "utf8")?);
-                    }
-                }
+                let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
+                let path = params.get(&FieldId::NewsPath).ok_or("missing path")?;
                 Ok(Command::GetNewsArticleNameList {
-                    path: path.ok_or("missing path")?,
+                    path: String::from_utf8(path.clone()).map_err(|_| "utf8")?,
+                    header: tx.header,
+                })
+            }
+            TransactionType::NewsArticleData => {
+                let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
+                let path = params.get(&FieldId::NewsPath).ok_or("missing path")?;
+                let id_bytes = params.get(&FieldId::NewsArticleId).ok_or("missing id")?;
+                let id = i32::from_be_bytes(id_bytes.as_slice().try_into().map_err(|_| "id")?);
+                Ok(Command::GetNewsArticleData {
+                    path: String::from_utf8(path.clone()).map_err(|_| "utf8")?,
+                    article_id: id,
                     header: tx.header,
                 })
             }
@@ -164,6 +175,71 @@ impl Command {
                     .map(|t| (FieldId::NewsArticle, t.as_bytes()))
                     .collect();
                 let payload = encode_params(&params);
+                Ok(Transaction {
+                    header: reply_header(&header, 0, payload.len()),
+                    payload,
+                })
+            }
+            Command::GetNewsArticleData {
+                header,
+                path,
+                article_id,
+            } => {
+                use crate::db::get_article;
+                let mut conn = pool.get().await?;
+                let article = match get_article(&mut conn, &path, article_id).await {
+                    Ok(Some(a)) => a,
+                    Ok(None) => {
+                        return Ok(Transaction {
+                            header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
+                            payload: Vec::new(),
+                        });
+                    }
+                    Err(CategoryError::InvalidPath) => {
+                        return Ok(Transaction {
+                            header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
+                            payload: Vec::new(),
+                        });
+                    }
+                    Err(CategoryError::Diesel(e)) => return Err(Box::new(e)),
+                };
+                let mut params: Vec<(FieldId, Vec<u8>)> = Vec::new();
+                params.push((FieldId::NewsTitle, article.title.into_bytes()));
+                if let Some(p) = article.poster {
+                    params.push((FieldId::NewsPoster, p.into_bytes()));
+                }
+                params.push((
+                    FieldId::NewsDate,
+                    article
+                        .posted_at
+                        .and_utc()
+                        .timestamp()
+                        .to_be_bytes()
+                        .to_vec(),
+                ));
+                if let Some(prev) = article.prev_article_id {
+                    params.push((FieldId::NewsPrevId, prev.to_be_bytes().to_vec()));
+                }
+                if let Some(next) = article.next_article_id {
+                    params.push((FieldId::NewsNextId, next.to_be_bytes().to_vec()));
+                }
+                if let Some(parent) = article.parent_article_id {
+                    params.push((FieldId::NewsParentId, parent.to_be_bytes().to_vec()));
+                }
+                if let Some(child) = article.first_child_article_id {
+                    params.push((FieldId::NewsFirstChildId, child.to_be_bytes().to_vec()));
+                }
+                params.push((
+                    FieldId::NewsArticleFlags,
+                    (article.flags as i32).to_be_bytes().to_vec(),
+                ));
+                params.push((FieldId::NewsDataFlavor, b"text/plain".to_vec()));
+                if let Some(data) = article.data {
+                    params.push((FieldId::NewsArticleData, data.into_bytes()));
+                }
+                let payload_pairs: Vec<(FieldId, &[u8])> =
+                    params.iter().map(|(id, d)| (*id, d.as_slice())).collect();
+                let payload = encode_params(&payload_pairs);
                 Ok(Transaction {
                     header: reply_header(&header, 0, payload.len()),
                     payload,

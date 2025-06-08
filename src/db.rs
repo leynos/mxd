@@ -151,41 +151,75 @@ pub async fn create_bundle(
         .await
 }
 
+pub async fn create_article(
+    conn: &mut DbConnection,
+    art: &crate::models::NewArticle<'_>,
+) -> QueryResult<usize> {
+    use crate::schema::news_articles::dsl::*;
+    diesel::insert_into(news_articles)
+        .values(art)
+        .execute(conn)
+        .await
+}
+
+pub async fn get_article(
+    conn: &mut DbConnection,
+    path: &str,
+    article_id: i32,
+) -> Result<Option<crate::models::Article>, CategoryError> {
+    use crate::schema::news_articles::dsl as a;
+    let cat_id = category_id_from_path(conn, path).await?;
+    let found = a::news_articles
+        .filter(a::category_id.eq(cat_id))
+        .filter(a::id.eq(article_id))
+        .first::<crate::models::Article>(conn)
+        .await
+        .optional()?;
+    Ok(found)
+}
+
 async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i32, CategoryError> {
+    use diesel::sql_types::{Integer, Nullable};
+    use diesel_cte_ext::with_recursive;
+
     let trimmed = path.trim_matches('/');
     if trimmed.is_empty() {
         return Err(CategoryError::InvalidPath);
     }
-    let mut parent_bundle: Option<i32> = None;
-    let mut parts = trimmed.split('/').peekable();
-    while let Some(part) = parts.next() {
-        if parts.peek().is_some() {
-            use crate::schema::news_bundles::dsl as b;
-            let found = b::news_bundles
-                .filter(b::name.eq(part))
-                .filter(b::parent_bundle_id.eq(parent_bundle))
-                .first::<crate::models::Bundle>(conn)
-                .await
-                .optional()?;
-            match found {
-                Some(bun) => parent_bundle = Some(bun.id),
-                None => return Err(CategoryError::InvalidPath),
-            }
-        } else {
-            use crate::schema::news_categories::dsl as c;
-            let found = c::news_categories
-                .filter(c::name.eq(part))
-                .filter(c::bundle_id.eq(parent_bundle))
-                .first::<crate::models::Category>(conn)
-                .await
-                .optional()?;
-            return match found {
-                Some(cat) => Ok(cat.id),
-                None => Err(CategoryError::InvalidPath),
-            };
-        }
-    }
-    Err(CategoryError::InvalidPath)
+    let parts: Vec<&str> = trimmed.split('/').collect();
+    let seg_values = parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            format!(
+                "SELECT {} AS idx, '{}' AS name",
+                i + 1,
+                p.replace('\'', "''")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ");
+    let len = parts.len();
+
+    let seed = diesel::dsl::sql::<(Integer, Nullable<Integer>)>("SELECT 0, NULL");
+    let step_sql = format!(
+        "SELECT tree.idx + 1, b.id FROM tree \
+         JOIN ({values}) AS seg ON seg.idx = tree.idx + 1 \
+         LEFT JOIN news_bundles b ON b.name = seg.name AND ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)",
+        values = seg_values
+    );
+    let step = diesel::dsl::sql::<(Integer, Nullable<Integer>)>(&step_sql);
+    let body_sql = format!(
+        "SELECT id FROM news_categories WHERE name = (SELECT name FROM ({values}) AS seg WHERE idx = {last}) AND bundle_id IS (SELECT id FROM tree WHERE idx = {parent})",
+        values = seg_values,
+        last = len,
+        parent = len - 1
+    );
+    let body = diesel::dsl::sql::<Integer>(&body_sql);
+    let query =
+        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
+    let res: Option<i32> = query.get_result(conn).await.optional()?;
+    res.ok_or(CategoryError::InvalidPath)
 }
 
 pub async fn list_article_titles(
