@@ -168,47 +168,64 @@ pub async fn get_article(
 }
 
 async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i32, CategoryError> {
-    use diesel::sql_types::{Integer, Nullable};
+    use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
     let trimmed = path.trim_matches('/');
     if trimmed.is_empty() {
         return Err(CategoryError::InvalidPath);
     }
-    let parts: Vec<&str> = trimmed.split('/').collect();
-    let seg_values = parts
-        .iter()
-        .enumerate()
-        .map(|(i, p)| {
-            format!(
-                "SELECT {} AS idx, '{}' AS name",
-                i + 1,
-                p.replace('\'', "''")
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(" UNION ALL ");
+    let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
     let len = parts.len();
 
-    let seed = diesel::dsl::sql::<(Integer, Nullable<Integer>)>("SELECT 0, NULL");
-    let step_sql = format!(
-        "SELECT tree.idx + 1, b.id FROM tree \
-         JOIN ({values}) AS seg ON seg.idx = tree.idx + 1 \
-         LEFT JOIN news_bundles b ON b.name = seg.name AND ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)",
-        values = seg_values
+    // Build a UNION table of path segments using parameter binding to avoid SQL injection
+    let mut seg_sql = String::new();
+    for (i, _) in parts.iter().enumerate() {
+        if i > 0 {
+            seg_sql.push_str(" UNION ALL ");
+        }
+        seg_sql.push_str(&format!("SELECT {} AS idx, ? AS name", i + 1));
+    }
+
+    use diesel::sql_query;
+    let seed = sql_query("SELECT 0 AS idx, NULL AS id");
+
+    let mut step_sql = String::from("SELECT tree.idx + 1 AS idx, b.id AS id FROM tree JOIN (");
+    step_sql.push_str(&seg_sql);
+    step_sql.push_str(
+        ") AS seg ON seg.idx = tree.idx + 1 \
+        LEFT JOIN news_bundles b ON b.name = seg.name AND \
+            ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)",
     );
-    let step = diesel::dsl::sql::<(Integer, Nullable<Integer>)>(&step_sql);
-    let body_sql = format!(
-        "SELECT id FROM news_categories WHERE name = (SELECT name FROM ({values}) AS seg WHERE idx = {last}) AND bundle_id IS (SELECT id FROM tree WHERE idx = {parent})",
-        values = seg_values,
-        last = len,
-        parent = len - 1
-    );
-    let body = diesel::dsl::sql::<Integer>(&body_sql);
+    let mut step = sql_query(step_sql).into_boxed::<diesel::sqlite::Sqlite>();
+    for part in &parts {
+        step = step.bind::<Text, _>(part.clone());
+    }
+
+    let mut body_sql =
+        String::from("SELECT id FROM news_categories WHERE name = (SELECT name FROM (");
+    body_sql.push_str(&seg_sql);
+    body_sql.push_str(&format!(
+        ") AS seg WHERE idx = {}) AND bundle_id IS (SELECT id FROM tree WHERE idx = {})",
+        len,
+        len - 1
+    ));
+    let mut body = sql_query(body_sql).into_boxed::<diesel::sqlite::Sqlite>();
+    for part in &parts {
+        body = body.bind::<Text, _>(part.clone());
+    }
+
     let query =
         with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
-    let res: Option<i32> = query.get_result(conn).await.optional()?;
-    res.ok_or(CategoryError::InvalidPath)
+
+    #[derive(QueryableByName)]
+    struct CatId {
+        #[diesel(sql_type = Integer)]
+        id: i32,
+    }
+
+    let res: Option<CatId> = query.get_result(conn).await.optional()?;
+    res.map(|c| c.id).ok_or(CategoryError::InvalidPath)
 }
 
 pub async fn list_article_titles(
