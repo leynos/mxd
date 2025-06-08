@@ -1,7 +1,6 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
 use mxd::db::{DbConnection, create_category, run_migrations};
@@ -67,7 +66,7 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
-    use chrono::NaiveDateTime;
+    use chrono::{DateTime, Utc};
     use mxd::models::NewArticle;
 
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
@@ -84,7 +83,9 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
             use mxd::schema::news_articles::dsl as a;
-            let posted = NaiveDateTime::from_timestamp_opt(1000, 0).unwrap();
+            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
+                .expect("valid timestamp")
+                .naive_utc();
             diesel::insert_into(a::news_articles)
                 .values(&NewArticle {
                     category_id: 1,
@@ -101,7 +102,9 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .execute(&mut conn)
                 .await?;
-            let posted2 = NaiveDateTime::from_timestamp_opt(2000, 0).unwrap();
+            let posted2 = DateTime::<Utc>::from_timestamp(2000, 0)
+                .expect("valid timestamp")
+                .naive_utc();
             diesel::insert_into(a::news_articles)
                 .values(&NewArticle {
                     category_id: 1,
@@ -176,7 +179,7 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
-    use chrono::NaiveDateTime;
+    use chrono::{DateTime, Utc};
     use mxd::models::NewArticle;
 
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
@@ -193,7 +196,9 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
             use mxd::schema::news_articles::dsl as a;
-            let posted = NaiveDateTime::from_timestamp_opt(1000, 0).unwrap();
+            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
+                .expect("valid timestamp")
+                .naive_utc();
             diesel::insert_into(a::news_articles)
                 .values(&NewArticle {
                     category_id: 1,
