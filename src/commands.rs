@@ -13,6 +13,8 @@ use futures_util::future::BoxFuture;
 
 /// Error code used when the requested news path is unsupported.
 pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 1;
+/// Error code used when a request includes an unexpected payload.
+pub const ERR_INVALID_PAYLOAD: u32 = 2;
 
 pub enum Command {
     Login {
@@ -37,7 +39,8 @@ pub enum Command {
         article_id: i32,
         header: FrameHeader,
     },
-    /// Request contained a payload when none was expected.
+    /// Request contained a payload when none was expected. The server
+    /// responds with [`crate::commands::ERR_INVALID_PAYLOAD`].
     InvalidPayload {
         header: FrameHeader,
     },
@@ -154,7 +157,7 @@ impl Command {
                 article_id,
             } => handle_article_data(pool, header, path, article_id).await,
             Command::InvalidPayload { header } => Ok(Transaction {
-                header: reply_header(&header, 1, 0),
+                header: reply_header(&header, ERR_INVALID_PAYLOAD, 0),
                 payload: Vec::new(),
             }),
             Command::Unknown { header } => Ok(handle_unknown(peer, header)),

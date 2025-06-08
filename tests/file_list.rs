@@ -173,7 +173,7 @@ fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     let mut buf = [0u8; 20];
     stream.read_exact(&mut buf)?;
     let hdr = FrameHeader::from_bytes(&buf);
-    assert_eq!(hdr.error, 1);
+    assert_eq!(hdr.error, mxd::commands::ERR_INVALID_PAYLOAD);
     assert_eq!(hdr.data_size, 0);
     Ok(())
 }
