@@ -100,17 +100,19 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(reply_hdr.error, 0);
 
     // list files
-    let payload = encode_params(&[]);
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::GetFileNameList.into(),
         id: 2,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: 0,
+        data_size: 0,
     };
-    let tx = Transaction { header, payload };
+    let tx = Transaction {
+        header,
+        payload: Vec::new(),
+    };
     stream.write_all(&tx.to_bytes())?;
     stream.read_exact(&mut buf)?;
     let hdr = FrameHeader::from_bytes(&buf);
@@ -133,5 +135,45 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
     assert_eq!(names, vec!["fileA.txt", "fileC.txt"]);
+    Ok(())
+}
+
+#[test]
+fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
+    let server = TestServer::start("./Cargo.toml")?;
+    let port = server.port();
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+
+    // handshake
+    let mut handshake = Vec::new();
+    handshake.extend_from_slice(b"TRTP");
+    handshake.extend_from_slice(&0u32.to_be_bytes());
+    handshake.extend_from_slice(&1u16.to_be_bytes());
+    handshake.extend_from_slice(&0u16.to_be_bytes());
+    stream.write_all(&handshake)?;
+    let mut reply = [0u8; 8];
+    stream.read_exact(&mut reply)?;
+
+    // send GetFileNameList with bogus payload
+    let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())]);
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: TransactionType::GetFileNameList.into(),
+        id: 99,
+        error: 0,
+        total_size: params.len() as u32,
+        data_size: params.len() as u32,
+    };
+    let tx = Transaction {
+        header,
+        payload: params,
+    };
+    stream.write_all(&tx.to_bytes())?;
+    let mut buf = [0u8; 20];
+    stream.read_exact(&mut buf)?;
+    let hdr = FrameHeader::from_bytes(&buf);
+    assert_eq!(hdr.error, 1);
+    assert_eq!(hdr.data_size, 0);
     Ok(())
 }

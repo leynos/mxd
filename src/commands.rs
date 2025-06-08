@@ -22,6 +22,7 @@ pub enum Command {
     },
     GetFileNameList {
         header: FrameHeader,
+        has_payload: bool,
     },
     GetNewsCategoryNameList {
         path: Option<String>,
@@ -65,7 +66,13 @@ impl Command {
                     header: tx.header,
                 })
             }
-            TransactionType::GetFileNameList => Ok(Command::GetFileNameList { header: tx.header }),
+            TransactionType::GetFileNameList => {
+                let has_payload = !tx.payload.is_empty();
+                Ok(Command::GetFileNameList {
+                    header: tx.header,
+                    has_payload,
+                })
+            }
             TransactionType::NewsCategoryNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = params
@@ -122,7 +129,16 @@ impl Command {
                 password,
                 header,
             } => handle_login(peer, pool, username, password, header).await,
-            Command::GetFileNameList { header } => {
+            Command::GetFileNameList {
+                header,
+                has_payload,
+            } => {
+                if has_payload {
+                    return Ok(Transaction {
+                        header: reply_header(&header, 1, 0),
+                        payload: Vec::new(),
+                    });
+                }
                 let user_id = match session.user_id {
                     Some(id) => id,
                     None => {
