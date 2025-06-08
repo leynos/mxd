@@ -411,9 +411,14 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
 /// Decode the parameter block into a map keyed by `FieldId`.
 pub fn decode_params_map(
     buf: &[u8],
-) -> Result<std::collections::HashMap<FieldId, Vec<u8>>, TransactionError> {
+) -> Result<std::collections::HashMap<FieldId, Vec<Vec<u8>>>, TransactionError> {
     let params = decode_params(buf)?;
-    Ok(params.into_iter().collect())
+    let mut map: std::collections::HashMap<FieldId, Vec<Vec<u8>>> =
+        std::collections::HashMap::new();
+    for (fid, value) in params {
+        map.entry(fid).or_default().push(value);
+    }
+    Ok(map)
 }
 
 /// Build a parameter block from field id/data pairs.

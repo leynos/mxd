@@ -63,6 +63,7 @@ impl Command {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = params
                     .get(&FieldId::NewsPath)
+                    .and_then(|v| v.first())
                     .map(|v| String::from_utf8(v.clone()).map_err(|_| "utf8"))
                     .transpose()?;
                 Ok(Command::GetNewsCategoryNameList {
@@ -72,7 +73,10 @@ impl Command {
             }
             TransactionType::NewsArticleNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
-                let path = params.get(&FieldId::NewsPath).ok_or("missing path")?;
+                let path = params
+                    .get(&FieldId::NewsPath)
+                    .and_then(|v| v.first())
+                    .ok_or("missing path")?;
                 Ok(Command::GetNewsArticleNameList {
                     path: String::from_utf8(path.clone()).map_err(|_| "utf8")?,
                     header: tx.header,
@@ -80,8 +84,14 @@ impl Command {
             }
             TransactionType::NewsArticleData => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
-                let path = params.get(&FieldId::NewsPath).ok_or("missing path")?;
-                let id_bytes = params.get(&FieldId::NewsArticleId).ok_or("missing id")?;
+                let path = params
+                    .get(&FieldId::NewsPath)
+                    .and_then(|v| v.first())
+                    .ok_or("missing path")?;
+                let id_bytes = params
+                    .get(&FieldId::NewsArticleId)
+                    .and_then(|v| v.first())
+                    .ok_or("missing id")?;
                 let id = i32::from_be_bytes(id_bytes.as_slice().try_into().map_err(|_| "id")?);
                 Ok(Command::GetNewsArticleData {
                     path: String::from_utf8(path.clone()).map_err(|_| "utf8")?,
@@ -262,7 +272,15 @@ async fn handle_article_data(
         FieldId::NewsArticleFlags,
         (article.flags as i32).to_be_bytes().to_vec(),
     ));
-    params.push((FieldId::NewsDataFlavor, b"text/plain".to_vec()));
+    params.push((
+        FieldId::NewsDataFlavor,
+        article
+            .data_flavor
+            .as_deref()
+            .unwrap_or("text/plain")
+            .as_bytes()
+            .to_vec(),
+    ));
     if let Some(data) = article.data {
         params.push((FieldId::NewsArticleData, data.into_bytes()));
     }
