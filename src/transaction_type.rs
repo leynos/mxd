@@ -1,9 +1,12 @@
+pub const FILE_NAME_LIST_ID: u16 = 200;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionType {
     Error,
     Login,
     Agreement,
     Agreed,
+    GetFileNameList,
     UserAccess,
     NewsCategoryNameList,
     NewsArticleNameList,
@@ -18,6 +21,7 @@ impl From<u16> for TransactionType {
             107 => Self::Login,
             109 => Self::Agreement,
             121 => Self::Agreed,
+            FILE_NAME_LIST_ID => Self::GetFileNameList,
             354 => Self::UserAccess,
             370 => Self::NewsCategoryNameList,
             371 => Self::NewsArticleNameList,
@@ -34,6 +38,7 @@ impl From<TransactionType> for u16 {
             TransactionType::Login => 107,
             TransactionType::Agreement => 109,
             TransactionType::Agreed => 121,
+            TransactionType::GetFileNameList => FILE_NAME_LIST_ID,
             TransactionType::UserAccess => 354,
             TransactionType::NewsCategoryNameList => 370,
             TransactionType::NewsArticleNameList => 371,
@@ -50,6 +55,7 @@ impl std::fmt::Display for TransactionType {
             TransactionType::Login => f.write_str("Login"),
             TransactionType::Agreement => f.write_str("Agreement"),
             TransactionType::Agreed => f.write_str("Agreed"),
+            TransactionType::GetFileNameList => f.write_str("GetFileNameList"),
             TransactionType::UserAccess => f.write_str("UserAccess"),
             TransactionType::NewsCategoryNameList => f.write_str("NewsCategoryNameList"),
             TransactionType::NewsArticleNameList => f.write_str("NewsArticleNameList"),

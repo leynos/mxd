@@ -20,6 +20,10 @@ pub enum Command {
         password: String,
         header: FrameHeader,
     },
+    GetFileNameList {
+        header: FrameHeader,
+        payload: Vec<u8>,
+    },
     GetNewsCategoryNameList {
         path: Option<String>,
         header: FrameHeader,
@@ -62,6 +66,10 @@ impl Command {
                     header: tx.header,
                 })
             }
+            TransactionType::GetFileNameList => Ok(Command::GetFileNameList {
+                header: tx.header,
+                payload: tx.payload,
+            }),
             TransactionType::NewsCategoryNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = params
@@ -110,6 +118,7 @@ impl Command {
         self,
         peer: SocketAddr,
         pool: DbPool,
+        session: &mut crate::handler::Session,
     ) -> Result<Transaction, Box<dyn std::error::Error>> {
         match self {
             Command::Login {
@@ -117,6 +126,34 @@ impl Command {
                 password,
                 header,
             } => handle_login(peer, pool, username, password, header).await,
+            Command::GetFileNameList { header, payload } => {
+                if !payload.is_empty() {
+                    return Ok(Transaction {
+                        header: reply_header(&header, 1, 0),
+                        payload: Vec::new(),
+                    });
+                }
+                let user_id = match session.user_id {
+                    Some(id) => id,
+                    None => {
+                        return Ok(Transaction {
+                            header: reply_header(&header, 1, 0),
+                            payload: Vec::new(),
+                        });
+                    }
+                };
+                let mut conn = pool.get().await?;
+                let files = crate::db::list_files_for_user(&mut conn, user_id).await?;
+                let params: Vec<(FieldId, &[u8])> = files
+                    .iter()
+                    .map(|f| (FieldId::FileName, f.name.as_bytes()))
+                    .collect();
+                let payload = encode_params(&params);
+                Ok(Transaction {
+                    header: reply_header(&header, 0, payload.len()),
+                    payload,
+                })
+            }
             Command::GetNewsCategoryNameList { header, path } => {
                 handle_category_list(pool, header, path).await
             }

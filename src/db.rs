@@ -233,6 +233,42 @@ pub async fn list_article_titles(
     Ok(titles)
 }
 
+pub async fn create_file(
+    conn: &mut DbConnection,
+    file: &crate::models::NewFileEntry<'_>,
+) -> QueryResult<usize> {
+    use crate::schema::files::dsl::*;
+    diesel::insert_into(files).values(file).execute(conn).await
+}
+
+pub async fn add_file_acl(
+    conn: &mut DbConnection,
+    acl: &crate::models::NewFileAcl,
+) -> QueryResult<bool> {
+    use crate::schema::file_acl::dsl::*;
+    diesel::insert_into(file_acl)
+        .values(acl)
+        .on_conflict_do_nothing()
+        .execute(conn)
+        .await
+        .map(|rows| rows > 0)
+}
+
+pub async fn list_files_for_user(
+    conn: &mut DbConnection,
+    uid: i32,
+) -> QueryResult<Vec<crate::models::FileEntry>> {
+    use crate::schema::file_acl::dsl as a;
+    use crate::schema::files::dsl as f;
+    f::files
+        .inner_join(a::file_acl.on(a::file_id.eq(f::id)))
+        .filter(a::user_id.eq(uid))
+        .order(f::name.asc())
+        .select((f::id, f::name, f::object_key, f::size))
+        .load::<crate::models::FileEntry>(conn)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -34,6 +34,8 @@ pub enum FieldId {
     NewsFirstChildId,
     /// Path within the news hierarchy.
     NewsPath,
+    /// File name entry.
+    FileName,
     /// Any other field id not explicitly covered.
     Other(u16),
 }
@@ -58,6 +60,7 @@ impl From<u16> for FieldId {
             335 => Self::NewsParentId,
             336 => Self::NewsFirstChildId,
             325 => Self::NewsPath,
+            crate::transaction_type::FILE_NAME_LIST_ID => Self::FileName,
             other => Self::Other(other),
         }
     }
@@ -83,6 +86,7 @@ impl From<FieldId> for u16 {
             FieldId::NewsParentId => 335,
             FieldId::NewsFirstChildId => 336,
             FieldId::NewsPath => 325,
+            FieldId::FileName => crate::transaction_type::FILE_NAME_LIST_ID,
             FieldId::Other(v) => v,
         }
     }
@@ -108,6 +112,7 @@ impl std::fmt::Display for FieldId {
             FieldId::NewsParentId => f.write_str("NewsParentId"),
             FieldId::NewsFirstChildId => f.write_str("NewsFirstChildId"),
             FieldId::NewsPath => f.write_str("NewsPath"),
+            FieldId::FileName => f.write_str("FileName"),
             FieldId::Other(v) => write!(f, "Other({v})"),
         }
     }

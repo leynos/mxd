@@ -1,4 +1,5 @@
 use chrono::NaiveDateTime;
+use crate::schema::{file_acl, files};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -74,4 +75,27 @@ pub struct NewArticle<'a> {
     pub flags: i32,
     pub data_flavor: Option<&'a str>,
     pub data: Option<&'a str>,
+}
+
+#[derive(Queryable, Serialize, Deserialize, Debug)]
+pub struct FileEntry {
+    pub id: i32,
+    pub name: String,
+    pub object_key: String,
+    pub size: i64,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = files)]
+pub struct NewFileEntry<'a> {
+    pub name: &'a str,
+    pub object_key: &'a str,
+    pub size: i64,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = file_acl)]
+pub struct NewFileAcl {
+    pub file_id: i32,
+    pub user_id: i32,
 }
