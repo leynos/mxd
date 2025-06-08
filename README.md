@@ -86,3 +86,14 @@ Add one or more initial seed files to 'corpus', e.g.:
 
 The harness uses `__AFL_LOOP` to process test cases in persistent mode.
 
+The `src/bin/gen_corpus.rs` utility rebuilds the seed files placed in
+`fuzz/corpus/` from the transactions crafted in the integration tests.
+Run it whenever you want to refresh or extend the corpus. A simple
+`Makefile` provides a convenience target so you only need to run:
+
+```bash
+make corpus
+```
+
+Add new transactions to the tool to grow the set of starting inputs.
+
