@@ -75,3 +75,26 @@ pub struct NewArticle<'a> {
     pub data_flavor: Option<&'a str>,
     pub data: Option<&'a str>,
 }
+
+#[derive(Queryable, Serialize, Deserialize, Debug)]
+pub struct FileEntry {
+    pub id: i32,
+    pub name: String,
+    pub object_key: String,
+    pub size: i64,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::files)]
+pub struct NewFileEntry<'a> {
+    pub name: &'a str,
+    pub object_key: &'a str,
+    pub size: i64,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::file_acl)]
+pub struct NewFileAcl {
+    pub file_id: i32,
+    pub user_id: i32,
+}

@@ -19,6 +19,14 @@ diesel::table! {
         bundle_id -> Nullable<Integer>,
     }
 }
+diesel::table! {
+    files (id) {
+        id -> Integer,
+        name -> Text,
+        object_key -> Text,
+        size -> BigInt,
+    }
+}
 
 diesel::table! {
     news_articles (id) {
@@ -36,3 +44,12 @@ diesel::table! {
         data -> Nullable<Text>,
     }
 }
+
+diesel::table! {
+    file_acl (file_id, user_id) {
+        file_id -> Integer,
+        user_id -> Integer,
+    }
+}
+
+diesel::allow_tables_to_appear_in_same_query!(files, file_acl);

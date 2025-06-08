@@ -12,7 +12,7 @@ use tokio::time::timeout;
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 
 use mxd::db::{DbPool, create_user, establish_pool, run_migrations};
-use mxd::handler::{Context, handle_request};
+use mxd::handler::{Context, Session, handle_request};
 use mxd::transaction::{TransactionReader, TransactionWriter};
 use mxd::users::hash_password;
 use mxd::{models, protocol};
@@ -176,12 +176,13 @@ async fn handle_client(
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
     let ctx = Context::new(peer, pool.clone());
+    let mut session = Session::new();
     loop {
         tokio::select! {
             tx = tx_reader.read_transaction() => {
                 let tx = tx?;
                 let frame = tx.to_bytes();
-                let resp = handle_request(&ctx, &frame).await?;
+                let resp = handle_request(&ctx, &mut session, &frame).await?;
                 tx_writer.write_transaction(&resp).await?;
             }
             _ = shutdown.changed() => {
