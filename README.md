@@ -56,7 +56,9 @@ cargo test
 
 ## Fuzzing
 
-A simple AFL++ harness lives in the `fuzz/` directory. To build it you need the AFL clang wrappers and sanitizers enabled:
+A simple AFL++ harness lives in the `fuzz/` directory.
+
+### Running with `cargo afl`
 
 ```bash
 # install afl++ and make sure afl-clang-fast is on your PATH
@@ -68,21 +70,26 @@ export RUSTFLAGS="-Zsanitizer=address"
 cargo afl build --manifest-path fuzz/Cargo.toml
 
 # prepare a corpus directory of initial inputs
-mkdir -p corpus
+mkdir -p fuzz/corpus
 
 # run the fuzzer
-cargo afl fuzz -i corpus -o findings fuzz/target/debug/fuzz
-Prepare the input corpus directory
+cargo afl fuzz -i fuzz/corpus -o findings fuzz/target/debug/fuzz
+```
 
-Create a directory named 'corpus' if it does not exist. This directory should contain at least one seed input file to start fuzzing.
+### Running in Docker
 
-`mkdir -p corpus`
+A `fuzz/Dockerfile` is provided to build the harness and run AFL++ in a container.
 
-Add one or more initial seed files to 'corpus', e.g.:
+```bash
+# build the fuzzing image
+docker build -t mxd-fuzz -f fuzz/Dockerfile .
 
-`echo "seed input" > corpus/seed.txt`
+# run with your corpus and an output directory for results
+mkdir -p fuzz/corpus artifacts
+docker run --rm \
+  -v $(pwd)/fuzz/corpus:/corpus \
+  -v $(pwd)/artifacts:/out \
+  mxd-fuzz
+```
 
-`cargo afl fuzz -i corpus -o findings target/debug/fuzz`
-
-The harness uses `__AFL_LOOP` to process test cases in persistent mode.
-
+Crash files will appear under `artifacts/main/crashes`.

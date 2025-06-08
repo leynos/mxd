@@ -1,0 +1,32 @@
+name: AFL Fuzzing
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build fuzzing container
+        run: docker build -t mxd-fuzz -f fuzz/Dockerfile .
+
+      - name: Run AFL++
+        run: |
+          mkdir -p artifacts
+          docker run --rm \
+            -v ${{ github.workspace }}/fuzz/corpus:/corpus \
+            -v ${{ github.workspace }}/artifacts:/out \
+            mxd-fuzz
+
+      - name: Upload crash corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: crashes
+          path: artifacts/main/crashes
