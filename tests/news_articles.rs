@@ -2,31 +2,32 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use diesel::prelude::*;
-use diesel_async::{AsyncConnection, RunQueryDsl};
+use diesel_async::AsyncConnection;
+use diesel_async::RunQueryDsl;
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
-use mxd::db::{DbConnection, create_category, run_migrations};
+use mxd::db::DbConnection;
+use mxd::db::create_category;
 use mxd::field_id::FieldId;
 use mxd::models::NewCategory;
 use mxd::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use mxd::transaction_type::TransactionType;
-use test_util::{TestServer, handshake};
+use test_util::{TestServer, handshake, setup_news_db, with_db};
 
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
-            run_migrations(&mut conn).await?;
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            Ok(())
+        with_db(db, |conn| {
+            Box::pin(async move {
+                create_category(
+                    conn,
+                    &NewCategory {
+                        name: "General",
+                        bundle_id: None,
+                    },
+                )
+                .await?;
+                Ok(())
+            })
         })
     })?;
 
@@ -110,39 +111,38 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
     use mxd::models::NewArticle;
 
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
-            run_migrations(&mut conn).await?;
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            use mxd::schema::news_articles::dsl as a;
-            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-                .expect("valid timestamp")
-                .naive_utc();
-            diesel::insert_into(a::news_articles)
-                .values(&NewArticle {
-                    category_id: 1,
-                    parent_article_id: None,
-                    prev_article_id: None,
-                    next_article_id: None,
-                    first_child_article_id: None,
-                    title: "First",
-                    poster: Some("alice"),
-                    posted_at: posted,
-                    flags: 0,
-                    data_flavor: Some("text/plain"),
-                    data: Some("hello"),
-                })
-                .execute(&mut conn)
+        with_db(db, |conn| {
+            Box::pin(async move {
+                create_category(
+                    conn,
+                    &NewCategory {
+                        name: "General",
+                        bundle_id: None,
+                    },
+                )
                 .await?;
-            Ok(())
+                use mxd::schema::news_articles::dsl as a;
+                let posted = DateTime::<Utc>::from_timestamp(1000, 0)
+                    .expect("valid timestamp")
+                    .naive_utc();
+                diesel::insert_into(a::news_articles)
+                    .values(&NewArticle {
+                        category_id: 1,
+                        parent_article_id: None,
+                        prev_article_id: None,
+                        next_article_id: None,
+                        first_child_article_id: None,
+                        title: "First",
+                        poster: Some("alice"),
+                        posted_at: posted,
+                        flags: 0,
+                        data_flavor: Some("text/plain"),
+                        data: Some("hello"),
+                    })
+                    .execute(conn)
+                    .await?;
+                Ok(())
+            })
         })
     })?;
 
@@ -200,19 +200,18 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
-            run_migrations(&mut conn).await?;
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            Ok(())
+        with_db(db, |conn| {
+            Box::pin(async move {
+                create_category(
+                    conn,
+                    &NewCategory {
+                        name: "General",
+                        bundle_id: None,
+                    },
+                )
+                .await?;
+                Ok(())
+            })
         })
     })?;
 
@@ -269,63 +268,4 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
         Ok::<(), Box<dyn std::error::Error>>(())
     })?;
     Ok(())
-}
-
-fn setup_news_db(db: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    use chrono::{DateTime, Utc};
-    use mxd::models::{NewArticle, NewCategory};
-    use mxd::schema::news_articles::dsl as a;
-
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
-        run_migrations(&mut conn).await?;
-        create_category(
-            &mut conn,
-            &NewCategory {
-                name: "General",
-                bundle_id: None,
-            },
-        )
-        .await?;
-        let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-            .expect("valid timestamp")
-            .naive_utc();
-        diesel::insert_into(a::news_articles)
-            .values(&NewArticle {
-                category_id: 1,
-                parent_article_id: None,
-                prev_article_id: None,
-                next_article_id: None,
-                first_child_article_id: None,
-                title: "First",
-                poster: None,
-                posted_at: posted,
-                flags: 0,
-                data_flavor: Some("text/plain"),
-                data: Some("a"),
-            })
-            .execute(&mut conn)
-            .await?;
-        let posted2 = DateTime::<Utc>::from_timestamp(2000, 0)
-            .expect("valid timestamp")
-            .naive_utc();
-        diesel::insert_into(a::news_articles)
-            .values(&NewArticle {
-                category_id: 1,
-                parent_article_id: None,
-                prev_article_id: Some(1),
-                next_article_id: None,
-                first_child_article_id: None,
-                title: "Second",
-                poster: None,
-                posted_at: posted2,
-                flags: 0,
-                data_flavor: Some("text/plain"),
-                data: Some("b"),
-            })
-            .execute(&mut conn)
-            .await?;
-        Ok(())
-    })
 }
