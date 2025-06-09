@@ -214,3 +214,51 @@ async fn handle_client(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use figment::Jail;
+
+    #[test]
+    fn env_config_loading() {
+        Jail::expect_with(|j| {
+            j.set_env("MXD_BIND", "127.0.0.1:8000");
+            j.set_env("MXD_DATABASE", "env.db");
+            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
+            assert_eq!(cfg.bind.as_deref(), Some("127.0.0.1:8000"));
+            assert_eq!(cfg.database.as_deref(), Some("env.db"));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn cli_overrides_env() {
+        Jail::expect_with(|j| {
+            j.set_env("MXD_BIND", "127.0.0.1:8000");
+            let defaults = AppConfig::load_from_iter(["mxd"]).expect("load");
+            let cli = Cli::parse_from(["mxd", "--bind", "0.0.0.0:9000"]);
+            let cli_cfg = AppConfig {
+                bind: cli.bind,
+                database: cli.database,
+                argon2_m_cost: cli.argon2_m_cost,
+                argon2_t_cost: cli.argon2_t_cost,
+                argon2_p_cost: cli.argon2_p_cost,
+            };
+            let merged = merge_cli_over_defaults(defaults, cli_cfg);
+            assert_eq!(merged.bind.as_deref(), Some("0.0.0.0:9000"));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn loads_from_dotfile() {
+        Jail::expect_with(|j| {
+            j.create_file(".mxd.toml", "bind = \"1.2.3.4:1111\"")?;
+            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
+            assert_eq!(cfg.bind.as_deref(), Some("1.2.3.4:1111"));
+            Ok(())
+        });
+    }
+}
