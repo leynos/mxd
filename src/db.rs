@@ -62,6 +62,12 @@ pub enum CategoryError {
     Diesel(#[from] diesel::result::Error),
 }
 
+const CTE_SEED_SQL: &str = "SELECT 0 AS idx, NULL AS id";
+const BUNDLE_STEP_SQL: &str = "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON seg.key = tree.idx \nJOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
+const BUNDLE_BODY_SQL: &str = "SELECT id FROM tree WHERE idx = ?";
+const CATEGORY_STEP_SQL: &str = "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON seg.key = tree.idx \nLEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
+const CATEGORY_BODY_SQL: &str = "SELECT c.id AS id \nFROM news_categories c \nJOIN json_each(?) seg ON seg.key = ? \nWHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)";
+
 async fn bundle_id_from_path(
     conn: &mut DbConnection,
     path: &str,
@@ -78,15 +84,9 @@ async fn bundle_id_from_path(
     let json = serde_json::to_string(&parts).expect("serialize path segments");
 
     use diesel::sql_query;
-    let seed = sql_query("SELECT 0 AS idx, NULL AS id");
-    let step_sql = "SELECT tree.idx + 1 AS idx, b.id AS id \
-FROM tree \
-JOIN json_each(?) seg ON seg.key = tree.idx \
-JOIN news_bundles b ON b.name = seg.value AND \
-  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
-    let step = sql_query(step_sql).bind::<Text, _>(json.clone());
-    let body_sql = "SELECT id FROM tree WHERE idx = ?";
-    let body = sql_query(body_sql).bind::<Integer, _>(len as i32);
+    let seed = sql_query(CTE_SEED_SQL);
+    let step = sql_query(BUNDLE_STEP_SQL).bind::<Text, _>(json.clone());
+    let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len as i32);
 
     let query =
         with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
@@ -200,23 +200,14 @@ async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i3
     let json = serde_json::to_string(&parts).expect("serialize path segments");
 
     use diesel::sql_query;
-    let seed = sql_query("SELECT 0 AS idx, NULL AS id");
+    let seed = sql_query(CTE_SEED_SQL);
 
     // Step advances the tree by joining the next path segment from json_each
     // against the bundles table.
-    let step_sql = "SELECT tree.idx + 1 AS idx, b.id AS id \
-FROM tree \
-JOIN json_each(?) seg ON seg.key = tree.idx \
-LEFT JOIN news_bundles b ON b.name = seg.value AND \
-  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
-    let step = sql_query(step_sql).bind::<Text, _>(json.clone());
+    let step = sql_query(CATEGORY_STEP_SQL).bind::<Text, _>(json.clone());
 
     // Body selects the category matching the final path segment and bundle.
-    let body_sql = "SELECT c.id AS id \
-FROM news_categories c \
-JOIN json_each(?) seg ON seg.key = ? \
-WHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)";
-    let body = sql_query(body_sql)
+    let body = sql_query(CATEGORY_BODY_SQL)
         .bind::<Text, _>(json)
         .bind::<Integer, _>((len - 1) as i32)
         .bind::<Integer, _>((len - 1) as i32);
