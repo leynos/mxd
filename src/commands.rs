@@ -203,19 +203,21 @@ impl Command {
     }
 }
 
-async fn run_category_tx<F>(
+async fn run_category_op<F, R, B>(
     pool: DbPool,
     header: FrameHeader,
     op: F,
+    build: B,
 ) -> Result<Transaction, Box<dyn std::error::Error>>
 where
-    for<'c> F: FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<Transaction, CategoryError>>
-        + Send
-        + 'static,
+    for<'c> F:
+        FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<R, CategoryError>> + Send + 'static,
+    B: FnOnce(FrameHeader, R) -> Transaction + Send + 'static,
+    R: Send + 'static,
 {
     match pool.get().await {
         Ok(mut conn) => match op(&mut conn).await {
-            Ok(tx) => Ok(tx),
+            Ok(res) => Ok(build(header.clone(), res)),
             Err(e) => Ok(category_error_reply(&header, e)),
         },
         Err(e) => {
@@ -226,33 +228,6 @@ where
             })
         }
     }
-}
-
-async fn reply_for_category_op<F>(
-    pool: DbPool,
-    header: FrameHeader,
-    op: F,
-) -> Result<Transaction, Box<dyn std::error::Error>>
-where
-    for<'c> F: FnOnce(
-            &'c mut DbConnection,
-        ) -> BoxFuture<'c, Result<Vec<(FieldId, Vec<u8>)>, CategoryError>>
-        + Send
-        + 'static,
-{
-    run_category_tx(pool, header.clone(), move |conn| {
-        Box::pin(async move {
-            let params = op(conn).await?;
-            let pairs: Vec<(FieldId, &[u8])> =
-                params.iter().map(|(id, d)| (*id, d.as_slice())).collect();
-            let payload = encode_params(&pairs);
-            Ok(Transaction {
-                header: reply_header(&header, 0, payload.len()),
-                payload,
-            })
-        })
-    })
-    .await
 }
 
 fn category_error_reply(header: &FrameHeader, err: CategoryError) -> Transaction {
@@ -276,15 +251,24 @@ async fn handle_category_list(
     header: FrameHeader,
     path: Option<String>,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
-    reply_for_category_op(pool, header, move |conn| {
-        Box::pin(async move {
-            let names = list_names_at_path(conn, path.as_deref()).await?;
-            Ok(names
+    run_category_op(
+        pool,
+        header,
+        move |conn| Box::pin(async move { list_names_at_path(conn, path.as_deref()).await }),
+        |header, names| {
+            let params: Vec<(FieldId, Vec<u8>)> = names
                 .into_iter()
                 .map(|c| (FieldId::NewsCategory, c.into_bytes()))
-                .collect())
-        })
-    })
+                .collect();
+            let pairs: Vec<(FieldId, &[u8])> =
+                params.iter().map(|(id, d)| (*id, d.as_slice())).collect();
+            let payload = encode_params(&pairs);
+            Transaction {
+                header: reply_header(&header, 0, payload.len()),
+                payload,
+            }
+        },
+    )
     .await
 }
 
@@ -293,15 +277,24 @@ async fn handle_article_titles(
     header: FrameHeader,
     path: String,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
-    reply_for_category_op(pool, header, move |conn| {
-        Box::pin(async move {
-            let names = list_article_titles(conn, &path).await?;
-            Ok(names
+    run_category_op(
+        pool,
+        header,
+        move |conn| Box::pin(async move { list_article_titles(conn, &path).await }),
+        |header, names| {
+            let params: Vec<(FieldId, Vec<u8>)> = names
                 .into_iter()
                 .map(|t| (FieldId::NewsArticle, t.into_bytes()))
-                .collect())
-        })
-    })
+                .collect();
+            let pairs: Vec<(FieldId, &[u8])> =
+                params.iter().map(|(id, d)| (*id, d.as_slice())).collect();
+            let payload = encode_params(&pairs);
+            Transaction {
+                header: reply_header(&header, 0, payload.len()),
+                payload,
+            }
+        },
+    )
     .await
 }
 
@@ -312,61 +305,68 @@ async fn handle_article_data(
     article_id: i32,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
     use crate::db::get_article;
-    run_category_tx(pool, header.clone(), move |conn| {
-        Box::pin(async move {
-            let article = get_article(conn, &path, article_id).await?;
-            let article = match article {
-                Some(a) => a,
-                None => return Err(CategoryError::InvalidPath),
-            };
+    run_category_op(
+        pool,
+        header.clone(),
+        move |conn| {
+            Box::pin(async move {
+                let article = get_article(conn, &path, article_id).await?;
+                let article = match article {
+                    Some(a) => a,
+                    None => return Err(CategoryError::InvalidPath),
+                };
 
-            let mut params: Vec<(FieldId, Vec<u8>)> = Vec::new();
-            params.push((FieldId::NewsTitle, article.title.into_bytes()));
-            if let Some(p) = article.poster {
-                params.push((FieldId::NewsPoster, p.into_bytes()));
-            }
-            #[allow(deprecated)]
-            params.push((
-                FieldId::NewsDate,
-                article.posted_at.timestamp().to_be_bytes().to_vec(),
-            ));
-            if let Some(prev) = article.prev_article_id {
-                params.push((FieldId::NewsPrevId, prev.to_be_bytes().to_vec()));
-            }
-            if let Some(next) = article.next_article_id {
-                params.push((FieldId::NewsNextId, next.to_be_bytes().to_vec()));
-            }
-            if let Some(parent) = article.parent_article_id {
-                params.push((FieldId::NewsParentId, parent.to_be_bytes().to_vec()));
-            }
-            if let Some(child) = article.first_child_article_id {
-                params.push((FieldId::NewsFirstChildId, child.to_be_bytes().to_vec()));
-            }
-            params.push((
-                FieldId::NewsArticleFlags,
-                (article.flags as i32).to_be_bytes().to_vec(),
-            ));
-            params.push((
-                FieldId::NewsDataFlavor,
-                article
-                    .data_flavor
-                    .as_deref()
-                    .unwrap_or("text/plain")
-                    .as_bytes()
-                    .to_vec(),
-            ));
-            if let Some(data) = article.data {
-                params.push((FieldId::NewsArticleData, data.into_bytes()));
-            }
+                let mut params: Vec<(FieldId, Vec<u8>)> = Vec::new();
+                params.push((FieldId::NewsTitle, article.title.into_bytes()));
+                if let Some(p) = article.poster {
+                    params.push((FieldId::NewsPoster, p.into_bytes()));
+                }
+                #[allow(deprecated)]
+                params.push((
+                    FieldId::NewsDate,
+                    article.posted_at.timestamp().to_be_bytes().to_vec(),
+                ));
+                if let Some(prev) = article.prev_article_id {
+                    params.push((FieldId::NewsPrevId, prev.to_be_bytes().to_vec()));
+                }
+                if let Some(next) = article.next_article_id {
+                    params.push((FieldId::NewsNextId, next.to_be_bytes().to_vec()));
+                }
+                if let Some(parent) = article.parent_article_id {
+                    params.push((FieldId::NewsParentId, parent.to_be_bytes().to_vec()));
+                }
+                if let Some(child) = article.first_child_article_id {
+                    params.push((FieldId::NewsFirstChildId, child.to_be_bytes().to_vec()));
+                }
+                params.push((
+                    FieldId::NewsArticleFlags,
+                    (article.flags as i32).to_be_bytes().to_vec(),
+                ));
+                params.push((
+                    FieldId::NewsDataFlavor,
+                    article
+                        .data_flavor
+                        .as_deref()
+                        .unwrap_or("text/plain")
+                        .as_bytes()
+                        .to_vec(),
+                ));
+                if let Some(data) = article.data {
+                    params.push((FieldId::NewsArticleData, data.into_bytes()));
+                }
+                Ok(params)
+            })
+        },
+        |header, params| {
             let pairs: Vec<(FieldId, &[u8])> =
                 params.iter().map(|(id, d)| (*id, d.as_slice())).collect();
             let payload = encode_params(&pairs);
-            Ok(Transaction {
+            Transaction {
                 header: reply_header(&header, 0, payload.len()),
                 payload,
-            })
-        })
-    })
+            }
+        },
+    )
     .await
 }
 
@@ -380,15 +380,20 @@ async fn handle_post_article(
     data: String,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
     use crate::db::create_root_article;
-    run_category_tx(pool, header.clone(), move |conn| {
-        Box::pin(async move {
-            create_root_article(conn, &path, &title, flags, &data_flavor, &data).await?;
-            Ok(Transaction {
-                header: reply_header(&header, 0, 0),
-                payload: Vec::new(),
+    run_category_op(
+        pool,
+        header.clone(),
+        move |conn| {
+            Box::pin(async move {
+                create_root_article(conn, &path, &title, flags, &data_flavor, &data).await?;
+                Ok(())
             })
-        })
-    })
+        },
+        |header, ()| Transaction {
+            header: reply_header(&header, 0, 0),
+            payload: Vec::new(),
+        },
+    )
     .await
 }
 

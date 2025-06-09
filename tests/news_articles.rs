@@ -315,8 +315,6 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut params = Vec::new();
     params.push((FieldId::NewsPath, b"General".as_ref()));
-    let id_bytes = 0i32.to_be_bytes();
-    params.push((FieldId::NewsArticleId, id_bytes.as_ref()));
     params.push((FieldId::NewsTitle, b"Hello".as_ref()));
     let flag_bytes = 0i32.to_be_bytes();
     params.push((FieldId::NewsArticleFlags, flag_bytes.as_ref()));

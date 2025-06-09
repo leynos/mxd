@@ -244,46 +244,52 @@ pub async fn create_root_article(
 ) -> Result<(), CategoryError> {
     use crate::schema::news_articles::dsl as a;
     use chrono::Utc;
+    use diesel_async::AsyncConnection;
 
-    let cat_id = category_id_from_path(conn, path).await?;
+    conn.transaction::<_, CategoryError, _>(|conn| {
+        Box::pin(async move {
+            let cat_id = category_id_from_path(conn, path).await?;
 
-    let last_id: Option<i32> = a::news_articles
-        .filter(a::category_id.eq(cat_id))
-        .filter(a::parent_article_id.is_null())
-        .order(a::id.desc())
-        .select(a::id)
-        .first::<i32>(conn)
-        .await
-        .optional()?;
+            let last_id: Option<i32> = a::news_articles
+                .filter(a::category_id.eq(cat_id))
+                .filter(a::parent_article_id.is_null())
+                .order(a::id.desc())
+                .select(a::id)
+                .first::<i32>(conn)
+                .await
+                .optional()?;
 
-    let now = Utc::now().naive_utc();
-    let new = crate::models::NewArticle {
-        category_id: cat_id,
-        parent_article_id: None,
-        prev_article_id: last_id,
-        next_article_id: None,
-        first_child_article_id: None,
-        title,
-        poster: None,
-        posted_at: now,
-        flags,
-        data_flavor: Some(data_flavor),
-        data: Some(data),
-    };
+            let now = Utc::now().naive_utc();
+            let new = crate::models::NewArticle {
+                category_id: cat_id,
+                parent_article_id: None,
+                prev_article_id: last_id,
+                next_article_id: None,
+                first_child_article_id: None,
+                title,
+                poster: None,
+                posted_at: now,
+                flags,
+                data_flavor: Some(data_flavor),
+                data: Some(data),
+            };
 
-    let inserted_id: i32 = diesel::insert_into(a::news_articles)
-        .values(&new)
-        .returning(a::id)
-        .get_result(conn)
-        .await?;
+            let inserted_id: i32 = diesel::insert_into(a::news_articles)
+                .values(&new)
+                .returning(a::id)
+                .get_result(conn)
+                .await?;
 
-    if let Some(prev) = last_id {
-        diesel::update(a::news_articles.filter(a::id.eq(prev)))
-            .set(a::next_article_id.eq(inserted_id))
-            .execute(conn)
-            .await?;
-    }
-    Ok(())
+            if let Some(prev) = last_id {
+                diesel::update(a::news_articles.filter(a::id.eq(prev)))
+                    .set(a::next_article_id.eq(inserted_id))
+                    .execute(conn)
+                    .await?;
+            }
+            Ok(())
+        })
+    })
+    .await
 }
 
 pub async fn create_file(
