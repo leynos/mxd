@@ -672,6 +672,10 @@ If an error occurs mid-way (network drop), the server may have partial data; res
 
 Hotline servers include a “News” or bulletin board system where users can read and post articles organized into bundles and categories (similar to forums or newsgroups). In Hotline 1.8.5, the news system is hierarchical: **Bundles** (top-level groupings, sometimes called “news folders”), containing **Categories**, which can contain sub-categories or posts (articles). Each article can have replies (forming threads). The protocol provides transactions to navigate and manipulate this structure. (Note: older clients had a simpler “messages” board, but 1.8.x uses the advanced news; we include the old **Old Post News (103)** for legacy completeness.)
 
+### News Hierarchy
+
+Hotline implements its news as a four-tier hierarchy similar to a modern forum. At the top are **bundles**, each identified by a path on the server. Inside a bundle are **categories** that further divide the discussion. Users post **articles** within a category, and each article may have **replies** forming a threaded conversation. Articles expose metadata such as ID, title, poster, date and data flavour (typically `"text/plain"` but extensible to formats like `"text/markdown"`), plus the article body. Replies carry the same data fields and additionally track the parent and first child article IDs to maintain the thread structure.
+
 ### Listing News Categories (Transaction 370) – Client Initiates
 
 **ID 370 – Get News Category Name List** (`myTran_GetNewsCatNameList`) is used to retrieve the list of sub-categories (or top-level bundles) at a given news path. **Purpose:** To list news groups or categories within a bundle. **Initiator:** Client.
