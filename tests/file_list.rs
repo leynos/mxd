@@ -9,70 +9,16 @@ use mxd::models::{NewFileAcl, NewFileEntry, NewUser};
 use mxd::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use mxd::transaction_type::TransactionType;
 use mxd::users::hash_password;
-use test_util::TestServer;
+use test_util::{TestServer, handshake};
 
 #[test]
 fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let mut conn = DbConnection::establish(db.to_str().unwrap()).await.unwrap();
-            run_migrations(&mut conn).await.unwrap();
-            let argon2 = Argon2::default();
-            let hashed = hash_password(&argon2, "secret").unwrap();
-            let new_user = NewUser {
-                username: "alice",
-                password: &hashed,
-            };
-            create_user(&mut conn, &new_user).await.unwrap();
-            let files = [
-                NewFileEntry {
-                    name: "fileA.txt",
-                    object_key: "1",
-                    size: 1,
-                },
-                NewFileEntry {
-                    name: "fileB.txt",
-                    object_key: "2",
-                    size: 1,
-                },
-                NewFileEntry {
-                    name: "fileC.txt",
-                    object_key: "3",
-                    size: 1,
-                },
-            ];
-            for file in &files {
-                create_file(&mut conn, file).await.unwrap();
-            }
-            let acls = [
-                NewFileAcl {
-                    file_id: 1,
-                    user_id: 1,
-                },
-                NewFileAcl {
-                    file_id: 3,
-                    user_id: 1,
-                },
-            ];
-            for acl in &acls {
-                add_file_acl(&mut conn, acl).await.unwrap();
-            }
-            Ok(())
-        })
-    })?;
+    let server = TestServer::start_with_setup("./Cargo.toml", |db| setup_files_db(db))?;
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
 
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
+    handshake(&mut stream)?;
 
     // login
     let params = vec![
@@ -145,14 +91,7 @@ fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
 
     // handshake
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
+    handshake(&mut stream)?;
 
     // send GetFileNameList with bogus payload
     let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())]);
@@ -176,4 +115,53 @@ fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(hdr.error, mxd::commands::ERR_INVALID_PAYLOAD);
     assert_eq!(hdr.data_size, 0);
     Ok(())
+}
+
+fn setup_files_db(db: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut conn = DbConnection::establish(db.to_str().unwrap()).await.unwrap();
+        run_migrations(&mut conn).await.unwrap();
+        let argon2 = Argon2::default();
+        let hashed = hash_password(&argon2, "secret").unwrap();
+        let new_user = NewUser {
+            username: "alice",
+            password: &hashed,
+        };
+        create_user(&mut conn, &new_user).await.unwrap();
+        let files = [
+            NewFileEntry {
+                name: "fileA.txt",
+                object_key: "1",
+                size: 1,
+            },
+            NewFileEntry {
+                name: "fileB.txt",
+                object_key: "2",
+                size: 1,
+            },
+            NewFileEntry {
+                name: "fileC.txt",
+                object_key: "3",
+                size: 1,
+            },
+        ];
+        for file in &files {
+            create_file(&mut conn, file).await.unwrap();
+        }
+        let acls = [
+            NewFileAcl {
+                file_id: 1,
+                user_id: 1,
+            },
+            NewFileAcl {
+                file_id: 3,
+                user_id: 1,
+            },
+        ];
+        for acl in &acls {
+            add_file_acl(&mut conn, acl).await.unwrap();
+        }
+        Ok(())
+    })
 }

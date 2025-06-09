@@ -9,7 +9,7 @@ use mxd::field_id::FieldId;
 use mxd::models::NewCategory;
 use mxd::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use mxd::transaction_type::TransactionType;
-use test_util::TestServer;
+use test_util::{TestServer, handshake};
 
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,12 +32,7 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
+    handshake(&mut stream)?;
 
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
@@ -70,70 +65,11 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
     use chrono::{DateTime, Utc};
     use mxd::models::NewArticle;
 
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
-            run_migrations(&mut conn).await?;
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            use mxd::schema::news_articles::dsl as a;
-            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-                .expect("valid timestamp")
-                .naive_utc();
-            diesel::insert_into(a::news_articles)
-                .values(&NewArticle {
-                    category_id: 1,
-                    parent_article_id: None,
-                    prev_article_id: None,
-                    next_article_id: None,
-                    first_child_article_id: None,
-                    title: "First",
-                    poster: None,
-                    posted_at: posted,
-                    flags: 0,
-                    data_flavor: Some("text/plain"),
-                    data: Some("a"),
-                })
-                .execute(&mut conn)
-                .await?;
-            let posted2 = DateTime::<Utc>::from_timestamp(2000, 0)
-                .expect("valid timestamp")
-                .naive_utc();
-            diesel::insert_into(a::news_articles)
-                .values(&NewArticle {
-                    category_id: 1,
-                    parent_article_id: None,
-                    prev_article_id: Some(1),
-                    next_article_id: None,
-                    first_child_article_id: None,
-                    title: "Second",
-                    poster: None,
-                    posted_at: posted2,
-                    flags: 0,
-                    data_flavor: Some("text/plain"),
-                    data: Some("b"),
-                })
-                .execute(&mut conn)
-                .await?;
-            Ok(())
-        })
-    })?;
+    let server = TestServer::start_with_setup("./Cargo.toml", |db| setup_news_db(db))?;
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
+    handshake(&mut stream)?;
 
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
@@ -222,12 +158,7 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
+    handshake(&mut stream)?;
 
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
@@ -302,12 +233,7 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
+    handshake(&mut stream)?;
 
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
@@ -362,4 +288,63 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
         Ok::<(), Box<dyn std::error::Error>>(())
     })?;
     Ok(())
+}
+
+fn setup_news_db(db: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    use chrono::{DateTime, Utc};
+    use mxd::models::{NewArticle, NewCategory};
+    use mxd::schema::news_articles::dsl as a;
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
+        run_migrations(&mut conn).await?;
+        create_category(
+            &mut conn,
+            &NewCategory {
+                name: "General",
+                bundle_id: None,
+            },
+        )
+        .await?;
+        let posted = DateTime::<Utc>::from_timestamp(1000, 0)
+            .expect("valid timestamp")
+            .naive_utc();
+        diesel::insert_into(a::news_articles)
+            .values(&NewArticle {
+                category_id: 1,
+                parent_article_id: None,
+                prev_article_id: None,
+                next_article_id: None,
+                first_child_article_id: None,
+                title: "First",
+                poster: None,
+                posted_at: posted,
+                flags: 0,
+                data_flavor: Some("text/plain"),
+                data: Some("a"),
+            })
+            .execute(&mut conn)
+            .await?;
+        let posted2 = DateTime::<Utc>::from_timestamp(2000, 0)
+            .expect("valid timestamp")
+            .naive_utc();
+        diesel::insert_into(a::news_articles)
+            .values(&NewArticle {
+                category_id: 1,
+                parent_article_id: None,
+                prev_article_id: Some(1),
+                next_article_id: None,
+                first_child_article_id: None,
+                title: "Second",
+                poster: None,
+                posted_at: posted2,
+                flags: 0,
+                data_flavor: Some("text/plain"),
+                data: Some("b"),
+            })
+            .execute(&mut conn)
+            .await?;
+        Ok(())
+    })
 }
