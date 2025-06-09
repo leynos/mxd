@@ -16,16 +16,20 @@ already been implemented in the repository are checked off.
 
 - [x] Create users via CLI (`create-user` subcommand)
 - [x] Store users in SQLite via Diesel migrations
-- [ ] Account editing and deletion
+- [ ] Account editing
+- [ ] Account deletion
 - [ ] Permission and role system
 
 ## News System
 
 - [x] List news categories and bundles
+  - [ ] Hierarchy support
 - [x] List article titles
 - [x] Retrieve article data
-- [ ] Post new articles and replies
-- [ ] Edit or delete articles
+- [ ] Post new articles
+- [ ] Post replies
+- [ ] Edit articles
+- [ ] Delete articles
 
 ## File Sharing
 
@@ -37,7 +41,8 @@ already been implemented in the repository are checked off.
 
 ## Chat and Messaging
 
-- [ ] Create and join chat rooms
+- [ ] Create chat rooms
+- [ ] Join chat rooms
 - [ ] Send public and private messages
 - [ ] Presence notifications
 
@@ -45,6 +50,7 @@ already been implemented in the repository are checked off.
 
 - [x] Integration validator crate using `shx`
 - [x] Fuzzing harness with AFL++
+  - [ ] Regular execution of fuzzing
 - [ ] Full protocol coverage in tests
 
 ## Database Backends
