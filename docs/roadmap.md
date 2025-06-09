@@ -15,7 +15,7 @@ already been implemented in the repository are checked off.
 ## User Management
 
 - [x] Create users via CLI (`create-user` subcommand)
-- [x] Store users in SQLite via Diesel migrations
+- [x] Store users in SQLite via Diesel migrations=
 - [ ] Account editing
 - [ ] Account deletion
 - [ ] Permission and role system
@@ -46,6 +46,7 @@ already been implemented in the repository are checked off.
 
 - [ ] Create chat rooms
 - [ ] Join chat rooms
+- [ ] Invite to chat room
 - [ ] Send public and private messages
 - [ ] Presence notifications
 
