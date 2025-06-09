@@ -15,6 +15,8 @@ use futures_util::future::BoxFuture;
 pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 1;
 /// Error code used when a request includes an unexpected payload.
 pub const ERR_INVALID_PAYLOAD: u32 = 2;
+/// Error code used for unexpected server-side failures.
+pub const ERR_INTERNAL_SERVER: u32 = 3;
 
 pub enum Command {
     Login {
@@ -232,7 +234,10 @@ where
             header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
             payload: Vec::new(),
         }),
-        Err(CategoryError::Diesel(e)) => Err(Box::new(e)),
+        Err(CategoryError::Diesel(_)) => Ok(Transaction {
+            header: reply_header(&header, ERR_INTERNAL_SERVER, 0),
+            payload: Vec::new(),
+        }),
     }
 }
 
@@ -349,7 +354,10 @@ async fn handle_post_article(
             header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
             payload: Vec::new(),
         }),
-        Err(CategoryError::Diesel(e)) => Err(Box::new(e)),
+        Err(CategoryError::Diesel(_)) => Ok(Transaction {
+            header: reply_header(&header, ERR_INTERNAL_SERVER, 0),
+            payload: Vec::new(),
+        }),
     }
 }
 
