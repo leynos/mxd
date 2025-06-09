@@ -6,8 +6,20 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
     exit 1
 fi
 
-CRASH_DIR=$(realpath "$1")
+if cd "$1" 2>/dev/null; then
+    CRASH_DIR="$(pwd)"
+    cd - >/dev/null
+else
+    echo "Crash directory $1 does not exist" >&2
+    exit 0
+fi
+
 HARNESS=${2:-/usr/local/bin/fuzz}
+
+if [[ ! -x "$HARNESS" ]]; then
+    echo "Harness $HARNESS is missing or not executable" >&2
+    exit 1
+fi
 
 if [[ ! -d "$CRASH_DIR" ]]; then
     echo "Crash directory $CRASH_DIR does not exist" >&2

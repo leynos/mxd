@@ -201,7 +201,7 @@ fn short_header_error() {
 }
 
 #[test]
-fn parse_transaction_short_frame() {
+fn short_frame_error() {
     let buf = vec![0u8; HEADER_LEN - 2];
     match parse_transaction(&buf).unwrap_err() {
         TransactionError::SizeMismatch => {}

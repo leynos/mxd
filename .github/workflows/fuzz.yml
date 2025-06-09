@@ -27,18 +27,20 @@ jobs:
 
       - name: Triage crashes
         if: always()
+        env:
+          HARNESS: /usr/local/bin/fuzz
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/work \
             -w /work \
             mxd-fuzz \
-            bash scripts/triage_crashes.sh artifacts/main/crashes
+            bash scripts/triage_crashes.sh artifacts/main/crashes "$HARNESS"
 
       - name: Upload crash corpus
         uses: actions/upload-artifact@v4
         with:
           name: crashes
-          path: artifacts/main/crashes
+          path: artifacts/main/crashes/unique
 
       - name: Upload full artifacts
         uses: actions/upload-artifact@v4
