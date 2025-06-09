@@ -17,6 +17,7 @@ pub enum TransactionType {
     NewsCategoryNameList,
     NewsArticleNameList,
     NewsArticleData,
+    PostNewsArticle,
     Other(u16),
 }
 
@@ -46,6 +47,7 @@ impl From<u16> for TransactionType {
             370 => Self::NewsCategoryNameList,
             371 => Self::NewsArticleNameList,
             400 => Self::NewsArticleData,
+            410 => Self::PostNewsArticle,
             other => Self::Other(other),
         }
     }
@@ -65,6 +67,7 @@ impl From<TransactionType> for u16 {
             TransactionType::NewsCategoryNameList => 370,
             TransactionType::NewsArticleNameList => 371,
             TransactionType::NewsArticleData => 400,
+            TransactionType::PostNewsArticle => 410,
             TransactionType::Other(v) => v,
         }
     }
@@ -84,6 +87,7 @@ impl std::fmt::Display for TransactionType {
             TransactionType::NewsCategoryNameList => f.write_str("NewsCategoryNameList"),
             TransactionType::NewsArticleNameList => f.write_str("NewsArticleNameList"),
             TransactionType::NewsArticleData => f.write_str("NewsArticleData"),
+            TransactionType::PostNewsArticle => f.write_str("PostNewsArticle"),
             TransactionType::Other(v) => write!(f, "Other({v})"),
         }
     }

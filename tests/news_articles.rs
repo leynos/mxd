@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
+use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
 use mxd::db::{DbConnection, create_category, run_migrations};
@@ -277,5 +278,88 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     assert!(found_title && found_data);
+    Ok(())
+}
+
+#[test]
+fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
+    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
+        let rt = tokio::runtime::Runtime::new()?;
+        rt.block_on(async {
+            let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
+            run_migrations(&mut conn).await?;
+            create_category(
+                &mut conn,
+                &NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+            Ok(())
+        })
+    })?;
+
+    let port = server.port();
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    let mut handshake = Vec::new();
+    handshake.extend_from_slice(b"TRTP");
+    handshake.extend_from_slice(&0u32.to_be_bytes());
+    handshake.extend_from_slice(&1u16.to_be_bytes());
+    handshake.extend_from_slice(&0u16.to_be_bytes());
+    stream.write_all(&handshake)?;
+
+    let mut reply = [0u8; 8];
+    stream.read_exact(&mut reply)?;
+    assert_eq!(&reply[0..4], b"TRTP");
+
+    let mut params = Vec::new();
+    params.push((FieldId::NewsPath, b"General".as_ref()));
+    params.push((FieldId::NewsTitle, b"Hello".as_ref()));
+    let flag_bytes = 0i32.to_be_bytes();
+    params.push((FieldId::NewsArticleFlags, flag_bytes.as_ref()));
+    params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
+    params.push((FieldId::NewsArticleData, b"hi".as_ref()));
+    let payload = encode_params(&params);
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: TransactionType::PostNewsArticle.into(),
+        id: 9,
+        error: 0,
+        total_size: payload.len() as u32,
+        data_size: payload.len() as u32,
+    };
+    let tx = Transaction { header, payload };
+    stream.write_all(&tx.to_bytes())?;
+
+    let mut hdr_buf = [0u8; 20];
+    stream.read_exact(&mut hdr_buf)?;
+    let hdr = FrameHeader::from_bytes(&hdr_buf);
+    assert_eq!(hdr.error, 0);
+    let mut payload = vec![0u8; hdr.data_size as usize];
+    stream.read_exact(&mut payload)?;
+    let params = decode_params(&payload)?;
+    let mut id_found = false;
+    for (id, data) in params {
+        if id == FieldId::NewsArticleId {
+            let arr: [u8; 4] = data.try_into().unwrap();
+            assert_eq!(i32::from_be_bytes(arr), 1);
+            id_found = true;
+        }
+    }
+    assert!(id_found);
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let mut conn = DbConnection::establish(server.db_path().to_str().unwrap()).await?;
+        use mxd::schema::news_articles::dsl as a;
+        let titles = a::news_articles
+            .select(a::title)
+            .load::<String>(&mut conn)
+            .await?;
+        assert_eq!(titles, vec!["Hello"]);
+        Ok::<(), Box<dyn std::error::Error>>(())
+    })?;
     Ok(())
 }
