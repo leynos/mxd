@@ -9,6 +9,8 @@ jobs:
   fuzz:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    env:
+      FUZZ_HARNESS: /usr/local/bin/fuzz
 
     steps:
       - uses: actions/checkout@v4
@@ -27,14 +29,12 @@ jobs:
 
       - name: Triage crashes
         if: always()
-        env:
-          HARNESS: /usr/local/bin/fuzz
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/work \
             -w /work \
             mxd-fuzz \
-            bash scripts/triage_crashes.sh artifacts/main/crashes "$HARNESS"
+            bash scripts/triage_crashes.sh artifacts/main/crashes "$FUZZ_HARNESS"
 
       - name: Upload crash corpus
         uses: actions/upload-artifact@v4
