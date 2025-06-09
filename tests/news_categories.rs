@@ -1,7 +1,9 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
+use diesel::prelude::*;
 use diesel_async::AsyncConnection;
+use diesel_async::RunQueryDsl;
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
 use mxd::db::{DbConnection, create_bundle, create_category, run_migrations};
 use mxd::field_id::FieldId;
@@ -311,6 +313,8 @@ fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
         rt.block_on(async {
             let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
             run_migrations(&mut conn).await?;
+            use mxd::schema::news_bundles::dsl as b;
+
             create_bundle(
                 &mut conn,
                 &NewBundle {
@@ -319,19 +323,33 @@ fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
                 },
             )
             .await?;
+            let root_id: i32 = b::news_bundles
+                .filter(b::name.eq("Bundle"))
+                .filter(b::parent_bundle_id.is_null())
+                .select(b::id)
+                .first(&mut conn)
+                .await?;
+
             create_bundle(
                 &mut conn,
                 &NewBundle {
-                    parent_bundle_id: Some(1),
+                    parent_bundle_id: Some(root_id),
                     name: "Sub",
                 },
             )
             .await?;
+            let sub_id: i32 = b::news_bundles
+                .filter(b::name.eq("Sub"))
+                .filter(b::parent_bundle_id.eq(root_id))
+                .select(b::id)
+                .first(&mut conn)
+                .await?;
+
             create_category(
                 &mut conn,
                 &NewCategory {
                     name: "Inside",
-                    bundle_id: Some(2),
+                    bundle_id: Some(sub_id),
                 },
             )
             .await?;
