@@ -52,6 +52,10 @@ pub async fn create_user(
     diesel::insert_into(users).values(user).execute(conn).await
 }
 
+use crate::news_path::{
+    BUNDLE_BODY_SQL, BUNDLE_STEP_SQL, CATEGORY_BODY_SQL, CATEGORY_STEP_SQL, CTE_SEED_SQL,
+    prepare_path,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -62,12 +66,6 @@ pub enum CategoryError {
     Diesel(#[from] diesel::result::Error),
 }
 
-const CTE_SEED_SQL: &str = "SELECT 0 AS idx, NULL AS id";
-const BUNDLE_STEP_SQL: &str = "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON seg.key = tree.idx \nJOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
-const BUNDLE_BODY_SQL: &str = "SELECT id FROM tree WHERE idx = ?";
-const CATEGORY_STEP_SQL: &str = "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON seg.key = tree.idx \nLEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
-const CATEGORY_BODY_SQL: &str = "SELECT c.id AS id \nFROM news_categories c \nJOIN json_each(?) seg ON seg.key = ? \nWHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)";
-
 async fn bundle_id_from_path(
     conn: &mut DbConnection,
     path: &str,
@@ -75,13 +73,10 @@ async fn bundle_id_from_path(
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
-    let trimmed = path.trim_matches('/');
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
-    let len = parts.len();
-    let json = serde_json::to_string(&parts).expect("serialize path segments");
+    let (json, len) = match prepare_path(path) {
+        Some(t) => t,
+        None => return Ok(None),
+    };
 
     use diesel::sql_query;
     let seed = sql_query(CTE_SEED_SQL);
@@ -188,16 +183,10 @@ async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i3
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
-    let trimmed = path.trim_matches('/');
-    if trimmed.is_empty() {
-        return Err(CategoryError::InvalidPath);
-    }
-    let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
-    let len = parts.len();
-
-    // Represent the path as a JSON array so the recursive query can iterate over
-    // each segment without constructing SQL through string concatenation.
-    let json = serde_json::to_string(&parts).expect("serialize path segments");
+    let (json, len) = match prepare_path(path) {
+        Some(t) => t,
+        None => return Err(CategoryError::InvalidPath),
+    };
 
     use diesel::sql_query;
     let seed = sql_query(CTE_SEED_SQL);

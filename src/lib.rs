@@ -5,6 +5,7 @@ pub mod handler;
 pub mod header_util;
 pub mod login;
 pub mod models;
+pub mod news_path;
 pub mod protocol;
 pub mod schema;
 pub mod transaction;
