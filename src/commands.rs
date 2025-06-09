@@ -10,6 +10,7 @@ use crate::transaction::{
 };
 use crate::transaction_type::TransactionType;
 use futures_util::future::BoxFuture;
+use tracing::error;
 
 /// Error code used when the requested news path is unsupported.
 pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 1;
@@ -202,6 +203,31 @@ impl Command {
     }
 }
 
+async fn run_category_tx<F>(
+    pool: DbPool,
+    header: FrameHeader,
+    op: F,
+) -> Result<Transaction, Box<dyn std::error::Error>>
+where
+    for<'c> F: FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<Transaction, CategoryError>>
+        + Send
+        + 'static,
+{
+    match pool.get().await {
+        Ok(mut conn) => match op(&mut conn).await {
+            Ok(tx) => Ok(tx),
+            Err(e) => Ok(category_error_reply(&header, e)),
+        },
+        Err(e) => {
+            error!(%e, "failed to get database connection");
+            Ok(Transaction {
+                header: reply_header(&header, ERR_INTERNAL_SERVER, 0),
+                payload: Vec::new(),
+            })
+        }
+    }
+}
+
 async fn reply_for_category_op<F>(
     pool: DbPool,
     header: FrameHeader,
@@ -209,12 +235,14 @@ async fn reply_for_category_op<F>(
 ) -> Result<Transaction, Box<dyn std::error::Error>>
 where
     for<'c> F: FnOnce(
-        &'c mut DbConnection,
-    ) -> BoxFuture<'c, Result<Vec<(FieldId, Vec<u8>)>, CategoryError>>,
+            &'c mut DbConnection,
+        ) -> BoxFuture<'c, Result<Vec<(FieldId, Vec<u8>)>, CategoryError>>
+        + Send
+        + 'static,
 {
-    let mut conn = pool.get().await?;
-    match op(&mut conn).await {
-        Ok(params) => {
+    run_category_tx(pool, header.clone(), move |conn| {
+        Box::pin(async move {
+            let params = op(conn).await?;
             let pairs: Vec<(FieldId, &[u8])> =
                 params.iter().map(|(id, d)| (*id, d.as_slice())).collect();
             let payload = encode_params(&pairs);
@@ -222,9 +250,9 @@ where
                 header: reply_header(&header, 0, payload.len()),
                 payload,
             })
-        }
-        Err(e) => Ok(category_error_reply(&header, e)),
-    }
+        })
+    })
+    .await
 }
 
 fn category_error_reply(header: &FrameHeader, err: CategoryError) -> Transaction {
@@ -233,10 +261,13 @@ fn category_error_reply(header: &FrameHeader, err: CategoryError) -> Transaction
             header: reply_header(header, NEWS_ERR_PATH_UNSUPPORTED, 0),
             payload: Vec::new(),
         },
-        CategoryError::Diesel(_) => Transaction {
-            header: reply_header(header, ERR_INTERNAL_SERVER, 0),
-            payload: Vec::new(),
-        },
+        CategoryError::Diesel(e) => {
+            error!("database error: {e}");
+            Transaction {
+                header: reply_header(header, ERR_INTERNAL_SERVER, 0),
+                payload: Vec::new(),
+            }
+        }
     }
 }
 
@@ -281,7 +312,7 @@ async fn handle_article_data(
     article_id: i32,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
     use crate::db::get_article;
-    reply_for_category_op(pool, header, move |conn| {
+    run_category_tx(pool, header.clone(), move |conn| {
         Box::pin(async move {
             let article = get_article(conn, &path, article_id).await?;
             let article = match article {
@@ -327,7 +358,13 @@ async fn handle_article_data(
             if let Some(data) = article.data {
                 params.push((FieldId::NewsArticleData, data.into_bytes()));
             }
-            Ok(params)
+            let pairs: Vec<(FieldId, &[u8])> =
+                params.iter().map(|(id, d)| (*id, d.as_slice())).collect();
+            let payload = encode_params(&pairs);
+            Ok(Transaction {
+                header: reply_header(&header, 0, payload.len()),
+                payload,
+            })
         })
     })
     .await
@@ -343,14 +380,16 @@ async fn handle_post_article(
     data: String,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
     use crate::db::create_root_article;
-    let mut conn = pool.get().await?;
-    match create_root_article(&mut conn, &path, &title, flags, &data_flavor, &data).await {
-        Ok(_) => Ok(Transaction {
-            header: reply_header(&header, 0, 0),
-            payload: Vec::new(),
-        }),
-        Err(e) => Ok(category_error_reply(&header, e)),
-    }
+    run_category_tx(pool, header.clone(), move |conn| {
+        Box::pin(async move {
+            create_root_article(conn, &path, &title, flags, &data_flavor, &data).await?;
+            Ok(Transaction {
+                header: reply_header(&header, 0, 0),
+                payload: Vec::new(),
+            })
+        })
+    })
+    .await
 }
 
 fn handle_unknown(peer: SocketAddr, header: FrameHeader) -> Transaction {
