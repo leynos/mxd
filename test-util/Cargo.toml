@@ -6,3 +6,10 @@ edition = "2024"
 [dependencies]
 tempfile = "3"
 nix = { version = "0.27", features = ["signal"] }
+mxd = { path = ".." }
+tokio = { version = "1", features = ["rt", "macros"] }
+diesel = { version = "2", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
+diesel-async = { version = "0.5", features = ["sqlite"] }
+argon2 = { version = "0.5", features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+futures-util = "0.3"

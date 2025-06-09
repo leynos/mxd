@@ -1,15 +1,11 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use argon2::Argon2;
-use diesel_async::AsyncConnection;
-use mxd::db::{DbConnection, add_file_acl, create_file, create_user, run_migrations};
 use mxd::field_id::FieldId;
 use mxd::models::{NewFileAcl, NewFileEntry, NewUser};
 use mxd::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use mxd::transaction_type::TransactionType;
-use mxd::users::hash_password;
-use test_util::{TestServer, handshake};
+use test_util::{TestServer, handshake, setup_files_db};
 
 #[test]
 fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
@@ -115,53 +111,4 @@ fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(hdr.error, mxd::commands::ERR_INVALID_PAYLOAD);
     assert_eq!(hdr.data_size, 0);
     Ok(())
-}
-
-fn setup_files_db(db: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        let mut conn = DbConnection::establish(db.to_str().unwrap()).await.unwrap();
-        run_migrations(&mut conn).await.unwrap();
-        let argon2 = Argon2::default();
-        let hashed = hash_password(&argon2, "secret").unwrap();
-        let new_user = NewUser {
-            username: "alice",
-            password: &hashed,
-        };
-        create_user(&mut conn, &new_user).await.unwrap();
-        let files = [
-            NewFileEntry {
-                name: "fileA.txt",
-                object_key: "1",
-                size: 1,
-            },
-            NewFileEntry {
-                name: "fileB.txt",
-                object_key: "2",
-                size: 1,
-            },
-            NewFileEntry {
-                name: "fileC.txt",
-                object_key: "3",
-                size: 1,
-            },
-        ];
-        for file in &files {
-            create_file(&mut conn, file).await.unwrap();
-        }
-        let acls = [
-            NewFileAcl {
-                file_id: 1,
-                user_id: 1,
-            },
-            NewFileAcl {
-                file_id: 3,
-                user_id: 1,
-            },
-        ];
-        for acl in &acls {
-            add_file_acl(&mut conn, acl).await.unwrap();
-        }
-        Ok(())
-    })
 }
