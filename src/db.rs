@@ -66,25 +66,42 @@ async fn bundle_id_from_path(
     conn: &mut DbConnection,
     path: &str,
 ) -> Result<Option<i32>, CategoryError> {
-    let mut parent: Option<i32> = None;
+    use diesel::sql_types::{Integer, Text};
+    use diesel_cte_ext::with_recursive;
+
     let trimmed = path.trim_matches('/');
     if trimmed.is_empty() {
         return Ok(None);
     }
-    for part in trimmed.split('/') {
-        use crate::schema::news_bundles::dsl as b;
-        let found = b::news_bundles
-            .filter(b::name.eq(part))
-            .filter(b::parent_bundle_id.eq(parent))
-            .first::<crate::models::Bundle>(conn)
-            .await
-            .optional()?;
-        match found {
-            Some(bun) => parent = Some(bun.id),
-            None => return Err(CategoryError::InvalidPath),
-        }
+    let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
+    let len = parts.len();
+    let json = serde_json::to_string(&parts).expect("serialize path segments");
+
+    use diesel::sql_query;
+    let seed = sql_query("SELECT 0 AS idx, NULL AS id");
+    let step_sql = "SELECT tree.idx + 1 AS idx, b.id AS id \
+FROM tree \
+JOIN json_each(?) seg ON seg.key = tree.idx \
+JOIN news_bundles b ON b.name = seg.value AND \
+  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
+    let step = sql_query(step_sql).bind::<Text, _>(json.clone());
+    let body_sql = "SELECT id FROM tree WHERE idx = ?";
+    let body = sql_query(body_sql).bind::<Integer, _>(len as i32);
+
+    let query =
+        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
+
+    #[derive(QueryableByName)]
+    struct BunId {
+        #[diesel(sql_type = diesel::sql_types::Nullable<Integer>)]
+        id: Option<i32>,
     }
-    Ok(parent)
+
+    let res: Option<BunId> = query.get_result(conn).await.optional()?;
+    match res.and_then(|b| b.id) {
+        Some(id) => Ok(Some(id)),
+        None => Err(CategoryError::InvalidPath),
+    }
 }
 
 pub async fn list_names_at_path(
