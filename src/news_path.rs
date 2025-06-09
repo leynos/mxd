@@ -61,6 +61,20 @@ LEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.p
     }
 
     #[test]
+    fn bundle_body_sql_matches_expected() {
+        assert_eq!(BUNDLE_BODY_SQL, "SELECT id FROM tree WHERE idx = ?");
+    }
+
+    #[test]
+    fn category_body_sql_matches_expected() {
+        let expected = "SELECT c.id AS id \n\
+FROM news_categories c \n\
+JOIN json_each(?) seg ON seg.key = ? \n\
+WHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)";
+        assert_eq!(CATEGORY_BODY_SQL, expected);
+    }
+
+    #[test]
     fn prepare_path_empty() {
         assert!(prepare_path("").unwrap().is_none());
         assert!(prepare_path("/").unwrap().is_none());

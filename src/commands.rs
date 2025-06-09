@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use crate::db::{CategoryError, DbConnection, DbPool, list_article_titles, list_names_at_path};
+use crate::db::{DbConnection, DbPool, PathLookupError, list_article_titles, list_names_at_path};
 use crate::field_id::FieldId;
 use crate::header_util::reply_header;
 use crate::login::handle_login;
@@ -211,7 +211,7 @@ async fn run_news_tx<F>(
 where
     for<'c> F: FnOnce(
             &'c mut DbConnection,
-        ) -> BoxFuture<'c, Result<Vec<(FieldId, Vec<u8>)>, CategoryError>>
+        ) -> BoxFuture<'c, Result<Vec<(FieldId, Vec<u8>)>, PathLookupError>>
         + Send
         + 'static,
 {
@@ -236,20 +236,20 @@ where
     }
 }
 
-fn news_error_reply(header: &FrameHeader, err: CategoryError) -> Transaction {
+fn news_error_reply(header: &FrameHeader, err: PathLookupError) -> Transaction {
     match err {
-        CategoryError::InvalidPath => Transaction {
+        PathLookupError::InvalidPath => Transaction {
             header: reply_header(header, NEWS_ERR_PATH_UNSUPPORTED, 0),
             payload: Vec::new(),
         },
-        CategoryError::Diesel(e) => {
+        PathLookupError::Diesel(e) => {
             error!("database error: {e}");
             Transaction {
                 header: reply_header(header, ERR_INTERNAL_SERVER, 0),
                 payload: Vec::new(),
             }
         }
-        CategoryError::Serde(e) => {
+        PathLookupError::Serde(e) => {
             error!("serialization error: {e}");
             Transaction {
                 header: reply_header(header, ERR_INTERNAL_SERVER, 0),
@@ -307,7 +307,7 @@ async fn handle_article_data(
             let article = get_article(conn, &path, article_id).await?;
             let article = match article {
                 Some(a) => a,
-                None => return Err(CategoryError::InvalidPath),
+                None => return Err(PathLookupError::InvalidPath),
             };
 
             let mut params: Vec<(FieldId, Vec<u8>)> = Vec::new();

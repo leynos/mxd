@@ -59,7 +59,7 @@ use crate::news_path::{
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum CategoryError {
+pub enum PathLookupError {
     #[error("invalid news path")]
     InvalidPath,
     #[error(transparent)]
@@ -71,7 +71,7 @@ pub enum CategoryError {
 async fn bundle_id_from_path(
     conn: &mut DbConnection,
     path: &str,
-) -> Result<Option<i32>, CategoryError> {
+) -> Result<Option<i32>, PathLookupError> {
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
@@ -97,14 +97,14 @@ async fn bundle_id_from_path(
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
         Some(id) => Ok(Some(id)),
-        None => Err(CategoryError::InvalidPath),
+        None => Err(PathLookupError::InvalidPath),
     }
 }
 
 pub async fn list_names_at_path(
     conn: &mut DbConnection,
     path: Option<&str>,
-) -> Result<Vec<String>, CategoryError> {
+) -> Result<Vec<String>, PathLookupError> {
     let bundle_id = if let Some(p) = path {
         bundle_id_from_path(conn, p).await?
     } else {
@@ -169,7 +169,7 @@ pub async fn get_article(
     conn: &mut DbConnection,
     path: &str,
     article_id: i32,
-) -> Result<Option<crate::models::Article>, CategoryError> {
+) -> Result<Option<crate::models::Article>, PathLookupError> {
     use crate::schema::news_articles::dsl as a;
     let cat_id = category_id_from_path(conn, path).await?;
     let found = a::news_articles
@@ -181,13 +181,16 @@ pub async fn get_article(
     Ok(found)
 }
 
-async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i32, CategoryError> {
+async fn category_id_from_path(
+    conn: &mut DbConnection,
+    path: &str,
+) -> Result<i32, PathLookupError> {
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
     let (json, len) = match prepare_path(path)? {
         Some(t) => t,
-        None => return Err(CategoryError::InvalidPath),
+        None => return Err(PathLookupError::InvalidPath),
     };
 
     use diesel::sql_query;
@@ -213,13 +216,13 @@ async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i3
     }
 
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
-    res.map(|c| c.id).ok_or(CategoryError::InvalidPath)
+    res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)
 }
 
 pub async fn list_article_titles(
     conn: &mut DbConnection,
     path: &str,
-) -> Result<Vec<String>, CategoryError> {
+) -> Result<Vec<String>, PathLookupError> {
     let cat_id = category_id_from_path(conn, path).await?;
     use crate::schema::news_articles::dsl as a;
     let titles = a::news_articles
@@ -229,7 +232,7 @@ pub async fn list_article_titles(
         .select(a::title)
         .load::<String>(conn)
         .await
-        .map_err(CategoryError::Diesel)?;
+        .map_err(PathLookupError::Diesel)?;
     Ok(titles)
 }
 
@@ -240,12 +243,12 @@ pub async fn create_root_article(
     flags: i32,
     data_flavor: &str,
     data: &str,
-) -> Result<i32, CategoryError> {
+) -> Result<i32, PathLookupError> {
     use crate::schema::news_articles::dsl as a;
     use chrono::Utc;
     use diesel_async::AsyncConnection;
 
-    conn.transaction::<_, CategoryError, _>(|conn| {
+    conn.transaction::<_, PathLookupError, _>(|conn| {
         Box::pin(async move {
             let cat_id = category_id_from_path(conn, path).await?;
 
