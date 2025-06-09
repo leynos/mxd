@@ -55,54 +55,7 @@ cargo test
 ```
 
 ## Fuzzing
-
-A simple AFL++ harness lives in the `fuzz/` directory.
-
-A `fuzz/Dockerfile` builds the debug harness with sanitizers and runs AFL++ in a container.
-
-Crash files appear under `artifacts/main/crashes`.
-
-```bash
-# install afl++ and make sure afl-clang-fast is on your PATH
-export CC=afl-clang-fast
-export CXX=afl-clang-fast++
-export RUSTFLAGS="-Zsanitizer=address"
-
-# compile the instrumented binary
-cargo afl build --manifest-path fuzz/Cargo.toml
-
-# prepare a corpus directory of initial inputs
-mkdir -p fuzz/corpus
-
-# run the fuzzer
-cargo afl fuzz -i fuzz/corpus -o findings fuzz/target/debug/fuzz
-```
-
-### Running in Docker
-
-A `fuzz/Dockerfile` is provided to build the harness and run AFL++ in a container.
-
-```bash
-# build the fuzzing image
-docker build -t mxd-fuzz -f fuzz/Dockerfile .
-
-# run with your corpus and an output directory for results
-mkdir -p fuzz/corpus artifacts
-docker run --rm \
-  -v $(pwd)/fuzz/corpus:/corpus \
-  -v $(pwd)/artifacts:/out \
-  mxd-fuzz
-```
-
-Crash files will appear under `artifacts/main/crashes`.
-
-The `src/bin/gen_corpus.rs` utility rebuilds the seed files placed in
-`fuzz/corpus/` from the transactions crafted in the integration tests.
-Run it whenever you want to refresh or extend the corpus. A simple
-`Makefile` provides a convenience target so you only need to run:
-
-```bash
-make corpus
-```
-
-Add new transactions to the tool to grow the set of starting inputs.
+The repository includes an AFL++ harness under `fuzz/`. See
+[docs/fuzzing.md](docs/fuzzing.md) for build commands, Docker usage and how the
+nightly GitHub Actions job integrates AFL++. Crash files are written to
+`artifacts/main/crashes`.
