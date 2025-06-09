@@ -66,13 +66,15 @@ Field IDs never repeat within a single transaction. Integers are unsigned; the s
 
 #### 2.2 Date parameters
 
-Several protocol fields store timestamps in an eight‑byte structure. The layout is:
+Several protocol fields store timestamps in an eight‑byte structure, often called *date objects*. The layout is:
 
-* **Year** – 2 bytes (big endian)
-* **Milliseconds** – 2 bytes
-* **Seconds** – 4 bytes
+* **Year** – 2 bytes (big-endian)
+* **Milliseconds** – 2 bytes (big-endian)
+* **Seconds** – 4 bytes (big-endian)
 
-Seconds and milliseconds indicate the elapsed time since **January&nbsp;1** of the given year. For example, a value of 70 seconds and 2,000 milliseconds with year 2010 corresponds to *1&nbsp;January&nbsp;2010&nbsp;00:01:12*. Likewise, 432,000 seconds and 5,000 milliseconds with year 2008 represent *6&nbsp;January&nbsp;2008&nbsp;00:00:05*.
+All three values use network byte order.
+
+Seconds and milliseconds indicate the elapsed time since **January&nbsp;1** of the given year. For example, a value of 70 seconds and 2,000 milliseconds with year 2010 corresponds to *1&nbsp;January&nbsp;2010&nbsp;00:01:12*. Likewise, 432,010 seconds and 5,000 milliseconds with year 2008 represent *6&nbsp;January&nbsp;2008&nbsp;00:00:15*.
 
 To convert a `SYSTEMTIME` structure to this format, compute the seconds field as:
 
