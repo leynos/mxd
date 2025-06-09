@@ -129,6 +129,9 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
     stream.write_all(&buf)?;
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
+    assert_eq!(&reply[0..4], b"TRTP", "protocol mismatch in handshake reply");
+    let code = u32::from_be_bytes(reply[4..8].try_into().unwrap());
+    assert_eq!(code, 0, "handshake returned error code {}", code);
     Ok(())
 }
 
