@@ -1,4 +1,6 @@
 {
+  // Ignore MD013 (line length) inside tables since reflowing
+  // Markdown tables often breaks formatting and readability.
   "config": {
     "MD013": {
       "line_length": 80,
