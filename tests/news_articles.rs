@@ -34,11 +34,6 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     handshake(&mut stream)?;
 
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
-
     let params = vec![(FieldId::NewsPath, b"Missing".as_ref())];
     let payload = encode_params(&params);
     let header = FrameHeader {
@@ -70,11 +65,6 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     handshake(&mut stream)?;
-
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
 
     let params = vec![(FieldId::NewsPath, b"General".as_ref())];
     let payload = encode_params(&params);
@@ -160,11 +150,6 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     handshake(&mut stream)?;
 
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
-
     let mut params = Vec::new();
     params.push((FieldId::NewsPath, b"General".as_ref()));
     let id_bytes = 1i32.to_be_bytes();
@@ -234,10 +219,6 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     handshake(&mut stream)?;
-
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP");
 
     let mut params = Vec::new();
     params.push((FieldId::NewsPath, b"General".as_ref()));
