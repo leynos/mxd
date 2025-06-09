@@ -115,3 +115,19 @@ impl Drop for TestServer {
         let _ = self.child.wait();
     }
 }
+
+use std::io::{Read, Write};
+use std::net::TcpStream;
+
+/// Send a valid protocol handshake and read the server reply.
+pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(b"TRTP");
+    buf.extend_from_slice(&0u32.to_be_bytes());
+    buf.extend_from_slice(&1u16.to_be_bytes());
+    buf.extend_from_slice(&0u16.to_be_bytes());
+    stream.write_all(&buf)?;
+    let mut reply = [0u8; 8];
+    stream.read_exact(&mut reply)?;
+    Ok(())
+}

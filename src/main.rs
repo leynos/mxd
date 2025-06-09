@@ -42,7 +42,7 @@ struct Cli {
     #[arg(long, default_value = "0.0.0.0:5500")]
     bind: String,
 
-    /// Path to the SQLite database
+    /// Path to the `SQLite` database
     #[arg(long, default_value = "mxd.db")]
     database: String,
 
@@ -110,7 +110,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     loop {
         tokio::select! {
-            _ = &mut shutdown => {
+            () = &mut shutdown => {
                 println!("shutdown signal received");
                 break;
             }

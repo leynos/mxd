@@ -260,7 +260,7 @@ pub async fn create_root_article(
                 .optional()?;
 
             let now = Utc::now().naive_utc();
-            let new = crate::models::NewArticle {
+            let article = crate::models::NewArticle {
                 category_id: cat_id,
                 parent_article_id: None,
                 prev_article_id: last_id,
@@ -275,7 +275,7 @@ pub async fn create_root_article(
             };
 
             let inserted_id: i32 = diesel::insert_into(a::news_articles)
-                .values(&new)
+                .values(&article)
                 .returning(a::id)
                 .get_result(conn)
                 .await?;
