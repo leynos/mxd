@@ -1,4 +1,5 @@
 # mxd
+
 Marrakesh Express Daemon
 
 Hop aboard the Marrakesh Express — a compact but spirited
@@ -19,9 +20,10 @@ into the protocol and how we juggle SQLite and PostgreSQL migrations.
 
 ## Running
 
-Build the project and run the daemon. Specify a bind address and database path if the defaults don't tickle your fancy:
+Build the project and run the daemon. Specify a bind address and
+database path if the defaults don't tickle your fancy:
 
-```
+```bash
 cargo build
 
 # Run server listening on the default address
@@ -32,22 +34,23 @@ cargo run -- --bind 0.0.0.0:5500 --database mxd.db
 
 Use the `create-user` subcommand to add accounts:
 
-```
+```bash
 cargo run -- create-user alice secret
 ```
 
 ### Running tests
 
-```
+```bash
 cargo test
 ```
 
 Integration tests live in the repository's `tests/` directory.
 
-
 ## Validation harness
 
-The `validator` crate provides a compatibility check using the `shx` client and `expectrl` to ensure mxd speaks the Hotline protocol correctly. Install `shx` version 0.2.4 and make sure it's on your `PATH` before running:
+The `validator` crate provides a compatibility check using the `shx` client and
+`expectrl` to ensure mxd speaks the Hotline protocol correctly. Install `shx`
+version 0.2.4 and make sure it's on your `PATH` before running:
 
 ```bash
 cd validator
@@ -55,6 +58,7 @@ cargo test
 ```
 
 ## Fuzzing
+
 The repository includes an AFL++ harness under `fuzz/`. See
 [docs/fuzzing.md](docs/fuzzing.md) for build commands, Docker usage and how the
 nightly GitHub Actions job integrates AFL++. Crash files are written to

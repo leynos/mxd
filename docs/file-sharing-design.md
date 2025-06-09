@@ -204,7 +204,7 @@ async fn list_directory(path: &str, user: &User) -> Result<Vec<ListEntry>, Error
 }
 ```
 
-*(The above is illustrative; actual code would need to join with alias target to get size if alias, etc.)*
+Note: The above is illustrative; actual code would need to join with alias target to get size if alias, etc.
 
 ### File Download – *DownloadFile (202)*
 

@@ -57,7 +57,7 @@ Things that **do *not* port** and therefore need conditional SQL:
 
 ## 3  Putting it together: a minimal dual-backend migration
 
-```
+```text
 migrations/
 └─ 20250605142700_create_users/
    ├─ up.postgres.sql

@@ -6,7 +6,6 @@ Hotline is a client/server system providing chat, private messaging, file sharin
 
 All multi-byte integers are transmitted **big-endian (“network byte order”)**. No padding or alignment bytes are used: the fields follow one another exactly as listed.
 
-
 ### 1  Session-initialisation handshake
 
 | Offset | Size (bytes) | Field               | Meaning                                                                          |
@@ -852,7 +851,7 @@ These let an admin manage the server’s user database (the list of login accoun
 
 **Server behavior:** When the server is about to disconnect a user (either via admin action, or maybe due to inactivity timeout or other reasons), it sends DisconnectMsg with a reason text (for example, “You have been kicked by Admin” or “Server shutting down”). Immediately after sending this, the server closes the connection from its side as well. The user ID of the target is implicit (since it’s sent on that user’s connection).
 
-**End-user experience:** The user sees a message popup or in the status: whatever text the server sent. Commonly if an admin kicked them, they might see “Disconnected by Server: <message>”. Then the connection is lost – the client returns to the server list or login screen. This is more graceful than a silent drop; the user at least knows the cause. If the server simply dropped without sending 111, the user would just see “Connection lost.”
+**End-user experience:** The user sees a message popup or in the status: whatever text the server sent. Commonly if an admin kicked them, they might see “Disconnected by Server: `<message>`”. Then the connection is lost – the client returns to the server list or login screen. This is more graceful than a silent drop; the user at least knows the cause. If the server simply dropped without sending 111, the user would just see “Connection lost.”
 
 ### Broadcasting a Message (Transaction 355) – Admin/Server Initiated
 
@@ -868,7 +867,7 @@ These let an admin manage the server’s user database (the list of login accoun
 
 Privilege required to send a broadcast via 355 is *Broadcast* priv (32), which typically only admin or moderators have.
 
-**End-user experience:** All users will see a message appear, usually in a separate system message window or as a highlighted text, often prefixed by something like “Broadcast from Admin: <text>”. For example, an admin might announce “Server will restart in 5 minutes.” Users see that in real-time. It’s not part of public chat; it’s a distinct message, often modal or clearly different (Hotline client had a floating window or a different color for admin broadcasts). They cannot reply to it (except via PM or such privately). It’s essentially like a server announcement PA system.
+**End-user experience:** All users will see a message appear, usually in a separate system message window or as a highlighted text, often prefixed by something like “Broadcast from Admin: `<text>`”. For example, an admin might announce “Server will restart in 5 minutes.” Users see that in real-time. It’s not part of public chat; it’s a distinct message, often modal or clearly different (Hotline client had a floating window or a different color for admin broadcasts). They cannot reply to it (except via PM or such privately). It’s essentially like a server announcement PA system.
 
 ### Additional Admin Privileges Note
 
