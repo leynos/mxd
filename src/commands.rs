@@ -249,6 +249,13 @@ fn news_error_reply(header: &FrameHeader, err: CategoryError) -> Transaction {
                 payload: Vec::new(),
             }
         }
+        CategoryError::Serde(e) => {
+            error!("serialization error: {e}");
+            Transaction {
+                header: reply_header(header, ERR_INTERNAL_SERVER, 0),
+                payload: Vec::new(),
+            }
+        }
     }
 }
 

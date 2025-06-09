@@ -64,6 +64,8 @@ pub enum CategoryError {
     InvalidPath,
     #[error(transparent)]
     Diesel(#[from] diesel::result::Error),
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
 }
 
 async fn bundle_id_from_path(
@@ -73,7 +75,7 @@ async fn bundle_id_from_path(
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
-    let (json, len) = match prepare_path(path) {
+    let (json, len) = match prepare_path(path)? {
         Some(t) => t,
         None => return Ok(None),
     };
@@ -183,7 +185,7 @@ async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i3
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
-    let (json, len) = match prepare_path(path) {
+    let (json, len) = match prepare_path(path)? {
         Some(t) => t,
         None => return Err(CategoryError::InvalidPath),
     };

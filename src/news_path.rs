@@ -27,15 +27,15 @@ pub(crate) const CATEGORY_BODY_SQL: &str = concat!(
     "WHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)"
 );
 
-pub(crate) fn prepare_path(path: &str) -> Option<(String, usize)> {
+pub(crate) fn prepare_path(path: &str) -> Result<Option<(String, usize)>, serde_json::Error> {
     let trimmed = path.trim_matches('/');
     if trimmed.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
+    let parts: Vec<&str> = trimmed.split('/').collect();
     let len = parts.len();
-    let json = serde_json::to_string(&parts).expect("serialize path segments");
-    Some((json, len))
+    let json = serde_json::to_string(&parts)?;
+    Ok(Some((json, len)))
 }
 
 #[cfg(test)]
@@ -58,5 +58,25 @@ FROM tree \n\
 JOIN json_each(?) seg ON seg.key = tree.idx \n\
 LEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
         assert_eq!(CATEGORY_STEP_SQL, expected);
+    }
+
+    #[test]
+    fn prepare_path_empty() {
+        assert!(prepare_path("").unwrap().is_none());
+        assert!(prepare_path("/").unwrap().is_none());
+    }
+
+    #[test]
+    fn prepare_path_single_segment() {
+        let (json, len) = prepare_path("foo").unwrap().unwrap();
+        assert_eq!(json, "[\"foo\"]");
+        assert_eq!(len, 1);
+    }
+
+    #[test]
+    fn prepare_path_trailing_slash() {
+        let (json, len) = prepare_path("foo/").unwrap().unwrap();
+        assert_eq!(json, "[\"foo\"]");
+        assert_eq!(len, 1);
     }
 }
