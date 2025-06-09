@@ -201,6 +201,15 @@ fn short_header_error() {
 }
 
 #[test]
+fn parse_transaction_short_frame() {
+    let buf = vec![0u8; HEADER_LEN - 2];
+    match parse_transaction(&buf).unwrap_err() {
+        TransactionError::SizeMismatch => {}
+        e => panic!("unexpected {e:?}"),
+    }
+}
+
+#[test]
 fn parse_transaction_rejects_large_frame() {
     let payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
     let header = FrameHeader {
