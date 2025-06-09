@@ -37,41 +37,33 @@ async fn shutdown_signal() {
     }
 }
 
-#[derive(Parser, Deserialize, Default, Debug, Clone)]
-#[command(author, version, about)]
-struct Cli {
-    /// Address to bind the server to
-    #[arg(long)]
-    bind: Option<String>,
+fn default_bind() -> String {
+    "0.0.0.0:5500".to_string()
+}
 
-    /// Path to the `SQLite` database
-    #[arg(long)]
-    database: Option<String>,
-
-    /// Argon2 memory cost in KiB
-    #[arg(long)]
-    argon2_m_cost: Option<u32>,
-
-    /// Argon2 iterations
-    #[arg(long)]
-    argon2_t_cost: Option<u32>,
-
-    /// Argon2 parallelism
-    #[arg(long)]
-    argon2_p_cost: Option<u32>,
-
-    #[command(subcommand)]
-    command: Option<Commands>,
+fn default_db() -> String {
+    "mxd.db".to_string()
 }
 
 #[derive(OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 struct AppConfig {
+    #[ortho_config(default = default_bind())]
     bind: Option<String>,
+    #[ortho_config(default = default_db())]
     database: Option<String>,
     argon2_m_cost: Option<u32>,
     argon2_t_cost: Option<u32>,
     argon2_p_cost: Option<u32>,
+}
+
+#[derive(Parser)]
+#[command(author, version, about)]
+struct CmdLine {
+    #[command(flatten)]
+    cfg: AppConfigCli,
+    #[command(subcommand)]
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug, Clone, Deserialize)]
@@ -82,14 +74,14 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let cli = Cli::parse();
+    let cli = CmdLine::parse();
     let defaults = AppConfig::load_from_iter(["mxd"])?;
     let cli_cfg = AppConfig {
-        bind: cli.bind.clone(),
-        database: cli.database.clone(),
-        argon2_m_cost: cli.argon2_m_cost,
-        argon2_t_cost: cli.argon2_t_cost,
-        argon2_p_cost: cli.argon2_p_cost,
+        bind: cli.cfg.bind,
+        database: cli.cfg.database,
+        argon2_m_cost: cli.cfg.argon2_m_cost,
+        argon2_t_cost: cli.cfg.argon2_t_cost,
+        argon2_p_cost: cli.cfg.argon2_p_cost,
     };
     let cfg = merge_cli_over_defaults(defaults, cli_cfg);
     let bind = cfg.bind.unwrap_or_else(|| "0.0.0.0:5500".to_string());
@@ -238,13 +230,13 @@ mod tests {
         Jail::expect_with(|j| {
             j.set_env("MXD_BIND", "127.0.0.1:8000");
             let defaults = AppConfig::load_from_iter(["mxd"]).expect("load");
-            let cli = Cli::parse_from(["mxd", "--bind", "0.0.0.0:9000"]);
+            let cli = CmdLine::parse_from(["mxd", "--bind", "0.0.0.0:9000"]);
             let cli_cfg = AppConfig {
-                bind: cli.bind,
-                database: cli.database,
-                argon2_m_cost: cli.argon2_m_cost,
-                argon2_t_cost: cli.argon2_t_cost,
-                argon2_p_cost: cli.argon2_p_cost,
+                bind: cli.cfg.bind,
+                database: cli.cfg.database,
+                argon2_m_cost: cli.cfg.argon2_m_cost,
+                argon2_t_cost: cli.cfg.argon2_t_cost,
+                argon2_p_cost: cli.cfg.argon2_p_cost,
             };
             let merged = merge_cli_over_defaults(defaults, cli_cfg);
             assert_eq!(merged.bind.as_deref(), Some("0.0.0.0:9000"));
