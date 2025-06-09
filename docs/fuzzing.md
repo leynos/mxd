@@ -45,4 +45,17 @@ docker run --rm \
 
 ## CI Integration
 
-GitHub Actions runs the fuzzer nightly. The workflow defined in `.github/workflows/fuzz.yml` builds the Docker image, executes AFL++ for several hours and uploads any crashes. Review the artifacts after each run to inspect new findings.
+GitHub Actions runs the fuzzer nightly. The workflow defined in `.github/workflows/fuzz.yml` builds the Docker image, executes AFL++ for several hours and uploads any crashes. Review the artifacts after each run to inspect new findings. This process aligns with the overall architecture outlined in [roadmap.md](roadmap.md) and the storage notes in [file-sharing-design.md](file-sharing-design.md).
+
+```mermaid
+flowchart TD
+    subgraph "Nightly CI Fuzzing Process (described in docs/fuzzing.md)"
+        A[GitHub Actions Nightly Trigger] --> B[Build 'mxd-fuzz' Docker Image]
+        B -- "Includes project code, AFL++, and sanitizers" --> B
+        B --> C[Execute AFL++ in Docker Container]
+        C -- "Targets 'parse_transaction' function" --> D[AFL++ Fuzzing Process]
+        D -- "Runs for several hours" --> D
+        D -- "Identifies new crashes" --> E[Upload Crash Artifacts]
+    end
+    F[Developer/Maintainer] -- "Reviews artifacts to inspect new findings" --> E
+```
