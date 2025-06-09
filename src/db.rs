@@ -52,36 +52,33 @@ pub async fn create_user(
     diesel::insert_into(users).values(user).execute(conn).await
 }
 
+use crate::news_path::{
+    BUNDLE_BODY_SQL, BUNDLE_STEP_SQL, CATEGORY_BODY_SQL, CATEGORY_STEP_SQL, CTE_SEED_SQL,
+    prepare_path,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum CategoryError {
+pub enum PathLookupError {
     #[error("invalid news path")]
     InvalidPath,
     #[error(transparent)]
     Diesel(#[from] diesel::result::Error),
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
 }
-
-const CTE_SEED_SQL: &str = "SELECT 0 AS idx, NULL AS id";
-const BUNDLE_STEP_SQL: &str = "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON seg.key = tree.idx \nJOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
-const BUNDLE_BODY_SQL: &str = "SELECT id FROM tree WHERE idx = ?";
-const CATEGORY_STEP_SQL: &str = "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON seg.key = tree.idx \nLEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
-const CATEGORY_BODY_SQL: &str = "SELECT c.id AS id \nFROM news_categories c \nJOIN json_each(?) seg ON seg.key = ? \nWHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)";
 
 async fn bundle_id_from_path(
     conn: &mut DbConnection,
     path: &str,
-) -> Result<Option<i32>, CategoryError> {
+) -> Result<Option<i32>, PathLookupError> {
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
-    let trimmed = path.trim_matches('/');
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
-    let len = parts.len();
-    let json = serde_json::to_string(&parts).expect("serialize path segments");
+    let (json, len) = match prepare_path(path)? {
+        Some(t) => t,
+        None => return Ok(None),
+    };
 
     use diesel::sql_query;
     let seed = sql_query(CTE_SEED_SQL);
@@ -100,14 +97,14 @@ async fn bundle_id_from_path(
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
         Some(id) => Ok(Some(id)),
-        None => Err(CategoryError::InvalidPath),
+        None => Err(PathLookupError::InvalidPath),
     }
 }
 
 pub async fn list_names_at_path(
     conn: &mut DbConnection,
     path: Option<&str>,
-) -> Result<Vec<String>, CategoryError> {
+) -> Result<Vec<String>, PathLookupError> {
     let bundle_id = if let Some(p) = path {
         bundle_id_from_path(conn, p).await?
     } else {
@@ -172,7 +169,7 @@ pub async fn get_article(
     conn: &mut DbConnection,
     path: &str,
     article_id: i32,
-) -> Result<Option<crate::models::Article>, CategoryError> {
+) -> Result<Option<crate::models::Article>, PathLookupError> {
     use crate::schema::news_articles::dsl as a;
     let cat_id = category_id_from_path(conn, path).await?;
     let found = a::news_articles
@@ -184,20 +181,17 @@ pub async fn get_article(
     Ok(found)
 }
 
-async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i32, CategoryError> {
+async fn category_id_from_path(
+    conn: &mut DbConnection,
+    path: &str,
+) -> Result<i32, PathLookupError> {
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
 
-    let trimmed = path.trim_matches('/');
-    if trimmed.is_empty() {
-        return Err(CategoryError::InvalidPath);
-    }
-    let parts: Vec<String> = trimmed.split('/').map(|s| s.to_string()).collect();
-    let len = parts.len();
-
-    // Represent the path as a JSON array so the recursive query can iterate over
-    // each segment without constructing SQL through string concatenation.
-    let json = serde_json::to_string(&parts).expect("serialize path segments");
+    let (json, len) = match prepare_path(path)? {
+        Some(t) => t,
+        None => return Err(PathLookupError::InvalidPath),
+    };
 
     use diesel::sql_query;
     let seed = sql_query(CTE_SEED_SQL);
@@ -222,13 +216,13 @@ async fn category_id_from_path(conn: &mut DbConnection, path: &str) -> Result<i3
     }
 
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
-    res.map(|c| c.id).ok_or(CategoryError::InvalidPath)
+    res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)
 }
 
 pub async fn list_article_titles(
     conn: &mut DbConnection,
     path: &str,
-) -> Result<Vec<String>, CategoryError> {
+) -> Result<Vec<String>, PathLookupError> {
     let cat_id = category_id_from_path(conn, path).await?;
     use crate::schema::news_articles::dsl as a;
     let titles = a::news_articles
@@ -238,7 +232,7 @@ pub async fn list_article_titles(
         .select(a::title)
         .load::<String>(conn)
         .await
-        .map_err(CategoryError::Diesel)?;
+        .map_err(PathLookupError::Diesel)?;
     Ok(titles)
 }
 
@@ -249,12 +243,12 @@ pub async fn create_root_article(
     flags: i32,
     data_flavor: &str,
     data: &str,
-) -> Result<i32, CategoryError> {
+) -> Result<i32, PathLookupError> {
     use crate::schema::news_articles::dsl as a;
     use chrono::Utc;
     use diesel_async::AsyncConnection;
 
-    conn.transaction::<_, CategoryError, _>(|conn| {
+    conn.transaction::<_, PathLookupError, _>(|conn| {
         Box::pin(async move {
             let cat_id = category_id_from_path(conn, path).await?;
 
