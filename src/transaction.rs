@@ -438,6 +438,19 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
     buf
 }
 
+/// Convenience for encoding a vector of owned parameter values.
+///
+/// This converts a `&[(FieldId, Vec<u8>)]` slice into the borrowed
+/// form expected by [`encode_params`]. It avoids repeating the
+/// conversion logic at call sites.
+pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8> {
+    let borrowed: Vec<(FieldId, &[u8])> = params
+        .iter()
+        .map(|(id, bytes)| (*id, bytes.as_slice()))
+        .collect();
+    encode_params(&borrowed)
+}
+
 /// Return the first value for `field` in a parameter map as a `String`.
 ///
 /// Returns `Ok(None)` if the field is absent and an error if the bytes are not

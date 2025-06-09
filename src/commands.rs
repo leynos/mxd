@@ -5,8 +5,8 @@ use crate::field_id::FieldId;
 use crate::header_util::reply_header;
 use crate::login::handle_login;
 use crate::transaction::{
-    FrameHeader, Transaction, decode_params, decode_params_map, encode_params, first_param_i32,
-    first_param_string, required_param_i32, required_param_string,
+    FrameHeader, Transaction, decode_params, decode_params_map, encode_params, encode_vec_params,
+    first_param_i32, first_param_string, required_param_i32, required_param_string,
 };
 use crate::transaction_type::TransactionType;
 use futures_util::future::BoxFuture;
@@ -218,9 +218,7 @@ where
     match pool.get().await {
         Ok(mut conn) => match op(&mut conn).await {
             Ok(params) => {
-                let pairs: Vec<(FieldId, &[u8])> =
-                    params.iter().map(|(id, d)| (*id, d.as_slice())).collect();
-                let payload = encode_params(&pairs);
+                let payload = encode_vec_params(&params);
                 Ok(Transaction {
                     header: reply_header(&header, 0, payload.len()),
                     payload,
