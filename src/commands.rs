@@ -5,8 +5,8 @@ use crate::field_id::FieldId;
 use crate::header_util::reply_header;
 use crate::login::handle_login;
 use crate::transaction::{
-    FrameHeader, Transaction, decode_params, decode_params_map, encode_params, first_param_string,
-    required_param_i32, required_param_string,
+    FrameHeader, Transaction, decode_params, decode_params_map, encode_params, first_param_i32,
+    first_param_string, required_param_i32, required_param_string,
 };
 use crate::transaction_type::TransactionType;
 use futures_util::future::BoxFuture;
@@ -121,15 +121,8 @@ impl Command {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
                 let title = required_param_string(&params, FieldId::NewsTitle, "missing title")?;
-                let flags = if let Some(bytes) = params
-                    .get(&FieldId::NewsArticleFlags)
-                    .and_then(|v| v.first())
-                {
-                    let arr: [u8; 4] = bytes.as_slice().try_into().map_err(|_| "flags")?;
-                    i32::from_be_bytes(arr)
-                } else {
-                    0
-                };
+                let flags =
+                    first_param_i32(&params, FieldId::NewsArticleFlags, "flags")?.unwrap_or(0);
                 let data_flavor =
                     required_param_string(&params, FieldId::NewsDataFlavor, "missing flavor")?;
                 let data =
@@ -230,14 +223,20 @@ where
                 payload,
             })
         }
-        Err(CategoryError::InvalidPath) => Ok(Transaction {
-            header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
+        Err(e) => Ok(category_error_reply(&header, e)),
+    }
+}
+
+fn category_error_reply(header: &FrameHeader, err: CategoryError) -> Transaction {
+    match err {
+        CategoryError::InvalidPath => Transaction {
+            header: reply_header(header, NEWS_ERR_PATH_UNSUPPORTED, 0),
             payload: Vec::new(),
-        }),
-        Err(CategoryError::Diesel(_)) => Ok(Transaction {
-            header: reply_header(&header, ERR_INTERNAL_SERVER, 0),
+        },
+        CategoryError::Diesel(_) => Transaction {
+            header: reply_header(header, ERR_INTERNAL_SERVER, 0),
             payload: Vec::new(),
-        }),
+        },
     }
 }
 
@@ -350,14 +349,7 @@ async fn handle_post_article(
             header: reply_header(&header, 0, 0),
             payload: Vec::new(),
         }),
-        Err(CategoryError::InvalidPath) => Ok(Transaction {
-            header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
-            payload: Vec::new(),
-        }),
-        Err(CategoryError::Diesel(_)) => Ok(Transaction {
-            header: reply_header(&header, ERR_INTERNAL_SERVER, 0),
-            payload: Vec::new(),
-        }),
+        Err(e) => Ok(category_error_reply(&header, e)),
     }
 }
 

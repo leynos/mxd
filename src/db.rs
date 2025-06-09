@@ -271,15 +271,10 @@ pub async fn create_root_article(
         data: Some(data),
     };
 
-    diesel::insert_into(a::news_articles)
+    let inserted_id: i32 = diesel::insert_into(a::news_articles)
         .values(&new)
-        .execute(conn)
-        .await?;
-
-    let inserted_id: i32 = a::news_articles
-        .order(a::id.desc())
-        .select(a::id)
-        .first(conn)
+        .returning(a::id)
+        .get_result(conn)
         .await?;
 
     if let Some(prev) = last_id {

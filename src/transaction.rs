@@ -472,3 +472,21 @@ pub fn required_param_i32(
     let arr: [u8; 4] = bytes.as_slice().try_into().map_err(|_| parse_err)?;
     Ok(i32::from_be_bytes(arr))
 }
+
+/// Decode the first value for `field` as an `i32` if present.
+///
+/// Returns `Ok(None)` if the parameter is absent and an error if it is present
+/// but does not decode as a big-endian `i32`.
+pub fn first_param_i32(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+    field: FieldId,
+    parse_err: &'static str,
+) -> Result<Option<i32>, &'static str> {
+    match map.get(&field).and_then(|v| v.first()) {
+        Some(bytes) => {
+            let arr: [u8; 4] = bytes.as_slice().try_into().map_err(|_| parse_err)?;
+            Ok(Some(i32::from_be_bytes(arr)))
+        }
+        None => Ok(None),
+    }
+}
