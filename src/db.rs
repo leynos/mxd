@@ -241,7 +241,7 @@ pub async fn create_root_article(
     flags: i32,
     data_flavor: &str,
     data: &str,
-) -> Result<(), CategoryError> {
+) -> Result<i32, CategoryError> {
     use crate::schema::news_articles::dsl as a;
     use chrono::Utc;
     use diesel_async::AsyncConnection;
@@ -286,7 +286,7 @@ pub async fn create_root_article(
                     .execute(conn)
                     .await?;
             }
-            Ok(())
+            Ok(inserted_id)
         })
     })
     .await

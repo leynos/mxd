@@ -337,6 +337,18 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
     stream.read_exact(&mut hdr_buf)?;
     let hdr = FrameHeader::from_bytes(&hdr_buf);
     assert_eq!(hdr.error, 0);
+    let mut payload = vec![0u8; hdr.data_size as usize];
+    stream.read_exact(&mut payload)?;
+    let params = decode_params(&payload)?;
+    let mut id_found = false;
+    for (id, data) in params {
+        if id == FieldId::NewsArticleId {
+            let arr: [u8; 4] = data.try_into().unwrap();
+            assert_eq!(i32::from_be_bytes(arr), 1);
+            id_found = true;
+        }
+    }
+    assert!(id_found);
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {

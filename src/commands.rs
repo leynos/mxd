@@ -203,7 +203,7 @@ impl Command {
     }
 }
 
-async fn run_category_op<F, R, B>(
+async fn run_news_tx<F, R, B>(
     pool: DbPool,
     header: FrameHeader,
     op: F,
@@ -217,8 +217,8 @@ where
 {
     match pool.get().await {
         Ok(mut conn) => match op(&mut conn).await {
-            Ok(res) => Ok(build(header.clone(), res)),
-            Err(e) => Ok(category_error_reply(&header, e)),
+            Ok(res) => Ok(build(header, res)),
+            Err(e) => Ok(news_error_reply(&header, e)),
         },
         Err(e) => {
             error!(%e, "failed to get database connection");
@@ -230,7 +230,7 @@ where
     }
 }
 
-fn category_error_reply(header: &FrameHeader, err: CategoryError) -> Transaction {
+fn news_error_reply(header: &FrameHeader, err: CategoryError) -> Transaction {
     match err {
         CategoryError::InvalidPath => Transaction {
             header: reply_header(header, NEWS_ERR_PATH_UNSUPPORTED, 0),
@@ -251,7 +251,7 @@ async fn handle_category_list(
     header: FrameHeader,
     path: Option<String>,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
-    run_category_op(
+    run_news_tx(
         pool,
         header,
         move |conn| Box::pin(async move { list_names_at_path(conn, path.as_deref()).await }),
@@ -277,7 +277,7 @@ async fn handle_article_titles(
     header: FrameHeader,
     path: String,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
-    run_category_op(
+    run_news_tx(
         pool,
         header,
         move |conn| Box::pin(async move { list_article_titles(conn, &path).await }),
@@ -305,9 +305,9 @@ async fn handle_article_data(
     article_id: i32,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
     use crate::db::get_article;
-    run_category_op(
+    run_news_tx(
         pool,
-        header.clone(),
+        header,
         move |conn| {
             Box::pin(async move {
                 let article = get_article(conn, &path, article_id).await?;
@@ -321,10 +321,14 @@ async fn handle_article_data(
                 if let Some(p) = article.poster {
                     params.push((FieldId::NewsPoster, p.into_bytes()));
                 }
-                #[allow(deprecated)]
                 params.push((
                     FieldId::NewsDate,
-                    article.posted_at.timestamp().to_be_bytes().to_vec(),
+                    article
+                        .posted_at
+                        .and_utc()
+                        .timestamp_millis()
+                        .to_be_bytes()
+                        .to_vec(),
                 ));
                 if let Some(prev) = article.prev_article_id {
                     params.push((FieldId::NewsPrevId, prev.to_be_bytes().to_vec()));
@@ -380,18 +384,24 @@ async fn handle_post_article(
     data: String,
 ) -> Result<Transaction, Box<dyn std::error::Error>> {
     use crate::db::create_root_article;
-    run_category_op(
+    run_news_tx(
         pool,
-        header.clone(),
+        header,
         move |conn| {
             Box::pin(async move {
-                create_root_article(conn, &path, &title, flags, &data_flavor, &data).await?;
-                Ok(())
+                let id =
+                    create_root_article(conn, &path, &title, flags, &data_flavor, &data).await?;
+                Ok(id)
             })
         },
-        |header, ()| Transaction {
-            header: reply_header(&header, 0, 0),
-            payload: Vec::new(),
+        |header, id| {
+            let bytes = id.to_be_bytes();
+            let pairs = [(FieldId::NewsArticleId, bytes.as_slice())];
+            let payload = encode_params(&pairs);
+            Transaction {
+                header: reply_header(&header, 0, payload.len()),
+                payload,
+            }
         },
     )
     .await
