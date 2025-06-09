@@ -39,6 +39,14 @@ pub enum Command {
         article_id: i32,
         header: FrameHeader,
     },
+    PostNewsArticle {
+        path: String,
+        title: String,
+        flags: i32,
+        data_flavor: String,
+        data: String,
+        header: FrameHeader,
+    },
     /// Request contained a payload when none was expected. The server
     /// responds with [`crate::commands::ERR_INVALID_PAYLOAD`].
     InvalidPayload {
@@ -107,6 +115,32 @@ impl Command {
                     header: tx.header,
                 })
             }
+            TransactionType::PostNewsArticle => {
+                let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
+                let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
+                let title = required_param_string(&params, FieldId::NewsTitle, "missing title")?;
+                let flags = if let Some(bytes) = params
+                    .get(&FieldId::NewsArticleFlags)
+                    .and_then(|v| v.first())
+                {
+                    let arr: [u8; 4] = bytes.as_slice().try_into().map_err(|_| "flags")?;
+                    i32::from_be_bytes(arr)
+                } else {
+                    0
+                };
+                let data_flavor =
+                    required_param_string(&params, FieldId::NewsDataFlavor, "missing flavor")?;
+                let data =
+                    required_param_string(&params, FieldId::NewsArticleData, "missing data")?;
+                Ok(Command::PostNewsArticle {
+                    path,
+                    title,
+                    flags,
+                    data_flavor,
+                    data,
+                    header: tx.header,
+                })
+            }
             _ => Ok(Command::Unknown { header: tx.header }),
         }
     }
@@ -156,6 +190,14 @@ impl Command {
                 path,
                 article_id,
             } => handle_article_data(pool, header, path, article_id).await,
+            Command::PostNewsArticle {
+                header,
+                path,
+                title,
+                flags,
+                data_flavor,
+                data,
+            } => handle_post_article(pool, header, path, title, flags, data_flavor, data).await,
             Command::InvalidPayload { header } => Ok(Transaction {
                 header: reply_header(&header, ERR_INVALID_PAYLOAD, 0),
                 payload: Vec::new(),
@@ -285,6 +327,30 @@ async fn handle_article_data(
         })
     })
     .await
+}
+
+async fn handle_post_article(
+    pool: DbPool,
+    header: FrameHeader,
+    path: String,
+    title: String,
+    flags: i32,
+    data_flavor: String,
+    data: String,
+) -> Result<Transaction, Box<dyn std::error::Error>> {
+    use crate::db::create_root_article;
+    let mut conn = pool.get().await?;
+    match create_root_article(&mut conn, &path, &title, flags, &data_flavor, &data).await {
+        Ok(_) => Ok(Transaction {
+            header: reply_header(&header, 0, 0),
+            payload: Vec::new(),
+        }),
+        Err(CategoryError::InvalidPath) => Ok(Transaction {
+            header: reply_header(&header, NEWS_ERR_PATH_UNSUPPORTED, 0),
+            payload: Vec::new(),
+        }),
+        Err(CategoryError::Diesel(e)) => Err(Box::new(e)),
+    }
 }
 
 fn handle_unknown(peer: SocketAddr, header: FrameHeader) -> Transaction {
