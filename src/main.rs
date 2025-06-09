@@ -2,6 +2,8 @@ use std::error::Error;
 use std::net::SocketAddr;
 
 use clap::{Parser, Subcommand};
+use ortho_config::{OrthoConfig, merge_cli_over_defaults};
+use serde::{Deserialize, Serialize};
 
 use tokio::io::{self, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -35,34 +37,44 @@ async fn shutdown_signal() {
     }
 }
 
-#[derive(Parser)]
+#[derive(Parser, Deserialize, Default, Debug, Clone)]
 #[command(author, version, about)]
 struct Cli {
     /// Address to bind the server to
-    #[arg(long, default_value = "0.0.0.0:5500")]
-    bind: String,
+    #[arg(long)]
+    bind: Option<String>,
 
     /// Path to the `SQLite` database
-    #[arg(long, default_value = "mxd.db")]
-    database: String,
+    #[arg(long)]
+    database: Option<String>,
 
     /// Argon2 memory cost in KiB
-    #[arg(long, default_value_t = Params::DEFAULT_M_COST)]
-    argon2_m_cost: u32,
+    #[arg(long)]
+    argon2_m_cost: Option<u32>,
 
     /// Argon2 iterations
-    #[arg(long, default_value_t = Params::DEFAULT_T_COST)]
-    argon2_t_cost: u32,
+    #[arg(long)]
+    argon2_t_cost: Option<u32>,
 
     /// Argon2 parallelism
-    #[arg(long, default_value_t = Params::DEFAULT_P_COST)]
-    argon2_p_cost: u32,
+    #[arg(long)]
+    argon2_p_cost: Option<u32>,
 
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
-#[derive(Subcommand)]
+#[derive(OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
+#[ortho_config(prefix = "MXD_")]
+struct AppConfig {
+    bind: Option<String>,
+    database: Option<String>,
+    argon2_m_cost: Option<u32>,
+    argon2_t_cost: Option<u32>,
+    argon2_p_cost: Option<u32>,
+}
+
+#[derive(Subcommand, Debug, Clone, Deserialize)]
 enum Commands {
     /// Create a new user in the database
     CreateUser { username: String, password: String },
@@ -71,15 +83,25 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
-
+    let defaults = AppConfig::load_from_iter(["mxd"])?;
+    let cli_cfg = AppConfig {
+        bind: cli.bind.clone(),
+        database: cli.database.clone(),
+        argon2_m_cost: cli.argon2_m_cost,
+        argon2_t_cost: cli.argon2_t_cost,
+        argon2_p_cost: cli.argon2_p_cost,
+    };
+    let cfg = merge_cli_over_defaults(defaults, cli_cfg);
+    let bind = cfg.bind.unwrap_or_else(|| "0.0.0.0:5500".to_string());
+    let database = cfg.database.unwrap_or_else(|| "mxd.db".to_string());
     let params = ParamsBuilder::new()
-        .m_cost(cli.argon2_m_cost)
-        .t_cost(cli.argon2_t_cost)
-        .p_cost(cli.argon2_p_cost)
+        .m_cost(cfg.argon2_m_cost.unwrap_or(Params::DEFAULT_M_COST))
+        .t_cost(cfg.argon2_t_cost.unwrap_or(Params::DEFAULT_T_COST))
+        .p_cost(cfg.argon2_p_cost.unwrap_or(Params::DEFAULT_P_COST))
         .build()?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
-    let pool = establish_pool(&cli.database).await;
+    let pool = establish_pool(&database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
         run_migrations(&mut conn).await?;
@@ -99,7 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let addr = cli.bind;
+    let addr = bind;
     let listener = TcpListener::bind(&addr).await?;
     println!("mxd listening on {addr}");
 
