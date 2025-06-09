@@ -64,6 +64,45 @@ Immediately afterwards, *Param-count* **records** follow:
 
 Field IDs never repeat within a single transaction. Integers are unsigned; the sender may use 16-bit encoding if the value ≤ 0xFFFF, otherwise 32-bit.
 
+#### 2.2 Date parameters
+
+Several protocol fields store timestamps in an eight‑byte structure, often called *date objects*. The layout is:
+
+* **Year** – 2 bytes (big-endian)
+* **Milliseconds** – 2 bytes (big-endian)
+* **Seconds** – 4 bytes (big-endian)
+
+All three values use network byte order.
+
+Seconds and milliseconds indicate the elapsed time since **January&nbsp;1** of the given year. For example, a value of 70 seconds and 2,000 milliseconds with year 2010 corresponds to *1&nbsp;January&nbsp;2010&nbsp;00:01:12*. Likewise, 432,010 seconds and 5,000 milliseconds with year 2008 represent *6&nbsp;January&nbsp;2008&nbsp;00:00:15*.
+
+To convert a `SYSTEMTIME` structure to this format, compute the seconds field as:
+
+```text
+MONTH_SECS[wMonth - 1] +
+(if (wMonth > 2) and isLeapYear(wYear) { 86400 } else { 0 }) +
+(wSecond + 60 * (wMinute + 60 * (wHour + 24 * (wDay - 1))))
+```
+
+`MONTH_SECS` is a table containing the cumulative seconds at the start of each month:
+
+| Month     | Seconds |
+|-----------|--------:|
+| January   | 0 |
+| February  | 2,678,400 |
+| March     | 5,097,600 |
+| April     | 7,776,000 |
+| May       | 10,368,000 |
+| June      | 13,046,400 |
+| July      | 15,638,400 |
+| August    | 18,316,800 |
+| September | 20,995,200 |
+| October   | 23,587,200 |
+| November  | 26,265,600 |
+| December  | 28,857,600 |
+
+The year and milliseconds fields are copied directly from the original timestamp structure.
+
 ---
 
 ### 3  Fragmentation rules
