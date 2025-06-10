@@ -40,7 +40,9 @@ async fn write_timeout_all<W: AsyncWrite + Unpin>(
 
 /// Read a big-endian `u32` from the provided byte slice.
 ///
+/// # Errors
 /// Returns an error if `buf` is shorter than four bytes.
+#[must_use = "handle the result"]
 pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
     if buf.len() < 4 {
         return Err(TransactionError::ShortBuffer);
@@ -49,7 +51,9 @@ pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
 }
 
 ///
+/// # Errors
 /// Returns an error if `buf` is shorter than two bytes.
+#[must_use = "handle the result"]
 pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
     if buf.len() < 2 {
         return Err(TransactionError::ShortBuffer);
@@ -81,7 +85,7 @@ pub struct FrameHeader {
 
 impl FrameHeader {
     /// Parse a frame header from a 20-byte buffer.
-    #[must_use]
+    #[must_use = "use the returned header"]
     pub fn from_bytes(buf: &[u8; HEADER_LEN]) -> Self {
         Self {
             flags: buf[0],
@@ -106,6 +110,10 @@ impl FrameHeader {
     }
 
     /// Parse a frame header from a byte slice.
+    ///
+    /// # Errors
+    /// Returns an error if the slice is too short or the header fields cannot be read.
+    #[must_use = "handle the result"]
     pub fn new(buf: &[u8]) -> Result<Self, TransactionError> {
         if buf.len() < HEADER_LEN {
             return Err(TransactionError::ShortBuffer);
@@ -133,7 +141,11 @@ pub struct Transaction {
 ///
 /// # Panics
 /// Panics if `buf` is shorter than [`HEADER_LEN`], which is checked earlier.
+///
+/// # Errors
+/// Returns an error if the frame is malformed or exceeds size limits.
 #[cfg_attr(test, allow(dead_code))]
+#[must_use = "handle the result"]
 pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
     if buf.len() < HEADER_LEN {
         return Err(TransactionError::SizeMismatch);
@@ -155,7 +167,7 @@ pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
 impl Transaction {
     /// Serialize the transaction into a vector of bytes.
     #[cfg_attr(test, allow(dead_code))]
-    #[must_use]
+    #[must_use = "use the serialized bytes"]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(HEADER_LEN + self.payload.len());
         let mut hdr = [0u8; HEADER_LEN];
@@ -276,6 +288,7 @@ where
     R: AsyncRead + Unpin,
 {
     /// Create a new reader with default timeout and payload limits.
+    #[must_use = "create a reader"]
     pub fn new(reader: R) -> Self {
         Self {
             reader,
@@ -285,6 +298,10 @@ where
     }
 
     /// Read the next complete transaction from the underlying reader.
+    ///
+    /// # Errors
+    /// Returns an error if the stream does not contain a valid transaction.
+    #[must_use = "handle the result"]
     pub async fn read_transaction(&mut self) -> Result<Transaction, TransactionError> {
         let (first_hdr, mut payload) = read_frame(&mut self.reader, self.timeout).await?;
         let mut header = first_hdr.clone();
@@ -335,6 +352,7 @@ where
     W: AsyncWrite + Unpin,
 {
     /// Create a new writer with default timeout and size limits.
+    #[must_use = "create a writer"]
     pub fn new(writer: W) -> Self {
         Self {
             writer,
@@ -345,6 +363,10 @@ where
     }
 
     /// Write a transaction to the stream, fragmenting if necessary.
+    ///
+    /// # Errors
+    /// Returns an error if writing to the stream fails or the transaction is invalid.
+    #[must_use = "handle the result"]
     pub async fn write_transaction(&mut self, tx: &Transaction) -> Result<(), TransactionError> {
         if tx.header.flags != 0 {
             return Err(TransactionError::InvalidFlags);
@@ -378,7 +400,11 @@ where
 }
 
 /// Decode the parameter block of a transaction into a vector of field id/data pairs.
+///
+/// # Errors
+/// Returns an error if the buffer is malformed or shorter than expected.
 #[cfg_attr(test, allow(dead_code))]
+#[must_use = "handle the result"]
 pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionError> {
     if buf.is_empty() {
         return Ok(Vec::new());
@@ -417,6 +443,10 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
 }
 
 /// Decode the parameter block into a map keyed by `FieldId`.
+///
+/// # Errors
+/// Returns an error if the buffer cannot be parsed.
+#[must_use = "handle the result"]
 pub fn decode_params_map(
     buf: &[u8],
 ) -> Result<std::collections::HashMap<FieldId, Vec<Vec<u8>>>, TransactionError> {
@@ -434,7 +464,7 @@ pub fn decode_params_map(
 /// # Panics
 /// Panics if the number of parameters or any data length exceeds `u16::MAX`.
 #[cfg_attr(test, allow(dead_code))]
-#[must_use]
+#[must_use = "use the encoded bytes"]
 pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
     let mut buf = Vec::new();
     buf.extend_from_slice(&u16::try_from(params.len()).unwrap().to_be_bytes());
@@ -452,7 +482,7 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
 /// This converts a `&[(FieldId, Vec<u8>)]` slice into the borrowed
 /// form expected by [`encode_params`]. It avoids repeating the
 /// conversion logic at call sites.
-#[must_use]
+#[must_use = "use the encoded bytes"]
 pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8> {
     let borrowed: Vec<(FieldId, &[u8])> = params
         .iter()
@@ -468,6 +498,7 @@ pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8> {
 ///
 /// # Errors
 /// Returns an error if the parameter value is not valid UTF-8.
+#[must_use = "handle the result"]
 pub fn first_param_string<S: std::hash::BuildHasher>(
     map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
@@ -482,6 +513,7 @@ pub fn first_param_string<S: std::hash::BuildHasher>(
 ///
 /// # Errors
 /// Returns an error if the field is missing or not valid UTF-8.
+#[must_use = "handle the result"]
 pub fn required_param_string<S: std::hash::BuildHasher>(
     map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
@@ -494,6 +526,7 @@ pub fn required_param_string<S: std::hash::BuildHasher>(
 ///
 /// # Errors
 /// Returns an error if the field is missing or cannot be parsed as `i32`.
+#[must_use = "handle the result"]
 pub fn required_param_i32<S: std::hash::BuildHasher>(
     map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
@@ -512,6 +545,7 @@ pub fn required_param_i32<S: std::hash::BuildHasher>(
 ///
 /// # Errors
 /// Returns an error if the value cannot be parsed as `i32`.
+#[must_use = "handle the result"]
 pub fn first_param_i32<S: std::hash::BuildHasher>(
     map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,

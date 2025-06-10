@@ -8,6 +8,10 @@ use crate::users::verify_password;
 use tracing::{info, warn};
 
 /// Handle a user login request.
+///
+/// # Errors
+/// Returns an error if database access fails or credentials are invalid.
+#[must_use = "handle the result"]
 pub async fn handle_login(
     peer: SocketAddr,
     session: &mut crate::handler::Session,

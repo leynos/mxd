@@ -47,7 +47,10 @@ pub enum HandshakeError {
 }
 
 /// Parse the 12-byte client handshake message.
-#[must_use]
+///
+/// # Errors
+/// Returns an error if the message is malformed or the version is unsupported.
+#[must_use = "handle the result"]
 pub fn parse_handshake(buf: &[u8; HANDSHAKE_LEN]) -> Result<Handshake, HandshakeError> {
     if &buf[0..4] != PROTOCOL_ID {
         return Err(HandshakeError::InvalidProtocol);
@@ -66,7 +69,7 @@ pub fn parse_handshake(buf: &[u8; HANDSHAKE_LEN]) -> Result<Handshake, Handshake
 }
 
 /// Convert a [`HandshakeError`] into a numeric error code for clients.
-#[must_use]
+#[must_use = "handle the result"]
 pub fn handshake_error_code(err: &HandshakeError) -> u32 {
     match err {
         HandshakeError::InvalidProtocol => HANDSHAKE_ERR_INVALID,
@@ -82,6 +85,7 @@ pub fn handshake_error_code(err: &HandshakeError) -> u32 {
 ///
 /// # Errors
 /// Returns any I/O error encountered while sending the reply.
+#[must_use = "handle the result"]
 pub async fn write_handshake_reply<W>(writer: &mut W, error_code: u32) -> io::Result<()>
 where
     W: AsyncWriteExt + Unpin,

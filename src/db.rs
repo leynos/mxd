@@ -11,10 +11,11 @@ pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
 pub type DbPool = Pool<DbConnection>;
 
-/// Create a pooled connection to the SQLite database.
+/// Create a pooled connection to the `SQLite` database.
 ///
 /// # Panics
 /// Panics if the connection pool cannot be created.
+#[must_use = "handle the pool"]
 pub async fn establish_pool(database_url: &str) -> DbPool {
     let config = AsyncDieselConnectionManager::<DbConnection>::new(database_url);
     Pool::builder()
@@ -27,6 +28,7 @@ pub async fn establish_pool(database_url: &str) -> DbPool {
 ///
 /// # Errors
 /// Returns any error produced by Diesel while running migrations.
+#[must_use = "handle the result"]
 pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
     use diesel::result::Error as DieselError;
     conn.spawn_blocking(|c| {
@@ -44,6 +46,7 @@ pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
 ///
 /// # Errors
 /// Returns any error produced by the underlying database query.
+#[must_use = "handle the result"]
 pub async fn get_user_by_name(
     conn: &mut DbConnection,
     name: &str,
@@ -60,6 +63,7 @@ pub async fn get_user_by_name(
 ///
 /// # Errors
 /// Returns any error produced by the insertion query.
+#[must_use = "handle the result"]
 pub async fn create_user(
     conn: &mut DbConnection,
     user: &crate::models::NewUser<'_>,
@@ -118,6 +122,7 @@ async fn bundle_id_from_path(
 ///
 /// # Errors
 /// Returns an error if the path is invalid or the query fails.
+#[must_use = "handle the result"]
 pub async fn list_names_at_path(
     conn: &mut DbConnection,
     path: Option<&str>,
@@ -163,6 +168,7 @@ pub async fn list_names_at_path(
 ///
 /// # Errors
 /// Returns any error produced by the database.
+#[must_use = "handle the result"]
 pub async fn create_category(
     conn: &mut DbConnection,
     cat: &crate::models::NewCategory<'_>,
@@ -178,6 +184,7 @@ pub async fn create_category(
 ///
 /// # Errors
 /// Returns any error produced by the database.
+#[must_use = "handle the result"]
 pub async fn create_bundle(
     conn: &mut DbConnection,
     bun: &crate::models::NewBundle<'_>,
@@ -193,6 +200,7 @@ pub async fn create_bundle(
 ///
 /// # Errors
 /// Returns an error if the path is invalid or the query fails.
+#[must_use = "handle the result"]
 pub async fn get_article(
     conn: &mut DbConnection,
     path: &str,
@@ -247,12 +255,13 @@ async fn category_id_from_path(
 ///
 /// # Errors
 /// Returns an error if the path is invalid or the query fails.
+#[must_use = "handle the result"]
 pub async fn list_article_titles(
     conn: &mut DbConnection,
     path: &str,
 ) -> Result<Vec<String>, PathLookupError> {
-    let cat_id = category_id_from_path(conn, path).await?;
     use crate::schema::news_articles::dsl as a;
+    let cat_id = category_id_from_path(conn, path).await?;
     let titles = a::news_articles
         .filter(a::category_id.eq(cat_id))
         .filter(a::parent_article_id.is_null())
@@ -268,6 +277,7 @@ pub async fn list_article_titles(
 ///
 /// # Errors
 /// Returns an error if the path is invalid or the insertion fails.
+#[must_use = "handle the result"]
 pub async fn create_root_article(
     conn: &mut DbConnection,
     path: &str,
@@ -330,6 +340,7 @@ pub async fn create_root_article(
 ///
 /// # Errors
 /// Returns any error produced by the database.
+#[must_use = "handle the result"]
 pub async fn create_file(
     conn: &mut DbConnection,
     file: &crate::models::NewFileEntry<'_>,
@@ -342,6 +353,7 @@ pub async fn create_file(
 ///
 /// # Errors
 /// Returns any error produced by the database.
+#[must_use = "handle the result"]
 pub async fn add_file_acl(
     conn: &mut DbConnection,
     acl: &crate::models::NewFileAcl,
@@ -359,6 +371,7 @@ pub async fn add_file_acl(
 ///
 /// # Errors
 /// Returns any error produced by the database.
+#[must_use = "handle the result"]
 pub async fn list_files_for_user(
     conn: &mut DbConnection,
     uid: i32,
