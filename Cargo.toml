@@ -32,6 +32,12 @@ xdg = "3"
 anyhow = "1"
 clap-dispatch = "0.1"
 
+[features]
+default = []
+json5 = []
+yaml = []
+toml = []
+
 [dev-dependencies]
 test-util = { path = "test-util" }
 
