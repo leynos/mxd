@@ -36,7 +36,7 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
     handshake(&mut stream)?;
 
     let params = vec![(FieldId::NewsPath, b"Missing".as_ref())];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params)?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -68,7 +68,7 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
     handshake(&mut stream)?;
 
     let params = vec![(FieldId::NewsPath, b"General".as_ref())];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params)?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -155,7 +155,7 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
     let id_bytes = 1i32.to_be_bytes();
     params.push((FieldId::NewsArticleId, id_bytes.as_ref()));
     params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
-    let payload = encode_params(&params);
+    let payload = encode_params(&params)?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -226,7 +226,7 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
     params.push((FieldId::NewsArticleFlags, flag_bytes.as_ref()));
     params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
     params.push((FieldId::NewsArticleData, b"hi".as_ref()));
-    let payload = encode_params(&params);
+    let payload = encode_params(&params)?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,

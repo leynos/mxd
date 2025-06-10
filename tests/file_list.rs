@@ -21,7 +21,7 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
         (FieldId::Login, b"alice".as_ref()),
         (FieldId::Password, b"secret".as_ref()),
     ];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params)?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -90,7 +90,7 @@ fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     handshake(&mut stream)?;
 
     // send GetFileNameList with bogus payload
-    let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())]);
+    let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())])?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,

@@ -177,7 +177,7 @@ impl Command {
                     .iter()
                     .map(|f| (FieldId::FileName, f.name.as_bytes()))
                     .collect();
-                let payload = encode_params(&params);
+                let payload = encode_params(&params)?;
                 Ok(Transaction {
                     header: reply_header(&header, 0, payload.len()),
                     payload,
@@ -230,7 +230,7 @@ where
     match pool.get().await {
         Ok(mut conn) => match op(&mut conn).await {
             Ok(params) => {
-                let payload = encode_vec_params(&params);
+                let payload = encode_vec_params(&params)?;
                 Ok(Transaction {
                     header: reply_header(&header, 0, payload.len()),
                     payload,

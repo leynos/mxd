@@ -63,7 +63,7 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
 
     let params = vec![(FieldId::NewsPath, b"/".as_ref())];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params)?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -150,7 +150,7 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(&reply[0..4], b"TRTP");
     assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
 
-    let payload = encode_params(&[]);
+    let payload = encode_params(&[])?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -222,7 +222,7 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
     assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
 
     let params = vec![(FieldId::NewsPath, b"some/path".as_ref())];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params)?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -267,7 +267,7 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(&reply[0..4], b"TRTP");
     assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
 
-    let payload = encode_params(&[]);
+    let payload = encode_params(&[])?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -369,7 +369,7 @@ fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
     stream.read_exact(&mut reply)?;
 
     let params = vec![(FieldId::NewsPath, b"Bundle/Sub".as_ref())];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params)?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,

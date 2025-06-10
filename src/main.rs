@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
         let cmd = match cmd {
             Commands::CreateUser(args) => {
                 let defaults: CreateUserArgs = load_subcommand_config("MXD_", "create-user")?;
-                Commands::CreateUser(merge_cli_over_defaults(defaults, args))
+                Commands::CreateUser(merge_cli_over_defaults(&defaults, &args)?)
             }
         };
         return cmd.run(&cfg);
