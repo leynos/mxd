@@ -146,7 +146,7 @@ impl Command {
         peer: SocketAddr,
         pool: DbPool,
         session: &mut crate::handler::Session,
-    ) -> Result<Transaction, Box<dyn std::error::Error>> {
+    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
         match self {
             Command::Login {
                 username,
@@ -207,7 +207,7 @@ async fn run_news_tx<F>(
     pool: DbPool,
     header: FrameHeader,
     op: F,
-) -> Result<Transaction, Box<dyn std::error::Error>>
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>>
 where
     for<'c> F: FnOnce(
             &'c mut DbConnection,
@@ -256,7 +256,7 @@ async fn handle_category_list(
     pool: DbPool,
     header: FrameHeader,
     path: Option<String>,
-) -> Result<Transaction, Box<dyn std::error::Error>> {
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
             let names = list_names_at_path(conn, path.as_deref()).await?;
@@ -274,7 +274,7 @@ async fn handle_article_titles(
     pool: DbPool,
     header: FrameHeader,
     path: String,
-) -> Result<Transaction, Box<dyn std::error::Error>> {
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
             let names = list_article_titles(conn, &path).await?;
@@ -293,7 +293,7 @@ async fn handle_article_data(
     header: FrameHeader,
     path: String,
     article_id: i32,
-) -> Result<Transaction, Box<dyn std::error::Error>> {
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     use crate::db::get_article;
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
@@ -359,7 +359,7 @@ async fn handle_post_article(
     flags: i32,
     data_flavor: String,
     data: String,
-) -> Result<Transaction, Box<dyn std::error::Error>> {
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     use crate::db::create_root_article;
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {

@@ -1,8 +1,8 @@
-use std::error::Error;
+use anyhow::{Context, Result};
 use std::net::SocketAddr;
 
-use clap::{Parser, Subcommand};
-use ortho_config::{OrthoConfig, merge_cli_over_defaults};
+use argon2::Params;
+use ortho_config::OrthoConfig;
 use serde::{Deserialize, Serialize};
 
 use tokio::io::{self, AsyncReadExt};
@@ -11,13 +11,10 @@ use tokio::sync::watch;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
-use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
-
-use mxd::db::{DbPool, create_user, establish_pool, run_migrations};
-use mxd::handler::{Context, Session, handle_request};
+use mxd::db::{DbPool, establish_pool, run_migrations};
+use mxd::handler::{Context as HandlerContext, Session, handle_request};
+use mxd::protocol;
 use mxd::transaction::{TransactionReader, TransactionWriter};
-use mxd::users::hash_password;
-use mxd::{models, protocol};
 
 async fn shutdown_signal() {
     #[cfg(unix)]
@@ -37,80 +34,31 @@ async fn shutdown_signal() {
     }
 }
 
-fn default_bind() -> String {
-    "0.0.0.0:5500".to_string()
-}
-
-fn default_db() -> String {
-    "mxd.db".to_string()
-}
-
 #[derive(OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 struct AppConfig {
-    #[ortho_config(default = default_bind())]
-    bind: Option<String>,
-    #[ortho_config(default = default_db())]
-    database: Option<String>,
-    argon2_m_cost: Option<u32>,
-    argon2_t_cost: Option<u32>,
-    argon2_p_cost: Option<u32>,
-}
-
-#[derive(Parser)]
-#[command(author, version, about)]
-struct CmdLine {
-    #[command(flatten)]
-    cfg: AppConfigCli,
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(Subcommand, Debug, Clone, Deserialize)]
-enum Commands {
-    /// Create a new user in the database
-    CreateUser { username: String, password: String },
+    #[ortho_config(default = "0.0.0.0:5500".to_string())]
+    bind: String,
+    #[ortho_config(default = "mxd.db".to_string())]
+    database: String,
+    #[ortho_config(default = Params::DEFAULT_M_COST)]
+    argon2_m_cost: u32,
+    #[ortho_config(default = Params::DEFAULT_T_COST)]
+    argon2_t_cost: u32,
+    #[ortho_config(default = Params::DEFAULT_P_COST)]
+    argon2_p_cost: u32,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let cli = CmdLine::parse();
-    let defaults = AppConfig::load_from_iter(["mxd"])?;
-    let cli_cfg = AppConfig {
-        bind: cli.cfg.bind,
-        database: cli.cfg.database,
-        argon2_m_cost: cli.cfg.argon2_m_cost,
-        argon2_t_cost: cli.cfg.argon2_t_cost,
-        argon2_p_cost: cli.cfg.argon2_p_cost,
-    };
-    let cfg = merge_cli_over_defaults(defaults, cli_cfg);
-    let bind = cfg.bind.unwrap_or_else(|| "0.0.0.0:5500".to_string());
-    let database = cfg.database.unwrap_or_else(|| "mxd.db".to_string());
-    let params = ParamsBuilder::new()
-        .m_cost(cfg.argon2_m_cost.unwrap_or(Params::DEFAULT_M_COST))
-        .t_cost(cfg.argon2_t_cost.unwrap_or(Params::DEFAULT_T_COST))
-        .p_cost(cfg.argon2_p_cost.unwrap_or(Params::DEFAULT_P_COST))
-        .build()?;
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+async fn main() -> Result<()> {
+    let cfg = AppConfig::load().context("loading configuration")?;
+    let bind = cfg.bind;
+    let database = cfg.database;
 
     let pool = establish_pool(&database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
         run_migrations(&mut conn).await?;
-    }
-
-    if let Some(Commands::CreateUser { username, password }) = cli.command {
-        let hashed = hash_password(&argon2, &password)?;
-        let new_user = models::NewUser {
-            username: &username,
-            password: &hashed,
-        };
-        let mut conn = pool.get().await.expect("failed to get db connection");
-        create_user(&mut conn, &new_user)
-            .await
-            .expect("failed to create user");
-        println!("User {username} created");
-        return Ok(());
     }
 
     let addr = bind;
@@ -163,14 +111,14 @@ async fn handle_client(
     peer: SocketAddr,
     pool: DbPool,
     shutdown: &mut watch::Receiver<bool>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     let (mut reader, mut writer) = io::split(socket);
 
     // perform protocol handshake with a timeout
     let mut buf = [0u8; protocol::HANDSHAKE_LEN];
     match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
         Ok(Ok(_)) => {}
-        Ok(Err(e)) => return Err(Box::new(e)),
+        Ok(Err(e)) => return Err(e.into()),
         Err(_) => {
             protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
             return Ok(());
@@ -189,14 +137,16 @@ async fn handle_client(
 
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
-    let ctx = Context::new(peer, pool.clone());
+    let ctx = HandlerContext::new(peer, pool.clone());
     let mut session = Session::default();
     loop {
         tokio::select! {
             tx = tx_reader.read_transaction() => {
                 let tx = tx?;
                 let frame = tx.to_bytes();
-                let resp = handle_request(&ctx, &mut session, &frame).await?;
+                let resp = handle_request(&ctx, &mut session, &frame)
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 tx_writer.write_transaction(&resp).await?;
             }
             _ = shutdown.changed() => {
@@ -210,7 +160,6 @@ async fn handle_client(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
     use figment::Jail;
 
     #[test]
@@ -219,8 +168,8 @@ mod tests {
             j.set_env("MXD_BIND", "127.0.0.1:8000");
             j.set_env("MXD_DATABASE", "env.db");
             let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
-            assert_eq!(cfg.bind.as_deref(), Some("127.0.0.1:8000"));
-            assert_eq!(cfg.database.as_deref(), Some("env.db"));
+            assert_eq!(cfg.bind, "127.0.0.1:8000");
+            assert_eq!(cfg.database, "env.db".to_string());
             Ok(())
         });
     }
@@ -229,17 +178,8 @@ mod tests {
     fn cli_overrides_env() {
         Jail::expect_with(|j| {
             j.set_env("MXD_BIND", "127.0.0.1:8000");
-            let defaults = AppConfig::load_from_iter(["mxd"]).expect("load");
-            let cli = CmdLine::parse_from(["mxd", "--bind", "0.0.0.0:9000"]);
-            let cli_cfg = AppConfig {
-                bind: cli.cfg.bind,
-                database: cli.cfg.database,
-                argon2_m_cost: cli.cfg.argon2_m_cost,
-                argon2_t_cost: cli.cfg.argon2_t_cost,
-                argon2_p_cost: cli.cfg.argon2_p_cost,
-            };
-            let merged = merge_cli_over_defaults(defaults, cli_cfg);
-            assert_eq!(merged.bind.as_deref(), Some("0.0.0.0:9000"));
+            let cfg = AppConfig::load_from_iter(["mxd", "--bind", "0.0.0.0:9000"]).expect("load");
+            assert_eq!(cfg.bind, "0.0.0.0:9000");
             Ok(())
         });
     }
@@ -249,7 +189,7 @@ mod tests {
         Jail::expect_with(|j| {
             j.create_file(".mxd.toml", "bind = \"1.2.3.4:1111\"")?;
             let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
-            assert_eq!(cfg.bind.as_deref(), Some("1.2.3.4:1111"));
+            assert_eq!(cfg.bind, "1.2.3.4:1111".to_string());
             Ok(())
         });
     }

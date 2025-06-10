@@ -15,7 +15,7 @@ pub async fn handle_login(
     username: String,
     password: String,
     header: FrameHeader,
-) -> Result<Transaction, Box<dyn std::error::Error>> {
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let mut conn = pool.get().await?;
     let user = get_user_by_name(&mut conn, &username).await?;
     let (error, payload) = if let Some(u) = user {
