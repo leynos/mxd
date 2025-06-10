@@ -20,8 +20,8 @@ fn login_tx() -> Transaction {
         ty: TransactionType::Login.into(),
         id: 1,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: u32::try_from(payload.len()).expect("payload fits in u32"),
+        data_size: u32::try_from(payload.len()).expect("payload fits in u32"),
     };
     Transaction { header, payload }
 }
@@ -51,8 +51,8 @@ fn news_category_root_tx() -> Transaction {
         ty: TransactionType::NewsCategoryNameList.into(),
         id: 3,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: u32::try_from(payload.len()).expect("payload fits in u32"),
+        data_size: u32::try_from(payload.len()).expect("payload fits in u32"),
     };
     Transaction { header, payload }
 }
@@ -66,8 +66,8 @@ fn news_article_titles_tx() -> Transaction {
         ty: TransactionType::NewsArticleNameList.into(),
         id: 7,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: u32::try_from(payload.len()).expect("payload fits in u32"),
+        data_size: u32::try_from(payload.len()).expect("payload fits in u32"),
     };
     Transaction { header, payload }
 }
@@ -86,13 +86,13 @@ fn news_article_data_tx() -> Transaction {
         ty: TransactionType::NewsArticleData.into(),
         id: 8,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: u32::try_from(payload.len()).expect("payload fits in u32"),
+        data_size: u32::try_from(payload.len()).expect("payload fits in u32"),
     };
     Transaction { header, payload }
 }
 
-fn save_tx(tx: Transaction, path: &Path) -> std::io::Result<()> {
+fn save_tx(tx: &Transaction, path: &Path) -> std::io::Result<()> {
     let bytes = tx.to_bytes();
     let mut f = File::create(path)?;
     f.write_all(&bytes)?;
@@ -102,13 +102,15 @@ fn save_tx(tx: Transaction, path: &Path) -> std::io::Result<()> {
 fn main() -> std::io::Result<()> {
     fs::create_dir_all(CORPUS_DIR)?;
     let dir = Path::new(CORPUS_DIR);
-    save_tx(login_tx(), &dir.join("login.bin"))?;
-    save_tx(get_file_list_tx(), &dir.join("get_file_list.bin"))?;
-    save_tx(news_category_root_tx(), &dir.join("news_category_root.bin"))?;
-    save_tx(
-        news_article_titles_tx(),
-        &dir.join("news_article_titles.bin"),
-    )?;
-    save_tx(news_article_data_tx(), &dir.join("news_article_data.bin"))?;
+    let login = login_tx();
+    save_tx(&login, &dir.join("login.bin"))?;
+    let list = get_file_list_tx();
+    save_tx(&list, &dir.join("get_file_list.bin"))?;
+    let root = news_category_root_tx();
+    save_tx(&root, &dir.join("news_category_root.bin"))?;
+    let titles = news_article_titles_tx();
+    save_tx(&titles, &dir.join("news_article_titles.bin"))?;
+    let data = news_article_data_tx();
+    save_tx(&data, &dir.join("news_article_data.bin"))?;
     Ok(())
 }
