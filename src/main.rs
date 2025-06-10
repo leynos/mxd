@@ -1,8 +1,9 @@
+#![allow(non_snake_case)]
 use anyhow::Result;
 use std::net::SocketAddr;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use clap_dispatch::clap_dispatch;
 use ortho_config::{OrthoConfig, load_subcommand_config, merge_cli_over_defaults};
 use serde::{Deserialize, Serialize};
@@ -82,7 +83,8 @@ impl Run for CreateUserArgs {
     }
 }
 
-#[derive(Parser, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
+#[allow(non_snake_case)]
+#[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 struct AppConfig {
     #[ortho_config(default = "0.0.0.0:5500".to_string())]
@@ -113,7 +115,7 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let mut cfg = cli.config;
+    let cfg = cli.config;
     if let Some(cmd) = cli.command {
         let cmd = match cmd {
             Commands::CreateUser(args) => {

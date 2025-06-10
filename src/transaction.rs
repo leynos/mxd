@@ -492,8 +492,8 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Result<Vec<u8>, Transaction
 /// conversion logic at call sites.
 ///
 /// # Errors
-/// Returns a [`TransactionError`] if any of the parameters exceed the
-/// allowed size when encoded.
+/// Returns [`TransactionError`] if the inner call to [`encode_params`]
+/// fails, for example when the payload is too large.
 #[must_use = "use the encoded bytes"]
 pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Result<Vec<u8>, TransactionError> {
     let borrowed: Vec<(FieldId, &[u8])> = params
