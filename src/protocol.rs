@@ -47,13 +47,14 @@ pub enum HandshakeError {
 }
 
 /// Parse the 12-byte client handshake message.
+#[must_use]
 pub fn parse_handshake(buf: &[u8; HANDSHAKE_LEN]) -> Result<Handshake, HandshakeError> {
     if &buf[0..4] != PROTOCOL_ID {
         return Err(HandshakeError::InvalidProtocol);
     }
-    let sub_protocol = u32::from_be_bytes(buf[4..8].try_into().unwrap());
-    let version = u16::from_be_bytes(buf[8..10].try_into().unwrap());
-    let sub_version = u16::from_be_bytes(buf[10..12].try_into().unwrap());
+    let sub_protocol = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
+    let version = u16::from_be_bytes([buf[8], buf[9]]);
+    let sub_version = u16::from_be_bytes([buf[10], buf[11]]);
     if version != VERSION {
         return Err(HandshakeError::UnsupportedVersion(version));
     }
@@ -65,6 +66,7 @@ pub fn parse_handshake(buf: &[u8; HANDSHAKE_LEN]) -> Result<Handshake, Handshake
 }
 
 /// Convert a [`HandshakeError`] into a numeric error code for clients.
+#[must_use]
 pub fn handshake_error_code(err: &HandshakeError) -> u32 {
     match err {
         HandshakeError::InvalidProtocol => HANDSHAKE_ERR_INVALID,
@@ -77,6 +79,9 @@ pub fn handshake_error_code(err: &HandshakeError) -> u32 {
 /// The reply consists of the protocol identifier followed by a 32-bit
 /// error code. [`HANDSHAKE_OK`] indicates success, while the other
 /// `HANDSHAKE_ERR_*` constants specify why the handshake failed.
+///
+/// # Errors
+/// Returns any I/O error encountered while sending the reply.
 pub async fn write_handshake_reply<W>(writer: &mut W, error_code: u32) -> io::Result<()>
 where
     W: AsyncWriteExt + Unpin,

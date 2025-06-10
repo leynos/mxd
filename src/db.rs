@@ -23,6 +23,10 @@ pub async fn establish_pool(database_url: &str) -> DbPool {
         .expect("Failed to create pool")
 }
 
+/// Run embedded database migrations.
+///
+/// # Errors
+/// Returns any error produced by Diesel while running migrations.
 pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
     use diesel::result::Error as DieselError;
     conn.spawn_blocking(|c| {
@@ -36,11 +40,15 @@ pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
     Ok(())
 }
 
+/// Look up a user record by username.
+///
+/// # Errors
+/// Returns any error produced by the underlying database query.
 pub async fn get_user_by_name(
     conn: &mut DbConnection,
     name: &str,
 ) -> QueryResult<Option<crate::models::User>> {
-    use crate::schema::users::dsl::*;
+    use crate::schema::users::dsl::{username, users};
     users
         .filter(username.eq(name))
         .first::<crate::models::User>(conn)
@@ -48,11 +56,15 @@ pub async fn get_user_by_name(
         .optional()
 }
 
+/// Insert a new user record.
+///
+/// # Errors
+/// Returns any error produced by the insertion query.
 pub async fn create_user(
     conn: &mut DbConnection,
     user: &crate::models::NewUser<'_>,
 ) -> QueryResult<usize> {
-    use crate::schema::users::dsl::*;
+    use crate::schema::users::dsl::users;
     diesel::insert_into(users).values(user).execute(conn).await
 }
 
@@ -86,9 +98,8 @@ async fn bundle_id_from_path(
         id: Option<i32>,
     }
 
-    let (json, len) = match prepare_path(path)? {
-        Some(t) => t,
-        None => return Ok(None),
+    let Some((json, len)) = prepare_path(path)? else {
+        return Ok(None);
     };
 
     let seed = sql_query(CTE_SEED_SQL);
@@ -114,12 +125,13 @@ pub async fn list_names_at_path(
     conn: &mut DbConnection,
     path: Option<&str>,
 ) -> Result<Vec<String>, PathLookupError> {
+    use crate::schema::news_bundles::dsl as b;
+    use crate::schema::news_categories::dsl as c;
     let bundle_id = if let Some(p) = path {
         bundle_id_from_path(conn, p).await?
     } else {
         None
     };
-    use crate::schema::news_bundles::dsl as b;
     let mut bundle_query = b::news_bundles.into_boxed();
     if let Some(id) = bundle_id {
         bundle_query = bundle_query.filter(b::parent_bundle_id.eq(id));
@@ -133,8 +145,6 @@ pub async fn list_names_at_path(
         .into_iter()
         .map(|b| b.name)
         .collect();
-
-    use crate::schema::news_categories::dsl as c;
     let mut cat_query = c::news_categories.into_boxed();
     if let Some(id) = bundle_id {
         cat_query = cat_query.filter(c::bundle_id.eq(id));
@@ -152,22 +162,30 @@ pub async fn list_names_at_path(
     Ok(names)
 }
 
+/// Insert a new news category.
+///
+/// # Errors
+/// Returns any error produced by the database.
 pub async fn create_category(
     conn: &mut DbConnection,
     cat: &crate::models::NewCategory<'_>,
 ) -> QueryResult<usize> {
-    use crate::schema::news_categories::dsl::*;
+    use crate::schema::news_categories::dsl::news_categories;
     diesel::insert_into(news_categories)
         .values(cat)
         .execute(conn)
         .await
 }
 
+/// Insert a new news bundle.
+///
+/// # Errors
+/// Returns any error produced by the database.
 pub async fn create_bundle(
     conn: &mut DbConnection,
     bun: &crate::models::NewBundle<'_>,
 ) -> QueryResult<usize> {
-    use crate::schema::news_bundles::dsl::*;
+    use crate::schema::news_bundles::dsl::news_bundles;
     diesel::insert_into(news_bundles)
         .values(bun)
         .execute(conn)

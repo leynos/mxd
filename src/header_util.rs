@@ -1,5 +1,8 @@
 /// Build a reply `FrameHeader` mirroring the request and specifying
 /// the payload size and error code.
+///
+/// # Panics
+/// Panics if `payload_len` does not fit within `u32`.
 #[must_use]
 pub fn reply_header(
     req: &crate::transaction::FrameHeader,

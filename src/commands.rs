@@ -359,7 +359,7 @@ async fn handle_article_data(
             }
             params.push((
                 FieldId::NewsArticleFlags,
-                (article.flags as i32).to_be_bytes().to_vec(),
+                article.flags.to_be_bytes().to_vec(),
             ));
             params.push((
                 FieldId::NewsDataFlavor,
