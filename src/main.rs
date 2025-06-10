@@ -1,7 +1,11 @@
-use std::error::Error;
+use anyhow::{Context, Result};
 use std::net::SocketAddr;
 
+use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 use clap::{Parser, Subcommand};
+use clap_dispatch::clap_dispatch;
+use ortho_config::{OrthoConfig, load_subcommand_config, merge_cli_over_defaults};
+use serde::{Deserialize, Serialize};
 
 use tokio::io::{self, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -9,13 +13,13 @@ use tokio::sync::watch;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
-use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
-
-use mxd::db::{DbPool, create_user, establish_pool, run_migrations};
-use mxd::handler::{Context, Session, handle_request};
+use diesel_async::AsyncConnection;
+use mxd::db::{DbConnection, DbPool, create_user, establish_pool, run_migrations};
+use mxd::handler::{Context as HandlerContext, Session, handle_request};
+use mxd::models;
+use mxd::protocol;
 use mxd::transaction::{TransactionReader, TransactionWriter};
 use mxd::users::hash_password;
-use mxd::{models, protocol};
 
 async fn shutdown_signal() {
     #[cfg(unix)]
@@ -35,71 +39,109 @@ async fn shutdown_signal() {
     }
 }
 
-#[derive(Parser)]
-#[command(author, version, about)]
-struct Cli {
-    /// Address to bind the server to
-    #[arg(long, default_value = "0.0.0.0:5500")]
+#[derive(Parser, Deserialize, Serialize, Default, Debug, Clone)]
+struct CreateUserArgs {
+    username: Option<String>,
+    password: Option<String>,
+}
+
+#[clap_dispatch(fn run(self, cfg: &AppConfig) -> Result<()>)]
+#[derive(Subcommand, Deserialize, Serialize, Debug, Clone)]
+enum Commands {
+    #[command(name = "create-user")]
+    CreateUser(CreateUserArgs),
+}
+
+impl Run for CreateUserArgs {
+    fn run(self, cfg: &AppConfig) -> Result<()> {
+        tokio::runtime::Handle::current().block_on(async {
+            let username = self
+                .username
+                .ok_or_else(|| anyhow::anyhow!("missing username"))?;
+            let password = self
+                .password
+                .ok_or_else(|| anyhow::anyhow!("missing password"))?;
+
+            let params = ParamsBuilder::new()
+                .m_cost(cfg.argon2_m_cost)
+                .t_cost(cfg.argon2_t_cost)
+                .p_cost(cfg.argon2_p_cost)
+                .build()?;
+            let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+            let hashed = hash_password(&argon2, &password)?;
+            let new_user = models::NewUser {
+                username: &username,
+                password: &hashed,
+            };
+            let mut conn = DbConnection::establish(&cfg.database).await?;
+            run_migrations(&mut conn).await?;
+            create_user(&mut conn, &new_user).await?;
+            println!("User {username} created");
+            Ok(())
+        })
+    }
+}
+
+#[derive(Parser, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
+#[ortho_config(prefix = "MXD_")]
+struct AppConfig {
+    #[ortho_config(default = "0.0.0.0:5500".to_string())]
+    #[arg(long)]
     bind: String,
-
-    /// Path to the `SQLite` database
-    #[arg(long, default_value = "mxd.db")]
+    #[ortho_config(default = "mxd.db".to_string())]
+    #[arg(long)]
     database: String,
-
-    /// Argon2 memory cost in KiB
-    #[arg(long, default_value_t = Params::DEFAULT_M_COST)]
+    #[ortho_config(default = Params::DEFAULT_M_COST)]
+    #[arg(long)]
     argon2_m_cost: u32,
-
-    /// Argon2 iterations
-    #[arg(long, default_value_t = Params::DEFAULT_T_COST)]
+    #[ortho_config(default = Params::DEFAULT_T_COST)]
+    #[arg(long)]
     argon2_t_cost: u32,
-
-    /// Argon2 parallelism
-    #[arg(long, default_value_t = Params::DEFAULT_P_COST)]
+    #[ortho_config(default = Params::DEFAULT_P_COST)]
+    #[arg(long)]
     argon2_p_cost: u32,
+}
 
+#[derive(Parser)]
+struct Cli {
+    #[command(flatten)]
+    config: AppConfig,
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
-#[derive(Subcommand)]
-enum Commands {
-    /// Create a new user in the database
-    CreateUser { username: String, password: String },
-}
-
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let mut cfg = cli.config;
+    if let Some(cmd) = cli.command {
+        let cmd = match cmd {
+            Commands::CreateUser(args) => {
+                let defaults: CreateUserArgs = load_subcommand_config("MXD_", "create-user")?;
+                Commands::CreateUser(merge_cli_over_defaults(defaults, args))
+            }
+        };
+        return cmd.run(&cfg);
+    }
+
+    let bind = cfg.bind;
+    let database = cfg.database;
 
     let params = ParamsBuilder::new()
-        .m_cost(cli.argon2_m_cost)
-        .t_cost(cli.argon2_t_cost)
-        .p_cost(cli.argon2_p_cost)
+        .m_cost(cfg.argon2_m_cost)
+        .t_cost(cfg.argon2_t_cost)
+        .p_cost(cfg.argon2_p_cost)
         .build()?;
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    // Placeholder: use customized Argon2 instance when creating accounts
+    let _argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
-    let pool = establish_pool(&cli.database).await;
+    let pool = establish_pool(&database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
         run_migrations(&mut conn).await?;
     }
 
-    if let Some(Commands::CreateUser { username, password }) = cli.command {
-        let hashed = hash_password(&argon2, &password)?;
-        let new_user = models::NewUser {
-            username: &username,
-            password: &hashed,
-        };
-        let mut conn = pool.get().await.expect("failed to get db connection");
-        create_user(&mut conn, &new_user)
-            .await
-            .expect("failed to create user");
-        println!("User {username} created");
-        return Ok(());
-    }
-
-    let addr = cli.bind;
+    let addr = bind;
     let listener = TcpListener::bind(&addr).await?;
     println!("mxd listening on {addr}");
 
@@ -149,14 +191,14 @@ async fn handle_client(
     peer: SocketAddr,
     pool: DbPool,
     shutdown: &mut watch::Receiver<bool>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     let (mut reader, mut writer) = io::split(socket);
 
     // perform protocol handshake with a timeout
     let mut buf = [0u8; protocol::HANDSHAKE_LEN];
     match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
         Ok(Ok(_)) => {}
-        Ok(Err(e)) => return Err(Box::new(e)),
+        Ok(Err(e)) => return Err(e.into()),
         Err(_) => {
             protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
             return Ok(());
@@ -175,14 +217,16 @@ async fn handle_client(
 
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
-    let ctx = Context::new(peer, pool.clone());
+    let ctx = HandlerContext::new(peer, pool.clone());
     let mut session = Session::default();
     loop {
         tokio::select! {
             tx = tx_reader.read_transaction() => {
                 let tx = tx?;
                 let frame = tx.to_bytes();
-                let resp = handle_request(&ctx, &mut session, &frame).await?;
+                let resp = handle_request(&ctx, &mut session, &frame)
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 tx_writer.write_transaction(&resp).await?;
             }
             _ = shutdown.changed() => {
@@ -191,4 +235,51 @@ async fn handle_client(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use figment::Jail;
+
+    #[test]
+    fn env_config_loading() {
+        Jail::expect_with(|j| {
+            j.set_env("MXD_BIND", "127.0.0.1:8000");
+            j.set_env("MXD_DATABASE", "env.db");
+            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
+            assert_eq!(cfg.bind, "127.0.0.1:8000");
+            assert_eq!(cfg.database, "env.db".to_string());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn cli_overrides_env() {
+        Jail::expect_with(|j| {
+            j.set_env("MXD_BIND", "127.0.0.1:8000");
+            let cfg = AppConfig::load_from_iter(["mxd", "--bind", "0.0.0.0:9000"]).expect("load");
+            assert_eq!(cfg.bind, "0.0.0.0:9000");
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn loads_from_dotfile() {
+        Jail::expect_with(|j| {
+            j.create_file(".mxd.toml", "bind = \"1.2.3.4:1111\"")?;
+            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
+            assert_eq!(cfg.bind, "1.2.3.4:1111".to_string());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn argon2_cli() {
+        Jail::expect_with(|j| {
+            let cfg = AppConfig::load_from_iter(["mxd", "--argon2-m-cost", "1024"]).expect("load");
+            assert_eq!(cfg.argon2_m_cost, 1024);
+            Ok(())
+        });
+    }
 }

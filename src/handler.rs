@@ -27,7 +27,7 @@ pub async fn handle_request(
     ctx: &Context,
     session: &mut Session,
     frame: &[u8],
-) -> Result<Transaction, Box<dyn std::error::Error>> {
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let tx = parse_transaction(frame)?;
     let cmd = Command::from_transaction(tx)?;
     let reply = cmd.process(ctx.peer, ctx.pool.clone(), session).await?;
