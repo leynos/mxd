@@ -86,19 +86,19 @@ impl Run for CreateUserArgs {
 #[ortho_config(prefix = "MXD_")]
 struct AppConfig {
     #[ortho_config(default = "0.0.0.0:5500".to_string())]
-    #[arg(long)]
+    #[arg(long, default_value_t = String::from("0.0.0.0:5500"))]
     bind: String,
     #[ortho_config(default = "mxd.db".to_string())]
-    #[arg(long)]
+    #[arg(long, default_value_t = String::from("mxd.db"))]
     database: String,
     #[ortho_config(default = Params::DEFAULT_M_COST)]
-    #[arg(long)]
+    #[arg(long, default_value_t = Params::DEFAULT_M_COST)]
     argon2_m_cost: u32,
     #[ortho_config(default = Params::DEFAULT_T_COST)]
-    #[arg(long)]
+    #[arg(long, default_value_t = Params::DEFAULT_T_COST)]
     argon2_t_cost: u32,
     #[ortho_config(default = Params::DEFAULT_P_COST)]
-    #[arg(long)]
+    #[arg(long, default_value_t = Params::DEFAULT_P_COST)]
     argon2_p_cost: u32,
 }
 

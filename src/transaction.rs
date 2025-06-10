@@ -465,7 +465,7 @@ pub fn decode_params_map(
 /// Returns [`TransactionError::PayloadTooLarge`] if the number of parameters
 /// or any data length exceeds `u16::MAX`.
 #[must_use = "use the encoded bytes"]
-pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8>, TransactionError> {
+pub fn encode_params(params: &[(FieldId, &[u8])]) -> Result<Vec<u8>, TransactionError> {
     let mut buf = Vec::new();
     buf.extend_from_slice(
         &u16::try_from(params.len())
@@ -491,7 +491,7 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8>, TransactionError> 
 /// form expected by [`encode_params`]. It avoids repeating the
 /// conversion logic at call sites.
 #[must_use = "use the encoded bytes"]
-pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8>, TransactionError> {
+pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Result<Vec<u8>, TransactionError> {
     let borrowed: Vec<(FieldId, &[u8])> = params
         .iter()
         .map(|(id, bytes)| (*id, bytes.as_slice()))
