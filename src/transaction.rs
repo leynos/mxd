@@ -490,6 +490,10 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Result<Vec<u8>, Transaction
 /// This converts a `&[(FieldId, Vec<u8>)]` slice into the borrowed
 /// form expected by [`encode_params`]. It avoids repeating the
 /// conversion logic at call sites.
+///
+/// # Errors
+/// Returns a [`TransactionError`] if any of the parameters exceed the
+/// allowed size when encoded.
 #[must_use = "use the encoded bytes"]
 pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Result<Vec<u8>, TransactionError> {
     let borrowed: Vec<(FieldId, &[u8])> = params
