@@ -762,6 +762,7 @@ dependencies = [
  "argon2",
  "chrono",
  "clap",
+ "clap-dispatch",
  "diesel",
  "diesel-async",
  "diesel_cte_ext",

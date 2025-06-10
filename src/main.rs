@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use std::net::SocketAddr;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
-use ortho_config::OrthoConfig;
+use clap::{Parser, Subcommand};
+use clap_dispatch::clap_dispatch;
+use ortho_config::{OrthoConfig, load_subcommand_config, merge_cli_over_defaults};
 use serde::{Deserialize, Serialize};
 
 use tokio::io::{self, AsyncReadExt};
@@ -11,10 +13,13 @@ use tokio::sync::watch;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
-use mxd::db::{DbPool, establish_pool, run_migrations};
+use diesel_async::AsyncConnection;
+use mxd::db::{DbConnection, DbPool, create_user, establish_pool, run_migrations};
 use mxd::handler::{Context as HandlerContext, Session, handle_request};
+use mxd::models;
 use mxd::protocol;
 use mxd::transaction::{TransactionReader, TransactionWriter};
+use mxd::users::hash_password;
 
 async fn shutdown_signal() {
     #[cfg(unix)]
@@ -34,24 +39,91 @@ async fn shutdown_signal() {
     }
 }
 
-#[derive(OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
+#[derive(Parser, Deserialize, Serialize, Default, Debug, Clone)]
+struct CreateUserArgs {
+    username: Option<String>,
+    password: Option<String>,
+}
+
+#[clap_dispatch(fn run(self, cfg: &AppConfig) -> Result<()>)]
+#[derive(Subcommand, Deserialize, Serialize, Debug, Clone)]
+enum Commands {
+    #[command(name = "create-user")]
+    CreateUser(CreateUserArgs),
+}
+
+impl Run for CreateUserArgs {
+    fn run(self, cfg: &AppConfig) -> Result<()> {
+        tokio::runtime::Handle::current().block_on(async {
+            let username = self
+                .username
+                .ok_or_else(|| anyhow::anyhow!("missing username"))?;
+            let password = self
+                .password
+                .ok_or_else(|| anyhow::anyhow!("missing password"))?;
+
+            let params = ParamsBuilder::new()
+                .m_cost(cfg.argon2_m_cost)
+                .t_cost(cfg.argon2_t_cost)
+                .p_cost(cfg.argon2_p_cost)
+                .build()?;
+            let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+            let hashed = hash_password(&argon2, &password)?;
+            let new_user = models::NewUser {
+                username: &username,
+                password: &hashed,
+            };
+            let mut conn = DbConnection::establish(&cfg.database).await?;
+            run_migrations(&mut conn).await?;
+            create_user(&mut conn, &new_user).await?;
+            println!("User {username} created");
+            Ok(())
+        })
+    }
+}
+
+#[derive(Parser, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 struct AppConfig {
     #[ortho_config(default = "0.0.0.0:5500".to_string())]
+    #[arg(long)]
     bind: String,
     #[ortho_config(default = "mxd.db".to_string())]
+    #[arg(long)]
     database: String,
     #[ortho_config(default = Params::DEFAULT_M_COST)]
+    #[arg(long)]
     argon2_m_cost: u32,
     #[ortho_config(default = Params::DEFAULT_T_COST)]
+    #[arg(long)]
     argon2_t_cost: u32,
     #[ortho_config(default = Params::DEFAULT_P_COST)]
+    #[arg(long)]
     argon2_p_cost: u32,
+}
+
+#[derive(Parser)]
+struct Cli {
+    #[command(flatten)]
+    config: AppConfig,
+    #[command(subcommand)]
+    command: Option<Commands>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cfg = AppConfig::load().context("loading configuration")?;
+    let cli = Cli::parse();
+    let mut cfg = cli.config;
+    if let Some(cmd) = cli.command {
+        let cmd = match cmd {
+            Commands::CreateUser(args) => {
+                let defaults: CreateUserArgs = load_subcommand_config("MXD_", "create-user")?;
+                Commands::CreateUser(merge_cli_over_defaults(defaults, args))
+            }
+        };
+        return cmd.run(&cfg);
+    }
+
     let bind = cfg.bind;
     let database = cfg.database;
 

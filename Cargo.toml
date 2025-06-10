@@ -30,6 +30,7 @@ figment = { version = "0.10", features = ["toml", "env", "test"] }
 uncased = "0.9"
 xdg = "3"
 anyhow = "1"
+clap-dispatch = "0.1"
 
 [dev-dependencies]
 test-util = { path = "test-util" }
