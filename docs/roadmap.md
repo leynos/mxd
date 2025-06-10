@@ -52,7 +52,7 @@ already been implemented in the repository are checked off.
 
 ## Compatibility and Testing
 
-- [x] Integration validator crate using `shx`
+- [x] Integration validator crate using `hx`
 - [x] Fuzzing harness with AFL++
   - [ ] Regular execution of fuzzing
 - [ ] Full protocol coverage in tests

@@ -48,8 +48,8 @@ Integration tests live in the repository's `tests/` directory.
 
 ## Validation harness
 
-The `validator` crate provides a compatibility check using the `shx` client and
-`expectrl` to ensure mxd speaks the Hotline protocol correctly. Install `shx`
+The `validator` crate provides a compatibility check using the `hx` client and
+`expectrl` to ensure mxd speaks the Hotline protocol correctly. Install `hx`
 version 0.2.4 and make sure it's on your `PATH` before running:
 
 ```bash
