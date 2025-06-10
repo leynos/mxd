@@ -8,6 +8,7 @@ use argon2::{
 ///
 /// # Errors
 /// Returns any error produced by the underlying hashing implementation.
+#[must_use = "handle the result"]
 pub fn hash_password(argon2: &Argon2, pw: &str) -> Result<String, Error> {
     let salt = SaltString::generate(&mut OsRng);
     Ok(argon2.hash_password(pw.as_bytes(), &salt)?.to_string())

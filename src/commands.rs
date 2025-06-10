@@ -65,6 +65,7 @@ impl Command {
     ///
     /// # Errors
     /// Returns an error if required parameters are missing or cannot be parsed.
+    #[must_use = "handle the result"]
     pub fn from_transaction(tx: Transaction) -> Result<Self, &'static str> {
         let ty = TransactionType::from(tx.header.ty);
         if !ty.allows_payload() && !tx.payload.is_empty() {
@@ -150,6 +151,7 @@ impl Command {
     /// # Errors
     /// Returns an error if database access fails or the command cannot be
     /// handled.
+    #[must_use = "handle the result"]
     pub async fn process(
         self,
         peer: SocketAddr,
