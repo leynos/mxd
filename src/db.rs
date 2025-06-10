@@ -69,7 +69,7 @@ pub async fn create_user(
 }
 
 use crate::news_path::{
-    BUNDLE_BODY_SQL, BUNDLE_STEP_SQL, CATEGORY_BODY_SQL, CATEGORY_STEP_SQL, CTE_SEED_SQL,
+    BUNDLE_BODY_SQL, BUNDLE_STEP_SQL, CATEGORY_BODY_SQL, CATEGORY_STEP_SQL, build_path_cte,
     prepare_path,
 };
 use thiserror::Error;
@@ -90,7 +90,6 @@ async fn bundle_id_from_path(
 ) -> Result<Option<i32>, PathLookupError> {
     use diesel::sql_query;
     use diesel::sql_types::{Integer, Text};
-    use diesel_cte_ext::with_recursive;
 
     #[derive(QueryableByName)]
     struct BunId {
@@ -102,13 +101,11 @@ async fn bundle_id_from_path(
         return Ok(None);
     };
 
-    let seed = sql_query(CTE_SEED_SQL);
     let step = sql_query(BUNDLE_STEP_SQL).bind::<Text, _>(json.clone());
     let len_i32: i32 = i32::try_from(len).map_err(|_| PathLookupError::InvalidPath)?;
     let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len_i32);
 
-    let query =
-        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
+    let query = build_path_cte(step, body);
 
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
@@ -218,7 +215,6 @@ async fn category_id_from_path(
 ) -> Result<i32, PathLookupError> {
     use diesel::sql_query;
     use diesel::sql_types::{Integer, Text};
-    use diesel_cte_ext::with_recursive;
 
     #[derive(QueryableByName)]
     struct CatId {
@@ -229,8 +225,6 @@ async fn category_id_from_path(
     let Some((json, len)) = prepare_path(path)? else {
         return Err(PathLookupError::InvalidPath);
     };
-
-    let seed = sql_query(CTE_SEED_SQL);
 
     // Step advances the tree by joining the next path segment from json_each
     // against the bundles table.
@@ -243,8 +237,7 @@ async fn category_id_from_path(
         .bind::<Integer, _>(len_minus_one)
         .bind::<Integer, _>(len_minus_one);
 
-    let query =
-        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
+    let query = build_path_cte(step, body);
 
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
     res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)
