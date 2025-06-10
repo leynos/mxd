@@ -38,6 +38,24 @@ pub(crate) fn prepare_path(path: &str) -> Result<Option<(String, usize)>, serde_
     Ok(Some((json, len)))
 }
 
+use diesel::query_builder::QueryFragment;
+use diesel::sql_query;
+use diesel::sqlite::Sqlite;
+use diesel_cte_ext::{cte::WithRecursive, with_recursive};
+
+/// Construct a recursive CTE for traversing bundle paths.
+pub(crate) fn build_path_cte<Step, Body>(
+    step: Step,
+    body: Body,
+) -> WithRecursive<Sqlite, diesel::query_builder::SqlQuery, Step, Body>
+where
+    Step: QueryFragment<Sqlite>,
+    Body: QueryFragment<Sqlite>,
+{
+    let seed = sql_query(CTE_SEED_SQL);
+    with_recursive::<Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
