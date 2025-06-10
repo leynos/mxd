@@ -475,7 +475,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cea14ef9355e3beab063703aa9dab15afd25f0667c341310c1e5274bb1d0da18"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -831,14 +831,13 @@ checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
 [[package]]
 name = "ortho_config"
 version = "0.1.0"
-source = "git+https://github.com/leynos/ortho-config#54c53fccf2cc1602eef4564c12bba4f78cc55242"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.1.0#f7524ef4e57a1e5bb84ab17871711445e5875b74"
 dependencies = [
  "clap",
  "clap-dispatch",
  "figment",
  "ortho_config_macros",
  "serde",
- "serde_json",
  "thiserror",
  "toml",
  "uncased",
@@ -848,7 +847,7 @@ dependencies = [
 [[package]]
 name = "ortho_config_macros"
 version = "0.1.0"
-source = "git+https://github.com/leynos/ortho-config#54c53fccf2cc1602eef4564c12bba4f78cc55242"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.1.0#f7524ef4e57a1e5bb84ab17871711445e5875b74"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1047,7 +1046,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1191,7 +1190,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
