@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::net::SocketAddr;
 
-use argon2::Params;
+use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 use ortho_config::OrthoConfig;
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +54,14 @@ async fn main() -> Result<()> {
     let cfg = AppConfig::load().context("loading configuration")?;
     let bind = cfg.bind;
     let database = cfg.database;
+
+    let params = ParamsBuilder::new()
+        .m_cost(cfg.argon2_m_cost)
+        .t_cost(cfg.argon2_t_cost)
+        .p_cost(cfg.argon2_p_cost)
+        .build()?;
+    // Placeholder: use customized Argon2 instance when creating accounts
+    let _argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
     let pool = establish_pool(&database).await;
     {
@@ -190,6 +198,15 @@ mod tests {
             j.create_file(".mxd.toml", "bind = \"1.2.3.4:1111\"")?;
             let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
             assert_eq!(cfg.bind, "1.2.3.4:1111".to_string());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn argon2_cli() {
+        Jail::expect_with(|j| {
+            let cfg = AppConfig::load_from_iter(["mxd", "--argon2-m-cost", "1024"]).expect("load");
+            assert_eq!(cfg.argon2_m_cost, 1024);
             Ok(())
         });
     }
