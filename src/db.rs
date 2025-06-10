@@ -11,6 +11,10 @@ pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
 pub type DbPool = Pool<DbConnection>;
 
+/// Create a pooled connection to the SQLite database.
+///
+/// # Panics
+/// Panics if the connection pool cannot be created.
 pub async fn establish_pool(database_url: &str) -> DbPool {
     let config = AsyncDieselConnectionManager::<DbConnection>::new(database_url);
     Pool::builder()
@@ -72,27 +76,28 @@ async fn bundle_id_from_path(
     conn: &mut DbConnection,
     path: &str,
 ) -> Result<Option<i32>, PathLookupError> {
+    use diesel::sql_query;
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
-
-    let (json, len) = match prepare_path(path)? {
-        Some(t) => t,
-        None => return Ok(None),
-    };
-
-    use diesel::sql_query;
-    let seed = sql_query(CTE_SEED_SQL);
-    let step = sql_query(BUNDLE_STEP_SQL).bind::<Text, _>(json.clone());
-    let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len as i32);
-
-    let query =
-        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
 
     #[derive(QueryableByName)]
     struct BunId {
         #[diesel(sql_type = diesel::sql_types::Nullable<Integer>)]
         id: Option<i32>,
     }
+
+    let (json, len) = match prepare_path(path)? {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+
+    let seed = sql_query(CTE_SEED_SQL);
+    let step = sql_query(BUNDLE_STEP_SQL).bind::<Text, _>(json.clone());
+    let len_i32: i32 = i32::try_from(len).map_err(|_| PathLookupError::InvalidPath)?;
+    let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len_i32);
+
+    let query =
+        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
 
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
@@ -101,6 +106,10 @@ async fn bundle_id_from_path(
     }
 }
 
+/// List bundle and category names located at the given path.
+///
+/// # Errors
+/// Returns an error if the path is invalid or the query fails.
 pub async fn list_names_at_path(
     conn: &mut DbConnection,
     path: Option<&str>,
@@ -165,6 +174,10 @@ pub async fn create_bundle(
         .await
 }
 
+/// Retrieve a single article by path and identifier.
+///
+/// # Errors
+/// Returns an error if the path is invalid or the query fails.
 pub async fn get_article(
     conn: &mut DbConnection,
     path: &str,
@@ -185,29 +198,9 @@ async fn category_id_from_path(
     conn: &mut DbConnection,
     path: &str,
 ) -> Result<i32, PathLookupError> {
+    use diesel::sql_query;
     use diesel::sql_types::{Integer, Text};
     use diesel_cte_ext::with_recursive;
-
-    let (json, len) = match prepare_path(path)? {
-        Some(t) => t,
-        None => return Err(PathLookupError::InvalidPath),
-    };
-
-    use diesel::sql_query;
-    let seed = sql_query(CTE_SEED_SQL);
-
-    // Step advances the tree by joining the next path segment from json_each
-    // against the bundles table.
-    let step = sql_query(CATEGORY_STEP_SQL).bind::<Text, _>(json.clone());
-
-    // Body selects the category matching the final path segment and bundle.
-    let body = sql_query(CATEGORY_BODY_SQL)
-        .bind::<Text, _>(json)
-        .bind::<Integer, _>((len - 1) as i32)
-        .bind::<Integer, _>((len - 1) as i32);
-
-    let query =
-        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
 
     #[derive(QueryableByName)]
     struct CatId {
@@ -215,10 +208,34 @@ async fn category_id_from_path(
         id: i32,
     }
 
+    let Some((json, len)) = prepare_path(path)? else {
+        return Err(PathLookupError::InvalidPath);
+    };
+
+    let seed = sql_query(CTE_SEED_SQL);
+
+    // Step advances the tree by joining the next path segment from json_each
+    // against the bundles table.
+    let step = sql_query(CATEGORY_STEP_SQL).bind::<Text, _>(json.clone());
+
+    // Body selects the category matching the final path segment and bundle.
+    let len_minus_one: i32 = i32::try_from(len - 1).map_err(|_| PathLookupError::InvalidPath)?;
+    let body = sql_query(CATEGORY_BODY_SQL)
+        .bind::<Text, _>(json)
+        .bind::<Integer, _>(len_minus_one)
+        .bind::<Integer, _>(len_minus_one);
+
+    let query =
+        with_recursive::<diesel::sqlite::Sqlite, _, _, _>("tree", &["idx", "id"], seed, step, body);
+
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
     res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)
 }
 
+/// List the titles of all root-level articles within a category.
+///
+/// # Errors
+/// Returns an error if the path is invalid or the query fails.
 pub async fn list_article_titles(
     conn: &mut DbConnection,
     path: &str,
@@ -236,6 +253,10 @@ pub async fn list_article_titles(
     Ok(titles)
 }
 
+/// Create a new root article in the specified category path.
+///
+/// # Errors
+/// Returns an error if the path is invalid or the insertion fails.
 pub async fn create_root_article(
     conn: &mut DbConnection,
     path: &str,
@@ -294,19 +315,27 @@ pub async fn create_root_article(
     .await
 }
 
+/// Insert a new file metadata entry.
+///
+/// # Errors
+/// Returns any error produced by the database.
 pub async fn create_file(
     conn: &mut DbConnection,
     file: &crate::models::NewFileEntry<'_>,
 ) -> QueryResult<usize> {
-    use crate::schema::files::dsl::*;
+    use crate::schema::files::dsl::files;
     diesel::insert_into(files).values(file).execute(conn).await
 }
 
+/// Add a file access control entry for a user.
+///
+/// # Errors
+/// Returns any error produced by the database.
 pub async fn add_file_acl(
     conn: &mut DbConnection,
     acl: &crate::models::NewFileAcl,
 ) -> QueryResult<bool> {
-    use crate::schema::file_acl::dsl::*;
+    use crate::schema::file_acl::dsl::file_acl;
     diesel::insert_into(file_acl)
         .values(acl)
         .on_conflict_do_nothing()
@@ -315,6 +344,10 @@ pub async fn add_file_acl(
         .map(|rows| rows > 0)
 }
 
+/// List all files accessible by the specified user.
+///
+/// # Errors
+/// Returns any error produced by the database.
 pub async fn list_files_for_user(
     conn: &mut DbConnection,
     uid: i32,

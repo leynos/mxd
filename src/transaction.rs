@@ -426,13 +426,14 @@ pub fn decode_params_map(
 
 /// Build a parameter block from field id/data pairs.
 #[cfg_attr(test, allow(dead_code))]
+#[must_use]
 pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
     let mut buf = Vec::new();
-    buf.extend_from_slice(&(params.len() as u16).to_be_bytes());
+    buf.extend_from_slice(&u16::try_from(params.len()).unwrap().to_be_bytes());
     for (id, data) in params {
         let raw: u16 = (*id).into();
         buf.extend_from_slice(&raw.to_be_bytes());
-        buf.extend_from_slice(&(data.len() as u16).to_be_bytes());
+        buf.extend_from_slice(&u16::try_from(data.len()).unwrap().to_be_bytes());
         buf.extend_from_slice(data);
     }
     buf
@@ -443,6 +444,7 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
 /// This converts a `&[(FieldId, Vec<u8>)]` slice into the borrowed
 /// form expected by [`encode_params`]. It avoids repeating the
 /// conversion logic at call sites.
+#[must_use]
 pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8> {
     let borrowed: Vec<(FieldId, &[u8])> = params
         .iter()
@@ -455,8 +457,11 @@ pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8> {
 ///
 /// Returns `Ok(None)` if the field is absent and an error if the bytes are not
 /// valid UTF-8.
-pub fn first_param_string(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+///
+/// # Errors
+/// Returns an error if the parameter value is not valid UTF-8.
+pub fn first_param_string<S: std::hash::BuildHasher>(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
 ) -> Result<Option<String>, &'static str> {
     match map.get(&field).and_then(|v| v.first()) {
@@ -466,8 +471,11 @@ pub fn first_param_string(
 }
 
 /// Return the first value for `field` as a `String` or an error if missing.
-pub fn required_param_string(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+///
+/// # Errors
+/// Returns an error if the field is missing or not valid UTF-8.
+pub fn required_param_string<S: std::hash::BuildHasher>(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     missing_err: &'static str,
 ) -> Result<String, &'static str> {
@@ -475,8 +483,11 @@ pub fn required_param_string(
 }
 
 /// Decode the first value for `field` as a big-endian `i32`.
-pub fn required_param_i32(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+///
+/// # Errors
+/// Returns an error if the field is missing or cannot be parsed as `i32`.
+pub fn required_param_i32<S: std::hash::BuildHasher>(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     missing_err: &'static str,
     parse_err: &'static str,
@@ -490,8 +501,11 @@ pub fn required_param_i32(
 ///
 /// Returns `Ok(None)` if the parameter is absent and an error if it is present
 /// but does not decode as a big-endian `i32`.
-pub fn first_param_i32(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+///
+/// # Errors
+/// Returns an error if the value cannot be parsed as `i32`.
+pub fn first_param_i32<S: std::hash::BuildHasher>(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     parse_err: &'static str,
 ) -> Result<Option<i32>, &'static str> {
