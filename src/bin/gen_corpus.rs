@@ -13,7 +13,7 @@ fn login_tx() -> Transaction {
         (FieldId::Login, b"alice".as_ref()),
         (FieldId::Password, b"secret".as_ref()),
     ];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params).expect("encode");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -44,7 +44,7 @@ fn get_file_list_tx() -> Transaction {
 
 fn news_category_root_tx() -> Transaction {
     let params = [(FieldId::NewsPath, b"/".as_ref())];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params).expect("encode");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -59,7 +59,7 @@ fn news_category_root_tx() -> Transaction {
 
 fn news_article_titles_tx() -> Transaction {
     let params = [(FieldId::NewsPath, b"General".as_ref())];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params).expect("encode");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -79,7 +79,7 @@ fn news_article_data_tx() -> Transaction {
         (FieldId::NewsArticleId, id_bytes.as_ref()),
         (FieldId::NewsDataFlavor, b"text/plain".as_ref()),
     ];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params).expect("encode");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,

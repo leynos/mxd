@@ -24,7 +24,7 @@ pub async fn handle_login(
             let params = encode_params(&[(
                 FieldId::Version,
                 &crate::protocol::CLIENT_VERSION.to_be_bytes(),
-            )]);
+            )])?;
             (0u32, params)
         } else {
             (1u32, Vec::new())

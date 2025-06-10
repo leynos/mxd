@@ -32,7 +32,7 @@ fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     handshake(&mut stream)?;
 
-    let params = encode_params(&[(FieldId::Other(1), b"bogus".as_ref())]);
+    let params = encode_params(&[(FieldId::Other(1), b"bogus".as_ref())])?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -62,7 +62,7 @@ fn user_name_list_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     handshake(&mut stream)?;
 
-    let params = encode_params(&[(FieldId::Other(1), b"bogus".as_ref())]);
+    let params = encode_params(&[(FieldId::Other(1), b"bogus".as_ref())])?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,

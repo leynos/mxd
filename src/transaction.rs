@@ -431,20 +431,28 @@ pub fn decode_params_map(
 
 /// Build a parameter block from field id/data pairs.
 ///
-/// # Panics
-/// Panics if the number of parameters or any data length exceeds `u16::MAX`.
+/// # Errors
+/// Returns [`TransactionError::PayloadTooLarge`] if the number of parameters
+/// or any data length exceeds `u16::MAX`.
 #[cfg_attr(test, allow(dead_code))]
-#[must_use]
-pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
+pub fn encode_params(params: &[(FieldId, &[u8])]) -> Result<Vec<u8>, TransactionError> {
     let mut buf = Vec::new();
-    buf.extend_from_slice(&u16::try_from(params.len()).unwrap().to_be_bytes());
+    buf.extend_from_slice(
+        &u16::try_from(params.len())
+            .map_err(|_| TransactionError::PayloadTooLarge)?
+            .to_be_bytes(),
+    );
     for (id, data) in params {
         let raw: u16 = (*id).into();
         buf.extend_from_slice(&raw.to_be_bytes());
-        buf.extend_from_slice(&u16::try_from(data.len()).unwrap().to_be_bytes());
+        buf.extend_from_slice(
+            &u16::try_from(data.len())
+                .map_err(|_| TransactionError::PayloadTooLarge)?
+                .to_be_bytes(),
+        );
         buf.extend_from_slice(data);
     }
-    buf
+    Ok(buf)
 }
 
 /// Convenience for encoding a vector of owned parameter values.
@@ -453,7 +461,7 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
 /// form expected by [`encode_params`]. It avoids repeating the
 /// conversion logic at call sites.
 #[must_use]
-pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8> {
+pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Result<Vec<u8>, TransactionError> {
     let borrowed: Vec<(FieldId, &[u8])> = params
         .iter()
         .map(|(id, bytes)| (*id, bytes.as_slice()))

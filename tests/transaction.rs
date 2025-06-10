@@ -247,7 +247,7 @@ fn duplicate_news_category_fields_allowed() {
         (FieldId::NewsCategory, b"General".as_ref()),
         (FieldId::NewsCategory, b"Updates".as_ref()),
     ];
-    let payload = encode_params(&params);
+    let payload = encode_params(&params).unwrap();
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
