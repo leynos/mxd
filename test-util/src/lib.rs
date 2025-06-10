@@ -129,23 +129,31 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
     stream.write_all(&buf)?;
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP", "protocol mismatch in handshake reply");
+    assert_eq!(
+        &reply[0..4],
+        b"TRTP",
+        "protocol mismatch in handshake reply"
+    );
     let code = u32::from_be_bytes(reply[4..8].try_into().unwrap());
     assert_eq!(code, 0, "handshake returned error code {}", code);
     Ok(())
 }
 
-use mxd::db::{DbConnection, run_migrations, create_category, create_user, add_file_acl, create_file};
-use mxd::models::{NewCategory, NewFileEntry, NewFileAcl, NewUser, NewArticle};
-use mxd::users::hash_password;
 use chrono::{DateTime, Utc};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
+use mxd::db::{
+    DbConnection, add_file_acl, create_category, create_file, create_user, run_migrations,
+};
+use mxd::models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser};
+use mxd::users::hash_password;
 
 /// Run an async database setup function using a temporary Tokio runtime.
 pub fn with_db<F>(db: &Path, f: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<(), Box<dyn std::error::Error>>>,
+    F: for<'c> FnOnce(
+        &'c mut DbConnection,
+    ) -> BoxFuture<'c, Result<(), Box<dyn std::error::Error>>>,
 {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
@@ -157,80 +165,105 @@ where
 
 /// Populate the database with sample files and ACLs for file-related tests.
 pub fn setup_files_db(db: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    with_db(db, |conn| Box::pin(async move {
-        let argon2 = argon2::Argon2::default();
-        let hashed = hash_password(&argon2, "secret")?;
-        let new_user = NewUser {
-            username: "alice",
-            password: &hashed,
-        };
-        create_user(conn, &new_user).await?;
-        let files = [
-            NewFileEntry { name: "fileA.txt", object_key: "1", size: 1 },
-            NewFileEntry { name: "fileB.txt", object_key: "2", size: 1 },
-            NewFileEntry { name: "fileC.txt", object_key: "3", size: 1 },
-        ];
-        for file in &files {
-            create_file(conn, file).await?;
-        }
-        let acls = [
-            NewFileAcl { file_id: 1, user_id: 1 },
-            NewFileAcl { file_id: 3, user_id: 1 },
-        ];
-        for acl in &acls {
-            add_file_acl(conn, acl).await?;
-        }
-        Ok(())
-    }))
+    with_db(db, |conn| {
+        Box::pin(async move {
+            let argon2 = argon2::Argon2::default();
+            let hashed = hash_password(&argon2, "secret")?;
+            let new_user = NewUser {
+                username: "alice",
+                password: &hashed,
+            };
+            create_user(conn, &new_user).await?;
+            let files = [
+                NewFileEntry {
+                    name: "fileA.txt",
+                    object_key: "1",
+                    size: 1,
+                },
+                NewFileEntry {
+                    name: "fileB.txt",
+                    object_key: "2",
+                    size: 1,
+                },
+                NewFileEntry {
+                    name: "fileC.txt",
+                    object_key: "3",
+                    size: 1,
+                },
+            ];
+            for file in &files {
+                create_file(conn, file).await?;
+            }
+            let acls = [
+                NewFileAcl {
+                    file_id: 1,
+                    user_id: 1,
+                },
+                NewFileAcl {
+                    file_id: 3,
+                    user_id: 1,
+                },
+            ];
+            for acl in &acls {
+                add_file_acl(conn, acl).await?;
+            }
+            Ok(())
+        })
+    })
 }
 
 /// Populate the database with a "General" category and a couple of articles.
 pub fn setup_news_db(db: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    with_db(db, |conn| Box::pin(async move {
-        create_category(
-            conn,
-            &NewCategory { name: "General", bundle_id: None },
-        )
-        .await?;
-        use mxd::schema::news_articles::dsl as a;
-        let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-            .expect("valid timestamp")
-            .naive_utc();
-        diesel::insert_into(a::news_articles)
-            .values(&NewArticle {
-                category_id: 1,
-                parent_article_id: None,
-                prev_article_id: None,
-                next_article_id: None,
-                first_child_article_id: None,
-                title: "First",
-                poster: None,
-                posted_at: posted,
-                flags: 0,
-                data_flavor: Some("text/plain"),
-                data: Some("a"),
-            })
-            .execute(conn)
+    with_db(db, |conn| {
+        Box::pin(async move {
+            create_category(
+                conn,
+                &NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
             .await?;
-        let posted2 = DateTime::<Utc>::from_timestamp(2000, 0)
-            .expect("valid timestamp")
-            .naive_utc();
-        diesel::insert_into(a::news_articles)
-            .values(&NewArticle {
-                category_id: 1,
-                parent_article_id: None,
-                prev_article_id: Some(1),
-                next_article_id: None,
-                first_child_article_id: None,
-                title: "Second",
-                poster: None,
-                posted_at: posted2,
-                flags: 0,
-                data_flavor: Some("text/plain"),
-                data: Some("b"),
-            })
-            .execute(conn)
-            .await?;
-        Ok(())
-    }))
+            use mxd::schema::news_articles::dsl as a;
+            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
+                .expect("valid timestamp")
+                .naive_utc();
+            diesel::insert_into(a::news_articles)
+                .values(&NewArticle {
+                    category_id: 1,
+                    parent_article_id: None,
+                    prev_article_id: None,
+                    next_article_id: None,
+                    first_child_article_id: None,
+                    title: "First",
+                    poster: None,
+                    posted_at: posted,
+                    flags: 0,
+                    data_flavor: Some("text/plain"),
+                    data: Some("a"),
+                })
+                .execute(conn)
+                .await?;
+            let posted2 = DateTime::<Utc>::from_timestamp(2000, 0)
+                .expect("valid timestamp")
+                .naive_utc();
+            diesel::insert_into(a::news_articles)
+                .values(&NewArticle {
+                    category_id: 1,
+                    parent_article_id: None,
+                    prev_article_id: Some(1),
+                    next_article_id: None,
+                    first_child_article_id: None,
+                    title: "Second",
+                    poster: None,
+                    posted_at: posted2,
+                    flags: 0,
+                    data_flavor: Some("text/plain"),
+                    data: Some("b"),
+                })
+                .execute(conn)
+                .await?;
+            Ok(())
+        })
+    })
 }

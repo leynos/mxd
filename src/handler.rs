@@ -24,6 +24,10 @@ impl Context {
 }
 
 /// Parse and handle a single request frame without performing network I/O.
+///
+/// # Errors
+/// Returns an error if the transaction cannot be parsed or processed.
+#[must_use = "handle the result"]
 pub async fn handle_request(
     ctx: &Context,
     session: &mut Session,
