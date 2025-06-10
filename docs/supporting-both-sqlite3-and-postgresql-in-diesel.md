@@ -149,6 +149,7 @@ where
 * **Use backend-suffixed files (`up.postgres.sql` / `up.sqlite.sql`)** whenever DDL diverges – Diesel automatically chooses the correct one.
 * Keep Rust-side types in `schema.rs` backend-agnostic (`Integer`, `Text`, `Bool`, `Timestamp`).
 * For features that SQLite simply lacks (JSONB, expression indexes, row-level security) you must either introduce conditional code paths or limit those features to the Postgres deployment.
+* When using SQLite, ensure your SQLite build was compiled with the `JSON1` extension and support for recursive CTEs.
 
 With that structure you can `cargo build --features postgres` for the version that targets *postgresql-embedded* (or a real server) and `cargo build --features sqlite` for the lightweight single-file deployment, without touching the migration history.
 

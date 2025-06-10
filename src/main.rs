@@ -15,7 +15,9 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 
 use diesel_async::AsyncConnection;
-use mxd::db::{DbConnection, DbPool, create_user, establish_pool, run_migrations};
+use mxd::db::{
+    DbConnection, DbPool, audit_sqlite_features, create_user, establish_pool, run_migrations,
+};
 use mxd::handler::{Context as HandlerContext, Session, handle_request};
 use mxd::models;
 use mxd::protocol;
@@ -140,6 +142,7 @@ async fn main() -> Result<()> {
     let pool = establish_pool(&database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
+        audit_sqlite_features(&mut conn).await?;
         run_migrations(&mut conn).await?;
     }
 
