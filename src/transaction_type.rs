@@ -23,6 +23,7 @@ pub enum TransactionType {
 
 impl TransactionType {
     /// Return true if this transaction type may include a payload.
+    #[must_use]
     pub fn allows_payload(self) -> bool {
         !matches!(
             self,

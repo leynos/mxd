@@ -61,6 +61,10 @@ pub enum Command {
 }
 
 impl Command {
+    /// Convert a [`Transaction`] into a [`Command`].
+    ///
+    /// # Errors
+    /// Returns an error if required parameters are missing or cannot be parsed.
     pub fn from_transaction(tx: Transaction) -> Result<Self, &'static str> {
         let ty = TransactionType::from(tx.header.ty);
         if !ty.allows_payload() && !tx.payload.is_empty() {
@@ -74,10 +78,10 @@ impl Command {
                 for (id, data) in params {
                     match id {
                         FieldId::Login => {
-                            username = Some(String::from_utf8(data).map_err(|_| "utf8")?)
+                            username = Some(String::from_utf8(data).map_err(|_| "utf8")?);
                         }
                         FieldId::Password => {
-                            password = Some(String::from_utf8(data).map_err(|_| "utf8")?)
+                            password = Some(String::from_utf8(data).map_err(|_| "utf8")?);
                         }
                         _ => {}
                     }
@@ -141,6 +145,11 @@ impl Command {
         }
     }
 
+    /// Execute the command using the provided context.
+    ///
+    /// # Errors
+    /// Returns an error if database access fails or the command cannot be
+    /// handled.
     pub async fn process(
         self,
         peer: SocketAddr,
@@ -154,14 +163,11 @@ impl Command {
                 header,
             } => handle_login(peer, session, pool, username, password, header).await,
             Command::GetFileNameList { header, .. } => {
-                let user_id = match session.user_id {
-                    Some(id) => id,
-                    None => {
-                        return Ok(Transaction {
-                            header: reply_header(&header, 1, 0),
-                            payload: Vec::new(),
-                        });
-                    }
+                let Some(user_id) = session.user_id else {
+                    return Ok(Transaction {
+                        header: reply_header(&header, 1, 0),
+                        payload: Vec::new(),
+                    });
                 };
                 let mut conn = pool.get().await?;
                 let files = crate::db::list_files_for_user(&mut conn, user_id).await?;
@@ -198,11 +204,15 @@ impl Command {
                 header: reply_header(&header, ERR_INVALID_PAYLOAD, 0),
                 payload: Vec::new(),
             }),
-            Command::Unknown { header } => Ok(handle_unknown(peer, header)),
+            Command::Unknown { header } => Ok(handle_unknown(peer, &header)),
         }
     }
 }
 
+/// Helper to execute a news database operation and build a reply transaction.
+///
+/// # Errors
+/// Returns an error if database access fails or the operation itself errors.
 async fn run_news_tx<F>(
     pool: DbPool,
     header: FrameHeader,
@@ -259,6 +269,10 @@ fn news_error_reply(header: &FrameHeader, err: PathLookupError) -> Transaction {
     }
 }
 
+/// Retrieve the list of category names for a given news path.
+///
+/// # Errors
+/// Returns an error if the path lookup fails or the database cannot be queried.
 async fn handle_category_list(
     pool: DbPool,
     header: FrameHeader,
@@ -277,6 +291,10 @@ async fn handle_category_list(
     .await
 }
 
+/// Retrieve the titles of articles in a news category.
+///
+/// # Errors
+/// Returns an error if the path lookup fails or the database cannot be queried.
 async fn handle_article_titles(
     pool: DbPool,
     header: FrameHeader,
@@ -295,6 +313,10 @@ async fn handle_article_titles(
     .await
 }
 
+/// Retrieve a specific news article's data.
+///
+/// # Errors
+/// Returns an error if the path lookup fails or the database cannot be queried.
 async fn handle_article_data(
     pool: DbPool,
     header: FrameHeader,
@@ -305,9 +327,8 @@ async fn handle_article_data(
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
             let article = get_article(conn, &path, article_id).await?;
-            let article = match article {
-                Some(a) => a,
-                None => return Err(PathLookupError::InvalidPath),
+            let Some(article) = article else {
+                return Err(PathLookupError::InvalidPath);
             };
 
             let mut params: Vec<(FieldId, Vec<u8>)> = Vec::new();
@@ -338,7 +359,7 @@ async fn handle_article_data(
             }
             params.push((
                 FieldId::NewsArticleFlags,
-                (article.flags as i32).to_be_bytes().to_vec(),
+                article.flags.to_be_bytes().to_vec(),
             ));
             params.push((
                 FieldId::NewsDataFlavor,
@@ -358,6 +379,10 @@ async fn handle_article_data(
     .await
 }
 
+/// Create a new root article under the provided path.
+///
+/// # Errors
+/// Returns an error if the path lookup fails or the database cannot be queried.
 async fn handle_post_article(
     pool: DbPool,
     header: FrameHeader,
@@ -378,7 +403,7 @@ async fn handle_post_article(
     .await
 }
 
-fn handle_unknown(peer: SocketAddr, header: FrameHeader) -> Transaction {
+fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
     let reply = Transaction {
         header: FrameHeader {
             flags: 0,

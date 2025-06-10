@@ -4,6 +4,10 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 
+/// Hash a password using the provided Argon2 instance.
+///
+/// # Errors
+/// Returns any error produced by the underlying hashing implementation.
 pub fn hash_password(argon2: &Argon2, pw: &str) -> Result<String, Error> {
     let salt = SaltString::generate(&mut OsRng);
     Ok(argon2.hash_password(pw.as_bytes(), &salt)?.to_string())

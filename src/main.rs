@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::net::SocketAddr;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};

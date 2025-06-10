@@ -17,6 +17,7 @@ pub struct Session {
 }
 
 impl Context {
+    #[must_use]
     pub fn new(peer: SocketAddr, pool: DbPool) -> Self {
         Self { peer, pool }
     }

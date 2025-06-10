@@ -81,6 +81,7 @@ pub struct FrameHeader {
 
 impl FrameHeader {
     /// Parse a frame header from a 20-byte buffer.
+    #[must_use]
     pub fn from_bytes(buf: &[u8; HEADER_LEN]) -> Self {
         Self {
             flags: buf[0],
@@ -129,6 +130,9 @@ pub struct Transaction {
 }
 
 /// Parse a transaction from a single frame of bytes.
+///
+/// # Panics
+/// Panics if `buf` is shorter than [`HEADER_LEN`], which is checked earlier.
 #[cfg_attr(test, allow(dead_code))]
 pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
     if buf.len() < HEADER_LEN {
@@ -151,6 +155,7 @@ pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
 impl Transaction {
     /// Serialize the transaction into a vector of bytes.
     #[cfg_attr(test, allow(dead_code))]
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(HEADER_LEN + self.payload.len());
         let mut hdr = [0u8; HEADER_LEN];
@@ -182,7 +187,7 @@ async fn write_frame<W: AsyncWrite + Unpin>(
     chunk: &[u8],
     timeout_dur: Duration,
 ) -> Result<(), TransactionError> {
-    hdr.data_size = chunk.len() as u32;
+    hdr.data_size = u32::try_from(chunk.len()).map_err(|_| TransactionError::PayloadTooLarge)?;
     let mut buf = [0u8; HEADER_LEN];
     hdr.write_bytes(&mut buf);
     write_timeout_all(wtr, &buf, timeout_dur).await?;
@@ -209,15 +214,15 @@ pub enum TransactionError {
 }
 
 /// Determine whether duplicate instances of the given field id are permitted.
-fn duplicate_allowed(fid: &FieldId) -> bool {
+fn duplicate_allowed(fid: FieldId) -> bool {
     matches!(
-        *fid,
+        fid,
         FieldId::NewsCategory | FieldId::NewsArticle | FieldId::FileName
     )
 }
 
-fn check_duplicate(fid: &FieldId, seen: &mut HashSet<u16>) -> Result<(), TransactionError> {
-    let raw: u16 = (*fid).into();
+fn check_duplicate(fid: FieldId, seen: &mut HashSet<u16>) -> Result<(), TransactionError> {
+    let raw: u16 = fid.into();
     if !duplicate_allowed(fid) && !seen.insert(raw) {
         return Err(TransactionError::DuplicateField(raw));
     }
@@ -250,7 +255,7 @@ fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
             return Err(TransactionError::SizeMismatch);
         }
         let fid = FieldId::from(field_id);
-        check_duplicate(&fid, &mut seen)?;
+        check_duplicate(fid, &mut seen)?;
         offset += field_size;
     }
     if offset != tx.payload.len() {
@@ -401,7 +406,7 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
             return Err(TransactionError::SizeMismatch);
         }
         let fid = FieldId::from(field_id);
-        check_duplicate(&fid, &mut seen)?;
+        check_duplicate(fid, &mut seen)?;
         params.push((fid, buf[offset..offset + field_size].to_vec()));
         offset += field_size;
     }
@@ -425,14 +430,18 @@ pub fn decode_params_map(
 }
 
 /// Build a parameter block from field id/data pairs.
+///
+/// # Panics
+/// Panics if the number of parameters or any data length exceeds `u16::MAX`.
 #[cfg_attr(test, allow(dead_code))]
+#[must_use]
 pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
     let mut buf = Vec::new();
-    buf.extend_from_slice(&(params.len() as u16).to_be_bytes());
+    buf.extend_from_slice(&u16::try_from(params.len()).unwrap().to_be_bytes());
     for (id, data) in params {
         let raw: u16 = (*id).into();
         buf.extend_from_slice(&raw.to_be_bytes());
-        buf.extend_from_slice(&(data.len() as u16).to_be_bytes());
+        buf.extend_from_slice(&u16::try_from(data.len()).unwrap().to_be_bytes());
         buf.extend_from_slice(data);
     }
     buf
@@ -443,6 +452,7 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Vec<u8> {
 /// This converts a `&[(FieldId, Vec<u8>)]` slice into the borrowed
 /// form expected by [`encode_params`]. It avoids repeating the
 /// conversion logic at call sites.
+#[must_use]
 pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8> {
     let borrowed: Vec<(FieldId, &[u8])> = params
         .iter()
@@ -455,8 +465,11 @@ pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Vec<u8> {
 ///
 /// Returns `Ok(None)` if the field is absent and an error if the bytes are not
 /// valid UTF-8.
-pub fn first_param_string(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+///
+/// # Errors
+/// Returns an error if the parameter value is not valid UTF-8.
+pub fn first_param_string<S: std::hash::BuildHasher>(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
 ) -> Result<Option<String>, &'static str> {
     match map.get(&field).and_then(|v| v.first()) {
@@ -466,8 +479,11 @@ pub fn first_param_string(
 }
 
 /// Return the first value for `field` as a `String` or an error if missing.
-pub fn required_param_string(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+///
+/// # Errors
+/// Returns an error if the field is missing or not valid UTF-8.
+pub fn required_param_string<S: std::hash::BuildHasher>(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     missing_err: &'static str,
 ) -> Result<String, &'static str> {
@@ -475,8 +491,11 @@ pub fn required_param_string(
 }
 
 /// Decode the first value for `field` as a big-endian `i32`.
-pub fn required_param_i32(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+///
+/// # Errors
+/// Returns an error if the field is missing or cannot be parsed as `i32`.
+pub fn required_param_i32<S: std::hash::BuildHasher>(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     missing_err: &'static str,
     parse_err: &'static str,
@@ -490,8 +509,11 @@ pub fn required_param_i32(
 ///
 /// Returns `Ok(None)` if the parameter is absent and an error if it is present
 /// but does not decode as a big-endian `i32`.
-pub fn first_param_i32(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>>,
+///
+/// # Errors
+/// Returns an error if the value cannot be parsed as `i32`.
+pub fn first_param_i32<S: std::hash::BuildHasher>(
+    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     parse_err: &'static str,
 ) -> Result<Option<i32>, &'static str> {
