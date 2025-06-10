@@ -42,6 +42,31 @@ pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
     Ok(())
 }
 
+/// Verify that `SQLite` supports features required by the application.
+///
+/// Specifically checks for the presence of the JSON1 extension and
+/// recursive common table expressions. Dies when either capability is
+/// missing.
+///
+/// # Errors
+/// Returns any error produced by the test queries.
+#[must_use = "handle the result"]
+pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
+    use diesel::sql_query;
+
+    // JSON1 extension: json() function must exist
+    sql_query("SELECT json('{}')").execute(conn).await?;
+
+    // Recursive CTE support
+    sql_query(
+        "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 1) SELECT * FROM c",
+    )
+    .execute(conn)
+    .await?;
+
+    Ok(())
+}
+
 /// Look up a user record by username.
 ///
 /// # Errors
@@ -423,5 +448,11 @@ mod tests {
         };
         create_category(&mut conn, &cat).await.unwrap();
         let _names = list_names_at_path(&mut conn, None).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_audit_features() {
+        let mut conn = DbConnection::establish(":memory:").await.unwrap();
+        audit_sqlite_features(&mut conn).await.unwrap();
     }
 }

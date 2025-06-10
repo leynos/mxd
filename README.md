@@ -18,6 +18,11 @@ Tokio keeps everything asynchronous, and this project aims to be the skeleton
 for a more complete Hotline implementation. See the `docs/` directory for a dive
 into the protocol and how we juggle SQLite and PostgreSQL migrations.
 
+If you use SQLite as the persistence engine, ensure your build of SQLite
+includes the `JSON1` extension and support for recursive common table
+expressions (CTEs). The server verifies these features on startup and will
+fail to run if they are missing.
+
 ## Running
 
 Build the project and run the daemon. Specify a bind address and
