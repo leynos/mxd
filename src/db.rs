@@ -1,21 +1,30 @@
+use cfg_if::cfg_if;
 use diesel::prelude::*;
-use diesel::sqlite::{Sqlite, SqliteConnection};
 use diesel_async::RunQueryDsl;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::sync_connection_wrapper::SyncConnectionWrapper;
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
-#[cfg(feature = "sqlite")]
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/sqlite");
+cfg_if! {
+    if #[cfg(feature = "sqlite")] {
+        use diesel::sqlite::{Sqlite, SqliteConnection};
+        pub type Backend = Sqlite;
+        pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/sqlite");
+        pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
+        pub type DbPool = Pool<DbConnection>;
+    } else if #[cfg(feature = "postgres")] {
+        use diesel::pg::{Pg, PgConnection};
+        pub type Backend = Pg;
+        pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
+        pub type DbConnection = SyncConnectionWrapper<PgConnection>;
+        pub type DbPool = Pool<DbConnection>;
+    } else {
+        compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
+    }
+}
 
-#[cfg(feature = "postgres")]
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
-
-pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
-pub type DbPool = Pool<DbConnection>;
-
-/// Create a pooled connection to the `SQLite` database.
+/// Create a pooled connection to the configured database.
 ///
 /// # Panics
 /// Panics if the connection pool cannot be created.
@@ -138,7 +147,7 @@ async fn bundle_id_from_path(
     let len_i32: i32 = i32::try_from(len).map_err(|_| PathLookupError::InvalidPath)?;
     let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len_i32);
 
-    let query = build_path_cte::<Sqlite, _, _>(step, body);
+    let query = build_path_cte::<Backend, _, _>(step, body);
 
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
@@ -274,7 +283,7 @@ async fn category_id_from_path(
         .bind::<Integer, _>(len_minus_one)
         .bind::<Integer, _>(len_minus_one);
 
-    let query = build_path_cte::<Sqlite, _, _>(step, body);
+    let query = build_path_cte::<Backend, _, _>(step, body);
 
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
     res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)
