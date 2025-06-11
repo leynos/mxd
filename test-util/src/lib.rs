@@ -145,7 +145,7 @@ impl TestServer {
         self.port
     }
 
-    /// Database URL used by this server.
+    /// Returns the database URL associated with this test server instance.
     pub fn db_url(&self) -> &str {
         &self.db_url
     }
