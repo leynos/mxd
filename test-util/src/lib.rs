@@ -103,14 +103,12 @@ impl TestServer {
 
     /// Return the database connection URL used by the server.
     ///
-    /// Currently tests only use SQLite, so this is just the path as a string.
-    /// The method returns an owned `String` to match Diesel's `establish`
-    /// signature, which takes `&str`.
-    pub fn db_url(&self) -> String {
+    /// Currently tests only use SQLite, so this is just the path rendered
+    /// as UTF-8. Borrowing avoids allocating a new `String` for each call.
+    pub fn db_url(&self) -> &str {
         self.db_path
             .to_str()
             .expect("database path utf8")
-            .to_owned()
     }
 }
 
