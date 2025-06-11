@@ -145,20 +145,11 @@ impl TestServer {
         self.port
     }
 
-    /// Database URL used by this server.
+    /// Returns the database URL associated with this test server instance.
     pub fn db_url(&self) -> &str {
         &self.db_url
     }
 
-    /// Return the database connection URL used by the server.
-    ///
-    /// Currently tests only use SQLite, so this is just the path rendered
-    /// as UTF-8. Borrowing avoids allocating a new `String` for each call.
-    pub fn db_url(&self) -> &str {
-        self.db_path
-            .to_str()
-            .expect("database path utf8")
-    }
 }
 
 impl Drop for TestServer {

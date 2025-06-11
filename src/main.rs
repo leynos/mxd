@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use anyhow::Result;
+use std::io;
 use std::net::SocketAddr;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
@@ -10,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "postgres")]
 use url::Url;
 
-use tokio::io::{self, AsyncReadExt};
+use tokio::io::{self as tokio_io, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
@@ -27,9 +28,21 @@ use mxd::db::audit_postgres_features;
 use mxd::handler::{Context as HandlerContext, Session, handle_request};
 use mxd::models;
 use mxd::protocol;
-use mxd::transaction::{TransactionReader, TransactionWriter};
+use mxd::transaction::{TransactionError, TransactionReader, TransactionWriter};
 use mxd::users::hash_password;
 
+/// Waits for a shutdown signal, completing when termination is requested.
+///
+/// On Unix platforms, listens for either SIGTERM or Ctrl-C. On non-Unix platforms, listens for Ctrl-C only. The function returns when any of these signals are received, allowing for graceful shutdown of the application.
+///
+/// # Examples
+///
+/// ```
+/// tokio::spawn(async {
+///     shutdown_signal().await;
+///     println!("Shutdown signal received.");
+/// });
+/// ```
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
@@ -224,19 +237,53 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
     Ok(())
 }
 
+/// Handles a single client connection, performing handshake and processing transactions.
+///
+/// Performs a protocol handshake with the client, responding to handshake errors or timeouts as appropriate.
+/// After a successful handshake, enters a loop to read and process transactions from the client, sending responses back.
+/// Gracefully handles client disconnects and server shutdown signals.
+///
+/// # Arguments
+///
+/// - `socket`: The TCP stream representing the client connection.
+/// - `peer`: The client's socket address.
+/// - `pool`: The database connection pool.
+/// - `shutdown`: A watch channel receiver used to signal server shutdown.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on normal termination, or an error if a protocol or I/O error occurs outside of expected disconnects.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use tokio::net::TcpStream;
+/// # use std::net::SocketAddr;
+/// # use mxd::db::DbPool;
+/// # use tokio::sync::watch;
+/// # async fn example(socket: TcpStream, peer: SocketAddr, pool: DbPool, mut shutdown: watch::Receiver<bool>) {
+/// let _ = handle_client(socket, peer, pool, &mut shutdown).await;
+/// # }
+/// ```
 async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<()> {
-    let (mut reader, mut writer) = io::split(socket);
+    let (mut reader, mut writer) = tokio_io::split(socket);
 
     // perform protocol handshake with a timeout
     let mut buf = [0u8; protocol::HANDSHAKE_LEN];
     match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
         Ok(Ok(_)) => {}
-        Ok(Err(e)) => return Err(e.into()),
+        Ok(Err(e)) => {
+            if e.kind() == io::ErrorKind::UnexpectedEof {
+                // Client disconnected before completing the handshake
+                return Ok(());
+            }
+            return Err(e.into());
+        }
         Err(_) => {
             protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
             return Ok(());
@@ -259,14 +306,20 @@ async fn handle_client(
     let mut session = Session::default();
     loop {
         tokio::select! {
-            tx = tx_reader.read_transaction() => {
-                let tx = tx?;
-                let frame = tx.to_bytes();
-                let resp = handle_request(&ctx, &mut session, &frame)
-                    .await
-                    .map_err(|e| anyhow::anyhow!(e))?;
-                tx_writer.write_transaction(&resp).await?;
-            }
+            tx = tx_reader.read_transaction() => match tx {
+                Ok(tx) => {
+                    let frame = tx.to_bytes();
+                    let resp = handle_request(&ctx, &mut session, &frame)
+                        .await
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    tx_writer.write_transaction(&resp).await?;
+                }
+                Err(TransactionError::Io(ref e)) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    // Remote closed the connection, end session gracefully
+                    break;
+                }
+                Err(e) => return Err(e.into()),
+            },
             _ = shutdown.changed() => {
                 break;
             }
