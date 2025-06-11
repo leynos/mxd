@@ -71,6 +71,57 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
     Ok(())
 }
 
+/// Verify that the Postgres server meets application requirements.
+///
+/// Currently checks the server version using `SELECT version()` and fails if
+/// the major version is below 14. Additional feature probes can be added here
+/// as needed.
+///
+/// # Errors
+/// Returns any error produced by the version query or if the version string
+/// cannot be parsed.
+#[cfg(feature = "postgres")]
+#[must_use = "handle the result"]
+pub async fn audit_postgres_features(
+    conn: &mut diesel_async::AsyncPgConnection,
+) -> QueryResult<()> {
+    use diesel::result::Error as DieselError;
+    use diesel::sql_query;
+    use diesel::sql_types::Text;
+
+    #[derive(QueryableByName)]
+    struct PgVersion {
+        #[diesel(sql_type = Text)]
+        version: String,
+    }
+
+    let row: PgVersion = sql_query("SELECT version()").get_result(conn).await?;
+
+    let major = row
+        .version
+        .split_whitespace()
+        .nth(1)
+        .and_then(|v| v.split('.').next())
+        .and_then(|v| v.parse::<u32>().ok())
+        .ok_or_else(|| {
+            DieselError::QueryBuilderError(Box::new(std::io::Error::other(format!(
+                "unable to parse postgres version: {}",
+                row.version
+            ))))
+        })?;
+
+    if major < 14 {
+        return Err(DieselError::QueryBuilderError(Box::new(
+            std::io::Error::other(format!(
+                "postgres version {} is not supported (require >= 14)",
+                major
+            )),
+        )));
+    }
+
+    Ok(())
+}
+
 /// Look up a user record by username.
 ///
 /// # Errors
@@ -473,5 +524,24 @@ mod tests {
     async fn test_audit_features() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
         audit_sqlite_features(&mut conn).await.unwrap();
+    }
+
+    #[cfg(feature = "postgres")]
+    #[tokio::test]
+    #[ignore]
+    async fn test_audit_postgres() {
+        use diesel_async::AsyncConnection;
+        use postgresql_embedded::PostgreSQL;
+
+        let mut pg = PostgreSQL::default();
+        pg.setup().await.unwrap();
+        pg.start().await.unwrap();
+        pg.create_database("test").await.unwrap();
+        let url = pg.settings().url("test");
+        let mut conn = diesel_async::AsyncPgConnection::establish(&url)
+            .await
+            .unwrap();
+        audit_postgres_features(&mut conn).await.unwrap();
+        pg.stop().await.unwrap();
     }
 }
