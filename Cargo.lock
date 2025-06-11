@@ -2461,6 +2461,7 @@ dependencies = [
  "futures-util",
  "mxd",
  "nix",
+ "postgresql_embedded",
  "tempfile",
  "tokio",
 ]

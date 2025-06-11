@@ -6,18 +6,26 @@ edition = "2024"
 [dependencies]
 tempfile = "3"
 nix = { version = "0.27", features = ["signal"] }
-mxd = { path = "..", features = ["sqlite"] }
+mxd = { path = "..", default-features = false }
 tokio = { version = "1", features = ["rt", "macros"] }
-diesel = { version = "2", default-features = false, features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
-diesel-async = { version = "0.5", default-features = false, features = ["sqlite", "sync-connection-wrapper"] }
+diesel = { version = "2", default-features = false, features = ["chrono"] }
+diesel-async = { version = "0.5", default-features = false, features = ["sync-connection-wrapper"] }
+postgresql_embedded = { version = "0.18.5", features = ["tokio"], optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
 
 [features]
-default = []
+default = ["sqlite"]
+postgres = [
+    "diesel/postgres",
+    "diesel-async/postgres",
+    "mxd/postgres",
+    "postgresql_embedded",
+]
 sqlite = [
     "diesel/sqlite",
     "diesel/returning_clauses_for_sqlite_3_35",
     "diesel-async/sqlite",
+    "mxd/sqlite",
 ]

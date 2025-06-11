@@ -3,8 +3,10 @@ use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use std::path::{Path, PathBuf};
 use tempfile::TempDir;
+
+#[cfg(feature = "postgres")]
+use postgresql_embedded::PostgreSQL;
 
 #[cfg(unix)]
 use nix::sys::signal::{Signal, kill};
@@ -17,8 +19,10 @@ use nix::unistd::Pid;
 pub struct TestServer {
     child: Child,
     port: u16,
-    db_path: PathBuf,
+    db_url: String,
     _temp: TempDir,
+    #[cfg(feature = "postgres")]
+    pg: Option<PostgreSQL>,
 }
 
 impl TestServer {
@@ -33,12 +37,34 @@ impl TestServer {
         setup: F,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
-        F: FnOnce(&Path) -> Result<(), Box<dyn std::error::Error>>,
+        F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
     {
         let temp = TempDir::new()?;
-        let db_path = temp.path().join("mxd.db");
 
-        setup(&db_path)?;
+        #[cfg(feature = "sqlite")]
+        let db_url = {
+            let path = temp.path().join("mxd.db");
+            setup(path.to_str().expect("db path utf8"))?;
+            path.to_str().unwrap().to_owned()
+        };
+
+        #[cfg(feature = "postgres")]
+        let (db_url, mut pg) = {
+            let mut pg = PostgreSQL::default();
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                pg.setup().await?;
+                pg.start().await?;
+                pg.create_database("test").await?;
+                Ok::<_, Box<dyn std::error::Error>>(())
+            })?;
+            let url = pg.settings().url("test");
+            setup(&url)?;
+            (url, pg)
+        };
+
+        #[cfg(feature = "postgres")]
+        let db_url = db_url;
 
         let socket = TcpListener::bind("127.0.0.1:0")?;
         let port = socket.local_addr()?.port();
@@ -56,7 +82,7 @@ impl TestServer {
                 "--bind",
                 &format!("127.0.0.1:{}", port),
                 "--database",
-                db_path.to_str().expect("database path utf8"),
+                &db_url,
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -86,8 +112,10 @@ impl TestServer {
         Ok(Self {
             child,
             port,
-            db_path,
+            db_url,
             _temp: temp,
+            #[cfg(feature = "postgres")]
+            pg: Some(pg),
         })
     }
 
@@ -96,9 +124,9 @@ impl TestServer {
         self.port
     }
 
-    /// Path to the SQLite database used by this server.
-    pub fn db_path(&self) -> &Path {
-        &self.db_path
+    /// Database URL used by this server.
+    pub fn db_url(&self) -> &str {
+        &self.db_url
     }
 }
 
@@ -113,6 +141,11 @@ impl Drop for TestServer {
             let _ = self.child.kill();
         }
         let _ = self.child.wait();
+        #[cfg(feature = "postgres")]
+        if let Some(pg) = &mut self.pg {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let _ = rt.block_on(pg.stop());
+        }
     }
 }
 
@@ -149,7 +182,7 @@ use mxd::models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser};
 use mxd::users::hash_password;
 
 /// Run an async database setup function using a temporary Tokio runtime.
-pub fn with_db<F>(db: &Path, f: F) -> Result<(), Box<dyn std::error::Error>>
+pub fn with_db<F>(db: &str, f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: for<'c> FnOnce(
         &'c mut DbConnection,
@@ -157,14 +190,14 @@ where
 {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let mut conn = DbConnection::establish(db.to_str().unwrap()).await?;
+        let mut conn = DbConnection::establish(db).await?;
         run_migrations(&mut conn).await?;
         f(&mut conn).await
     })
 }
 
 /// Populate the database with sample files and ACLs for file-related tests.
-pub fn setup_files_db(db: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_files_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
     with_db(db, |conn| {
         Box::pin(async move {
             let argon2 = argon2::Argon2::default();
@@ -213,7 +246,7 @@ pub fn setup_files_db(db: &Path) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Populate the database with a "General" category and a couple of articles.
-pub fn setup_news_db(db: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_news_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
     with_db(db, |conn| {
         Box::pin(async move {
             create_category(
