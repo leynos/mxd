@@ -2458,9 +2458,11 @@ dependencies = [
  "chrono",
  "diesel",
  "diesel-async",
+ "diesel_migrations",
  "futures-util",
  "mxd",
  "nix",
+ "postgresql_embedded",
  "tempfile",
  "tokio",
 ]
