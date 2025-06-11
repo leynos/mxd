@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use anyhow::Result;
+use std::io;
 use std::net::SocketAddr;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
@@ -10,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "postgres")]
 use url::Url;
 
-use tokio::io::{self, AsyncReadExt};
+use tokio::io::{self as tokio_io, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
@@ -27,7 +28,7 @@ use mxd::db::audit_postgres_features;
 use mxd::handler::{Context as HandlerContext, Session, handle_request};
 use mxd::models;
 use mxd::protocol;
-use mxd::transaction::{TransactionReader, TransactionWriter};
+use mxd::transaction::{TransactionError, TransactionReader, TransactionWriter};
 use mxd::users::hash_password;
 
 async fn shutdown_signal() {
@@ -230,13 +231,19 @@ async fn handle_client(
     pool: DbPool,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<()> {
-    let (mut reader, mut writer) = io::split(socket);
+    let (mut reader, mut writer) = tokio_io::split(socket);
 
     // perform protocol handshake with a timeout
     let mut buf = [0u8; protocol::HANDSHAKE_LEN];
     match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
         Ok(Ok(_)) => {}
-        Ok(Err(e)) => return Err(e.into()),
+        Ok(Err(e)) => {
+            if e.kind() == io::ErrorKind::UnexpectedEof {
+                // Client disconnected before completing the handshake
+                return Ok(());
+            }
+            return Err(e.into());
+        }
         Err(_) => {
             protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
             return Ok(());
@@ -259,14 +266,20 @@ async fn handle_client(
     let mut session = Session::default();
     loop {
         tokio::select! {
-            tx = tx_reader.read_transaction() => {
-                let tx = tx?;
-                let frame = tx.to_bytes();
-                let resp = handle_request(&ctx, &mut session, &frame)
-                    .await
-                    .map_err(|e| anyhow::anyhow!(e))?;
-                tx_writer.write_transaction(&resp).await?;
-            }
+            tx = tx_reader.read_transaction() => match tx {
+                Ok(tx) => {
+                    let frame = tx.to_bytes();
+                    let resp = handle_request(&ctx, &mut session, &frame)
+                        .await
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    tx_writer.write_transaction(&resp).await?;
+                }
+                Err(TransactionError::Io(ref e)) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    // Remote closed the connection, end session gracefully
+                    break;
+                }
+                Err(e) => return Err(e.into()),
+            },
             _ = shutdown.changed() => {
                 break;
             }
