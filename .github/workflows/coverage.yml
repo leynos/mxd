@@ -23,9 +23,9 @@ jobs:
 
       - name: Generate coverage
         run: |
-          cargo llvm-cov --workspace --all-features \
-                         --lcov --output-path lcov.info \
-                         --codecov --output-path codecov.json
+          cargo llvm-cov --workspace --all-features --no-report
+          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov report --codecov --output-path codecov.json
 
       - uses: codecov/codecov-action@v4
         with:
