@@ -13,3 +13,11 @@ diesel-async = { version = "0.5", default-features = false, features = ["sqlite"
 argon2 = { version = "0.5", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
+
+[features]
+default = []
+sqlite = [
+    "diesel/sqlite",
+    "diesel/returning_clauses_for_sqlite_3_35",
+    "diesel-async/sqlite",
+]

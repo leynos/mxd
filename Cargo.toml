@@ -41,10 +41,11 @@ postgres = [
 ]
 sqlite = [
     "diesel/sqlite",
-    "diesel/returning_clauses_for_sqlite_3_35",
+    "returning_clauses_for_sqlite_3_35",
     "diesel_migrations/sqlite",
     "diesel-async/sqlite",
 ]
+returning_clauses_for_sqlite_3_35 = ["diesel/returning_clauses_for_sqlite_3_35"]
 json5 = []
 yaml = []
 toml = []
