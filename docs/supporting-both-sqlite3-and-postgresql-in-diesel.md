@@ -116,11 +116,22 @@ Because the *Rust* side deals in Diesel’s abstract `Integer`, `Text`, `Bool`, 
 ```toml
 [features]
 default = []
-postgres = ["diesel/postgres",  "diesel_migrations/postgres"]
-sqlite   = ["diesel/sqlite",    "diesel_migrations/sqlite"]
+postgres = [
+    "diesel/postgres",
+    "diesel_migrations/postgres",
+    "diesel-async/postgres",
+]
+sqlite   = [
+    "diesel/sqlite",
+    "diesel/returning_clauses_for_sqlite_3_35",
+    "diesel_migrations/sqlite",
+    "diesel-async/sqlite",
+]
 ```
 
 and enable the feature you actually link at build-time.
+You should enable exactly **one** of `sqlite` or `postgres` when
+building. Selecting both, or neither, will lead to undefined behaviour.
 
 ---
 

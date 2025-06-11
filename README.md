@@ -23,6 +23,10 @@ includes the `JSON1` extension and support for recursive common table
 expressions (CTEs). The server verifies these features on startup and will
 fail to run if they are missing.
 
+mxd supports both SQLite and PostgreSQL backends. Select one at compile
+time using `--features sqlite` or `--features postgres`. Exactly one of
+these features must be enabled for a successful build.
+
 ## Running
 
 Build the project and run the daemon. Specify a bind address and
