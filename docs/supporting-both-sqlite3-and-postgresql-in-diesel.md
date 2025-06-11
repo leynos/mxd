@@ -137,6 +137,9 @@ sqlite   = [
 ]
 ```
 
+Exactly one of these features must be active. The `mxd` crate emits a
+compile-time error if both or neither are enabled.
+
 and enable the feature you actually link at build-time. If you use the
 `diesel` CLI for manual migration commands, install it with matching features:
 
