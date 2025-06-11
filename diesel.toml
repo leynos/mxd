@@ -1,5 +1,3 @@
 [print_schema]
 file = "src/schema.rs"
 
-[database]
-url = "mxd.db"

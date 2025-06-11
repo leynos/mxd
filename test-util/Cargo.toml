@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 tempfile = "3"
 nix = { version = "0.27", features = ["signal"] }
-mxd = { path = "..", default-features = false, features = ["sqlite"] }
+mxd = { path = "..", features = ["sqlite"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 diesel = { version = "2", default-features = false, features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
 diesel-async = { version = "0.5", default-features = false, features = ["sqlite", "sync-connection-wrapper"] }

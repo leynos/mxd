@@ -6,7 +6,11 @@ use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::sync_connection_wrapper::SyncConnectionWrapper;
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+#[cfg(feature = "sqlite")]
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/sqlite");
+
+#[cfg(feature = "postgres")]
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
 
 pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
 pub type DbPool = Pool<DbConnection>;

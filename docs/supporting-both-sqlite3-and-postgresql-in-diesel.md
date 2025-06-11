@@ -1,38 +1,20 @@
 # Supporting both SQLite3 and Postgresql in Diesel
 
-## 1 File-layout options
+## 1  File-layout options
 
-| Option | How it works | When to choose it | |
--------------------------------------------------------------- |
-\-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-|
-\---------------------------------------------------------------------------------------------------------------
-| | **A. One SQL file per backend in the *same* migration folder** | Put
-`up.sqlite.sql`, `up.postgres.sql`, `down.sqlite.sql`, `down.postgres.sql` (and
-optionally the generic `up.sql` / `down.sql`) in the migration directory. From
-Diesel 2.1 onward the CLI/migration harness will pick the
-`<phase>.<backend>.sql` variant if it exists, otherwise it falls back to the
-un-suffixed one. ([docs.diesel.rs][1], [diesel.rs][2]) | You frequently need
-backend-specific DDL (e.g. `GENERATED … AS IDENTITY` vs `AUTOINCREMENT`).
-**Recommended.** | | **B. Pure-Rust migrations** | Implement
-`diesel::migration::Migration<DB>` in a Rust file (`up.rs` / `down.rs`) and
-compile with both `features = ["postgres", "sqlite"]`. The query builder emits
-backend-specific SQL at runtime. | You prefer the type-checked DSL and can live
-with slightly slower compile times. | | **C. Lowest-common-denominator SQL** |
-Write one `up.sql`/`down.sql` that *already* works on both engines. This demands
-avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc. | Simple schemas, embedded
-use-case only, you are happy to supply integer primary keys manually. |
+| Option | How it works | When to choose it |
+| --- | --- | --- |
+| **B. Pure-Rust migrations** | Implement `diesel::migration::Migration<DB>` in a Rust file (`up.rs` / `down.rs`) and compile with both `features = ["postgres", "sqlite"]`.  The query builder emits backend-specific SQL at runtime. | You prefer the type-checked DSL and can live with slightly slower compile times. |
+| **C. Lowest-common-denominator SQL** | Write one `up.sql`/`down.sql` that *already* works on both engines.  This demands avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc. | Simple schemas, embedded use-case only, you are happy to supply integer primary keys manually. |
+| **D. Two separate migration trees** | Maintain `migrations/sqlite` and `migrations/postgres` directories with identical version numbers. Use `embed_migrations!("migrations/<backend>")` to compile the right set. | You ship a single binary with migrations baked in. |
 
-> **Tip:** if you go with *A* or *B* keep your migration *versions* identical so
-> that the two databases stay in lock-step. Diesel’s
-> `__diesel_schema_migrations` table stores the numeric version only, so you can
-> swap back-ends without confusing the tracker.
+> **Tip:** if you go with *B* or *D* keep your migration *versions* identical so that the two databases stay in lock-step.  Diesel’s `__diesel_schema_migrations` table stores the numeric version only, so you can swap back-ends without confusing the tracker.
 
-______________________________________________________________________
+---
 
-## 2 Writing portable DDL
+## 2  Writing portable DDL
 
-### 2.1 Primary keys & auto-increment
+### 2.1  Primary keys & auto-increment
 
 - **PostgreSQL** – use identity columns (*preferred*)
 
@@ -52,14 +34,13 @@ ______________________________________________________________________
 
 ### 2.2 Column types that line up cleanly
 
-| Logical type | PostgreSQL | SQLite notes | | ------------ |
------------------------ |
-\-------------------------------------------------------------------------------
-| | strings | `TEXT` (or `VARCHAR`) | `TEXT` – SQLite ignores the length
-specifier anyway | | booleans | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`;
-Diesel serialises to 0 / 1 so this is fine | | integers | `INTEGER` / `BIGINT` |
-ditto | | decimals | `NUMERIC(…)` | stored as FLOAT in SQLite; Diesel’s
-`Numeric` round-trips, but beware precision | | blobs / raw | `BYTEA` | `BLOB` |
+| Logical type | PostgreSQL | SQLite notes |
+| --- | --- | --- |
+| strings | `TEXT` (or `VARCHAR`) | `TEXT` – SQLite ignores the length specifier anyway |
+| booleans | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`; Diesel serialises to 0 / 1 so this is fine |
+| integers | `INTEGER` / `BIGINT` | ditto |
+| decimals | `NUMERIC(…)` | stored as FLOAT in SQLite; Diesel’s `Numeric` round-trips, but beware precision |
+| blobs / raw | `BYTEA` | `BLOB` |
 
 Things that **do *not* port** and therefore need conditional SQL:
 
@@ -153,9 +134,12 @@ sqlite   = [
 ]
 ```
 
-and enable the feature you actually link at build-time. You should enable
-exactly **one** of `sqlite` or `postgres` when building. Selecting both, or
-neither, will lead to undefined behaviour.
+and enable the feature you actually link at build-time. If you use the
+`diesel` CLI for manual migration commands, install it with matching features:
+
+```bash
+cargo install diesel_cli --no-default-features --features sqlite,postgres
+```
 
 ______________________________________________________________________
 
@@ -163,16 +147,19 @@ ______________________________________________________________________
 
 ```rust
 use diesel::prelude::*;
-use diesel_migrations::{FileBasedMigrations, MigrationHarness};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+
+#[cfg(feature = "sqlite")]
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/sqlite");
+#[cfg(feature = "postgres")]
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
 
 pub fn run_migrations<C>(conn: &mut C) -> anyhow::Result<()>
 where
     C: diesel::connection::Connection + MigrationHarness<diesel::backend::Backend>,
 {
-    // The path is resolved at compile-time; the harness picks the right
-    // *.postgres.sql or *.sqlite.sql variant.
-    let migrations = FileBasedMigrations::find_migrations_directory()?;
-    conn.run_pending_migrations(migrations)?;
+    // Migrations are embedded at compile time for the selected backend.
+    conn.run_pending_migrations(MIGRATIONS)?;
     Ok(())
 }
 ```
