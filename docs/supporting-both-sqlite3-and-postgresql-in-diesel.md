@@ -1,10 +1,24 @@
-# Supporting both SQLite3 and Postgresql in Diesel
+# Supporting both SQLite3 and PostgreSQL in Diesel
 
 Build the application with PostgreSQL support enabled:
 
 ```bash
 cargo build --features postgres
 ```
+
+Build the application with SQLite support enabled:
+
+```bash
+cargo build --features sqlite
+```
+
+After building, run the migrations. You can use the Diesel CLI:
+
+```bash
+diesel migration run --database-url <url>
+```
+
+or call the `run_migrations` function shown below.
 
 ## 1  File-layout options
 
