@@ -2,11 +2,11 @@
 
 ## 1  File-layout options
 
-| Option | How it works | When to choose it |
-| --- | --- | --- |
-| **B. Pure-Rust migrations** | Implement `diesel::migration::Migration<DB>` in a Rust file (`up.rs` / `down.rs`) and compile with both `features = ["postgres", "sqlite"]`.  The query builder emits backend-specific SQL at runtime. | You prefer the type-checked DSL and can live with slightly slower compile times. |
-| **C. Lowest-common-denominator SQL** | Write one `up.sql`/`down.sql` that *already* works on both engines.  This demands avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc. | Simple schemas, embedded use-case only, you are happy to supply integer primary keys manually. |
-| **D. Two separate migration trees** | Maintain `migrations/sqlite` and `migrations/postgres` directories with identical version numbers. Use `embed_migrations!("migrations/<backend>")` to compile the right set. | You ship a single binary with migrations baked in. |
+| Option                               | How it works                                                                                                                                                                                           | When to choose it                                                                              |
+|--------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| **B. Pure-Rust migrations**          | Implement `diesel::migration::Migration<DB>` in a Rust file (`up.rs` / `down.rs`) and compile with both `features = ["postgres", "sqlite"]`.  The query builder emits backend-specific SQL at runtime. | You prefer the type-checked DSL and can live with slightly slower compile times.               |
+| **C. Lowest-common-denominator SQL** | Write one `up.sql`/`down.sql` that *already* works on both engines.  This demands avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc.                                                                 | Simple schemas, embedded use-case only, you are happy to supply integer primary keys manually. |
+| **D. Two separate migration trees**  | Maintain `migrations/sqlite` and `migrations/postgres` directories with identical version numbers. Use `embed_migrations!("migrations/<backend>")` to compile the right set.                           | You ship a single binary with migrations baked in.                                             |
 
 > **Tip:** if you go with *B* or *D* keep your migration *versions* identical so
 > that the two databases stay in lock-step. Diesel’s `__diesel_schema_migrations`
@@ -37,13 +37,13 @@
 
 ### 2.2 Column types that line up cleanly
 
-| Logical type | PostgreSQL | SQLite notes |
-| --- | --- | --- |
-| strings | `TEXT` (or `VARCHAR`) | `TEXT` – SQLite ignores the length specifier anyway |
-| booleans | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`; Diesel serialises to 0 / 1 so this is fine |
-| integers | `INTEGER` / `BIGINT` | ditto |
-| decimals | `NUMERIC(…)` | stored as FLOAT in SQLite; Diesel’s `Numeric` round-trips, but beware precision |
-| blobs / raw | `BYTEA` | `BLOB` |
+| Logical type | PostgreSQL              | SQLite notes                                                                    |
+|--------------|-------------------------|---------------------------------------------------------------------------------|
+| strings      | `TEXT` (or `VARCHAR`)   | `TEXT` – SQLite ignores the length specifier anyway                             |
+| booleans     | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`; Diesel serialises to 0 / 1 so this is fine                |
+| integers     | `INTEGER` / `BIGINT`    | ditto                                                                           |
+| decimals     | `NUMERIC(…)`            | stored as FLOAT in SQLite; Diesel’s `Numeric` round-trips, but beware precision |
+| blobs / raw  | `BYTEA`                 | `BLOB`                                                                          |
 
 Things that **do *not* port** and therefore need conditional SQL:
 
