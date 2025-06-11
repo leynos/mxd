@@ -13,7 +13,7 @@ path = "src/bin/gen_corpus.rs"
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 diesel = { version = "2", default-features = false, features = ["chrono"] }
-diesel-async = { version = "0.5", default-features = false, features = ["bb8"] }
+diesel-async = { version = "0.5", default-features = false, features = ["bb8", "sync-connection-wrapper"] }
 diesel_migrations = { version = "2", default-features = false }
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
@@ -34,6 +34,18 @@ clap-dispatch = "0.1"
 
 [features]
 default = ["sqlite"]
+postgres = [
+    "diesel/postgres",
+    "diesel_migrations/postgres",
+    "diesel-async/postgres",
+]
+sqlite = [
+    "diesel/sqlite",
+    "returning_clauses_for_sqlite_3_35",
+    "diesel_migrations/sqlite",
+    "diesel-async/sqlite",
+]
+returning_clauses_for_sqlite_3_35 = ["diesel/returning_clauses_for_sqlite_3_35"]
 json5 = []
 yaml = []
 toml = []

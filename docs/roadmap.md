@@ -1,8 +1,8 @@
 # Implementation Roadmap
 
 This document tracks the major features required for a full Hotline-inspired BBS
-server.  Features are grouped by domain with checkboxes.  Items that have
-already been implemented in the repository are checked off.
+server. Features are grouped by domain with checkboxes. Items that have already
+been implemented in the repository are checked off.
 
 ## Core Server
 
@@ -62,6 +62,6 @@ already been implemented in the repository are checked off.
 - [x] SQLite support with migrations
 - [ ] PostgreSQL backend support
 
-The roadmap will evolve as the project grows.  Checked items indicate
-functionality present in the current code base.  Unchecked items highlight areas
+The roadmap will evolve as the project grows. Checked items indicate
+functionality present in the current code base. Unchecked items highlight areas
 for future development.
