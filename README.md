@@ -29,6 +29,7 @@ daemon checks this at startup and refuses to launch on older versions.
 mxd supports both SQLite and PostgreSQL backends. Select one at compile
 time using `--features sqlite` or `--features postgres`. Exactly one of
 these features must be enabled for a successful build.
+PostgreSQL support is currently in progress.
 
 ## Running
 

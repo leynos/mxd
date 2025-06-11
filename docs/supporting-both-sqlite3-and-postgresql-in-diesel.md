@@ -1,5 +1,11 @@
 # Supporting both SQLite3 and Postgresql in Diesel
 
+Build the application with PostgreSQL support enabled:
+
+```bash
+cargo build --features postgres
+```
+
 ## 1  File-layout options
 
 | Option                               | How it works                                                                                                                                                                                           | When to choose it                                                                              |
