@@ -41,7 +41,7 @@ postgres = [
 ]
 sqlite = [
     "diesel/sqlite",
-    "returning_clauses_for_sqlite_3_35",
+    "diesel/returning_clauses_for_sqlite_3_35",
     "diesel_migrations/sqlite",
     "diesel-async/sqlite",
 ]
@@ -49,17 +49,6 @@ returning_clauses_for_sqlite_3_35 = ["diesel/returning_clauses_for_sqlite_3_35"]
 json5 = []
 yaml = []
 toml = []
-sqlite = [
-    "diesel/sqlite",
-    "diesel/returning_clauses_for_sqlite_3_35",
-    "diesel-async/sqlite",
-    "diesel_migrations/sqlite",
-]
-postgres = [
-    "diesel/postgres",
-    "diesel-async/postgres",
-    "diesel_migrations/postgres",
-]
 
 [dev-dependencies]
 test-util = { path = "test-util" }

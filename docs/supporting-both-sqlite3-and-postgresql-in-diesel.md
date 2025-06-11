@@ -8,7 +8,10 @@
 | **C. Lowest-common-denominator SQL** | Write one `up.sql`/`down.sql` that *already* works on both engines.  This demands avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc. | Simple schemas, embedded use-case only, you are happy to supply integer primary keys manually. |
 | **D. Two separate migration trees** | Maintain `migrations/sqlite` and `migrations/postgres` directories with identical version numbers. Use `embed_migrations!("migrations/<backend>")` to compile the right set. | You ship a single binary with migrations baked in. |
 
-> **Tip:** if you go with *B* or *D* keep your migration *versions* identical so that the two databases stay in lock-step.  Diesel’s `__diesel_schema_migrations` table stores the numeric version only, so you can swap back-ends without confusing the tracker.
+> **Tip:** if you go with *B* or *D* keep your migration *versions* identical so
+> that the two databases stay in lock-step. Diesel’s `__diesel_schema_migrations`
+> table stores the numeric version only, so you can swap back-ends without
+> confusing the tracker.
 
 ---
 
@@ -57,7 +60,7 @@ Things that **do *not* port** and therefore need conditional SQL:
 - Boolean defaults: `DEFAULT 0` is accepted by both engines, even though
   Postgres treats it as `BOOLEAN`.
 
-______________________________________________________________________
+---
 
 ## 3 Putting it together: a minimal dual-backend migration
 
@@ -141,7 +144,7 @@ and enable the feature you actually link at build-time. If you use the
 cargo install diesel_cli --no-default-features --features sqlite,postgres
 ```
 
-______________________________________________________________________
+---
 
 ## 4 Running the migrations from code
 
@@ -164,7 +167,7 @@ where
 }
 ```
 
-______________________________________________________________________
+---
 
 ## 5 Summary
 
@@ -182,6 +185,3 @@ With that structure you can `cargo build --features postgres` for the version
 that targets *postgresql-embedded* (or a real server) and
 `cargo build --features sqlite` for the lightweight single-file deployment,
 without touching the migration history.
-
-[1]: https://docs.diesel.rs/2.2.x/src/diesel_migrations/file_based_migrations.rs.html "file_based_migrations.rs - source"
-[2]: https://diesel.rs/guides/getting-started?utm_source=chatgpt.com "Getting Started with Diesel"
