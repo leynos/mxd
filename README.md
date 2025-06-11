@@ -43,6 +43,15 @@ Use the `create-user` subcommand to add accounts:
 cargo run -- create-user alice secret
 ```
 
+### Managing migrations
+
+Install the `diesel` CLI with both back-end features so you can run
+migrations manually when needed:
+
+```bash
+cargo install diesel_cli --no-default-features --features sqlite,postgres
+```
+
 ### Running tests
 
 ```bash

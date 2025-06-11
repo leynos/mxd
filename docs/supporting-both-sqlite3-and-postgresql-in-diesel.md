@@ -120,7 +120,12 @@ postgres = ["diesel/postgres",  "diesel_migrations/postgres"]
 sqlite   = ["diesel/sqlite",    "diesel_migrations/sqlite"]
 ```
 
-and enable the feature you actually link at build-time.
+and enable the feature you actually link at build-time. If you use the
+`diesel` CLI for manual migration commands, install it with matching features:
+
+```bash
+cargo install diesel_cli --no-default-features --features sqlite,postgres
+```
 
 ---
 
