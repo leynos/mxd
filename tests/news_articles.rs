@@ -267,7 +267,7 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let mut conn = DbConnection::establish(&server.db_url()).await?;
+        let mut conn = DbConnection::establish(server.db_url()).await?;
         use mxd::schema::news_articles::dsl as a;
         let titles = a::news_articles
             .select(a::title)

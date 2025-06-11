@@ -128,7 +128,6 @@ impl TestServer {
         self.db_path
             .to_str()
             .expect("database path utf8")
-            .to_owned()
     }
 }
 
