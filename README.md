@@ -33,8 +33,10 @@ these features must be enabled for a successful build.
 ## Running
 
 Build the project and run the daemon. Specify a bind address and
-database path if the defaults don't tickle your fancy. Enable the
-appropriate backend feature when compiling:
+database *URL* if the defaults don't tickle your fancy. For SQLite
+use a filesystem path, while PostgreSQL requires a standard
+`postgres://` URL. Enable the appropriate backend feature when
+compiling:
 
 ```bash
 
@@ -42,6 +44,9 @@ cargo build --features sqlite
 
 # Run server listening on the default address
 cargo run --features sqlite -- --bind 0.0.0.0:5500 --database mxd.db
+ 
+# PostgreSQL example
+# cargo run --features postgres -- --database postgres://user:pass@localhost/mxd
 ```
 
 ### Creating users

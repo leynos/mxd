@@ -32,6 +32,7 @@ uncased = "0.9"
 xdg = "3"
 anyhow = "1"
 clap-dispatch = "0.1"
+url = { version = "2", optional = true }
 
 [features]
 default = ["sqlite"]
@@ -39,6 +40,7 @@ postgres = [
     "diesel/postgres",
     "diesel_migrations/postgres",
     "diesel-async/postgres",
+    "url",
 ]
 sqlite = [
     "diesel/sqlite",
