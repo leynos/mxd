@@ -141,25 +141,40 @@ async fn main() -> Result<()> {
     // Placeholder: use customized Argon2 instance when creating accounts
     let _argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
+    let pool = setup_database(&database).await?;
+
+    let listener = TcpListener::bind(&bind).await?;
+    println!("mxd listening on {bind}");
+
+    accept_connections(listener, pool).await
+}
+
+#[cfg(feature = "postgres")]
+fn is_postgres_url(s: &str) -> bool {
+    Url::parse(s)
+        .map(|u| matches!(u.scheme(), "postgres" | "postgresql"))
+        .unwrap_or(false)
+}
+
+async fn create_pool(database: &str) -> DbPool {
     #[cfg(feature = "postgres")]
-    let pool = match Url::parse(&database) {
-        Ok(url) if matches!(url.scheme(), "postgres" | "postgresql") => {
-            establish_pool(url.as_str()).await
-        }
-        _ => establish_pool(&database).await,
-    };
-    #[cfg(not(feature = "postgres"))]
-    let pool = establish_pool(&database).await;
+    if is_postgres_url(database) {
+        return establish_pool(database).await;
+    }
+    establish_pool(database).await
+}
+
+async fn setup_database(database: &str) -> Result<DbPool> {
+    let pool = create_pool(database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
         audit_sqlite_features(&mut conn).await?;
         run_migrations(&mut conn).await?;
     }
+    Ok(pool)
+}
 
-    let addr = bind;
-    let listener = TcpListener::bind(&addr).await?;
-    println!("mxd listening on {addr}");
-
+async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut join_set = JoinSet::new();
     let shutdown = shutdown_signal();
@@ -198,6 +213,7 @@ async fn main() -> Result<()> {
             eprintln!("task error: {e}");
         }
     }
+
     Ok(())
 }
 
