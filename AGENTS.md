@@ -32,6 +32,62 @@
   relevant file(s) in the `docs/` directory to reflect the latest state. Ensure
   the documentation remains accurate and current.
 
+## Change Quality & Committing
+
+- **Atomicity:** Aim for small, focused, atomic changes. Each change (and
+  subsequent commit) should represent a single logical unit of work.
+- **Quality Gates:** Before considering a change complete or proposing a commit,
+  ensure it meets the following criteria:
+  - Passes all relevant unit and behavioral tests according to the guidelines
+    above.
+  - Passes lint checks
+  - Adheres to formatting standards tested using a formatting validator.
+- **Committing:**
+  - Only changes that meet all the quality gates above should be committed.
+  - Write clear, descriptive commit messages summarizing the change, following
+    these formatting guidelines:
+    - **Imperative Mood:** Use the imperative mood in the subject line (e.g.,
+      "Fix bug", "Add feature" instead of "Fixed bug", "Added feature").
+    - **Subject Line:** The first line should be a concise summary of the change
+      (ideally 50 characters or less).
+    - **Body:** Separate the subject from the body with a blank line. Subsequent
+      lines should explain the *what* and *why* of the change in more detail,
+      including rationale, goals, and scope. Wrap the body at 72 characters.
+    - **Formatting:** Use Markdown for any formatted text (like bullet points or
+      code snippets) within the commit message body.
+  - Do not commit changes that fail any of the quality gates.
+
+## Refactoring Heuristics & Workflow
+
+- **Recognizing Refactoring Needs:** Regularly assess the codebase for potential
+  refactoring opportunities. Consider refactoring when you observe:
+  - **Long Methods/Functions:** Functions or methods that are excessively long
+    or try to do too many things.
+  - **Duplicated Code:** Identical or very similar code blocks appearing in
+    multiple places.
+  - **Complex Conditionals:** Deeply nested or overly complex `if`/`else` or
+    `switch` statements (high cyclomatic complexity).
+  - **Large Code Blocks for Single Values:** Significant chunks of logic
+    dedicated solely to calculating or deriving a single value.
+  - **Primitive Obsession / Data Clumps:** Groups of simple variables (strings,
+    numbers, booleans) that are frequently passed around together, often
+    indicating a missing class or object structure.
+  - **Excessive Parameters:** Functions or methods requiring a very long list of
+    parameters.
+  - **Feature Envy:** Methods that seem more interested in the data of another
+    class/object than their own.
+  - **Shotgun Surgery:** A single change requiring small modifications in many
+    different classes or functions.
+- **Post-Commit Review:** After committing a functional change or bug fix (that
+  meets all quality gates), review the changed code and surrounding areas using
+  the heuristics above.
+- **Separate Atomic Refactors:** If refactoring is deemed necessary:
+  - Perform the refactoring as a **separate, atomic commit** *after* the
+    functional change commit.
+  - Ensure the refactoring adheres to the testing guidelines (behavioral tests
+    pass before and after, unit tests added for new units).
+  - Ensure the refactoring commit itself passes all quality gates.
+
 ## Rust Specific Guidance
 
 This repository is written in Rust and uses Cargo for building and dependency
