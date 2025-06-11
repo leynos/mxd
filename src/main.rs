@@ -7,6 +7,8 @@ use clap::{Args, Parser, Subcommand};
 use clap_dispatch::clap_dispatch;
 use ortho_config::{OrthoConfig, load_subcommand_config, merge_cli_over_defaults};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "postgres")]
+use url::Url;
 
 use tokio::io::{self, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -139,6 +141,14 @@ async fn main() -> Result<()> {
     // Placeholder: use customized Argon2 instance when creating accounts
     let _argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
+    #[cfg(feature = "postgres")]
+    let pool = match Url::parse(&database) {
+        Ok(url) if matches!(url.scheme(), "postgres" | "postgresql") => {
+            establish_pool(url.as_str()).await
+        }
+        _ => establish_pool(&database).await,
+    };
+    #[cfg(not(feature = "postgres"))]
     let pool = establish_pool(&database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");

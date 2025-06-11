@@ -169,6 +169,12 @@ where
 
 ---
 
+### CLI database argument
+
+Invoke the server with `--database <url>`. SQLite uses a file path while
+PostgreSQL expects a `postgres://` style URL.
+Non-URL strings are treated as SQLite paths.
+
 ## 5 Summary
 
 - **Use backend-suffixed files (`up.postgres.sql` / `up.sqlite.sql`)** whenever
