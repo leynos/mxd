@@ -23,7 +23,10 @@ jobs:
 
       - name: Generate coverage
         run: |
-          cargo llvm-cov --workspace --all-features --no-report
+          # Default features compile the SQLite backend. Running with
+          # `--all-features` would enable both SQLite and Postgres
+          # simultaneously which the crate forbids at compile time.
+          cargo llvm-cov --workspace --features sqlite --no-report
           cargo llvm-cov report --lcov --output-path lcov.info
           cargo llvm-cov report --codecov --output-path codecov.json
 
