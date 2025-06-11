@@ -96,7 +96,15 @@ impl TestServer {
         self.port
     }
 
-    /// Path to the SQLite database used by this server.
+    /// Returns the file system path to the SQLite database used by the test server.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let server = TestServer::start("path/to/Cargo.toml").unwrap();
+    /// let db_path = server.db_path();
+    /// assert!(db_path.exists());
+    /// ```
     pub fn db_path(&self) -> &Path {
         &self.db_path
     }
@@ -105,7 +113,17 @@ impl TestServer {
     ///
     /// Currently tests only use SQLite, so this is just the path as a string.
     /// The method returns an owned `String` to match Diesel's `establish`
-    /// signature, which takes `&str`.
+    /// Returns the database connection URL as a UTF-8 string.
+    ///
+    /// This is suitable for use with Diesel's `establish` function, which requires a `&str`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let server = TestServer::start("path/to/Cargo.toml").unwrap();
+    /// let url = server.db_url();
+    /// assert!(url.ends_with(".db"));
+    /// ```
     pub fn db_url(&self) -> String {
         self.db_path
             .to_str()
