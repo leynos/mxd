@@ -1,5 +1,7 @@
 # Supporting both SQLite3 and Postgresql in Diesel
 
+<!-- markdownlint-disable MD013 -->
+
 ## 1  File-layout options
 
 | Option                                                         | How it works                                                                                                                                                                                                                                                                                                                                                      | When to choose it                                                                                               |
@@ -151,7 +153,13 @@ where
 * For features that SQLite simply lacks (JSONB, expression indexes, row-level security) you must either introduce conditional code paths or limit those features to the Postgres deployment.
 * When using SQLite, ensure your SQLite build was compiled with the `JSON1` extension and support for recursive CTEs.
 
-With that structure you can `cargo build --features postgres` for the version that targets *postgresql-embedded* (or a real server) and `cargo build --features sqlite` for the lightweight single-file deployment, without touching the migration history.
+With that structure you can `cargo build --features postgres` for the version
+that targets *postgresql-embedded* (or a real server) and `cargo build
+--features sqlite` for the lightweight single-file deployment, without touching
+the migration history. Exactly one of these features must be enabled when
+building.
 
 [1]: https://docs.diesel.rs/2.2.x/src/diesel_migrations/file_based_migrations.rs.html "file_based_migrations.rs - source"
 [2]: https://diesel.rs/guides/getting-started?utm_source=chatgpt.com "Getting Started with Diesel"
+
+<!-- markdownlint-enable MD013 -->

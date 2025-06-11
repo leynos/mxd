@@ -25,11 +25,16 @@ fail to run if they are missing.
 
 ## Running
 
-Build the project and run the daemon. Specify a bind address and
+Build the project and run the daemon. Exactly one of the `sqlite` or
+`postgres` features must be selected at compile time. Specify a bind address and
 database path if the defaults don't tickle your fancy:
 
 ```bash
-cargo build
+# Build for SQLite
+cargo build --features sqlite
+
+# Build for PostgreSQL
+# cargo build --features postgres
 
 # Run server listening on the default address
 cargo run -- --bind 0.0.0.0:5500 --database mxd.db
