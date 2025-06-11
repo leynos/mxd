@@ -195,6 +195,18 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+/// Tests posting a new root news article and verifies its creation in the database.
+///
+/// This test starts a server with a "General" news category, posts a new article titled "Hello" with plain text data, and checks that the server responds with the correct article ID. It then queries the database to confirm the article was created successfully.
+///
+/// # Returns
+/// Returns `Ok(())` if the article is posted and found in the database; otherwise, returns an error.
+///
+/// # Examples
+///
+/// ```
+/// post_news_article_root().unwrap();
+/// ```
 fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
         with_db(db, |conn| {
