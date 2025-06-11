@@ -4,9 +4,7 @@ use diesel_async::RunQueryDsl;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::sync_connection_wrapper::SyncConnectionWrapper;
-use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+use diesel_migrations::{FileBasedMigrations, MigrationHarness};
 
 pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
 pub type DbPool = Pool<DbConnection>;
@@ -32,7 +30,10 @@ pub async fn establish_pool(database_url: &str) -> DbPool {
 pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
     use diesel::result::Error as DieselError;
     conn.spawn_blocking(|c| {
-        c.run_pending_migrations(MIGRATIONS)
+        let migrations = FileBasedMigrations::find_migrations_directory().map_err(|e| {
+            DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string())))
+        })?;
+        c.run_pending_migrations(migrations)
             .map(|_| ())
             .map_err(|e| {
                 DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string())))
