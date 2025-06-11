@@ -53,6 +53,7 @@ toml = []
 
 [dev-dependencies]
 test-util = { path = "test-util" }
+postgresql_embedded = { version = "0.18.5", features = ["tokio"] }
 
 [lints.clippy]
 pedantic = "warn"

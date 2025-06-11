@@ -23,6 +23,9 @@ includes the `JSON1` extension and support for recursive common table
 expressions (CTEs). The server verifies these features on startup and will
 fail to run if they are missing.
 
+When using PostgreSQL, run against a server version **14 or newer**. The
+daemon checks this at startup and refuses to launch on older versions.
+
 mxd supports both SQLite and PostgreSQL backends. Select one at compile
 time using `--features sqlite` or `--features postgres`. Exactly one of
 these features must be enabled for a successful build.

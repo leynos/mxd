@@ -183,6 +183,8 @@ where
   features to the Postgres deployment.
 - When using SQLite, ensure your SQLite build was compiled with the `JSON1`
   extension and support for recursive CTEs.
+- When using PostgreSQL, ensure the server version is **14 or greater**.
+  The application performs a runtime check and fails on older versions.
 
 With that structure you can `cargo build --features postgres` for the version
 that targets *postgresql-embedded* (or a real server) and
