@@ -10,6 +10,7 @@ mxd = { path = "..", default-features = false }
 tokio = { version = "1", features = ["rt", "macros"] }
 diesel = { version = "2", default-features = false, features = ["chrono"] }
 diesel-async = { version = "0.5", default-features = false, features = ["sync-connection-wrapper"] }
+diesel_migrations = { version = "2", default-features = false }
 postgresql_embedded = { version = "0.18.5", features = ["tokio"], optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -22,6 +23,7 @@ postgres = [
     "diesel-async/postgres",
     "mxd/postgres",
     "postgresql_embedded",
+    "diesel_migrations/postgres",
 ]
 sqlite = [
     "diesel/sqlite",
