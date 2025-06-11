@@ -1,21 +1,30 @@
+use cfg_if::cfg_if;
 use diesel::prelude::*;
-use diesel::sqlite::{Sqlite, SqliteConnection};
 use diesel_async::RunQueryDsl;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::sync_connection_wrapper::SyncConnectionWrapper;
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
-#[cfg(feature = "sqlite")]
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/sqlite");
+cfg_if! {
+    if #[cfg(feature = "sqlite")] {
+        use diesel::sqlite::{Sqlite, SqliteConnection};
+        pub type Backend = Sqlite;
+        pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/sqlite");
+        pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
+        pub type DbPool = Pool<DbConnection>;
+    } else if #[cfg(feature = "postgres")] {
+        use diesel::pg::{Pg, PgConnection};
+        pub type Backend = Pg;
+        pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
+        pub type DbConnection = SyncConnectionWrapper<PgConnection>;
+        pub type DbPool = Pool<DbConnection>;
+    } else {
+        compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
+    }
+}
 
-#[cfg(feature = "postgres")]
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
-
-pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
-pub type DbPool = Pool<DbConnection>;
-
-/// Create a pooled connection to the `SQLite` database.
+/// Create a pooled connection to the configured database.
 ///
 /// # Panics
 /// Panics if the connection pool cannot be created.
@@ -67,6 +76,57 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
     )
     .execute(conn)
     .await?;
+
+    Ok(())
+}
+
+/// Verify that the Postgres server meets application requirements.
+///
+/// Currently checks the server version using `SELECT version()` and fails if
+/// the major version is below 14. Additional feature probes can be added here
+/// as needed.
+///
+/// # Errors
+/// Returns any error produced by the version query or if the version string
+/// cannot be parsed.
+#[cfg(feature = "postgres")]
+#[must_use = "handle the result"]
+pub async fn audit_postgres_features(
+    conn: &mut diesel_async::AsyncPgConnection,
+) -> QueryResult<()> {
+    use diesel::result::Error as DieselError;
+    use diesel::sql_query;
+    use diesel::sql_types::Text;
+
+    #[derive(QueryableByName)]
+    struct PgVersion {
+        #[diesel(sql_type = Text)]
+        version: String,
+    }
+
+    let row: PgVersion = sql_query("SELECT version()").get_result(conn).await?;
+
+    let major = row
+        .version
+        .split_whitespace()
+        .nth(1)
+        .and_then(|v| v.split('.').next())
+        .and_then(|v| v.parse::<u32>().ok())
+        .ok_or_else(|| {
+            DieselError::QueryBuilderError(Box::new(std::io::Error::other(format!(
+                "unable to parse postgres version: {}",
+                row.version
+            ))))
+        })?;
+
+    if major < 14 {
+        return Err(DieselError::QueryBuilderError(Box::new(
+            std::io::Error::other(format!(
+                "postgres version {} is not supported (require >= 14)",
+                major
+            )),
+        )));
+    }
 
     Ok(())
 }
@@ -138,7 +198,7 @@ async fn bundle_id_from_path(
     let len_i32: i32 = i32::try_from(len).map_err(|_| PathLookupError::InvalidPath)?;
     let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len_i32);
 
-    let query = build_path_cte::<Sqlite, _, _>(step, body);
+    let query = build_path_cte::<Backend, _, _>(step, body);
 
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
@@ -274,7 +334,7 @@ async fn category_id_from_path(
         .bind::<Integer, _>(len_minus_one)
         .bind::<Integer, _>(len_minus_one);
 
-    let query = build_path_cte::<Sqlite, _, _>(step, body);
+    let query = build_path_cte::<Backend, _, _>(step, body);
 
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
     res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)
@@ -473,5 +533,24 @@ mod tests {
     async fn test_audit_features() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
         audit_sqlite_features(&mut conn).await.unwrap();
+    }
+
+    #[cfg(feature = "postgres")]
+    #[tokio::test]
+    #[ignore]
+    async fn test_audit_postgres() {
+        use diesel_async::AsyncConnection;
+        use postgresql_embedded::PostgreSQL;
+
+        let mut pg = PostgreSQL::default();
+        pg.setup().await.unwrap();
+        pg.start().await.unwrap();
+        pg.create_database("test").await.unwrap();
+        let url = pg.settings().url("test");
+        let mut conn = diesel_async::AsyncPgConnection::establish(&url)
+            .await
+            .unwrap();
+        audit_postgres_features(&mut conn).await.unwrap();
+        pg.stop().await.unwrap();
     }
 }

@@ -17,9 +17,13 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 
 use diesel_async::AsyncConnection;
-use mxd::db::{
-    DbConnection, DbPool, audit_sqlite_features, create_user, establish_pool, run_migrations,
-};
+use mxd::db::{DbConnection, DbPool, create_user, establish_pool, run_migrations};
+
+#[cfg(feature = "sqlite")]
+use mxd::db::audit_sqlite_features;
+
+#[cfg(feature = "postgres")]
+use mxd::db::audit_postgres_features;
 use mxd::handler::{Context as HandlerContext, Session, handle_request};
 use mxd::models;
 use mxd::protocol;
@@ -168,7 +172,10 @@ async fn setup_database(database: &str) -> Result<DbPool> {
     let pool = create_pool(database).await;
     {
         let mut conn = pool.get().await.expect("failed to get db connection");
+        #[cfg(feature = "sqlite")]
         audit_sqlite_features(&mut conn).await?;
+        #[cfg(feature = "postgres")]
+        audit_postgres_features(&mut conn).await?;
         run_migrations(&mut conn).await?;
     }
     Ok(pool)

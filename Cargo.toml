@@ -19,6 +19,7 @@ thiserror = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }
+cfg-if = "1"
 ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.1.0" }
 argon2 = { version = "0.5", features = ["std"] }
 rand = "0.8"
@@ -54,6 +55,7 @@ toml = []
 
 [dev-dependencies]
 test-util = { path = "test-util" }
+postgresql_embedded = { version = "0.18.5", features = ["tokio"] }
 
 [lints.clippy]
 pedantic = "warn"

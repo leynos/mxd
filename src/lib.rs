@@ -1,3 +1,14 @@
+#[cfg(all(feature = "sqlite", feature = "postgres"))]
+compile_error!("Choose either sqlite or postgres, not both");
+
+#[cfg(not(any(feature = "sqlite", feature = "postgres")))]
+compile_error!("Either the 'sqlite' or 'postgres' feature must be enabled");
+
+#[cfg(feature = "postgres")]
+pub use diesel::pg::Pg as DbBackend;
+#[cfg(feature = "sqlite")]
+pub use diesel::sqlite::Sqlite as DbBackend;
+
 pub mod commands;
 pub mod db;
 pub mod field_id;

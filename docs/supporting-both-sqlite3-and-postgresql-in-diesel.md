@@ -137,6 +137,9 @@ sqlite   = [
 ]
 ```
 
+Exactly one of these features must be active. The `mxd` crate emits a
+compile-time error if both or neither are enabled.
+
 and enable the feature you actually link at build-time. If you use the
 `diesel` CLI for manual migration commands, install it with matching features:
 
@@ -186,6 +189,8 @@ Non-URL strings are treated as SQLite paths.
   features to the Postgres deployment.
 - When using SQLite, ensure your SQLite build was compiled with the `JSON1`
   extension and support for recursive CTEs.
+- When using PostgreSQL, ensure the server version is **14 or greater**.
+  The application performs a runtime check and fails on older versions.
 
 With that structure you can `cargo build --features postgres` for the version
 that targets *postgresql-embedded* (or a real server) and
