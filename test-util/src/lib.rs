@@ -77,6 +77,26 @@ fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> 
     }
 }
 
+fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command {
+    let mut cmd = Command::new("cargo");
+    cmd.args([
+        "run",
+        "--bin",
+        "mxd",
+        "--manifest-path",
+        manifest_path,
+        "--quiet",
+        "--",
+        "--bind",
+        &format!("127.0.0.1:{port}"),
+        "--database",
+        db_url,
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::inherit());
+    cmd
+}
+
 impl TestServer {
     /// Start the server using the given Cargo manifest path.
     pub fn start(manifest_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -106,23 +126,7 @@ impl TestServer {
         let port = socket.local_addr()?.port();
         drop(socket);
 
-        let mut child = Command::new("cargo")
-            .args([
-                "run",
-                "--bin",
-                "mxd",
-                "--manifest-path",
-                manifest_path,
-                "--quiet",
-                "--",
-                "--bind",
-                &format!("127.0.0.1:{}", port),
-                "--database",
-                &db_url,
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()?;
+        let mut child = build_server_command(manifest_path, port, &db_url).spawn()?;
 
         wait_for_server(&mut child)?;
 
