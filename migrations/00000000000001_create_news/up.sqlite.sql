@@ -1,4 +1,0 @@
-CREATE TABLE news_categories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
-);

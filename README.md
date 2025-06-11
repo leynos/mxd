@@ -26,13 +26,15 @@ fail to run if they are missing.
 ## Running
 
 Build the project and run the daemon. Specify a bind address and
-database path if the defaults don't tickle your fancy:
+database path if the defaults don't tickle your fancy. Enable the
+appropriate backend feature when compiling:
 
 ```bash
-cargo build
+
+cargo build --features sqlite
 
 # Run server listening on the default address
-cargo run -- --bind 0.0.0.0:5500 --database mxd.db
+cargo run --features sqlite -- --bind 0.0.0.0:5500 --database mxd.db
 ```
 
 ### Creating users
@@ -40,7 +42,7 @@ cargo run -- --bind 0.0.0.0:5500 --database mxd.db
 Use the `create-user` subcommand to add accounts:
 
 ```bash
-cargo run -- create-user alice secret
+cargo run --features sqlite -- create-user alice secret
 ```
 
 ### Managing migrations
