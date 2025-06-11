@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use mxd::field_id::FieldId;
-use mxd::models::{NewFileAcl, NewFileEntry, NewUser};
+
 use mxd::transaction::{FrameHeader, Transaction, decode_params, encode_params};
 use mxd::transaction_type::TransactionType;
 use test_util::{TestServer, handshake, setup_files_db};

@@ -58,9 +58,6 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
-    use chrono::{DateTime, Utc};
-    use mxd::models::NewArticle;
-
     let server = TestServer::start_with_setup("./Cargo.toml", |db| setup_news_db(db))?;
 
     let port = server.port();

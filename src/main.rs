@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn argon2_cli() {
-        Jail::expect_with(|j| {
+        Jail::expect_with(|_j| {
             let cfg = AppConfig::load_from_iter(["mxd", "--argon2-m-cost", "1024"]).expect("load");
             assert_eq!(cfg.argon2_m_cost, 1024);
             Ok(())
