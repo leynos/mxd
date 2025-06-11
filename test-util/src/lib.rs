@@ -100,6 +100,18 @@ impl TestServer {
     pub fn db_path(&self) -> &Path {
         &self.db_path
     }
+
+    /// Return the database connection URL used by the server.
+    ///
+    /// Currently tests only use SQLite, so this is just the path as a string.
+    /// The method returns an owned `String` to match Diesel's `establish`
+    /// signature, which takes `&str`.
+    pub fn db_url(&self) -> String {
+        self.db_path
+            .to_str()
+            .expect("database path utf8")
+            .to_owned()
+    }
 }
 
 impl Drop for TestServer {
