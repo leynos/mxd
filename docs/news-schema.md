@@ -1,8 +1,10 @@
 # Database Schema Design for HXD News Functionality
 
-The following is a compact, evidence-based design that maps Hotline’s hierarchical-news concepts (bundles → categories → articles, with threaded posts) and its granular privilege model into a relational schema.
+The following is a compact, evidence-based design that maps Hotline’s
+hierarchical-news concepts (bundles → categories → articles, with threaded
+posts) and its granular privilege model into a relational schema.
 
----
+______________________________________________________________________
 
 ```mermaid
 erDiagram
@@ -66,7 +68,7 @@ erDiagram
     news_articles   ||--o{ news_articles   : children
 ```
 
----
+______________________________________________________________________
 
 ```sql
 -- Users (given)
@@ -139,12 +141,23 @@ CREATE INDEX idx_categories_bundle      ON news_categories(bundle_id);
 CREATE INDEX idx_articles_category      ON news_articles(category_id);
 ```
 
-### Why these tables?
+## Why these tables?
 
-* **Hierarchical news** – Bundles may contain bundles and categories, matching the server manual’s description of “bundles inside other bundles” and categories that hold posts .
+- **Hierarchical news** – Bundles may contain bundles and categories, matching
+  the server manual’s description of “bundles inside other bundles” and
+  categories that hold posts .
 
-  * Articles inherit Hotline’s thread metadata (parent/prev/next/first-child, flags, poster, date, flavour, data) as specified in the protocol fields list .
-* **Permission model** – The protocol defines 38 distinct access flags (e.g. *News Read Article* code 20, *Broadcast* code 32) .  A lookup table plus an M-N link cleanly represents that bitmap while remaining normalised and queryable.
-* **Users** – The provided `users` table is left intact and linked to permissions via `user_permissions`.
+  - Articles inherit Hotline’s thread metadata (parent/prev/next/first-child,
+    flags, poster, date, flavour, data) as specified in the protocol fields list
+    .
 
-This schema stays portable (pure SQLite 3), enforces referential integrity via `ON DELETE CASCADE`, and leaves room for higher-level abstractions (roles, groups, moderation logs) without breaking existing contracts.
+- **Permission model** – The protocol defines 38 distinct access flags (e.g.
+  *News Read Article* code 20, *Broadcast* code 32) . A lookup table plus an M-N
+  link cleanly represents that bitmap while remaining normalised and queryable.
+
+- **Users** – The provided `users` table is left intact and linked to
+  permissions via `user_permissions`.
+
+This schema stays portable (pure SQLite 3), enforces referential integrity via
+`ON DELETE CASCADE`, and leaves room for higher-level abstractions (roles,
+groups, moderation logs) without breaking existing contracts.

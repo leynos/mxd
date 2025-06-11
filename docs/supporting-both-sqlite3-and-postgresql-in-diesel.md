@@ -1,29 +1,48 @@
 # Supporting both SQLite3 and Postgresql in Diesel
 
-## 1  File-layout options
+## 1 File-layout options
 
-| Option                                                         | How it works                                                                                                                                                                                                                                                                                                                                                      | When to choose it                                                                                               |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **A. One SQL file per backend in the *same* migration folder** | Put `up.sqlite.sql`, `up.postgres.sql`, `down.sqlite.sql`, `down.postgres.sql` (and optionally the generic `up.sql` / `down.sql`) in the migration directory.  From Diesel 2.1 onward the CLI/migration harness will pick the `<phase>.<backend>.sql` variant if it exists, otherwise it falls back to the un-suffixed one. ([docs.diesel.rs][1], [diesel.rs][2]) | You frequently need backend-specific DDL (e.g. `GENERATED … AS IDENTITY` vs `AUTOINCREMENT`).  **Recommended.** |
-| **B. Pure-Rust migrations**                                    | Implement `diesel::migration::Migration<DB>` in a Rust file (`up.rs` / `down.rs`) and compile with both `features = ["postgres", "sqlite"]`.  The query builder emits backend-specific SQL at runtime.                                                                                                                                                            | You prefer the type-checked DSL and can live with slightly slower compile times.                                |
-| **C. Lowest-common-denominator SQL**                           | Write one `up.sql`/`down.sql` that *already* works on both engines.  This demands avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc.                                                                                                                                                                                                                            | Simple schemas, embedded use-case only, you are happy to supply integer primary keys manually.                  |
+| Option | How it works | When to choose it | |
+-------------------------------------------------------------- |
+\-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+|
+\---------------------------------------------------------------------------------------------------------------
+| | **A. One SQL file per backend in the *same* migration folder** | Put
+`up.sqlite.sql`, `up.postgres.sql`, `down.sqlite.sql`, `down.postgres.sql` (and
+optionally the generic `up.sql` / `down.sql`) in the migration directory. From
+Diesel 2.1 onward the CLI/migration harness will pick the
+`<phase>.<backend>.sql` variant if it exists, otherwise it falls back to the
+un-suffixed one. ([docs.diesel.rs][1], [diesel.rs][2]) | You frequently need
+backend-specific DDL (e.g. `GENERATED … AS IDENTITY` vs `AUTOINCREMENT`).
+**Recommended.** | | **B. Pure-Rust migrations** | Implement
+`diesel::migration::Migration<DB>` in a Rust file (`up.rs` / `down.rs`) and
+compile with both `features = ["postgres", "sqlite"]`. The query builder emits
+backend-specific SQL at runtime. | You prefer the type-checked DSL and can live
+with slightly slower compile times. | | **C. Lowest-common-denominator SQL** |
+Write one `up.sql`/`down.sql` that *already* works on both engines. This demands
+avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc. | Simple schemas, embedded
+use-case only, you are happy to supply integer primary keys manually. |
 
-> **Tip:** if you go with *A* or *B* keep your migration *versions* identical so that the two databases stay in lock-step.  Diesel’s `__diesel_schema_migrations` table stores the numeric version only, so you can swap back-ends without confusing the tracker.
+> **Tip:** if you go with *A* or *B* keep your migration *versions* identical so
+> that the two databases stay in lock-step. Diesel’s
+> `__diesel_schema_migrations` table stores the numeric version only, so you can
+> swap back-ends without confusing the tracker.
 
----
+______________________________________________________________________
 
-## 2  Writing portable DDL
+## 2 Writing portable DDL
 
-### 2.1  Primary keys & auto-increment
+### 2.1 Primary keys & auto-increment
 
-* **PostgreSQL** – use identity columns (*preferred*)
+- **PostgreSQL** – use identity columns (*preferred*)
 
   ```sql
   id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY
   ```
 
   (`SERIAL` still works but is officially discouraged.)
-* **SQLite** – the only flavour that keeps the hidden `ROWID` semantics is
+
+- **SQLite** – the only flavour that keeps the hidden `ROWID` semantics is
 
   ```sql
   id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -31,31 +50,35 @@
 
   So you usually have two variant files here.
 
-### 2.2  Column types that line up cleanly
+### 2.2 Column types that line up cleanly
 
-| Logical type | PostgreSQL              | SQLite notes                                                                    |
-| ------------ | ----------------------- | ------------------------------------------------------------------------------- |
-| strings      | `TEXT` (or `VARCHAR`)   | `TEXT` – SQLite ignores the length specifier anyway                             |
-| booleans     | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`; Diesel serialises to 0 / 1 so this is fine                |
-| integers     | `INTEGER` / `BIGINT`    | ditto                                                                           |
-| decimals     | `NUMERIC(…)`            | stored as FLOAT in SQLite; Diesel’s `Numeric` round-trips, but beware precision |
-| blobs / raw  | `BYTEA`                 | `BLOB`                                                                          |
+| Logical type | PostgreSQL | SQLite notes | | ------------ |
+----------------------- |
+\-------------------------------------------------------------------------------
+| | strings | `TEXT` (or `VARCHAR`) | `TEXT` – SQLite ignores the length
+specifier anyway | | booleans | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`;
+Diesel serialises to 0 / 1 so this is fine | | integers | `INTEGER` / `BIGINT` |
+ditto | | decimals | `NUMERIC(…)` | stored as FLOAT in SQLite; Diesel’s
+`Numeric` round-trips, but beware precision | | blobs / raw | `BYTEA` | `BLOB` |
 
 Things that **do *not* port** and therefore need conditional SQL:
 
-* `TIMESTAMP WITH TIME ZONE`  →  store UTC as naive `TIMESTAMP` on both, or dual files with `TIMESTAMPTZ` vs `DATETIME`.
-* `CHECK (…)` constraints that rely on PostgreSQL operators/functions.
-* JSON / JSONB (Postgres-only without extensions).
-* Expression indexes (`CREATE INDEX … (lower(email))`) – Postgres supports them, SQLite prior to 3.40 does not.
+- `TIMESTAMP WITH TIME ZONE` → store UTC as naive `TIMESTAMP` on both, or dual
+  files with `TIMESTAMPTZ` vs `DATETIME`.
+- `CHECK (…)` constraints that rely on PostgreSQL operators/functions.
+- JSON / JSONB (Postgres-only without extensions).
+- Expression indexes (`CREATE INDEX … (lower(email))`) – Postgres supports them,
+  SQLite prior to 3.40 does not.
 
-### 2.3  Default values
+### 2.3 Default values
 
-* Use `DEFAULT CURRENT_TIMESTAMP` on SQLite, `DEFAULT now()` on Postgres.
-* Boolean defaults: `DEFAULT 0` is accepted by both engines, even though Postgres treats it as `BOOLEAN`.
+- Use `DEFAULT CURRENT_TIMESTAMP` on SQLite, `DEFAULT now()` on Postgres.
+- Boolean defaults: `DEFAULT 0` is accepted by both engines, even though
+  Postgres treats it as `BOOLEAN`.
 
----
+______________________________________________________________________
 
-## 3  Putting it together: a minimal dual-backend migration
+## 3 Putting it together: a minimal dual-backend migration
 
 ```text
 migrations/
@@ -111,7 +134,8 @@ diesel::table! {
 }
 ```
 
-Because the *Rust* side deals in Diesel’s abstract `Integer`, `Text`, `Bool`, `Timestamp` types, the same code compiles for both back-ends.  Compile with
+Because the *Rust* side deals in Diesel’s abstract `Integer`, `Text`, `Bool`,
+`Timestamp` types, the same code compiles for both back-ends. Compile with
 
 ```toml
 [features]
@@ -129,13 +153,13 @@ sqlite   = [
 ]
 ```
 
-and enable the feature you actually link at build-time.
-You should enable exactly **one** of `sqlite` or `postgres` when
-building. Selecting both, or neither, will lead to undefined behaviour.
+and enable the feature you actually link at build-time. You should enable
+exactly **one** of `sqlite` or `postgres` when building. Selecting both, or
+neither, will lead to undefined behaviour.
 
----
+______________________________________________________________________
 
-## 4  Running the migrations from code
+## 4 Running the migrations from code
 
 ```rust
 use diesel::prelude::*;
@@ -153,16 +177,24 @@ where
 }
 ```
 
----
+______________________________________________________________________
 
-## 5  Summary
+## 5 Summary
 
-* **Use backend-suffixed files (`up.postgres.sql` / `up.sqlite.sql`)** whenever DDL diverges – Diesel automatically chooses the correct one.
-* Keep Rust-side types in `schema.rs` backend-agnostic (`Integer`, `Text`, `Bool`, `Timestamp`).
-* For features that SQLite simply lacks (JSONB, expression indexes, row-level security) you must either introduce conditional code paths or limit those features to the Postgres deployment.
-* When using SQLite, ensure your SQLite build was compiled with the `JSON1` extension and support for recursive CTEs.
+- **Use backend-suffixed files (`up.postgres.sql` / `up.sqlite.sql`)** whenever
+  DDL diverges – Diesel automatically chooses the correct one.
+- Keep Rust-side types in `schema.rs` backend-agnostic (`Integer`, `Text`,
+  `Bool`, `Timestamp`).
+- For features that SQLite simply lacks (JSONB, expression indexes, row-level
+  security) you must either introduce conditional code paths or limit those
+  features to the Postgres deployment.
+- When using SQLite, ensure your SQLite build was compiled with the `JSON1`
+  extension and support for recursive CTEs.
 
-With that structure you can `cargo build --features postgres` for the version that targets *postgresql-embedded* (or a real server) and `cargo build --features sqlite` for the lightweight single-file deployment, without touching the migration history.
+With that structure you can `cargo build --features postgres` for the version
+that targets *postgresql-embedded* (or a real server) and
+`cargo build --features sqlite` for the lightweight single-file deployment,
+without touching the migration history.
 
 [1]: https://docs.diesel.rs/2.2.x/src/diesel_migrations/file_based_migrations.rs.html "file_based_migrations.rs - source"
 [2]: https://diesel.rs/guides/getting-started?utm_source=chatgpt.com "Getting Started with Diesel"
