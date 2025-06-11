@@ -802,6 +802,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argon2",
+ "cfg-if",
  "chrono",
  "clap",
  "clap-dispatch",
