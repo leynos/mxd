@@ -25,6 +25,58 @@ pub struct TestServer {
     pg: Option<PostgreSQL>,
 }
 
+#[cfg(feature = "sqlite")]
+fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<String, Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    let path = temp.path().join("mxd.db");
+    setup(path.to_str().expect("db path utf8"))?;
+    Ok(path.to_str().unwrap().to_owned())
+}
+
+#[cfg(feature = "postgres")]
+fn setup_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    let mut pg = PostgreSQL::default();
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        pg.setup().await?;
+        pg.start().await?;
+        pg.create_database("test").await?;
+        Ok::<_, Box<dyn std::error::Error>>(())
+    })?;
+    let url = pg.settings().url("test");
+    setup(&url)?;
+    Ok((url, pg))
+}
+
+fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(out) = &mut child.stdout {
+        let mut reader = BufReader::new(out);
+        let mut line = String::new();
+        let timeout = Duration::from_secs(10);
+        let start = Instant::now();
+        loop {
+            line.clear();
+            if reader.read_line(&mut line)? == 0 {
+                return Err("server exited before signaling readiness".into());
+            }
+            if line.contains("listening on") {
+                break;
+            }
+            if start.elapsed() > timeout {
+                return Err("timeout waiting for server to signal readiness".into());
+            }
+        }
+        Ok(())
+    } else {
+        Err("missing stdout from server".into())
+    }
+}
+
 impl TestServer {
     /// Start the server using the given Cargo manifest path.
     pub fn start(manifest_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -42,26 +94,10 @@ impl TestServer {
         let temp = TempDir::new()?;
 
         #[cfg(feature = "sqlite")]
-        let db_url = {
-            let path = temp.path().join("mxd.db");
-            setup(path.to_str().expect("db path utf8"))?;
-            path.to_str().unwrap().to_owned()
-        };
+        let db_url = setup_sqlite(&temp, setup)?;
 
         #[cfg(feature = "postgres")]
-        let (db_url, mut pg) = {
-            let mut pg = PostgreSQL::default();
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(async {
-                pg.setup().await?;
-                pg.start().await?;
-                pg.create_database("test").await?;
-                Ok::<_, Box<dyn std::error::Error>>(())
-            })?;
-            let url = pg.settings().url("test");
-            setup(&url)?;
-            (url, pg)
-        };
+        let (db_url, mut pg) = setup_postgres(setup)?;
 
         #[cfg(feature = "postgres")]
         let db_url = db_url;
@@ -88,26 +124,7 @@ impl TestServer {
             .stderr(Stdio::inherit())
             .spawn()?;
 
-        if let Some(out) = &mut child.stdout {
-            let mut reader = BufReader::new(out);
-            let mut line = String::new();
-            let timeout = Duration::from_secs(10);
-            let start = Instant::now();
-            loop {
-                line.clear();
-                if reader.read_line(&mut line)? == 0 {
-                    return Err("server exited before signaling readiness".into());
-                }
-                if line.contains("listening on") {
-                    break;
-                }
-                if start.elapsed() > timeout {
-                    return Err("timeout waiting for server to signal readiness".into());
-                }
-            }
-        } else {
-            return Err("missing stdout from server".into());
-        }
+        wait_for_server(&mut child)?;
 
         Ok(Self {
             child,
