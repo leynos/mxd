@@ -31,6 +31,18 @@ use mxd::protocol;
 use mxd::transaction::{TransactionError, TransactionReader, TransactionWriter};
 use mxd::users::hash_password;
 
+/// Waits for a shutdown signal, completing when termination is requested.
+///
+/// On Unix platforms, listens for either SIGTERM or Ctrl-C. On non-Unix platforms, listens for Ctrl-C only. The function returns when any of these signals are received, allowing for graceful shutdown of the application.
+///
+/// # Examples
+///
+/// ```
+/// tokio::spawn(async {
+///     shutdown_signal().await;
+///     println!("Shutdown signal received.");
+/// });
+/// ```
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
@@ -225,6 +237,34 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
     Ok(())
 }
 
+/// Handles a single client connection, performing handshake and processing transactions.
+///
+/// Performs a protocol handshake with the client, responding to handshake errors or timeouts as appropriate.
+/// After a successful handshake, enters a loop to read and process transactions from the client, sending responses back.
+/// Gracefully handles client disconnects and server shutdown signals.
+///
+/// # Arguments
+///
+/// - `socket`: The TCP stream representing the client connection.
+/// - `peer`: The client's socket address.
+/// - `pool`: The database connection pool.
+/// - `shutdown`: A watch channel receiver used to signal server shutdown.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on normal termination, or an error if a protocol or I/O error occurs outside of expected disconnects.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use tokio::net::TcpStream;
+/// # use std::net::SocketAddr;
+/// # use mxd::db::DbPool;
+/// # use tokio::sync::watch;
+/// # async fn example(socket: TcpStream, peer: SocketAddr, pool: DbPool, mut shutdown: watch::Receiver<bool>) {
+/// let _ = handle_client(socket, peer, pool, &mut shutdown).await;
+/// # }
+/// ```
 async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
