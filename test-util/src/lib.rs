@@ -208,7 +208,15 @@ use mxd::db::{
 use mxd::models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser};
 use mxd::users::hash_password;
 
-/// Run an async database setup function using a temporary Tokio runtime.
+/// Executes an asynchronous database setup function within a temporary Tokio runtime.
+///
+/// Establishes a database connection, runs migrations, and invokes the provided async closure with the connection. Suitable for preparing test databases synchronously from non-async contexts.
+///
+/// # Parameters
+/// - `db`: Database connection string.
+///
+/// # Returns
+/// Returns `Ok(())` if the setup function completes successfully; otherwise, returns an error.
 pub fn with_db<F>(db: &str, f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: for<'c> FnOnce(
@@ -218,6 +226,9 @@ where
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let mut conn = DbConnection::establish(db).await?;
+        #[cfg(feature = "postgres")]
+        run_migrations(&mut conn, db).await?;
+        #[cfg(not(feature = "postgres"))]
         run_migrations(&mut conn).await?;
         f(&mut conn).await
     })
