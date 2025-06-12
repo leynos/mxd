@@ -200,7 +200,7 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 }
 
 use chrono::{DateTime, Utc};
-use diesel::prelude::{ExpressionMethods, QueryDsl};
+
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use mxd::db::{
@@ -344,7 +344,7 @@ pub fn setup_news_categories_root_db(
     with_db(db, |conn| {
         Box::pin(async move {
             use mxd::db::{create_bundle, create_category};
-            create_bundle(
+            let _ = create_bundle(
                 conn,
                 &mxd::models::NewBundle {
                     parent_bundle_id: None,
@@ -352,7 +352,7 @@ pub fn setup_news_categories_root_db(
                 },
             )
             .await?;
-            create_category(
+            let _ = create_category(
                 conn,
                 &mxd::models::NewCategory {
                     name: "General",
@@ -360,7 +360,7 @@ pub fn setup_news_categories_root_db(
                 },
             )
             .await?;
-            create_category(
+            let _ = create_category(
                 conn,
                 &mxd::models::NewCategory {
                     name: "Updates",
@@ -381,9 +381,8 @@ pub fn setup_news_categories_nested_db(
         Box::pin(async move {
             use mxd::db::{create_bundle, create_category};
             use mxd::models::{NewBundle, NewCategory};
-            use mxd::schema::news_bundles::dsl as b;
 
-            create_bundle(
+            let root_id = create_bundle(
                 conn,
                 &NewBundle {
                     parent_bundle_id: None,
@@ -391,14 +390,8 @@ pub fn setup_news_categories_nested_db(
                 },
             )
             .await?;
-            let root_id: i32 = b::news_bundles
-                .filter(b::name.eq("Bundle"))
-                .filter(b::parent_bundle_id.is_null())
-                .select(b::id)
-                .first(conn)
-                .await?;
 
-            create_bundle(
+            let sub_id = create_bundle(
                 conn,
                 &NewBundle {
                     parent_bundle_id: Some(root_id),
@@ -406,14 +399,8 @@ pub fn setup_news_categories_nested_db(
                 },
             )
             .await?;
-            let sub_id: i32 = b::news_bundles
-                .filter(b::name.eq("Sub"))
-                .filter(b::parent_bundle_id.eq(root_id))
-                .select(b::id)
-                .first(conn)
-                .await?;
 
-            create_category(
+            let _ = create_category(
                 conn,
                 &NewCategory {
                     name: "Inside",

@@ -70,11 +70,11 @@ fn list_categories(
 ///
 /// Returns an error if the test server setup, TCP communication, or protocol validation fails.
 fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
-    let server =
-        TestServer::start_with_setup("./Cargo.toml", |db| setup_news_categories_root_db(db))?;
+    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
 
     let port = server.port();
-    let (_, names) = list_categories(port, Some("/"))?;
+    let (_, mut names) = list_categories(port, Some("/"))?;
+    names.sort();
     assert_eq!(names, vec!["Bundle", "General", "Updates"]);
     Ok(())
 }
@@ -94,11 +94,11 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
 /// list_news_categories_no_path().unwrap();
 /// ```
 fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server =
-        TestServer::start_with_setup("./Cargo.toml", |db| setup_news_categories_root_db(db))?;
+    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
 
     let port = server.port();
-    let (_, names) = list_categories(port, None)?;
+    let (_, mut names) = list_categories(port, None)?;
+    names.sort();
     assert_eq!(names, vec!["Bundle", "General", "Updates"]);
     Ok(())
 }
@@ -173,8 +173,7 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// Returns an error if the test server setup, database operations, TCP communication, or protocol decoding fails.
 fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
-    let server =
-        TestServer::start_with_setup("./Cargo.toml", |db| setup_news_categories_nested_db(db))?;
+    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_nested_db)?;
 
     let port = server.port();
     let (_, names) = list_categories(port, Some("Bundle/Sub"))?;
