@@ -103,7 +103,28 @@ impl TestServer {
         Self::start_with_setup(manifest_path, |_| Ok(()))
     }
 
-    /// Start the server and run a setup function before launching.
+    /// Starts the test server after running a setup function on a temporary database.
+    ///
+    /// The setup function is called with the database URL before the server is launched, allowing initialisation or seeding of the database for integration tests. The server is started on a random available port.
+    ///
+    /// # Parameters
+    /// - `manifest_path`: Path to the Cargo manifest for the server binary.
+    /// - `setup`: Function to run database setup logic, receiving the database URL.
+    ///
+    /// # Returns
+    /// Returns a `TestServer` instance managing the server process and test database.
+    ///
+    /// # Errors
+    /// Returns an error if temporary directory creation, database setup, server startup, or protocol handshake fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let server = TestServer::start_with_setup("path/to/Cargo.toml", |db_url| {
+    ///     // Custom setup logic here
+    ///     Ok(())
+    /// })?;
+    /// ```
     pub fn start_with_setup<F>(
         manifest_path: &str,
         setup: F,
