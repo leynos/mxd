@@ -39,6 +39,9 @@ where
 }
 
 #[cfg(feature = "postgres")]
+/// Sets up an embedded PostgreSQL instance for testing and applies a custom setup function.
+///
+/// Starts an embedded PostgreSQL server, creates a test database, and invokes the provided setup function with the database URL. Returns the database URL and the running PostgreSQL instance. If any step fails, ensures the PostgreSQL instance is stopped and returns an error.
 fn setup_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
@@ -153,6 +156,27 @@ impl TestServer {
     ///     // Custom setup logic here
     ///     Ok(())
     /// })?;
+    /// Starts a test instance of the "mxd" server with a temporary database and custom setup.
+    ///
+    /// Creates a temporary directory, sets up a SQLite or PostgreSQL database using the provided setup function, reserves an ephemeral TCP port, and launches the server process. Waits for the server to signal readiness before returning a `TestServer` instance that manages the server process and database lifecycle.
+    ///
+    /// # Parameters
+    /// - `manifest_path`: Path to the Cargo manifest for the "mxd" server binary.
+    /// - `setup`: Function to initialise the database at the given URL or path.
+    ///
+    /// # Returns
+    /// A `TestServer` instance managing the server process and temporary database.
+    ///
+    /// # Errors
+    /// Returns an error if database setup, port binding, server launch, or readiness check fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let server = TestServer::start_with_setup("path/to/Cargo.toml", |db_url| {
+    ///     // Custom database setup logic here
+    ///     Ok(())
+    /// }).expect("Failed to start test server");
     /// ```
     pub fn start_with_setup<F>(
         manifest_path: &str,
