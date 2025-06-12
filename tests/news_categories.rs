@@ -19,6 +19,9 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
+            #[cfg(feature = "postgres")]
+            run_migrations(&mut conn, db).await?;
+            #[cfg(not(feature = "postgres"))]
             run_migrations(&mut conn).await?;
             create_bundle(
                 &mut conn,
@@ -107,6 +110,9 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
+            #[cfg(feature = "postgres")]
+            run_migrations(&mut conn, db).await?;
+            #[cfg(not(feature = "postgres"))]
             run_migrations(&mut conn).await?;
             create_bundle(
                 &mut conn,
@@ -194,6 +200,9 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
+            #[cfg(feature = "postgres")]
+            run_migrations(&mut conn, db).await?;
+            #[cfg(not(feature = "postgres"))]
             run_migrations(&mut conn).await?;
             create_category(
                 &mut conn,
@@ -248,6 +257,9 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
+            #[cfg(feature = "postgres")]
+            run_migrations(&mut conn, db).await?;
+            #[cfg(not(feature = "postgres"))]
             run_migrations(&mut conn).await?;
             Ok(())
         })
@@ -312,6 +324,9 @@ fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
+            #[cfg(feature = "postgres")]
+            run_migrations(&mut conn, db).await?;
+            #[cfg(not(feature = "postgres"))]
             run_migrations(&mut conn).await?;
             use mxd::schema::news_bundles::dsl as b;
 

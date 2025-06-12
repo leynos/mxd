@@ -3,6 +3,7 @@ use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::bb8::Pool;
+#[cfg(feature = "sqlite")]
 use diesel_async::sync_connection_wrapper::SyncConnectionWrapper;
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
@@ -14,10 +15,11 @@ cfg_if! {
         pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
         pub type DbPool = Pool<DbConnection>;
     } else if #[cfg(feature = "postgres")] {
-        use diesel::pg::{Pg, PgConnection};
+        use diesel::pg::Pg;
+        use diesel_async::AsyncPgConnection;
         pub type Backend = Pg;
         pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
-        pub type DbConnection = SyncConnectionWrapper<PgConnection>;
+        pub type DbConnection = AsyncPgConnection;
         pub type DbPool = Pool<DbConnection>;
     } else {
         compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
@@ -37,22 +39,51 @@ pub async fn establish_pool(database_url: &str) -> DbPool {
         .expect("Failed to create pool")
 }
 
-/// Run embedded database migrations.
-///
-/// # Errors
-/// Returns any error produced by Diesel while running migrations.
-#[must_use = "handle the result"]
-pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
-    use diesel::result::Error as DieselError;
-    conn.spawn_blocking(|c| {
-        c.run_pending_migrations(MIGRATIONS)
-            .map(|_| ())
-            .map_err(|e| {
-                DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string())))
+cfg_if! {
+    if #[cfg(feature = "sqlite")] {
+        /// Run embedded database migrations.
+        ///
+        /// # Errors
+        /// Returns any error produced by Diesel while running migrations.
+        #[must_use = "handle the result"]
+        pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
+            use diesel::result::Error as DieselError;
+            conn.spawn_blocking(|c| {
+                c.run_pending_migrations(MIGRATIONS)
+                    .map(|_| ())
+                    .map_err(|e| {
+                        DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string())))
+                    })
             })
-    })
-    .await?;
-    Ok(())
+            .await?;
+            Ok(())
+        }
+    } else if #[cfg(feature = "postgres")] {
+        /// Run embedded database migrations.
+        ///
+        /// # Errors
+        /// Returns any error produced by Diesel while running migrations.
+        #[must_use = "handle the result"]
+        pub async fn run_migrations(
+            _conn: &mut DbConnection,
+            database_url: &str,
+        ) -> QueryResult<()> {
+            use diesel::pg::PgConnection;
+            use diesel::result::Error as DieselError;
+            let url = database_url.to_owned();
+            tokio::task::spawn_blocking(move || -> QueryResult<()> {
+                let mut conn = PgConnection::establish(&url)
+                    .map_err(|e| DieselError::QueryBuilderError(Box::new(e)))?;
+                conn.run_pending_migrations(MIGRATIONS)
+                    .map(|_| ())
+                    .map_err(|e| {
+                        DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string())))
+                    })
+            })
+            .await
+            .map_err(|e| DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string()))))?
+        }
+    }
 }
 
 /// Verify that `SQLite` supports features required by the application.
@@ -122,8 +153,7 @@ pub async fn audit_postgres_features(
     if major < 14 {
         return Err(DieselError::QueryBuilderError(Box::new(
             std::io::Error::other(format!(
-                "postgres version {} is not supported (require >= 14)",
-                major
+                "postgres version {major} is not supported (require >= 14)"
             )),
         )));
     }
@@ -500,6 +530,9 @@ mod tests {
     #[tokio::test]
     async fn test_create_and_get_user() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
+        #[cfg(feature = "postgres")]
+        run_migrations(&mut conn, ":memory:").await.unwrap();
+        #[cfg(not(feature = "postgres"))]
         run_migrations(&mut conn).await.unwrap();
         let new_user = NewUser {
             username: "alice",
@@ -515,6 +548,9 @@ mod tests {
     #[tokio::test]
     async fn test_create_bundle_and_category() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
+        #[cfg(feature = "postgres")]
+        run_migrations(&mut conn, ":memory:").await.unwrap();
+        #[cfg(not(feature = "postgres"))]
         run_migrations(&mut conn).await.unwrap();
         let bun = NewBundle {
             parent_bundle_id: None,

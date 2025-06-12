@@ -213,6 +213,9 @@ where
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let mut conn = DbConnection::establish(db).await?;
+        #[cfg(feature = "postgres")]
+        run_migrations(&mut conn, db).await?;
+        #[cfg(not(feature = "postgres"))]
         run_migrations(&mut conn).await?;
         f(&mut conn).await
     })
