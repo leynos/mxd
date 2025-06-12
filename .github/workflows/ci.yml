@@ -57,6 +57,7 @@ jobs:
           curl -fsSL -o install-cs-coverage-tool.sh https://downloads.codescene.io/enterprise/cli/install-cs-coverage-tool.sh
           echo "${EXPECTED_SHA}  install-cs-coverage-tool.sh" | sha256sum -c -
           bash install-cs-coverage-tool.sh -y
+          rm install-cs-coverage-tool.sh
       - name: Upload coverage data to CodeScene
         run: cs-coverage upload --format "lcov" --metric "line-coverage" "lcov.info"
         env:
