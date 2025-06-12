@@ -75,6 +75,13 @@ enum Commands {
 }
 
 impl Run for CreateUserArgs {
+    /// Creates a new user with the specified username and password, hashing the password securely and storing the user in the database.
+    ///
+    /// Validates that both username and password are provided, hashes the password using Argon2id with parameters from the configuration, runs database migrations if necessary, and inserts the new user record. Prints a confirmation message upon successful creation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if required arguments are missing, password hashing fails, database connection or migrations fail, or user creation is unsuccessful.
     fn run(self, cfg: &AppConfig) -> Result<()> {
         tokio::runtime::Handle::current().block_on(async {
             let username = self
@@ -181,6 +188,24 @@ async fn create_pool(database: &str) -> DbPool {
     establish_pool(database).await
 }
 
+/// Sets up the database connection pool and runs migrations.
+///
+/// Establishes a connection pool for the specified database, audits database-specific features,
+/// and applies any pending migrations. Returns the initialised connection pool on success.
+///
+/// # Arguments
+///
+/// * `database` - The database connection string or file path.
+///
+/// # Returns
+///
+/// A result containing the initialised database connection pool, or an error if setup fails.
+///
+/// # Examples
+///
+/// ```
+/// let pool = setup_database("mxd.db").await?;
+/// ```
 async fn setup_database(database: &str) -> Result<DbPool> {
     let pool = create_pool(database).await;
     {
