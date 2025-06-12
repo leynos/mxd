@@ -190,6 +190,11 @@ where
 }
 ```
 
+The real code base uses `diesel_async` for all queries. `MigrationHarness`
+only works with synchronous connections, so `mxd` spawns a blocking task for
+PostgreSQL to run migrations on a temporary `PgConnection` while SQLite relies
+on `SyncConnectionWrapper`.
+
 ---
 
 ### CLI database argument

@@ -203,7 +203,7 @@ use chrono::{DateTime, Utc};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use mxd::db::{
-    DbConnection, add_file_acl, create_category, create_file, create_user, run_migrations,
+    apply_migrations, add_file_acl, create_category, create_file, create_user, DbConnection,
 };
 use mxd::models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser};
 use mxd::users::hash_password;
@@ -226,10 +226,7 @@ where
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let mut conn = DbConnection::establish(db).await?;
-        #[cfg(feature = "postgres")]
-        run_migrations(&mut conn, db).await?;
-        #[cfg(not(feature = "postgres"))]
-        run_migrations(&mut conn).await?;
+        apply_migrations(&mut conn, db).await?;
         f(&mut conn).await
     })
 }

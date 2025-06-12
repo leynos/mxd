@@ -73,10 +73,7 @@ cfg_if! {
         /// # Errors
         /// Returns any error produced by Diesel while running migrations.
         #[must_use = "handle the result"]
-        pub async fn run_migrations(
-            _conn: &mut DbConnection,
-            database_url: &str,
-        ) -> QueryResult<()> {
+        pub async fn run_migrations(database_url: &str) -> QueryResult<()> {
             use diesel::pg::PgConnection;
             use diesel::result::Error as DieselError;
             let url = database_url.to_owned();
@@ -90,9 +87,24 @@ cfg_if! {
                     })
             })
             .await
-            .map_err(|e| DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string()))))?
+            .map_err(|e| {
+                DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string())))
+            })?
         }
     }
+}
+
+/// Apply embedded migrations for the current backend.
+///
+/// # Errors
+/// Returns any error produced by Diesel while running migrations.
+#[allow(unused_variables)]
+#[must_use = "handle the result"]
+pub async fn apply_migrations(conn: &mut DbConnection, url: &str) -> QueryResult<()> {
+    #[cfg(feature = "postgres")]
+    return run_migrations(url).await;
+    #[cfg(feature = "sqlite")]
+    return run_migrations(conn).await;
 }
 
 /// Verify that `SQLite` supports features required by the application.
@@ -551,16 +563,15 @@ pub async fn list_files_for_user(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "sqlite")]
     use crate::models::{NewBundle, NewCategory, NewUser};
     use diesel_async::AsyncConnection;
 
+    #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_create_and_get_user() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
-        #[cfg(feature = "postgres")]
-        run_migrations(&mut conn, ":memory:").await.unwrap();
-        #[cfg(not(feature = "postgres"))]
-        run_migrations(&mut conn).await.unwrap();
+        apply_migrations(&mut conn, "").await.unwrap();
         let new_user = NewUser {
             username: "alice",
             password: "hash",
@@ -572,13 +583,11 @@ mod tests {
     }
 
     // basic smoke test for migrations and insertion
+    #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_create_bundle_and_category() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
-        #[cfg(feature = "postgres")]
-        run_migrations(&mut conn, ":memory:").await.unwrap();
-        #[cfg(not(feature = "postgres"))]
-        run_migrations(&mut conn).await.unwrap();
+        apply_migrations(&mut conn, "").await.unwrap();
         let bun = NewBundle {
             parent_bundle_id: None,
             name: "Bundle",
@@ -592,6 +601,7 @@ mod tests {
         let _names = list_names_at_path(&mut conn, None).await.unwrap();
     }
 
+    #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_audit_features() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();

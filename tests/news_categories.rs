@@ -5,13 +5,61 @@ use diesel::prelude::*;
 use diesel_async::AsyncConnection;
 use diesel_async::RunQueryDsl;
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
-use mxd::db::{DbConnection, create_bundle, create_category, run_migrations};
+use mxd::db::apply_migrations;
+use mxd::db::{DbConnection, create_bundle, create_category};
 use mxd::field_id::FieldId;
 use mxd::models::NewCategory;
 use mxd::transaction::encode_params;
 use mxd::transaction::{FrameHeader, Transaction, decode_params};
 use mxd::transaction_type::TransactionType;
-use test_util::TestServer;
+use test_util::{TestServer, handshake};
+
+fn list_categories(
+    port: u16,
+    path: Option<&str>,
+) -> Result<(FrameHeader, Vec<String>), Box<dyn std::error::Error>> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(1)))?;
+    handshake(&mut stream)?;
+    let params = path
+        .map(|p| vec![(FieldId::NewsPath, p.as_bytes())])
+        .unwrap_or_default();
+    let payload = encode_params(&params)?;
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: TransactionType::NewsCategoryNameList.into(),
+        id: 1,
+        error: 0,
+        total_size: payload.len() as u32,
+        data_size: payload.len() as u32,
+    };
+    let tx = Transaction { header, payload };
+    stream.write_all(&tx.to_bytes())?;
+
+    let mut hdr_buf = [0u8; 20];
+    stream.read_exact(&mut hdr_buf)?;
+    let hdr = FrameHeader::from_bytes(&hdr_buf);
+    let mut data = vec![0u8; hdr.data_size as usize];
+    stream.read_exact(&mut data)?;
+    let reply_tx = Transaction {
+        header: hdr,
+        payload: data,
+    };
+    let params = decode_params(&reply_tx.payload)?;
+    let names = params
+        .into_iter()
+        .filter_map(|(id, d)| {
+            if id == FieldId::NewsCategory {
+                Some(String::from_utf8(d).unwrap())
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok((reply_tx.header, names))
+}
 
 #[test]
 /// Tests that listing news categories at the root path returns all root-level bundles and categories.
@@ -27,10 +75,7 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
-            #[cfg(feature = "postgres")]
-            run_migrations(&mut conn, db).await?;
-            #[cfg(not(feature = "postgres"))]
-            run_migrations(&mut conn).await?;
+            apply_migrations(&mut conn, db).await?;
             create_bundle(
                 &mut conn,
                 &mxd::models::NewBundle {
@@ -60,54 +105,7 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
-
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
-
-    let params = vec![(FieldId::NewsPath, b"/".as_ref())];
-    let payload = encode_params(&params)?;
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: TransactionType::NewsCategoryNameList.into(),
-        id: 3,
-        error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
-    };
-    let tx = Transaction { header, payload };
-    let frame = tx.to_bytes();
-    stream.write_all(&frame)?;
-
-    let mut hdr_buf = [0u8; 20];
-    stream.read_exact(&mut hdr_buf)?;
-    let hdr = FrameHeader::from_bytes(&hdr_buf);
-    let mut data = vec![0u8; hdr.data_size as usize];
-    stream.read_exact(&mut data)?;
-    let reply_tx = Transaction {
-        header: hdr,
-        payload: data,
-    };
-    let params = decode_params(&reply_tx.payload)?;
-    let names = params
-        .into_iter()
-        .filter_map(|(id, d)| {
-            if id == FieldId::NewsCategory {
-                Some(String::from_utf8(d).unwrap())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
+    let (_, names) = list_categories(port, Some("/"))?;
     assert_eq!(names, vec!["Bundle", "General", "Updates"]);
     Ok(())
 }
@@ -131,10 +129,7 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
-            #[cfg(feature = "postgres")]
-            run_migrations(&mut conn, db).await?;
-            #[cfg(not(feature = "postgres"))]
-            run_migrations(&mut conn).await?;
+            apply_migrations(&mut conn, db).await?;
             create_bundle(
                 &mut conn,
                 &mxd::models::NewBundle {
@@ -164,53 +159,7 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
-
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
-
-    let payload = encode_params(&[])?;
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: TransactionType::NewsCategoryNameList.into(),
-        id: 1,
-        error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
-    };
-    let tx = Transaction { header, payload };
-    let frame = tx.to_bytes();
-    stream.write_all(&frame)?;
-
-    let mut hdr_buf = [0u8; 20];
-    stream.read_exact(&mut hdr_buf)?;
-    let hdr = FrameHeader::from_bytes(&hdr_buf);
-    let mut data = vec![0u8; hdr.data_size as usize];
-    stream.read_exact(&mut data)?;
-    let reply_tx = Transaction {
-        header: hdr,
-        payload: data,
-    };
-    let params = decode_params(&reply_tx.payload)?;
-    let names = params
-        .into_iter()
-        .filter_map(|(id, d)| {
-            if id == FieldId::NewsCategory {
-                Some(String::from_utf8(d).unwrap())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
+    let (_, names) = list_categories(port, None)?;
     assert_eq!(names, vec!["Bundle", "General", "Updates"]);
     Ok(())
 }
@@ -227,10 +176,7 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
-            #[cfg(feature = "postgres")]
-            run_migrations(&mut conn, db).await?;
-            #[cfg(not(feature = "postgres"))]
-            run_migrations(&mut conn).await?;
+            apply_migrations(&mut conn, db).await?;
             create_category(
                 &mut conn,
                 &NewCategory {
@@ -244,37 +190,7 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
     })?;
 
     let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
-
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
-
-    let params = vec![(FieldId::NewsPath, b"some/path".as_ref())];
-    let payload = encode_params(&params)?;
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: TransactionType::NewsCategoryNameList.into(),
-        id: 2,
-        error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
-    };
-    let tx = Transaction { header, payload };
-    let frame = tx.to_bytes();
-    stream.write_all(&frame)?;
-
-    let mut hdr_buf = [0u8; 20];
-    stream.read_exact(&mut hdr_buf)?;
-    let hdr = FrameHeader::from_bytes(&hdr_buf);
+    let (hdr, _) = list_categories(port, Some("some/path"))?;
     assert_eq!(hdr.error, NEWS_ERR_PATH_UNSUPPORTED);
     Ok(())
 }
@@ -298,62 +214,13 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
-            #[cfg(feature = "postgres")]
-            run_migrations(&mut conn, db).await?;
-            #[cfg(not(feature = "postgres"))]
-            run_migrations(&mut conn).await?;
+            apply_migrations(&mut conn, db).await?;
             Ok(())
         })
     })?;
 
     let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
-
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-    assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
-
-    let payload = encode_params(&[])?;
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: TransactionType::NewsCategoryNameList.into(),
-        id: 4,
-        error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
-    };
-    let tx = Transaction { header, payload };
-    let frame = tx.to_bytes();
-    stream.write_all(&frame)?;
-
-    let mut hdr_buf = [0u8; 20];
-    stream.read_exact(&mut hdr_buf)?;
-    let hdr = FrameHeader::from_bytes(&hdr_buf);
-    let mut data = vec![0u8; hdr.data_size as usize];
-    stream.read_exact(&mut data)?;
-    let reply_tx = Transaction {
-        header: hdr,
-        payload: data,
-    };
-    let params = decode_params(&reply_tx.payload)?;
-    let names: Vec<String> = params
-        .into_iter()
-        .filter_map(|(id, d)| {
-            if id == FieldId::NewsCategory {
-                Some(String::from_utf8(d).unwrap())
-            } else {
-                None
-            }
-        })
-        .collect();
+    let (_, names) = list_categories(port, None)?;
     assert!(names.is_empty());
     Ok(())
 }
@@ -372,10 +239,7 @@ fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
-            #[cfg(feature = "postgres")]
-            run_migrations(&mut conn, db).await?;
-            #[cfg(not(feature = "postgres"))]
-            run_migrations(&mut conn).await?;
+            apply_migrations(&mut conn, db).await?;
             use mxd::schema::news_bundles::dsl as b;
 
             create_bundle(
@@ -421,50 +285,7 @@ fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    let mut handshake = Vec::new();
-    handshake.extend_from_slice(b"TRTP");
-    handshake.extend_from_slice(&0u32.to_be_bytes());
-    handshake.extend_from_slice(&1u16.to_be_bytes());
-    handshake.extend_from_slice(&0u16.to_be_bytes());
-    stream.write_all(&handshake)?;
-    let mut reply = [0u8; 8];
-    stream.read_exact(&mut reply)?;
-
-    let params = vec![(FieldId::NewsPath, b"Bundle/Sub".as_ref())];
-    let payload = encode_params(&params)?;
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: TransactionType::NewsCategoryNameList.into(),
-        id: 5,
-        error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
-    };
-    let tx = Transaction { header, payload };
-    stream.write_all(&tx.to_bytes())?;
-
-    let mut hdr_buf = [0u8; 20];
-    stream.read_exact(&mut hdr_buf)?;
-    let hdr = FrameHeader::from_bytes(&hdr_buf);
-    let mut data = vec![0u8; hdr.data_size as usize];
-    stream.read_exact(&mut data)?;
-    let reply_tx = Transaction {
-        header: hdr,
-        payload: data,
-    };
-    let params = decode_params(&reply_tx.payload)?;
-    let names: Vec<String> = params
-        .into_iter()
-        .filter_map(|(id, d)| {
-            if id == FieldId::NewsCategory {
-                Some(String::from_utf8(d).unwrap())
-            } else {
-                None
-            }
-        })
-        .collect();
+    let (_, names) = list_categories(port, Some("Bundle/Sub"))?;
     assert_eq!(names, vec!["Inside"]);
     Ok(())
 }
