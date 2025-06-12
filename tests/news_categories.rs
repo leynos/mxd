@@ -1,18 +1,17 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use diesel::prelude::*;
 use diesel_async::AsyncConnection;
-use diesel_async::RunQueryDsl;
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
-use mxd::db::apply_migrations;
-use mxd::db::{DbConnection, create_bundle, create_category};
+use mxd::db::{DbConnection, apply_migrations, create_category};
 use mxd::field_id::FieldId;
 use mxd::models::NewCategory;
 use mxd::transaction::encode_params;
 use mxd::transaction::{FrameHeader, Transaction, decode_params};
 use mxd::transaction_type::TransactionType;
-use test_util::{TestServer, handshake};
+use test_util::{
+    TestServer, handshake, setup_news_categories_nested_db, setup_news_categories_root_db,
+};
 
 fn list_categories(
     port: u16,
@@ -71,41 +70,11 @@ fn list_categories(
 ///
 /// Returns an error if the test server setup, TCP communication, or protocol validation fails.
 fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            let mut conn = DbConnection::establish(db).await?;
-            apply_migrations(&mut conn, db).await?;
-            create_bundle(
-                &mut conn,
-                &mxd::models::NewBundle {
-                    parent_bundle_id: None,
-                    name: "Bundle",
-                },
-            )
-            .await?;
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "Updates",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            Ok(())
-        })
-    })?;
+    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
 
     let port = server.port();
-    let (_, names) = list_categories(port, Some("/"))?;
+    let (_, mut names) = list_categories(port, Some("/"))?;
+    names.sort();
     assert_eq!(names, vec!["Bundle", "General", "Updates"]);
     Ok(())
 }
@@ -125,41 +94,11 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
 /// list_news_categories_no_path().unwrap();
 /// ```
 fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            let mut conn = DbConnection::establish(db).await?;
-            apply_migrations(&mut conn, db).await?;
-            create_bundle(
-                &mut conn,
-                &mxd::models::NewBundle {
-                    parent_bundle_id: None,
-                    name: "Bundle",
-                },
-            )
-            .await?;
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "Updates",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            Ok(())
-        })
-    })?;
+    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
 
     let port = server.port();
-    let (_, names) = list_categories(port, None)?;
+    let (_, mut names) = list_categories(port, None)?;
+    names.sort();
     assert_eq!(names, vec!["Bundle", "General", "Updates"]);
     Ok(())
 }
@@ -234,55 +173,7 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// Returns an error if the test server setup, database operations, TCP communication, or protocol decoding fails.
 fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
-    use mxd::models::{NewBundle, NewCategory};
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            let mut conn = DbConnection::establish(db).await?;
-            apply_migrations(&mut conn, db).await?;
-            use mxd::schema::news_bundles::dsl as b;
-
-            create_bundle(
-                &mut conn,
-                &NewBundle {
-                    parent_bundle_id: None,
-                    name: "Bundle",
-                },
-            )
-            .await?;
-            let root_id: i32 = b::news_bundles
-                .filter(b::name.eq("Bundle"))
-                .filter(b::parent_bundle_id.is_null())
-                .select(b::id)
-                .first(&mut conn)
-                .await?;
-
-            create_bundle(
-                &mut conn,
-                &NewBundle {
-                    parent_bundle_id: Some(root_id),
-                    name: "Sub",
-                },
-            )
-            .await?;
-            let sub_id: i32 = b::news_bundles
-                .filter(b::name.eq("Sub"))
-                .filter(b::parent_bundle_id.eq(root_id))
-                .select(b::id)
-                .first(&mut conn)
-                .await?;
-
-            create_category(
-                &mut conn,
-                &NewCategory {
-                    name: "Inside",
-                    bundle_id: Some(sub_id),
-                },
-            )
-            .await?;
-            Ok(())
-        })
-    })?;
+    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_nested_db)?;
 
     let port = server.port();
     let (_, names) = list_categories(port, Some("Bundle/Sub"))?;

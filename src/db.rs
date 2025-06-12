@@ -349,12 +349,29 @@ pub async fn create_category(
 pub async fn create_bundle(
     conn: &mut DbConnection,
     bun: &crate::models::NewBundle<'_>,
-) -> QueryResult<usize> {
-    use crate::schema::news_bundles::dsl::news_bundles;
-    diesel::insert_into(news_bundles)
+) -> QueryResult<i32> {
+    use crate::schema::news_bundles::dsl as b;
+
+    #[cfg(feature = "returning_clauses_for_sqlite_3_35")]
+    let inserted_id: i32 = diesel::insert_into(b::news_bundles)
         .values(bun)
-        .execute(conn)
-        .await
+        .returning(b::id)
+        .get_result(conn)
+        .await?;
+
+    #[cfg(not(feature = "returning_clauses_for_sqlite_3_35"))]
+    let inserted_id: i32 = {
+        use diesel::sql_types::Integer;
+        diesel::insert_into(b::news_bundles)
+            .values(bun)
+            .execute(conn)
+            .await?;
+        diesel::select(diesel::dsl::sql::<Integer>("last_insert_rowid()"))
+            .get_result(conn)
+            .await?
+    };
+
+    Ok(inserted_id)
 }
 
 /// Retrieve a single article by path and identifier.
@@ -595,7 +612,7 @@ mod tests {
             parent_bundle_id: None,
             name: "Bundle",
         };
-        create_bundle(&mut conn, &bun).await.unwrap();
+        let _ = create_bundle(&mut conn, &bun).await.unwrap();
         let cat = NewCategory {
             name: "General",
             bundle_id: None,

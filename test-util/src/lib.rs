@@ -221,6 +221,7 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 }
 
 use chrono::{DateTime, Utc};
+
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use mxd::db::{
@@ -355,4 +356,80 @@ pub fn setup_news_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         })
     })
+}
+
+/// Populate the database with a bundle and two categories at the root level.
+pub fn setup_news_categories_root_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
+    with_db(db, |conn| {
+        Box::pin(async move {
+            use mxd::db::create_category;
+
+            let _ = insert_root_bundle(conn).await?;
+
+            let _ = create_category(
+                conn,
+                &mxd::models::NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+            let _ = create_category(
+                conn,
+                &mxd::models::NewCategory {
+                    name: "Updates",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+            Ok(())
+        })
+    })
+}
+
+/// Populate the database with a nested bundle containing a single category.
+pub fn setup_news_categories_nested_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
+    with_db(db, |conn| {
+        Box::pin(async move {
+            use mxd::db::{create_bundle, create_category};
+            use mxd::models::NewBundle;
+
+            let root_id = insert_root_bundle(conn).await?;
+
+            let sub_id = create_bundle(
+                conn,
+                &NewBundle {
+                    parent_bundle_id: Some(root_id),
+                    name: "Sub",
+                },
+            )
+            .await?;
+
+            let _ = create_category(
+                conn,
+                &mxd::models::NewCategory {
+                    name: "Inside",
+                    bundle_id: Some(sub_id),
+                },
+            )
+            .await?;
+            Ok(())
+        })
+    })
+}
+
+async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, Box<dyn std::error::Error>> {
+    use mxd::db::create_bundle;
+    use mxd::models::NewBundle;
+
+    let id = create_bundle(
+        conn,
+        &NewBundle {
+            parent_bundle_id: None,
+            name: "Bundle",
+        },
+    )
+    .await?;
+
+    Ok(id)
 }
