@@ -45,12 +45,16 @@ where
 {
     use std::future::Future;
 
-    async fn pg_step(
+    async fn pg_step<Fut, G>(
         pg: &mut PostgreSQL,
-        fut: impl Future<Output = Result<(), postgresql_embedded::Error>>,
+        step: G,
         context: &'static str,
-    ) -> Result<(), Error> {
-        match fut.await {
+    ) -> Result<(), Error>
+    where
+        G: FnOnce(&mut PostgreSQL) -> Fut,
+        Fut: Future<Output = Result<(), postgresql_embedded::Error>>,
+    {
+        match step(pg).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 let _ = pg.stop().await;
@@ -62,11 +66,11 @@ where
     let mut pg = PostgreSQL::default();
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        pg.setup().await.context("preparing embedded PostgreSQL")?;
-        pg_step(&mut pg, pg.start(), "starting embedded PostgreSQL").await?;
+        pg_step(&mut pg, |p| p.setup(), "preparing embedded PostgreSQL").await?;
+        pg_step(&mut pg, |p| p.start(), "starting embedded PostgreSQL").await?;
         pg_step(
             &mut pg,
-            pg.create_database("test"),
+            |p| p.create_database("test"),
             "creating test database",
         )
         .await?;
@@ -163,10 +167,8 @@ impl TestServer {
         let db_url = setup_sqlite(&temp, setup)?;
 
         #[cfg(feature = "postgres")]
-        let (db_url, pg) = setup_postgres(setup).map_err(|e| {
-            let err: Error = e.into();
-            err.context("failed to init embedded PostgreSQL")
-        })?;
+        let (db_url, pg) =
+            setup_postgres(setup).map_err(|e| e.context("failed to init embedded PostgreSQL"))?;
 
         #[cfg(feature = "postgres")]
         let db_url = db_url;
