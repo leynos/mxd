@@ -147,12 +147,13 @@ impl TestServer {
 
     /// Return the database connection URL used by the server.
     ///
-    /// Currently tests only use SQLite, so this is just the path rendered
-    /// as UTF-8. Borrowing avoids allocating a new `String` for each call.
+    /// The URL is stored as a `String` validated at construction time.
+    /// Tests use SQLite by default, with optional PostgreSQL support via the
+    /// `postgres` feature.
     pub fn db_url(&self) -> &str {
-        std::path::Path::new(&self.db_url)
-            .to_str()
-            .expect("database path utf8")
+        // `db_url` was validated when the server was created, so borrowing is
+        // safe and avoids repeated validation.
+        self.db_url.as_str()
     }
 }
 
