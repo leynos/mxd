@@ -1,3 +1,9 @@
+#[cfg(all(feature = "sqlite", feature = "postgres"))]
+compile_error!("Choose either sqlite or postgres, not both");
+
+#[cfg(not(any(feature = "sqlite", feature = "postgres")))]
+compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
+
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
@@ -215,6 +221,12 @@ impl TestServer {
         // `db_url` was validated when the server was created, so borrowing is
         // safe and avoids repeated validation.
         self.db_url.as_str()
+    }
+
+    #[cfg(feature = "postgres")]
+    /// Return true if the server started its own embedded PostgreSQL instance.
+    pub fn uses_embedded_postgres(&self) -> bool {
+        self.pg.is_some()
     }
 }
 
