@@ -3,8 +3,18 @@ use test_util::setup_postgres_for_test;
 
 #[cfg(feature = "postgres")]
 #[test]
-    std::env::set_var("POSTGRES_TEST_URL", "postgres://example");
-    std::env::remove_var("POSTGRES_TEST_URL");
+    set_var("POSTGRES_TEST_URL", "postgres://example");
+    remove_var("POSTGRES_TEST_URL");
+
+#[cfg(feature = "postgres")]
+fn set_var(key: &str, value: &str) {
+    unsafe { std::env::set_var(key, value) }
+}
+
+#[cfg(feature = "postgres")]
+fn remove_var(key: &str) {
+    unsafe { std::env::remove_var(key) }
+}
 /// ```
 /// // This test is intended to be run with the "postgres" feature enabled.
 /// external_postgres_is_used().unwrap();
