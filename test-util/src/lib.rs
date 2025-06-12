@@ -203,7 +203,7 @@ use chrono::{DateTime, Utc};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use mxd::db::{
-    apply_migrations, add_file_acl, create_category, create_file, create_user, DbConnection,
+    DbConnection, add_file_acl, apply_migrations, create_category, create_file, create_user,
 };
 use mxd::models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser};
 use mxd::users::hash_password;
