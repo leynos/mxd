@@ -47,7 +47,7 @@ jobs:
           cargo llvm-cov --workspace --features sqlite --lcov --output-path lcov-sqlite.info
       - name: Generate coverage for Postgres
         run: |
-          cargo llvm-cov --workspace --features postgres --lcov --output-path lcov-postgres.info
+          cargo llvm-cov --workspace --no-default-features --features postgres --lcov --output-path lcov-postgres.info
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
       - name: Install cs tool

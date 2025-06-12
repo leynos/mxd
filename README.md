@@ -28,7 +28,16 @@ daemon checks this at startup and refuses to launch on older versions.
 
 mxd supports both SQLite and PostgreSQL backends. Select one at compile
 time using `--features sqlite` or `--features postgres`. Exactly one of
-these features must be enabled for a successful build.
+these features must be enabled for a successful build. Because the
+`sqlite` feature is enabled by default, you must disable default
+features when opting into PostgreSQL:
+
+```bash
+cargo run --no-default-features --features postgres -- --help
+```
+
+The same applies to `cargo build` and `cargo test` commands targeting
+PostgreSQL.
 **Note**: PostgreSQL backend support is currently a work in progress.
 
 ## Running
@@ -45,9 +54,9 @@ cargo build --features sqlite
 
 # Run server listening on the default address
 cargo run --features sqlite -- --bind 0.0.0.0:5500 --database mxd.db
- 
+
 # PostgreSQL example
-# cargo run --features postgres -- --database postgres://user:pass@localhost/mxd
+# cargo run --no-default-features --features postgres -- --database postgres://user:pass@localhost/mxd
 ```
 
 ### Creating users
