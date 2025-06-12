@@ -84,6 +84,11 @@ cargo test
 
 Integration tests live in the repository's `tests/` directory.
 
+When the `postgres` feature is enabled, tests normally spin up an embedded
+PostgreSQL server. Set `POSTGRES_TEST_URL` to reuse an existing database URL
+instead of starting the embedded server. The referenced database must be
+emptied between runs as the suite assumes a pristine schema.
+
 ## Validation harness
 
 The `validator` crate provides a compatibility check using the `hx` client and

@@ -23,7 +23,7 @@ pub struct TestServer {
     child: Child,
     port: u16,
     db_url: String,
-    _temp: TempDir,
+    _temp: Option<TempDir>,
     #[cfg(feature = "postgres")]
     pg: Option<PostgreSQL>,
 }
@@ -82,7 +82,7 @@ where
     .map_err(|e| e.into())?;
     let url = pg.settings().url("test");
     setup(&url)?;
-    Ok((url, pg))
+    Ok((url, Some(pg)))
 }
 
 fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {
@@ -185,18 +185,51 @@ impl TestServer {
     where
         F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
     {
-        let temp = TempDir::new()?;
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "sqlite")] {
+                let temp = TempDir::new()?;
+                let db_url = setup_sqlite(&temp, setup)?;
+                Self::launch(manifest_path, db_url, Some(temp))
+            } else if #[cfg(feature = "postgres")] {
+                let (db_url, pg) = setup_postgres(setup)?;
+                Self::launch(manifest_path, db_url, None, pg)
+            } else {
+                compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
+            }
+        }
+    }
 
-        #[cfg(feature = "sqlite")]
-        let db_url = setup_sqlite(&temp, setup)?;
+    #[cfg(feature = "sqlite")]
+    fn launch(
+        manifest_path: &str,
+        db_url: String,
+        temp: Option<TempDir>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let socket = TcpListener::bind("127.0.0.1:0")?;
+        let port = socket.local_addr()?.port();
+        drop(socket);
 
         #[cfg(feature = "postgres")]
         let (db_url, pg) =
             setup_postgres(setup).map_err(|e| e.context("failed to init embedded PostgreSQL"))?;
 
-        #[cfg(feature = "postgres")]
-        let db_url = db_url;
+        wait_for_server(&mut child)?;
 
+        Ok(Self {
+            child,
+            port,
+            db_url,
+            _temp: temp,
+        })
+    }
+
+    #[cfg(feature = "postgres")]
+    fn launch(
+        manifest_path: &str,
+        db_url: String,
+        temp: Option<TempDir>,
+        pg: Option<PostgreSQL>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let socket = TcpListener::bind("127.0.0.1:0")?;
         let port = socket.local_addr()?.port();
         drop(socket);
@@ -210,8 +243,7 @@ impl TestServer {
             port,
             db_url,
             _temp: temp,
-            #[cfg(feature = "postgres")]
-            pg: Some(pg),
+            pg,
         })
     }
 
