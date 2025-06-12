@@ -43,9 +43,17 @@ where
     let mut pg = PostgreSQL::default();
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        pg.setup().await?;
-        pg.start().await?;
-        pg.create_database("test").await?;
+        pg.setup()
+            .await
+            .map_err(|e| format!("failed to prepare embedded server: {e}"))?;
+        if let Err(e) = pg.start().await {
+            let _ = pg.stop().await;
+            return Err(format!("failed to prepare embedded server: {e}").into());
+        }
+        if let Err(e) = pg.create_database("test").await {
+            let _ = pg.stop().await;
+            return Err(format!("failed to prepare embedded server: {e}").into());
+        }
         Ok::<_, Box<dyn std::error::Error>>(())
     })?;
     let url = pg.settings().url("test");
@@ -138,7 +146,8 @@ impl TestServer {
         let db_url = setup_sqlite(&temp, setup)?;
 
         #[cfg(feature = "postgres")]
-        let (db_url, pg) = setup_postgres(setup)?;
+        let (db_url, pg) = setup_postgres(setup)
+            .map_err(|e| format!("failed to init embedded PostgreSQL: {e}"))?;
 
         #[cfg(feature = "postgres")]
         let db_url = db_url;
