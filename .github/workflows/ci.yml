@@ -50,14 +50,12 @@ jobs:
           cargo llvm-cov --workspace --features postgres --lcov --output-path lcov-postgres.info
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
-      - name: Install cs tool
+      - name: Install CodeScene coverage tool
         run: |
+          set -euo pipefail
+          EXPECTED_SHA="a1c38415c5978908283c0608b648b27e954c93882b15d8b91d052d846c3eabd8"
           curl -fsSL -o install-cs-coverage-tool.sh https://downloads.codescene.io/enterprise/cli/install-cs-coverage-tool.sh
-          ACTUAL_SHA256="$(sha256sum install-cs-coverage-tool.sh | awk '{print $1}')"
-          if [ "$ACTUAL_SHA256" != "a1c38415c5978908283c0608b648b27e954c93882b15d8b91d052d846c3eabd8" ]; then
-            echo "Checksum verification failed for CodeScene install script!"
-            exit 1
-          fi
+          echo "${EXPECTED_SHA}  install-cs-coverage-tool.sh" | sha256sum -c -
           bash install-cs-coverage-tool.sh -y
       - name: Upload coverage data to CodeScene
         run: cs-coverage upload --format "lcov" --metric "line-coverage" "lcov.info"
