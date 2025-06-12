@@ -3,8 +3,11 @@
 Build the application with PostgreSQL support enabled:
 
 ```bash
-cargo build --features postgres
+cargo build --no-default-features --features postgres
 ```
+
+The `sqlite` feature is enabled by default, so `--no-default-features`
+is required when targeting PostgreSQL.
 
 Build the application with SQLite support enabled:
 
@@ -217,7 +220,7 @@ Non-URL strings are treated as SQLite paths.
 - When using PostgreSQL, ensure the server version is **14 or greater**.
   The application performs a runtime check and fails on older versions.
 
-With that structure you can `cargo build --features postgres` for the version
-that targets *postgresql-embedded* (or a real server) and
+With that structure you can `cargo build --no-default-features --features postgres`
+for the version that targets *postgresql-embedded* (or a real server) and
 `cargo build --features sqlite` for the lightweight single-file deployment,
 without touching the migration history.
