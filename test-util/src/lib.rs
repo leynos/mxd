@@ -98,56 +98,36 @@ where
         if !url.trim().is_empty() {
             let url = url.into_owned();
             setup(&url)?;
-            return Ok((url, None));
+fn spawn_server(
+    manifest_path: &str,
+    db_url: &str,
+) -> Result<(Child, u16), Box<dyn std::error::Error>> {
+    let socket = TcpListener::bind("127.0.0.1:0")?;
+    let port = socket.local_addr()?.port();
+    drop(socket);
+
+    let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
+    wait_for_server(&mut child)?;
+    Ok((child, port))
+}
+
+            let (child, port) = spawn_server(manifest_path, &db_url)?;
+            return Ok(Self {
+                child,
+                port,
+                db_url,
+                _temp: Some(temp),
+            });
         }
-    }
+            let (child, port) = spawn_server(manifest_path, &db_url)?;
+            return Ok(Self {
+                child,
+                port,
+                db_url,
+                _temp: None,
+                pg,
+            });
 
-    let mut pg = PostgreSQL::default();
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        pg.setup().await?;
-        pg.start().await?;
-        pg.create_database("test").await?;
-        Ok::<_, Box<dyn std::error::Error>>(())
-    })?;
-    let url = pg.settings().url("test");
-    setup(&url)?;
-    Ok((url, Some(pg)))
-}
-
-#[cfg(feature = "postgres")]
-#[doc(hidden)]
-/// Sets up a PostgreSQL database for testing, optionally using an embedded instance.
-///
-/// If the `POSTGRES_TEST_URL` environment variable is set and non-empty, uses the specified PostgreSQL instance; otherwise, starts an embedded PostgreSQL server. Runs the provided setup function on the database URL before returning.
-///
-/// Returns a tuple containing the database URL and an optional embedded PostgreSQL handle.
-///
-/// # Examples
-///
-/// ```
-/// let (db_url, embedded_pg) = setup_postgres_for_test(|url| {
-///     // Perform any setup on the database at `url`
-///     Ok(())
-/// })?;
-/// assert!(!db_url.is_empty());
-/// ```
-pub fn setup_postgres_for_test<F>(
-    setup: F,
-) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    setup_postgres(setup)
-}
-
-/// Waits for the server process to signal readiness by monitoring its stdout.
-///
-/// Reads lines from the server process's stdout, waiting up to 10 seconds for a line containing "listening on".
-/// Returns an error if the server exits early, stdout is unavailable, or the timeout is reached.
-fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(out) = &mut child.stdout {
-        let mut reader = BufReader::new(out);
         let mut line = String::new();
         let timeout = Duration::from_secs(10);
         let start = Instant::now();

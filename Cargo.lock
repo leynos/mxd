@@ -2455,7 +2455,6 @@ name = "test-util"
 version = "0.1.0"
 dependencies = [
  "argon2",
- "cfg-if",
  "chrono",
  "diesel",
  "diesel-async",
