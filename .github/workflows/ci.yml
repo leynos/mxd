@@ -50,8 +50,6 @@ jobs:
           cargo llvm-cov --workspace --features postgres --lcov --output-path lcov-postgres.info
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
-      - name: Generate Codecov report
-        run: cargo llvm-cov report --codecov --output-path codecov.json
       - name: Install cs tool
         run: |
           curl -fsSL -o install-cs-coverage-tool.sh https://downloads.codescene.io/enterprise/cli/install-cs-coverage-tool.sh
