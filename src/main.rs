@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use anyhow::Result;
+use std::io;
 use std::net::SocketAddr;
 
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
@@ -10,14 +11,14 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "postgres")]
 use url::Url;
 
-use tokio::io::{self, AsyncReadExt};
+use tokio::io::{self as tokio_io, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
 use diesel_async::AsyncConnection;
-use mxd::db::{DbConnection, DbPool, create_user, establish_pool, run_migrations};
+use mxd::db::{DbConnection, DbPool, apply_migrations, create_user, establish_pool};
 
 #[cfg(feature = "sqlite")]
 use mxd::db::audit_sqlite_features;
@@ -27,9 +28,21 @@ use mxd::db::audit_postgres_features;
 use mxd::handler::{Context as HandlerContext, Session, handle_request};
 use mxd::models;
 use mxd::protocol;
-use mxd::transaction::{TransactionReader, TransactionWriter};
+use mxd::transaction::{TransactionError, TransactionReader, TransactionWriter};
 use mxd::users::hash_password;
 
+/// Waits for a shutdown signal, completing when termination is requested.
+///
+/// On Unix platforms, listens for either SIGTERM or Ctrl-C. On non-Unix platforms, listens for Ctrl-C only. The function returns when any of these signals are received, allowing for graceful shutdown of the application.
+///
+/// # Examples
+///
+/// ```
+/// tokio::spawn(async {
+///     shutdown_signal().await;
+///     println!("Shutdown signal received.");
+/// });
+/// ```
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
@@ -62,6 +75,13 @@ enum Commands {
 }
 
 impl Run for CreateUserArgs {
+    /// Creates a new user with the specified username and password, hashing the password securely and storing the user in the database.
+    ///
+    /// Validates that both username and password are provided, hashes the password using Argon2id with parameters from the configuration, runs database migrations if necessary, and inserts the new user record. Prints a confirmation message upon successful creation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if required arguments are missing, password hashing fails, database connection or migrations fail, or user creation is unsuccessful.
     fn run(self, cfg: &AppConfig) -> Result<()> {
         tokio::runtime::Handle::current().block_on(async {
             let username = self
@@ -83,7 +103,7 @@ impl Run for CreateUserArgs {
                 password: &hashed,
             };
             let mut conn = DbConnection::establish(&cfg.database).await?;
-            run_migrations(&mut conn).await?;
+            apply_migrations(&mut conn, &cfg.database).await?;
             create_user(&mut conn, &new_user).await?;
             println!("User {username} created");
             Ok(())
@@ -168,6 +188,24 @@ async fn create_pool(database: &str) -> DbPool {
     establish_pool(database).await
 }
 
+/// Sets up the database connection pool and runs migrations.
+///
+/// Establishes a connection pool for the specified database, audits database-specific features,
+/// and applies any pending migrations. Returns the initialised connection pool on success.
+///
+/// # Arguments
+///
+/// * `database` - The database connection string or file path.
+///
+/// # Returns
+///
+/// A result containing the initialised database connection pool, or an error if setup fails.
+///
+/// # Examples
+///
+/// ```
+/// let pool = setup_database("mxd.db").await?;
+/// ```
 async fn setup_database(database: &str) -> Result<DbPool> {
     let pool = create_pool(database).await;
     {
@@ -176,7 +214,7 @@ async fn setup_database(database: &str) -> Result<DbPool> {
         audit_sqlite_features(&mut conn).await?;
         #[cfg(feature = "postgres")]
         audit_postgres_features(&mut conn).await?;
-        run_migrations(&mut conn).await?;
+        apply_migrations(&mut conn, database).await?;
     }
     Ok(pool)
 }
@@ -224,19 +262,53 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
     Ok(())
 }
 
+/// Handles a single client connection, performing handshake and processing transactions.
+///
+/// Performs a protocol handshake with the client, responding to handshake errors or timeouts as appropriate.
+/// After a successful handshake, enters a loop to read and process transactions from the client, sending responses back.
+/// Gracefully handles client disconnects and server shutdown signals.
+///
+/// # Arguments
+///
+/// - `socket`: The TCP stream representing the client connection.
+/// - `peer`: The client's socket address.
+/// - `pool`: The database connection pool.
+/// - `shutdown`: A watch channel receiver used to signal server shutdown.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on normal termination, or an error if a protocol or I/O error occurs outside of expected disconnects.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use tokio::net::TcpStream;
+/// # use std::net::SocketAddr;
+/// # use mxd::db::DbPool;
+/// # use tokio::sync::watch;
+/// # async fn example(socket: TcpStream, peer: SocketAddr, pool: DbPool, mut shutdown: watch::Receiver<bool>) {
+/// let _ = handle_client(socket, peer, pool, &mut shutdown).await;
+/// # }
+/// ```
 async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<()> {
-    let (mut reader, mut writer) = io::split(socket);
+    let (mut reader, mut writer) = tokio_io::split(socket);
 
     // perform protocol handshake with a timeout
     let mut buf = [0u8; protocol::HANDSHAKE_LEN];
     match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
         Ok(Ok(_)) => {}
-        Ok(Err(e)) => return Err(e.into()),
+        Ok(Err(e)) => {
+            if e.kind() == io::ErrorKind::UnexpectedEof {
+                // Client disconnected before completing the handshake
+                return Ok(());
+            }
+            return Err(e.into());
+        }
         Err(_) => {
             protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
             return Ok(());
@@ -259,14 +331,20 @@ async fn handle_client(
     let mut session = Session::default();
     loop {
         tokio::select! {
-            tx = tx_reader.read_transaction() => {
-                let tx = tx?;
-                let frame = tx.to_bytes();
-                let resp = handle_request(&ctx, &mut session, &frame)
-                    .await
-                    .map_err(|e| anyhow::anyhow!(e))?;
-                tx_writer.write_transaction(&resp).await?;
-            }
+            tx = tx_reader.read_transaction() => match tx {
+                Ok(tx) => {
+                    let frame = tx.to_bytes();
+                    let resp = handle_request(&ctx, &mut session, &frame)
+                        .await
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    tx_writer.write_transaction(&resp).await?;
+                }
+                Err(TransactionError::Io(ref e)) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    // Remote closed the connection, end session gracefully
+                    break;
+                }
+                Err(e) => return Err(e.into()),
+            },
             _ = shutdown.changed() => {
                 break;
             }

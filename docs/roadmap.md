@@ -60,7 +60,7 @@ been implemented in the repository are checked off.
 ## Database Backends
 
 - [x] SQLite support with migrations
-- [ ] PostgreSQL backend support
+- [ ] PostgreSQL backend support (in progress)
 
 The roadmap will evolve as the project grows. Checked items indicate
 functionality present in the current code base. Unchecked items highlight areas
