@@ -15,7 +15,7 @@ clean:
 	rm -rf target/postgres
 
 test:
-	cargo test
+	cargo test --quiet
 
 target/debug/mxd:
 	cargo build --bin mxd --features sqlite
