@@ -200,6 +200,7 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 }
 
 use chrono::{DateTime, Utc};
+use diesel::prelude::{ExpressionMethods, QueryDsl};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use mxd::db::{
@@ -331,6 +332,95 @@ pub fn setup_news_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .execute(conn)
                 .await?;
+            Ok(())
+        })
+    })
+}
+
+/// Populate the database with a bundle and two categories at the root level.
+pub fn setup_news_categories_root_db(
+    db: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    with_db(db, |conn| {
+        Box::pin(async move {
+            use mxd::db::{create_bundle, create_category};
+            create_bundle(
+                conn,
+                &mxd::models::NewBundle {
+                    parent_bundle_id: None,
+                    name: "Bundle",
+                },
+            )
+            .await?;
+            create_category(
+                conn,
+                &mxd::models::NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+            create_category(
+                conn,
+                &mxd::models::NewCategory {
+                    name: "Updates",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+            Ok(())
+        })
+    })
+}
+
+/// Populate the database with a nested bundle containing a single category.
+pub fn setup_news_categories_nested_db(
+    db: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    with_db(db, |conn| {
+        Box::pin(async move {
+            use mxd::db::{create_bundle, create_category};
+            use mxd::models::{NewBundle, NewCategory};
+            use mxd::schema::news_bundles::dsl as b;
+
+            create_bundle(
+                conn,
+                &NewBundle {
+                    parent_bundle_id: None,
+                    name: "Bundle",
+                },
+            )
+            .await?;
+            let root_id: i32 = b::news_bundles
+                .filter(b::name.eq("Bundle"))
+                .filter(b::parent_bundle_id.is_null())
+                .select(b::id)
+                .first(conn)
+                .await?;
+
+            create_bundle(
+                conn,
+                &NewBundle {
+                    parent_bundle_id: Some(root_id),
+                    name: "Sub",
+                },
+            )
+            .await?;
+            let sub_id: i32 = b::news_bundles
+                .filter(b::name.eq("Sub"))
+                .filter(b::parent_bundle_id.eq(root_id))
+                .select(b::id)
+                .first(conn)
+                .await?;
+
+            create_category(
+                conn,
+                &NewCategory {
+                    name: "Inside",
+                    bundle_id: Some(sub_id),
+                },
+            )
+            .await?;
             Ok(())
         })
     })
