@@ -338,12 +338,10 @@ pub fn setup_news_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Populate the database with a bundle and two categories at the root level.
-pub fn setup_news_categories_root_db(
-    db: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_news_categories_root_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
     with_db(db, |conn| {
         Box::pin(async move {
-            use mxd::db::{create_category};
+            use mxd::db::create_category;
 
             let _ = insert_root_bundle(conn).await?;
 
@@ -369,9 +367,7 @@ pub fn setup_news_categories_root_db(
 }
 
 /// Populate the database with a nested bundle containing a single category.
-pub fn setup_news_categories_nested_db(
-    db: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_news_categories_nested_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
     with_db(db, |conn| {
         Box::pin(async move {
             use mxd::db::{create_bundle, create_category};
@@ -401,9 +397,7 @@ pub fn setup_news_categories_nested_db(
     })
 }
 
-async fn insert_root_bundle(
-    conn: &mut DbConnection,
-) -> Result<i32, Box<dyn std::error::Error>> {
+async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, Box<dyn std::error::Error>> {
     use mxd::db::create_bundle;
     use mxd::models::NewBundle;
 
