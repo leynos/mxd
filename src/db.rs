@@ -31,6 +31,15 @@ cfg_if! {
 /// # Panics
 /// Panics if the connection pool cannot be created.
 #[must_use = "handle the pool"]
+/// Asynchronously establishes a database connection pool for the configured backend.
+///
+/// Panics if the pool cannot be created.
+///
+/// # Examples
+///
+/// ```
+/// let pool = establish_pool("sqlite::memory:").await;
+/// ```
 pub async fn establish_pool(database_url: &str) -> DbPool {
     let config = AsyncDieselConnectionManager::<DbConnection>::new(database_url);
     Pool::builder()
@@ -122,6 +131,24 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
 /// cannot be parsed.
 #[cfg(feature = "postgres")]
 #[must_use = "handle the result"]
+/// Checks that the connected PostgreSQL server version is at least 14.
+///
+/// Executes a version query and parses the result, returning an error if the version is unsupported or cannot be determined.
+///
+/// # Returns
+///
+/// - `Ok(())` if the server version is 14 or higher.
+/// - An error if the version is below 14 or cannot be parsed.
+///
+/// # Examples
+///
+/// ```
+/// # use your_crate::audit_postgres_features;
+/// # async fn check(conn: &mut diesel_async::AsyncPgConnection) {
+/// let result = audit_postgres_features(conn).await;
+/// assert!(result.is_ok());
+/// # }
+/// ```
 pub async fn audit_postgres_features(
     conn: &mut diesel_async::AsyncPgConnection,
 ) -> QueryResult<()> {

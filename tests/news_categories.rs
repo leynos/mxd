@@ -14,6 +14,14 @@ use mxd::transaction_type::TransactionType;
 use test_util::TestServer;
 
 #[test]
+/// Tests that listing news categories at the root path returns all root-level bundles and categories.
+///
+/// Sets up a test server with one bundle ("Bundle") and two categories ("General", "Updates") at the root level.
+/// Sends a transaction requesting news categories at the root path ("/") and verifies that the response contains all expected category names.
+///
+/// # Errors
+///
+/// Returns an error if the test server setup, TCP communication, or protocol validation fails.
 fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
         let rt = tokio::runtime::Runtime::new()?;
@@ -105,6 +113,19 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+/// Tests that listing news categories with no path parameter returns all root-level bundles and categories.
+///
+/// Sets up a database with one bundle ("Bundle") and two categories ("General", "Updates") not associated with any bundle. Sends a transaction request without a path parameter and verifies that the response contains all three names.
+///
+/// # Errors
+///
+/// Returns an error if the test server setup, database operations, TCP communication, or protocol decoding fails.
+///
+/// # Examples
+///
+/// ```
+/// list_news_categories_no_path().unwrap();
+/// ```
 fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
         let rt = tokio::runtime::Runtime::new()?;
@@ -195,6 +216,12 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+/// Tests that requesting news categories with an invalid path returns the expected unsupported path error.
+///
+/// Sets up a database with a single category, sends a transaction with an invalid path parameter, and asserts that the server responds with the `NEWS_ERR_PATH_UNSUPPORTED` error code.
+///
+/// # Returns
+/// Returns `Ok(())` if the test passes; otherwise, returns an error if any step fails.
 fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
         let rt = tokio::runtime::Runtime::new()?;
@@ -252,6 +279,20 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 #[test]
+/// Tests that requesting a list of news categories from an empty database returns no categories.
+///
+/// This test sets up a test server with an empty database, performs a TCP handshake,
+/// sends a news category listing transaction, and asserts that the response contains no category names.
+///
+/// # Errors
+///
+/// Returns an error if the test server setup, TCP communication, or protocol operations fail.
+///
+/// # Examples
+///
+/// ```
+/// list_news_categories_empty().unwrap();
+/// ```
 fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
         let rt = tokio::runtime::Runtime::new()?;
@@ -318,6 +359,13 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+/// Tests that requesting news categories at a nested bundle path returns only the categories within that sub-bundle.
+///
+/// Sets up a nested bundle structure with a root bundle and a sub-bundle containing a single category. Sends a transaction requesting categories at the nested path and verifies that only the expected category is returned.
+///
+/// # Errors
+///
+/// Returns an error if the test server setup, database operations, TCP communication, or protocol decoding fails.
 fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
     use mxd::models::{NewBundle, NewCategory};
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
