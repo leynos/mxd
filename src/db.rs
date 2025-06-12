@@ -37,8 +37,11 @@ cfg_if! {
 ///
 /// # Examples
 ///
-/// ```
-/// let pool = establish_pool("sqlite::memory:").await;
+/// ```no_run
+/// use mxd::db::establish_pool;
+/// async fn example() {
+///     let pool = establish_pool("sqlite::memory:").await;
+/// }
 /// ```
 pub async fn establish_pool(database_url: &str) -> DbPool {
     let config = AsyncDieselConnectionManager::<DbConnection>::new(database_url);
