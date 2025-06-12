@@ -36,10 +36,15 @@ where
 }
 
 #[cfg(feature = "postgres")]
-fn setup_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
+    if let Ok(url) = std::env::var("POSTGRES_TEST_URL") {
+        setup(&url)?;
+        return Ok((url, None));
+    }
+
     let mut pg = PostgreSQL::default();
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
@@ -50,7 +55,7 @@ where
     })?;
     let url = pg.settings().url("test");
     setup(&url)?;
-    Ok((url, pg))
+    Ok((url, Some(pg)))
 }
 
 fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {
@@ -140,9 +145,6 @@ impl TestServer {
         #[cfg(feature = "postgres")]
         let (db_url, pg) = setup_postgres(setup)?;
 
-        #[cfg(feature = "postgres")]
-        let db_url = db_url;
-
         let socket = TcpListener::bind("127.0.0.1:0")?;
         let port = socket.local_addr()?.port();
         drop(socket);
@@ -157,7 +159,7 @@ impl TestServer {
             db_url,
             _temp: temp,
             #[cfg(feature = "postgres")]
-            pg: Some(pg),
+            pg,
         })
     }
 
