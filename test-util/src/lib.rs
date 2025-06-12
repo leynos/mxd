@@ -343,15 +343,10 @@ pub fn setup_news_categories_root_db(
 ) -> Result<(), Box<dyn std::error::Error>> {
     with_db(db, |conn| {
         Box::pin(async move {
-            use mxd::db::{create_bundle, create_category};
-            let _ = create_bundle(
-                conn,
-                &mxd::models::NewBundle {
-                    parent_bundle_id: None,
-                    name: "Bundle",
-                },
-            )
-            .await?;
+            use mxd::db::{create_category};
+
+            let _ = insert_root_bundle(conn).await?;
+
             let _ = create_category(
                 conn,
                 &mxd::models::NewCategory {
@@ -380,16 +375,9 @@ pub fn setup_news_categories_nested_db(
     with_db(db, |conn| {
         Box::pin(async move {
             use mxd::db::{create_bundle, create_category};
-            use mxd::models::{NewBundle, NewCategory};
+            use mxd::models::NewBundle;
 
-            let root_id = create_bundle(
-                conn,
-                &NewBundle {
-                    parent_bundle_id: None,
-                    name: "Bundle",
-                },
-            )
-            .await?;
+            let root_id = insert_root_bundle(conn).await?;
 
             let sub_id = create_bundle(
                 conn,
@@ -402,7 +390,7 @@ pub fn setup_news_categories_nested_db(
 
             let _ = create_category(
                 conn,
-                &NewCategory {
+                &mxd::models::NewCategory {
                     name: "Inside",
                     bundle_id: Some(sub_id),
                 },
@@ -411,4 +399,22 @@ pub fn setup_news_categories_nested_db(
             Ok(())
         })
     })
+}
+
+async fn insert_root_bundle(
+    conn: &mut DbConnection,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    use mxd::db::create_bundle;
+    use mxd::models::NewBundle;
+
+    let id = create_bundle(
+        conn,
+        &NewBundle {
+            parent_bundle_id: None,
+            name: "Bundle",
+        },
+    )
+    .await?;
+
+    Ok(id)
 }
