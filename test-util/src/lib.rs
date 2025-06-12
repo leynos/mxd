@@ -145,11 +145,16 @@ impl TestServer {
         self.port
     }
 
-    /// Returns the database URL associated with this test server instance.
+    /// Return the database connection URL used by the server.
+    ///
+    /// The URL is stored as a `String` validated at construction time.
+    /// Tests use SQLite by default, with optional PostgreSQL support via the
+    /// `postgres` feature.
     pub fn db_url(&self) -> &str {
-        &self.db_url
+        // `db_url` was validated when the server was created, so borrowing is
+        // safe and avoids repeated validation.
+        self.db_url.as_str()
     }
-
 }
 
 impl Drop for TestServer {
