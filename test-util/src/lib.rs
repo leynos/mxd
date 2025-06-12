@@ -149,7 +149,6 @@ impl TestServer {
     pub fn db_url(&self) -> &str {
         &self.db_url
     }
-
 }
 
 impl Drop for TestServer {
@@ -195,6 +194,7 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 }
 
 use chrono::{DateTime, Utc};
+use diesel::result::QueryResult;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use mxd::db::{
@@ -202,6 +202,14 @@ use mxd::db::{
 };
 use mxd::models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser};
 use mxd::users::hash_password;
+
+/// Apply embedded migrations for the current backend.
+pub async fn apply_migrations(conn: &mut DbConnection, _url: &str) -> QueryResult<()> {
+    #[cfg(feature = "postgres")]
+    return run_migrations(_url).await;
+    #[cfg(feature = "sqlite")]
+    return run_migrations(conn).await;
+}
 
 /// Run an async database setup function using a temporary Tokio runtime.
 pub fn with_db<F>(db: &str, f: F) -> Result<(), Box<dyn std::error::Error>>
@@ -213,7 +221,7 @@ where
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let mut conn = DbConnection::establish(db).await?;
-        run_migrations(&mut conn).await?;
+        apply_migrations(&mut conn, db).await?;
         f(&mut conn).await
     })
 }

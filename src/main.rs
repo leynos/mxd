@@ -96,6 +96,9 @@ impl Run for CreateUserArgs {
                 password: &hashed,
             };
             let mut conn = DbConnection::establish(&cfg.database).await?;
+            #[cfg(feature = "postgres")]
+            run_migrations(&cfg.database).await?;
+            #[cfg(feature = "sqlite")]
             run_migrations(&mut conn).await?;
             create_user(&mut conn, &new_user).await?;
             println!("User {username} created");
@@ -189,6 +192,9 @@ async fn setup_database(database: &str) -> Result<DbPool> {
         audit_sqlite_features(&mut conn).await?;
         #[cfg(feature = "postgres")]
         audit_postgres_features(&mut conn).await?;
+        #[cfg(feature = "postgres")]
+        run_migrations(database).await?;
+        #[cfg(feature = "sqlite")]
         run_migrations(&mut conn).await?;
     }
     Ok(pool)
