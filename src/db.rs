@@ -615,7 +615,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_audit_postgres() {
-        use diesel_async::AsyncConnection;
         use postgresql_embedded::PostgreSQL;
 
         let mut pg = PostgreSQL::default();

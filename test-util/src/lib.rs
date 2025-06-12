@@ -117,7 +117,7 @@ impl TestServer {
         let db_url = setup_sqlite(&temp, setup)?;
 
         #[cfg(feature = "postgres")]
-        let (db_url, mut pg) = setup_postgres(setup)?;
+        let (db_url, pg) = setup_postgres(setup)?;
 
         #[cfg(feature = "postgres")]
         let db_url = db_url;
