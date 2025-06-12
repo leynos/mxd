@@ -6,6 +6,9 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 #[cfg(feature = "postgres")]
+use anyhow::{Context, Error};
+
+#[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
 
 #[cfg(unix)]
@@ -40,22 +43,36 @@ fn setup_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::erro
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
+    use std::future::Future;
+
+    async fn pg_step(
+        pg: &mut PostgreSQL,
+        fut: impl Future<Output = Result<(), postgresql_embedded::Error>>,
+        context: &'static str,
+    ) -> Result<(), Error> {
+        match fut.await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let _ = pg.stop().await;
+                Err(Error::new(e)).context(context)
+            }
+        }
+    }
+
     let mut pg = PostgreSQL::default();
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        pg.setup()
-            .await
-            .map_err(|e| format!("failed to prepare embedded server: {e}"))?;
-        if let Err(e) = pg.start().await {
-            let _ = pg.stop().await;
-            return Err(format!("failed to prepare embedded server: {e}").into());
-        }
-        if let Err(e) = pg.create_database("test").await {
-            let _ = pg.stop().await;
-            return Err(format!("failed to prepare embedded server: {e}").into());
-        }
-        Ok::<_, Box<dyn std::error::Error>>(())
-    })?;
+        pg.setup().await.context("preparing embedded PostgreSQL")?;
+        pg_step(&mut pg, pg.start(), "starting embedded PostgreSQL").await?;
+        pg_step(
+            &mut pg,
+            pg.create_database("test"),
+            "creating test database",
+        )
+        .await?;
+        Ok::<_, Error>(())
+    })
+    .map_err(|e| e.into())?;
     let url = pg.settings().url("test");
     setup(&url)?;
     Ok((url, pg))
@@ -146,8 +163,10 @@ impl TestServer {
         let db_url = setup_sqlite(&temp, setup)?;
 
         #[cfg(feature = "postgres")]
-        let (db_url, pg) = setup_postgres(setup)
-            .map_err(|e| format!("failed to init embedded PostgreSQL: {e}"))?;
+        let (db_url, pg) = setup_postgres(setup).map_err(|e| {
+            let err: Error = e.into();
+            err.context("failed to init embedded PostgreSQL")
+        })?;
 
         #[cfg(feature = "postgres")]
         let db_url = db_url;
