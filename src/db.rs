@@ -146,7 +146,7 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
 /// cannot be parsed.
 #[cfg(feature = "postgres")]
 #[must_use = "handle the result"]
-/// Checks that the connected PostgreSQL server version is at least 14.
+/// Checks that the connected `PostgreSQL` server version is at least 14.
 ///
 /// Executes a version query and parses the result, returning an error if the version is unsupported or cannot be determined.
 ///
