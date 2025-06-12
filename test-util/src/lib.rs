@@ -6,6 +6,9 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 #[cfg(feature = "postgres")]
+use anyhow::{Context, Error};
+
+#[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
 
 #[cfg(unix)]
@@ -36,27 +39,47 @@ where
 }
 
 #[cfg(feature = "postgres")]
-fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
+/// Sets up an embedded PostgreSQL instance for testing and applies a custom setup function.
+///
+/// Starts an embedded PostgreSQL server, creates a test database, and invokes the provided setup function with the database URL. Returns the database URL and the running PostgreSQL instance. If any step fails, ensures the PostgreSQL instance is stopped and returns an error.
+fn setup_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
-    if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-        let url = value.to_string_lossy();
-        if !url.trim().is_empty() {
-            let url = url.into_owned();
-            setup(&url)?;
-            return Ok((url, None));
+    use std::future::Future;
+
+    async fn pg_step<Fut, G>(
+        pg: &mut PostgreSQL,
+        step: G,
+        context: &'static str,
+    ) -> Result<(), Error>
+    where
+        G: FnOnce(&mut PostgreSQL) -> Fut,
+        Fut: Future<Output = Result<(), postgresql_embedded::Error>>,
+    {
+        match step(pg).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let _ = pg.stop().await;
+                Err(Error::new(e)).context(context)
+            }
         }
     }
 
     let mut pg = PostgreSQL::default();
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        pg.setup().await?;
-        pg.start().await?;
-        pg.create_database("test").await?;
-        Ok::<_, Box<dyn std::error::Error>>(())
-    })?;
+        pg_step(&mut pg, |p| p.setup(), "preparing embedded PostgreSQL").await?;
+        pg_step(&mut pg, |p| p.start(), "starting embedded PostgreSQL").await?;
+        pg_step(
+            &mut pg,
+            |p| p.create_database("test"),
+            "creating test database",
+        )
+        .await?;
+        Ok::<_, Error>(())
+    })
+    .map_err(|e| e.into())?;
     let url = pg.settings().url("test");
     setup(&url)?;
     Ok((url, Some(pg)))
@@ -133,6 +156,27 @@ impl TestServer {
     ///     // Custom setup logic here
     ///     Ok(())
     /// })?;
+    /// Starts a test instance of the "mxd" server with a temporary database and custom setup.
+    ///
+    /// Creates a temporary directory, sets up a SQLite or PostgreSQL database using the provided setup function, reserves an ephemeral TCP port, and launches the server process. Waits for the server to signal readiness before returning a `TestServer` instance that manages the server process and database lifecycle.
+    ///
+    /// # Parameters
+    /// - `manifest_path`: Path to the Cargo manifest for the "mxd" server binary.
+    /// - `setup`: Function to initialise the database at the given URL or path.
+    ///
+    /// # Returns
+    /// A `TestServer` instance managing the server process and temporary database.
+    ///
+    /// # Errors
+    /// Returns an error if database setup, port binding, server launch, or readiness check fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let server = TestServer::start_with_setup("path/to/Cargo.toml", |db_url| {
+    ///     // Custom database setup logic here
+    ///     Ok(())
+    /// }).expect("Failed to start test server");
     /// ```
     pub fn start_with_setup<F>(
         manifest_path: &str,
@@ -165,7 +209,9 @@ impl TestServer {
         let port = socket.local_addr()?.port();
         drop(socket);
 
-        let mut child = build_server_command(manifest_path, port, &db_url).spawn()?;
+        #[cfg(feature = "postgres")]
+        let (db_url, pg) =
+            setup_postgres(setup).map_err(|e| e.context("failed to init embedded PostgreSQL"))?;
 
         wait_for_server(&mut child)?;
 
