@@ -194,22 +194,14 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 }
 
 use chrono::{DateTime, Utc};
-use diesel::result::QueryResult;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use mxd::db::{
-    DbConnection, add_file_acl, create_category, create_file, create_user, run_migrations,
+    apply_migrations, add_file_acl, create_category, create_file, create_user, DbConnection,
 };
 use mxd::models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser};
 use mxd::users::hash_password;
 
-/// Apply embedded migrations for the current backend.
-pub async fn apply_migrations(conn: &mut DbConnection, _url: &str) -> QueryResult<()> {
-    #[cfg(feature = "postgres")]
-    return run_migrations(_url).await;
-    #[cfg(feature = "sqlite")]
-    return run_migrations(conn).await;
-}
 
 /// Run an async database setup function using a temporary Tokio runtime.
 pub fn with_db<F>(db: &str, f: F) -> Result<(), Box<dyn std::error::Error>>

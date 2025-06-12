@@ -5,19 +5,22 @@ use diesel::prelude::*;
 use diesel_async::AsyncConnection;
 use diesel_async::RunQueryDsl;
 use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
+use mxd::db::apply_migrations;
 use mxd::db::{DbConnection, create_bundle, create_category};
 use mxd::field_id::FieldId;
 use mxd::models::NewCategory;
 use mxd::transaction::encode_params;
 use mxd::transaction::{FrameHeader, Transaction, decode_params};
 use mxd::transaction_type::TransactionType;
-use test_util::{TestServer, apply_migrations, handshake};
+use test_util::{TestServer, handshake};
 
 fn list_categories(
     port: u16,
     path: Option<&str>,
 ) -> Result<(FrameHeader, Vec<String>), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(1)))?;
     handshake(&mut stream)?;
     let params = path
         .map(|p| vec![(FieldId::NewsPath, p.as_bytes())])

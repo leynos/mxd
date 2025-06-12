@@ -18,7 +18,7 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 
 use diesel_async::AsyncConnection;
-use mxd::db::{DbConnection, DbPool, create_user, establish_pool, run_migrations};
+use mxd::db::{DbConnection, DbPool, apply_migrations, create_user, establish_pool};
 
 #[cfg(feature = "sqlite")]
 use mxd::db::audit_sqlite_features;
@@ -96,10 +96,7 @@ impl Run for CreateUserArgs {
                 password: &hashed,
             };
             let mut conn = DbConnection::establish(&cfg.database).await?;
-            #[cfg(feature = "postgres")]
-            run_migrations(&cfg.database).await?;
-            #[cfg(feature = "sqlite")]
-            run_migrations(&mut conn).await?;
+            apply_migrations(&mut conn, &cfg.database).await?;
             create_user(&mut conn, &new_user).await?;
             println!("User {username} created");
             Ok(())
@@ -192,10 +189,7 @@ async fn setup_database(database: &str) -> Result<DbPool> {
         audit_sqlite_features(&mut conn).await?;
         #[cfg(feature = "postgres")]
         audit_postgres_features(&mut conn).await?;
-        #[cfg(feature = "postgres")]
-        run_migrations(database).await?;
-        #[cfg(feature = "sqlite")]
-        run_migrations(&mut conn).await?;
+        apply_migrations(&mut conn, database).await?;
     }
     Ok(pool)
 }

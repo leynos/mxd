@@ -85,6 +85,19 @@ cfg_if! {
     }
 }
 
+/// Apply embedded migrations for the current backend.
+///
+/// # Errors
+/// Returns any error produced by Diesel while running migrations.
+#[allow(unused_variables)]
+#[must_use = "handle the result"]
+pub async fn apply_migrations(conn: &mut DbConnection, url: &str) -> QueryResult<()> {
+    #[cfg(feature = "postgres")]
+    return run_migrations(url).await;
+    #[cfg(feature = "sqlite")]
+    return run_migrations(conn).await;
+}
+
 /// Verify that `SQLite` supports features required by the application.
 ///
 /// Specifically checks for the presence of the JSON1 extension and
@@ -531,7 +544,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_and_get_user() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
-        run_migrations(&mut conn).await.unwrap();
+        apply_migrations(&mut conn, "").await.unwrap();
         let new_user = NewUser {
             username: "alice",
             password: "hash",
@@ -547,7 +560,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_bundle_and_category() {
         let mut conn = DbConnection::establish(":memory:").await.unwrap();
-        run_migrations(&mut conn).await.unwrap();
+        apply_migrations(&mut conn, "").await.unwrap();
         let bun = NewBundle {
             parent_bundle_id: None,
             name: "Bundle",
