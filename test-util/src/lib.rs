@@ -36,6 +36,28 @@ where
 }
 
 #[cfg(feature = "postgres")]
+/// Sets up an embedded PostgreSQL server for testing, creates a test database, and applies a user-provided setup function.
+///
+/// Starts an embedded PostgreSQL server, creates a database named "test", and invokes the provided setup function with the database URL. Ensures the server is stopped if setup or database creation fails.
+///
+/// # Parameters
+/// - `setup`: A closure that receives the database URL and performs additional setup, such as running migrations.
+///
+/// # Returns
+/// A tuple containing the database URL and the embedded PostgreSQL server instance.
+///
+/// # Errors
+/// Returns an error if the server fails to start, the database cannot be created, or the setup function fails.
+///
+/// # Examples
+///
+/// ```
+/// let (db_url, pg) = setup_postgres(|url| {
+///     // Run migrations or seed data here
+///     Ok(())
+/// })?;
+/// assert!(db_url.starts_with("postgres://"));
+/// ```
 fn setup_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
@@ -132,6 +154,27 @@ impl TestServer {
     ///     // Custom setup logic here
     ///     Ok(())
     /// })?;
+    /// Starts a test server instance with a temporary database, applying a custom setup function.
+    ///
+    /// Creates a temporary directory, sets up either a SQLite or embedded PostgreSQL database (depending on enabled features), and applies the provided setup function to initialise the database state. Binds the server to an ephemeral port, launches the server process, and waits for it to signal readiness. Returns a `TestServer` instance managing the server process and database.
+    ///
+    /// # Parameters
+    ///
+    /// - `manifest_path`: Path to the Cargo manifest for the server binary.
+    /// - `setup`: Function to initialise the database, called with the database URL.
+    ///
+    /// # Returns
+    ///
+    /// A `TestServer` instance on success, or an error if setup or server startup fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let server = TestServer::start_with_setup("path/to/Cargo.toml", |db_url| {
+    ///     // Custom database setup logic here
+    ///     Ok(())
+    /// }).unwrap();
+    /// assert!(server.port() > 0);
     /// ```
     pub fn start_with_setup<F>(
         manifest_path: &str,
