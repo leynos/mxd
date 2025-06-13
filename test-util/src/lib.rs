@@ -6,10 +6,7 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 #[cfg(feature = "postgres")]
-use anyhow::{Context, Error};
-
-#[cfg(feature = "postgres")]
-use anyhow::{Context, Error};
+use std::error::Error as StdError;
 
 #[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
@@ -46,9 +43,7 @@ fn external_postgres_url() -> Option<String> {
 }
 
 #[cfg(feature = "postgres")]
-fn start_embedded_postgres<F>(
-    setup: F,
-) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
@@ -58,7 +53,7 @@ where
         pg: &mut PostgreSQL,
         step: G,
         context: &'static str,
-    ) -> Result<(), Error>
+    ) -> Result<(), Box<dyn StdError>>
     where
         G: FnOnce(&mut PostgreSQL) -> Fut,
         Fut: Future<Output = Result<(), postgresql_embedded::Error>>,
@@ -67,7 +62,7 @@ where
             Ok(()) => Ok(()),
             Err(e) => {
                 let _ = pg.stop().await;
-                Err(Error::new(e)).context(context)
+                Err(format!("{context}: {e}").into())
             }
         }
     }
@@ -83,7 +78,7 @@ where
             "creating test database",
         )
         .await?;
-        Ok::<_, Error>(())
+        Ok::<_, Box<dyn StdError>>(())
     })
     .map_err(|e| e.into())?;
     let url = pg.settings().url("test");
@@ -176,7 +171,6 @@ fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command
     .stderr(Stdio::inherit());
     cmd
 }
-
 
 impl TestServer {
     /// Start the server using the given Cargo manifest path.

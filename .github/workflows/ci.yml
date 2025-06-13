@@ -7,21 +7,36 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       matrix:
         feature: [sqlite, postgres]
+      fail-fast: false
     env:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libpq-dev
-      - name: Start PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpq-dev
+      - name: Export POSTGRES_TEST_URL
         if: matrix.feature == 'postgres'
-        run: |
-          docker run --rm --name pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=test -p 5432:5432 -d postgres:15
-          until docker exec pg pg_isready -U postgres; do sleep 1; done
+        uses: ./.github/actions/export-postgres-url
+        with:
+          url: postgres://postgres:password@localhost/test
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint
@@ -31,6 +46,20 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       CARGO_TERM_COLOR: always
       CODESCENE_CLI_SHA256: "a1c38415c5978908283c0608b648b27e954c93882b15d8b91d052d846c3eabd8"
@@ -43,6 +72,11 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpq-dev
+      - uses: ./.github/actions/export-postgres-url
+        with:
+          url: postgres://postgres:password@localhost/test
       - name: Generate coverage for SQLite
         run: |
           cargo llvm-cov --workspace --features sqlite --lcov --output-path lcov-sqlite.info

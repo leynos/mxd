@@ -2464,7 +2464,6 @@ dependencies = [
 name = "test-util"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "argon2",
  "chrono",
  "diesel",
