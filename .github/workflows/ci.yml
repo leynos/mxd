@@ -8,7 +8,7 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     services:
-      postgres: &postgres-service
+      postgres:
         image: postgres:15
         env:
           POSTGRES_USER: postgres
@@ -47,7 +47,19 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     services:
-      postgres: *postgres-service
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       CARGO_TERM_COLOR: always
       CODESCENE_CLI_SHA256: "a1c38415c5978908283c0608b648b27e954c93882b15d8b91d052d846c3eabd8"

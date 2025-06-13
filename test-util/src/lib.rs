@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 #[cfg(feature = "postgres")]
-use anyhow::{Context, Error};
+use std::error::Error as StdError;
 
 #[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
@@ -53,7 +53,7 @@ where
         pg: &mut PostgreSQL,
         step: G,
         context: &'static str,
-    ) -> Result<(), Error>
+    ) -> Result<(), Box<dyn StdError>>
     where
         G: FnOnce(&mut PostgreSQL) -> Fut,
         Fut: Future<Output = Result<(), postgresql_embedded::Error>>,
@@ -62,7 +62,7 @@ where
             Ok(()) => Ok(()),
             Err(e) => {
                 let _ = pg.stop().await;
-                Err(Error::new(e)).context(context)
+                Err(format!("{context}: {e}").into())
             }
         }
     }
@@ -78,7 +78,7 @@ where
             "creating test database",
         )
         .await?;
-        Ok::<_, Error>(())
+        Ok::<_, Box<dyn StdError>>(())
     })
     .map_err(|e| e.into())?;
     let url = pg.settings().url("test");
