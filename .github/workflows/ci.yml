@@ -20,8 +20,13 @@ jobs:
       - name: Start PostgreSQL
         if: matrix.feature == 'postgres'
         run: |
-          docker run --rm --name pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=test -p 5432:5432 -d postgres:15
+          docker run --rm --name pg \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=password \
+            -e POSTGRES_DB=test \
+            -p 5432:5432 -d postgres:15
           until docker exec pg pg_isready -U postgres; do sleep 1; done
+          echo "POSTGRES_TEST_URL=postgres://postgres:password@localhost/test" >> "$GITHUB_ENV"
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint
@@ -43,6 +48,17 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpq-dev
+      - name: Start PostgreSQL
+        run: |
+          docker run --rm --name pg \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=password \
+            -e POSTGRES_DB=test \
+            -p 5432:5432 -d postgres:15
+          until docker exec pg pg_isready -U postgres; do sleep 1; done
+          echo "POSTGRES_TEST_URL=postgres://postgres:password@localhost/test" >> "$GITHUB_ENV"
       - name: Generate coverage for SQLite
         run: |
           cargo llvm-cov --workspace --features sqlite --lcov --output-path lcov-sqlite.info
