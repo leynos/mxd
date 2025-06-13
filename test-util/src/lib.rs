@@ -126,6 +126,9 @@ fn spawn_server(
 
             let (child, port) = spawn_server(manifest_path, &db_url)?;
             return Ok(Self {
+    ///
+    /// This is a convenience wrapper around [`Self::start_with_setup`] that
+    /// performs no additional database setup.
                 child,
                 port,
                 db_url,
