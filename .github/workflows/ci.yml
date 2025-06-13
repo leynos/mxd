@@ -24,6 +24,7 @@ jobs:
     strategy:
       matrix:
         feature: [sqlite, postgres]
+      fail-fast: false
     env:
       CARGO_TERM_COLOR: always
     steps:

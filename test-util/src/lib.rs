@@ -9,9 +9,6 @@ use tempfile::TempDir;
 use anyhow::{Context, Error};
 
 #[cfg(feature = "postgres")]
-use anyhow::{Context, Error};
-
-#[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
