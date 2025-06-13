@@ -24,6 +24,7 @@ postgres = [
     "mxd/postgres",
     "postgresql_embedded",
     "diesel_migrations/postgres",
+    "anyhow",
 ]
 sqlite = [
     "diesel/sqlite",
