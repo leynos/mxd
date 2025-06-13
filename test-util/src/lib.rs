@@ -47,26 +47,27 @@ fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn 
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
-    let rt = tokio::runtime::Runtime::new()?;
-    let (url, pg) = rt
-        .block_on(async {
-            let mut pg = PostgreSQL::default();
-            if let Err(e) = pg.setup().await {
-                let _ = pg.stop().await;
-                return Err(format!("preparing embedded PostgreSQL: {e}").into());
-            }
-            if let Err(e) = pg.start().await {
-                let _ = pg.stop().await;
-                return Err(format!("starting embedded PostgreSQL: {e}").into());
-            }
-            if let Err(e) = pg.create_database("test").await {
-                let _ = pg.stop().await;
-                return Err(format!("creating test database: {e}").into());
-            }
-            let url = pg.settings().url("test");
-            Ok::<_, Box<dyn StdError>>((url, pg))
-        })
-        .map_err(|e: Box<dyn StdError>| e)?;
+    let fut = async {
+        let mut pg = PostgreSQL::default();
+        if let Err(e) = pg.setup().await {
+            let _ = pg.stop().await;
+            return Err(format!("preparing embedded PostgreSQL: {e}").into());
+        }
+        if let Err(e) = pg.start().await {
+            let _ = pg.stop().await;
+            return Err(format!("starting embedded PostgreSQL: {e}").into());
+        }
+        if let Err(e) = pg.create_database("test").await {
+            let _ = pg.stop().await;
+            return Err(format!("creating test database: {e}").into());
+        }
+        let url = pg.settings().url("test");
+        Ok::<_, Box<dyn StdError>>((url, pg))
+    };
+    let (url, pg) = match tokio::runtime::Handle::try_current() {
+        Ok(handle) => handle.block_on(fut)?,
+        Err(_) => tokio::runtime::Runtime::new()?.block_on(fut)?,
+    };
     setup(&url)?;
     Ok((url, pg))
 }
@@ -87,6 +88,16 @@ where
 
     let (url, pg) = start_embedded_postgres(setup)?;
     Ok((url, Some(pg)))
+}
+
+#[cfg(feature = "postgres")]
+pub fn setup_postgres_for_test<F>(
+    setup: F,
+) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    setup_postgres(setup)
 }
 
 ///
