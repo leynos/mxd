@@ -82,7 +82,6 @@ where
     Ok((url, Some(pg)))
 }
 
-
 ///
 /// Returns the SQLite database URL as a string on success, or an error if setup fails.
 ///
