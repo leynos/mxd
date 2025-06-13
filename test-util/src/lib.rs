@@ -43,6 +43,27 @@ fn external_postgres_url() -> Option<String> {
 }
 
 #[cfg(feature = "postgres")]
+/// Starts an embedded PostgreSQL instance, creates a test database, runs the provided setup function, and returns the database URL and instance.
+///
+/// The setup function is called with the database URL after the database is created. If any step fails, the PostgreSQL instance is stopped and an error is returned.
+///
+/// # Returns
+///
+/// A tuple containing the database URL and the running `PostgreSQL` instance.
+///
+/// # Errors
+///
+/// Returns an error if the PostgreSQL instance cannot be set up, started, the test database cannot be created, or if the setup function fails.
+///
+/// # Examples
+///
+/// ```
+/// let (url, pg) = start_embedded_postgres(|db_url| {
+///     // Perform setup using db_url
+///     Ok(())
+/// }).unwrap();
+/// assert!(url.starts_with("postgres://"));
+/// ```
 fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
@@ -73,6 +94,31 @@ where
 }
 
 #[cfg(feature = "postgres")]
+/// Sets up a PostgreSQL database for testing, using an external URL if provided or starting an embedded instance otherwise.
+///
+/// If the `POSTGRES_TEST_URL` environment variable is set and non-empty, uses that database URL and runs the provided setup closure on it. Otherwise, starts an embedded PostgreSQL instance, runs the setup closure, and returns its URL and handle.
+///
+/// # Parameters
+///
+/// - `setup`: A closure that receives the database URL and performs any required setup, such as running migrations.
+///
+/// # Returns
+///
+/// A tuple containing the database URL and an optional embedded PostgreSQL instance handle. The handle is `None` if an external database is used.
+///
+/// # Errors
+///
+/// Returns an error if the setup closure fails or if the embedded PostgreSQL instance cannot be started.
+///
+/// # Examples
+///
+/// ```
+/// let (db_url, pg_handle) = setup_postgres(|url| {
+///     // Run migrations or seed data here
+///     Ok(())
+/// })?;
+/// assert!(db_url.starts_with("postgres://"));
+/// ```
 fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
@@ -91,6 +137,17 @@ where
 }
 
 #[cfg(feature = "postgres")]
+/// Prepares a PostgreSQL database for integration testing, running the provided setup function.
+///
+/// Uses an external PostgreSQL instance if configured, or starts an embedded instance otherwise. The setup function is called with the database URL before returning.
+///
+/// # Parameters
+///
+/// - `setup`: A closure that receives the database URL and performs any required initialisation.
+///
+/// # Returns
+///
+/// A tuple containing the database URL and an optional embedded PostgreSQL instance handle. Returns an error if setup fails.
 pub fn setup_postgres_for_test<F>(
     setup: F,
 ) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
