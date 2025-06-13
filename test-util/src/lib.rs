@@ -9,6 +9,9 @@ use tempfile::TempDir;
 use anyhow::{Context, Error};
 
 #[cfg(feature = "postgres")]
+use anyhow::{Context, Error};
+
+#[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
@@ -43,94 +46,9 @@ fn external_postgres_url() -> Option<String> {
 }
 
 #[cfg(feature = "postgres")]
-fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
-    Ok((url, pg))
-}
-
-#[cfg(feature = "postgres")]
-fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    if let Some(url) = external_postgres_url() {
-        setup(&url)?;
-        return Ok((url, None));
-    }
-
-    let (url, pg) = start_embedded_postgres(setup)?;
-///
-/// Returns the SQLite database URL as a string on success, or an error if setup fails.
-///
-/// # Examples
-///
-/// ```
-/// use tempfile::TempDir;
-///
-/// let temp_dir = TempDir::new().unwrap();
-/// let db_url = setup_sqlite(&temp_dir, |path| {
-///     // Custom setup logic, e.g., run migrations
-///     Ok(())
-/// }).unwrap();
-/// assert!(db_url.ends_with("mxd.db"));
-/// ```
-fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<String, Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    let path = temp.path().join("mxd.db");
-    setup(path.to_str().expect("db path utf8"))?;
-    Ok(path.to_str().unwrap().to_owned())
-}
-
-#[cfg(feature = "postgres")]
-<<<<<<< codex/modify-setup_postgres-to-check-postgres_test_url
-/// Sets up a PostgreSQL database for testing, using either an external URL or an embedded instance.
-///
-/// If the `POSTGRES_TEST_URL` environment variable is set and non-empty, uses the specified PostgreSQL instance and runs the provided setup function on it. Otherwise, starts an embedded PostgreSQL server, creates a test database, runs the setup function, and returns the database URL along with the embedded server handle.
-///
-/// # Parameters
-/// - `setup`: A function to run custom setup logic on the database URL.
-///
-/// # Returns
-/// A tuple containing the database URL and an optional embedded PostgreSQL instance handle. The handle is `None` if an external database is used.
-///
-/// # Errors
-/// Returns an error if the database cannot be set up, the embedded server fails to start, or the setup function fails.
-///
-/// # Examples
-///
-/// ```
-/// let (db_url, embedded_pg) = setup_postgres(|url| {
-///     // Custom setup logic, e.g., run migrations
-///     Ok(())
-/// })?;
-/// assert!(db_url.starts_with("postgres://"));
-/// ```
-fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-        let url = value.to_string_lossy();
-        if !url.trim().is_empty() {
-            let url = url.into_owned();
-            setup(&url)?;
-fn spawn_server(
-    manifest_path: &str,
-    db_url: &str,
-) -> Result<(Child, u16), Box<dyn std::error::Error>> {
-    let socket = TcpListener::bind("127.0.0.1:0")?;
-    let port = socket.local_addr()?.port();
-    drop(socket);
-
-    let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
-    wait_for_server(&mut child)?;
-    Ok((child, port))
-=======
-/// Sets up an embedded PostgreSQL instance for testing and applies a custom setup function.
-///
-/// Starts an embedded PostgreSQL server, creates a test database, and invokes the provided setup function with the database URL. Returns the database URL and the running PostgreSQL instance. If any step fails, ensures the PostgreSQL instance is stopped and returns an error.
-fn setup_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+fn start_embedded_postgres<F>(
+    setup: F,
+) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
@@ -170,30 +88,54 @@ where
     .map_err(|e| e.into())?;
     let url = pg.settings().url("test");
     setup(&url)?;
-    Ok((url, Some(pg)))
->>>>>>> main
+    Ok((url, pg))
 }
 
-            let (child, port) = spawn_server(manifest_path, &db_url)?;
-            return Ok(Self {
-    ///
-    /// This is a convenience wrapper around [`Self::start_with_setup`] that
-    /// performs no additional database setup.
-                child,
-                port,
-                db_url,
-                _temp: Some(temp),
-            });
+#[cfg(feature = "postgres")]
+fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+        let url = value.to_string_lossy();
+        if !url.trim().is_empty() {
+            let url = url.into_owned();
+            setup(&url)?;
+            return Ok((url, None));
         }
-            let (child, port) = spawn_server(manifest_path, &db_url)?;
-            return Ok(Self {
-                child,
-                port,
-                db_url,
-                _temp: None,
-                pg,
-            });
+    }
 
+    let (url, pg) = start_embedded_postgres(setup)?;
+    Ok((url, Some(pg)))
+}
+
+///
+/// Returns the SQLite database URL as a string on success, or an error if setup fails.
+///
+/// # Examples
+///
+/// ```
+/// use tempfile::TempDir;
+///
+/// let temp_dir = TempDir::new().unwrap();
+/// let db_url = setup_sqlite(&temp_dir, |path| {
+///     // Custom setup logic, e.g., run migrations
+///     Ok(())
+/// }).unwrap();
+/// assert!(db_url.ends_with("mxd.db"));
+/// ```
+fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<String, Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    let path = temp.path().join("mxd.db");
+    setup(path.to_str().expect("db path utf8"))?;
+    Ok(path.to_str().unwrap().to_owned())
+}
+
+fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(out) = &mut child.stdout {
+        let mut reader = BufReader::new(out);
         let mut line = String::new();
         let timeout = Duration::from_secs(10);
         let start = Instant::now();
@@ -235,6 +177,7 @@ fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command
     cmd
 }
 
+
 impl TestServer {
     /// Start the server using the given Cargo manifest path.
     pub fn start(manifest_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -262,49 +205,6 @@ impl TestServer {
     ///     // Custom setup logic here
     ///     Ok(())
     /// })?;
-<<<<<<< codex/modify-setup_postgres-to-check-postgres_test_url
-    /// Starts a test server instance with a temporary database, running a custom setup function before launch.
-    ///
-    /// The database backend (SQLite or PostgreSQL) is selected based on enabled features. A temporary database is created, the provided setup function is executed on its URL, and the server is started with this database.
-    ///
-    /// # Parameters
-    /// - `manifest_path`: Path to the Cargo manifest for the server binary.
-    /// - `setup`: Function to perform custom setup on the database before server launch. Receives the database URL.
-=======
-    /// Starts a test instance of the "mxd" server with a temporary database and custom setup.
-    ///
-    /// Creates a temporary directory, sets up a SQLite or PostgreSQL database using the provided setup function, reserves an ephemeral TCP port, and launches the server process. Waits for the server to signal readiness before returning a `TestServer` instance that manages the server process and database lifecycle.
-    ///
-    /// # Parameters
-    /// - `manifest_path`: Path to the Cargo manifest for the "mxd" server binary.
-    /// - `setup`: Function to initialise the database at the given URL or path.
->>>>>>> main
-    ///
-    /// # Returns
-    /// A `TestServer` instance managing the server process and temporary database.
-    ///
-    /// # Errors
-<<<<<<< codex/modify-setup_postgres-to-check-postgres_test_url
-    /// Returns an error if database setup or server launch fails.
-=======
-    /// Returns an error if database setup, port binding, server launch, or readiness check fails.
->>>>>>> main
-    ///
-    /// # Examples
-    ///
-    /// ```
-<<<<<<< codex/modify-setup_postgres-to-check-postgres_test_url
-    /// let server = TestServer::start_with_setup("../server/Cargo.toml", |db_url| {
-    ///     // Custom database setup logic here
-    ///     Ok(())
-    /// })?;
-=======
-    /// let server = TestServer::start_with_setup("path/to/Cargo.toml", |db_url| {
-    ///     // Custom database setup logic here
-    ///     Ok(())
-    /// }).expect("Failed to start test server");
->>>>>>> main
-    /// ```
     pub fn start_with_setup<F>(
         manifest_path: &str,
         setup: F,
@@ -355,9 +255,7 @@ impl TestServer {
         let port = socket.local_addr()?.port();
         drop(socket);
 
-        #[cfg(feature = "postgres")]
-        let (db_url, pg) =
-            setup_postgres(setup).map_err(|e| e.context("failed to init embedded PostgreSQL"))?;
+        let mut child = build_server_command(manifest_path, port, &db_url).spawn()?;
 
         wait_for_server(&mut child)?;
 
