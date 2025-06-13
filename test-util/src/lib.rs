@@ -34,7 +34,7 @@ pub struct TestServer {
     pg: Option<PostgreSQL>,
 }
 
-#[cfg(feature = "sqlite")]
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
 fn external_postgres_url() -> Option<String> {
     std::env::var_os("POSTGRES_TEST_URL").and_then(|raw| {
         let url = raw.to_string_lossy();
