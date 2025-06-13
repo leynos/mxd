@@ -47,41 +47,26 @@ fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn 
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
-    use std::future::Future;
-
-    async fn pg_step<Fut, G>(
-        pg: &mut PostgreSQL,
-        step: G,
-        context: &'static str,
-    ) -> Result<(), Box<dyn StdError>>
-    where
-        G: FnOnce(&mut PostgreSQL) -> Fut,
-        Fut: Future<Output = Result<(), postgresql_embedded::Error>>,
-    {
-        match step(pg).await {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                let _ = pg.stop().await;
-                Err(format!("{context}: {e}").into())
-            }
-        }
-    }
-
-    let mut pg = PostgreSQL::default();
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        pg_step(&mut pg, |p| p.setup(), "preparing embedded PostgreSQL").await?;
-        pg_step(&mut pg, |p| p.start(), "starting embedded PostgreSQL").await?;
-        pg_step(
-            &mut pg,
-            |p| p.create_database("test"),
-            "creating test database",
-        )
-        .await?;
-        Ok::<_, Box<dyn StdError>>(())
-    })
-    .map_err(|e| e.into())?;
-    let url = pg.settings().url("test");
+    let (url, pg) = rt
+        .block_on(async {
+            let mut pg = PostgreSQL::default();
+            if let Err(e) = pg.setup().await {
+                let _ = pg.stop().await;
+                return Err(format!("preparing embedded PostgreSQL: {e}").into());
+            }
+            if let Err(e) = pg.start().await {
+                let _ = pg.stop().await;
+                return Err(format!("starting embedded PostgreSQL: {e}").into());
+            }
+            if let Err(e) = pg.create_database("test").await {
+                let _ = pg.stop().await;
+                return Err(format!("creating test database: {e}").into());
+            }
+            let url = pg.settings().url("test");
+            Ok::<_, Box<dyn StdError>>((url, pg))
+        })
+        .map_err(|e: Box<dyn StdError>| e)?;
     setup(&url)?;
     Ok((url, pg))
 }
