@@ -8,6 +8,12 @@ use tempfile::TempDir;
 #[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
 
+#[cfg(all(feature = "sqlite", feature = "postgres"))]
+compile_error!("Choose either sqlite or postgres, not both");
+
+#[cfg(not(any(feature = "sqlite", feature = "postgres")))]
+compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
+
 #[cfg(unix)]
 use nix::sys::signal::{Signal, kill};
 #[cfg(unix)]
@@ -20,7 +26,7 @@ pub struct TestServer {
     child: Child,
     port: u16,
     db_url: String,
-    _temp: TempDir,
+    _temp: Option<TempDir>,
     #[cfg(feature = "postgres")]
     pg: Option<PostgreSQL>,
 }
@@ -36,7 +42,15 @@ where
 }
 
 #[cfg(feature = "postgres")]
-fn setup_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+fn external_postgres_url() -> Option<String> {
+    std::env::var_os("POSTGRES_TEST_URL").and_then(|raw| {
+        let url = raw.to_string_lossy();
+        (!url.trim().is_empty()).then(|| url.into_owned())
+    })
+}
+
+#[cfg(feature = "postgres")]
+fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
@@ -51,6 +65,31 @@ where
     let url = pg.settings().url("test");
     setup(&url)?;
     Ok((url, pg))
+}
+
+#[cfg(feature = "postgres")]
+fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    if let Some(url) = external_postgres_url() {
+        setup(&url)?;
+        return Ok((url, None));
+    }
+
+    let (url, pg) = start_embedded_postgres(setup)?;
+    Ok((url, Some(pg)))
+}
+
+#[cfg(feature = "postgres")]
+#[doc(hidden)]
+pub fn setup_postgres_for_test<F>(
+    setup: F,
+) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    setup_postgres(setup)
 }
 
 fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {
@@ -97,8 +136,24 @@ fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command
     cmd
 }
 
+fn spawn_server(
+    manifest_path: &str,
+    db_url: &str,
+) -> Result<(Child, u16), Box<dyn std::error::Error>> {
+    let socket = TcpListener::bind("127.0.0.1:0")?;
+    let port = socket.local_addr()?.port();
+    drop(socket);
+
+    let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
+    wait_for_server(&mut child)?;
+    Ok((child, port))
+}
+
 impl TestServer {
     /// Start the server using the given Cargo manifest path.
+    ///
+    /// This is a convenience wrapper around [`Self::start_with_setup`] that
+    /// performs no additional database setup.
     pub fn start(manifest_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         Self::start_with_setup(manifest_path, |_| Ok(()))
     }
@@ -132,33 +187,31 @@ impl TestServer {
     where
         F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
     {
-        let temp = TempDir::new()?;
-
         #[cfg(feature = "sqlite")]
-        let db_url = setup_sqlite(&temp, setup)?;
+        {
+            let temp = TempDir::new()?;
+            let db_url = setup_sqlite(&temp, setup)?;
+            let (child, port) = spawn_server(manifest_path, &db_url)?;
+            return Ok(Self {
+                child,
+                port,
+                db_url,
+                _temp: Some(temp),
+            });
+        }
 
         #[cfg(feature = "postgres")]
-        let (db_url, pg) = setup_postgres(setup)?;
-
-        #[cfg(feature = "postgres")]
-        let db_url = db_url;
-
-        let socket = TcpListener::bind("127.0.0.1:0")?;
-        let port = socket.local_addr()?.port();
-        drop(socket);
-
-        let mut child = build_server_command(manifest_path, port, &db_url).spawn()?;
-
-        wait_for_server(&mut child)?;
-
-        Ok(Self {
-            child,
-            port,
-            db_url,
-            _temp: temp,
-            #[cfg(feature = "postgres")]
-            pg: Some(pg),
-        })
+        {
+            let (db_url, pg) = setup_postgres(setup)?;
+            let (child, port) = spawn_server(manifest_path, &db_url)?;
+            return Ok(Self {
+                child,
+                port,
+                db_url,
+                _temp: None,
+                pg,
+            });
+        }
     }
 
     /// Return the port the server is bound to.
@@ -175,6 +228,12 @@ impl TestServer {
         // `db_url` was validated when the server was created, so borrowing is
         // safe and avoids repeated validation.
         self.db_url.as_str()
+    }
+
+    #[cfg(feature = "postgres")]
+    /// Whether the server started its own embedded PostgreSQL instance.
+    pub fn uses_embedded_postgres(&self) -> bool {
+        self.pg.is_some()
     }
 }
 
