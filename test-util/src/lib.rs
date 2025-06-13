@@ -32,16 +32,29 @@ pub struct TestServer {
 }
 
 #[cfg(feature = "sqlite")]
-/// Creates a temporary SQLite database file, runs a setup function on it, and returns the database URL.
-///
-/// The setup function is called with the path to the database file, allowing for schema initialisation or test data insertion.
-///
-/// # Arguments
-///
-/// * `temp` - Reference to a temporary directory where the database file will be created.
-/// * `setup` - Function to run custom setup logic on the database file path.
-///
-/// # Returns
+fn external_postgres_url() -> Option<String> {
+    std::env::var_os("POSTGRES_TEST_URL").and_then(|raw| {
+        let url = raw.to_string_lossy();
+        (!url.trim().is_empty()).then(|| url.into_owned())
+    })
+}
+
+#[cfg(feature = "postgres")]
+fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+    Ok((url, pg))
+}
+
+#[cfg(feature = "postgres")]
+fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    if let Some(url) = external_postgres_url() {
+        setup(&url)?;
+        return Ok((url, None));
+    }
+
+    let (url, pg) = start_embedded_postgres(setup)?;
 ///
 /// Returns the SQLite database URL as a string on success, or an error if setup fails.
 ///
