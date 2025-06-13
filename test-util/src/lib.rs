@@ -34,7 +34,6 @@ pub struct TestServer {
     pg: Option<PostgreSQL>,
 }
 
-
 #[cfg(feature = "postgres")]
 fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
