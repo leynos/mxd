@@ -121,7 +121,9 @@ top-level `tests/` directory (not under `validator/tests`).**
 ## Markdown Guidance
 
 - Validate Markdown files using `markdownlint`.
-- Validate Markdown Mermaid diagrams using `nixie`.
+- Validate Markdown Mermaid diagrams using the `nixie` CLI.
+  `nixie` is a standalone command-line tool, not an npm package, so invoke it
+  directly rather than via `npx`.
 
 **These practices will help maintain a high-quality codebase and make
 collaboration easier**

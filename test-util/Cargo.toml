@@ -15,7 +15,6 @@ postgresql_embedded = { version = "0.18.5", features = ["tokio"], optional = tru
 argon2 = { version = "0.5", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
-anyhow = { version = "1", optional = true }
 
 [features]
 default = ["sqlite"]
