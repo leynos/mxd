@@ -34,13 +34,6 @@ pub struct TestServer {
     pg: Option<PostgreSQL>,
 }
 
-#[cfg(any(feature = "postgres", feature = "sqlite"))]
-fn external_postgres_url() -> Option<String> {
-    std::env::var_os("POSTGRES_TEST_URL").and_then(|raw| {
-        let url = raw.to_string_lossy();
-        (!url.trim().is_empty()).then(|| url.into_owned())
-    })
-}
 
 #[cfg(feature = "postgres")]
 fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
