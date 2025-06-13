@@ -82,6 +82,22 @@ where
     Ok((url, Some(pg)))
 }
 
+#[cfg(feature = "postgres")]
+/// Configure a PostgreSQL database for tests.
+///
+/// This checks the `POSTGRES_TEST_URL` environment variable. If set, the
+/// provided URL is used and no embedded server is started. Otherwise an
+/// embedded PostgreSQL instance is spun up. The given setup callback receives
+/// the connection URL.
+pub fn setup_postgres_for_test<F>(
+    setup: F,
+) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+{
+    setup_postgres(setup)
+}
+
 ///
 /// Returns the SQLite database URL as a string on success, or an error if setup fails.
 ///
@@ -97,6 +113,7 @@ where
 /// }).unwrap();
 /// assert!(db_url.ends_with("mxd.db"));
 /// ```
+#[cfg(feature = "sqlite")]
 fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<String, Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
