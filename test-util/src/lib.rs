@@ -46,9 +46,7 @@ fn external_postgres_url() -> Option<String> {
 }
 
 #[cfg(feature = "postgres")]
-fn start_embedded_postgres<F>(
-    setup: F,
-) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
@@ -176,7 +174,6 @@ fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command
     .stderr(Stdio::inherit());
     cmd
 }
-
 
 impl TestServer {
     /// Start the server using the given Cargo manifest path.
