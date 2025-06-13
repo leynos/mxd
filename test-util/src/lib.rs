@@ -90,15 +90,6 @@ where
     Ok((url, Some(pg)))
 }
 
-#[cfg(feature = "postgres")]
-pub fn setup_postgres_for_test<F>(
-    setup: F,
-) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    setup_postgres(setup)
-}
 
 ///
 /// Returns the SQLite database URL as a string on success, or an error if setup fails.
