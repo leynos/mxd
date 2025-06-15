@@ -6,8 +6,8 @@ Build the application with PostgreSQL support enabled:
 cargo build --no-default-features --features postgres
 ```
 
-The `sqlite` feature is enabled by default, so `--no-default-features`
-is required when targeting PostgreSQL.
+The `sqlite` feature is enabled by default, so `--no-default-features` is
+required when targeting PostgreSQL.
 
 Build the application with SQLite support enabled:
 
@@ -23,24 +23,24 @@ diesel migration run --database-url <url>
 
 or call the `run_migrations` function shown below.
 
-## 1  File-layout options
+## 1 File-layout options
 
-| Option                               | How it works                                                                                                                                                                                           | When to choose it                                                                              |
-|--------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
-| **B. Pure-Rust migrations**          | Implement `diesel::migration::Migration<DB>` in a Rust file (`up.rs` / `down.rs`) and compile with both `features = ["postgres", "sqlite"]`.  The query builder emits backend-specific SQL at runtime. | You prefer the type-checked DSL and can live with slightly slower compile times.               |
-| **C. Lowest-common-denominator SQL** | Write one `up.sql`/`down.sql` that *already* works on both engines.  This demands avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc.                                                                 | Simple schemas, embedded use-case only, you are happy to supply integer primary keys manually. |
-| **D. Two separate migration trees**  | Maintain `migrations/sqlite` and `migrations/postgres` directories with identical version numbers. Use `embed_migrations!("migrations/<backend>")` to compile the right set.                           | You ship a single binary with migrations baked in.                                             |
+| Option                               | How it works                                                                                                                                                                                          | When to choose it                                                                              |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **B. Pure-Rust migrations**          | Implement `diesel::migration::Migration<DB>` in a Rust file (`up.rs` / `down.rs`) and compile with both `features = ["postgres", "sqlite"]`. The query builder emits backend-specific SQL at runtime. | You prefer the type-checked DSL and can live with slightly slower compile times.               |
+| **C. Lowest-common-denominator SQL** | Write one `up.sql`/`down.sql` that *already* works on both engines. This demands avoiding SERIAL/IDENTITY, JSONB, `TIMESTAMPTZ`, etc.                                                                 | Simple schemas, embedded use-case only, you are happy to supply integer primary keys manually. |
+| **D. Two separate migration trees**  | Maintain `migrations/sqlite` and `migrations/postgres` directories with identical version numbers. Use `embed_migrations!("migrations/<backend>")` to compile the right set.                          | You ship a single binary with migrations baked in.                                             |
 
 > **Tip:** if you go with *B* or *D* keep your migration *versions* identical so
-> that the two databases stay in lock-step. Diesel’s `__diesel_schema_migrations`
-> table stores the numeric version only, so you can swap back-ends without
-> confusing the tracker.
+> that the two databases stay in lock-step. Diesel’s
+> `__diesel_schema_migrations` table stores the numeric version only, so you can
+> swap back-ends without confusing the tracker.
 
----
+______________________________________________________________________
 
-## 2  Writing portable DDL
+## 2 Writing portable DDL
 
-### 2.1  Primary keys & auto-increment
+### 2.1 Primary keys & auto-increment
 
 - **PostgreSQL** – use identity columns (*preferred*)
 
@@ -60,13 +60,13 @@ or call the `run_migrations` function shown below.
 
 ### 2.2 Column types that line up cleanly
 
-| Logical type | PostgreSQL              | SQLite notes                                                                    |
-|--------------|-------------------------|---------------------------------------------------------------------------------|
-| strings      | `TEXT` (or `VARCHAR`)   | `TEXT` – SQLite ignores the length specifier anyway                             |
-| booleans     | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`; Diesel serialises to 0 / 1 so this is fine                |
-| integers     | `INTEGER` / `BIGINT`    | ditto                                                                           |
-| decimals     | `NUMERIC(…)`            | stored as FLOAT in SQLite; Diesel’s `Numeric` round-trips, but beware precision |
-| blobs / raw  | `BYTEA`                 | `BLOB`                                                                          |
+| Logical type | PostgreSQL              | SQLite notes                                                                      |
+| ------------ | ----------------------- | --------------------------------------------------------------------------------- |
+| strings      | `TEXT` (or `VARCHAR`)   | `TEXT` – SQLite ignores the length specifier anyway                               |
+| booleans     | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`; Diesel serialises to 0 / 1 so this is fine                  |
+| integers     | `INTEGER` / `BIGINT`    | ditto                                                                             |
+| decimals     | `NUMERIC(…)`            | stored as FLOAT in SQLite; Diesel’s `Numeric` round-trips, but beware precision   |
+| blobs / raw  | `BYTEA`                 | `BLOB`                                                                            |
 
 Things that **do *not* port** and therefore need conditional SQL:
 
@@ -83,7 +83,7 @@ Things that **do *not* port** and therefore need conditional SQL:
 - Boolean defaults: `DEFAULT 0` is accepted by both engines, even though
   Postgres treats it as `BOOLEAN`.
 
----
+______________________________________________________________________
 
 ## 3 Putting it together: a minimal dual-backend migration
 
@@ -163,14 +163,14 @@ sqlite   = [
 Exactly one of these features must be active. The `mxd` crate emits a
 compile-time error if both or neither are enabled.
 
-and enable the feature you actually link at build-time. If you use the
-`diesel` CLI for manual migration commands, install it with matching features:
+and enable the feature you actually link at build-time. If you use the `diesel`
+CLI for manual migration commands, install it with matching features:
 
 ```bash
 cargo install diesel_cli --no-default-features --features sqlite,postgres
 ```
 
----
+______________________________________________________________________
 
 ## 4 Running the migrations from code
 
@@ -193,18 +193,18 @@ where
 }
 ```
 
-The real code base uses `diesel_async` for all queries. `MigrationHarness`
-only works with synchronous connections, so `mxd` spawns a blocking task for
+The real code base uses `diesel_async` for all queries. `MigrationHarness` only
+works with synchronous connections, so `mxd` spawns a blocking task for
 PostgreSQL to run migrations on a temporary `PgConnection` while SQLite relies
 on `SyncConnectionWrapper`.
 
----
+______________________________________________________________________
 
 ### CLI database argument
 
 Invoke the server with `--database <url>`. SQLite uses a file path while
-PostgreSQL expects a `postgres://` style URL.
-Non-URL strings are treated as SQLite paths.
+PostgreSQL expects a `postgres://` style URL. Non-URL strings are treated as
+SQLite paths.
 
 ## 5 Summary
 
@@ -217,10 +217,11 @@ Non-URL strings are treated as SQLite paths.
   features to the Postgres deployment.
 - When using SQLite, ensure your SQLite build was compiled with the `JSON1`
   extension and support for recursive CTEs.
-- When using PostgreSQL, ensure the server version is **14 or greater**.
-  The application performs a runtime check and fails on older versions.
+- When using PostgreSQL, ensure the server version is **14 or greater**. The
+  application performs a runtime check and fails on older versions.
 
-With that structure you can `cargo build --no-default-features --features postgres`
-for the version that targets *postgresql-embedded* (or a real server) and
+With that structure, you can:
+`cargo build --no-default-features --features postgres` for the version that
+targets *postgresql-embedded* (or a real server) and
 `cargo build --features sqlite` for the lightweight single-file deployment,
 without touching the migration history.

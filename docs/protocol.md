@@ -20,22 +20,19 @@ listed.
 
 ### 1 Session-initialisation handshake
 
-| Offset | Size (bytes) | Field | Meaning | | -----: | ------------ |
-------------------- |
-\--------------------------------------------------------------------------------
-| | 0 | 4 | **Protocol ID** | ASCII **“TRTP”** (0x54 52 54 50). Distinguishes
-Hotline from other TCP services. | | 4 | 4 | **Sub-protocol ID** |
-Application-specific tag (e.g. “CHAT”, “FILE”). Can be 0. | | 8 | 2 |
-**Version** | Currently **0x0001**. A server should refuse versions it does not
-understand. | | 10 | 2 | **Sub-version** | Application-defined; often used for
-build/revision numbers. |
+| Offset | Size (bytes) | Field               | Meaning                                                                              |
+| -----: | ------------ | ------------------- | ------------------------------------------------------------------------------------ |
+| 0      | 4            | **Protocol ID**     | ASCII **“TRTP”** (0x54 52 54 50). Distinguishes Hotline from other TCP services.     |
+| 4      | 4            | **Sub-protocol ID** | Application-specific tag (e.g. “CHAT”, “FILE”). Can be 0.                            |
+| 8      | 2            | **Version**         | Currently **0x0001**. A server should refuse versions it does not understand.        |
+| 10     | 2            | **Sub-version**     | Application-defined; often used for build/revision numbers.                          |
 
 **Direction:** Client → Server. The server replies immediately with:
 
-| Offset | Size | Field | Meaning | | -----: | ---- | ----------- |
---------------------------------------------- | | 0 | 4 | Protocol ID | Must
-echo “TRTP”. | | 4 | 4 | Error code | **0 = OK**. Non-zero → connection is
-dropped. |
+| Offset | Size | Field       | Meaning                                         |
+| -----: | ---- | ----------- | ----------------------------------------------- |
+| 0      | 4    | Protocol ID | Must echo “TRTP”.                               |
+| 4      | 4    | Error code  | **0 = OK**. Non-zero → connection is dropped.   |
 
 A compliant implementation simply waits for the four-byte error code and aborts
 if it is non-zero. No further data follow.
@@ -47,18 +44,15 @@ ______________________________________________________________________
 Every request **and** reply after the handshake is wrapped in a fixed-length
 header followed by an optional parameter block.
 
-| Offset | Size | Field | Notes | | -----: | ---- | -------------- |
-\---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-| | 0 | 1 | **Flags** | Reserved – **always 0** for v 1.8.5. | | 1 | 1 |
-**Is-reply** | **0 = request**, **1 = reply**. | | 2 | 2 | **Type** |
-Transaction ID (see full list in protocol spec – e.g. 0x006B = *Login*). | | 4 |
-4 | **ID** | Client-chosen non-zero number. Replies **must echo** the same
-value. Allows out-of-order matching. | | 8 | 4 | **Error code** | Meaningful
-**only when Is-reply = 1** (0 = success). | | 12 | 4 | **Total size** | Entire
-byte count of the transaction’s parameter block **across all fragments**. | | 16
-| 4 | **Data size** | Size of the parameter bytes **in *this* fragment**. If
-`Data size < Total size`, further fragments with identical header values follow
-until the accumulated data length equals `Total size`. |
+| Offset | Size  | Field          | Notes                                                                                                                                                                                         |
+| -----: | ----: | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0      | 1     | **Flags**      | Reserved – **always 0** for v 1.8.5.                                                                                                                                                          |
+| 1      | 1     | **Is-reply**   | **0 = request**, **1 = reply**.                                                                                                                                                               |
+| 2      | 2     | **Type**       | Transaction ID (see full list in protocol spec – e.g. 0x006B = *Login*).                                                                                                                      |
+| 4      | 4     | **ID**         | Client-chosen non-zero number. Replies **must echo** the same value. Allows out-of-order matching.                                                                                            |
+| 8      | 4     | **Error code** | Meaningful **only when Is-reply = 1** (0 = success).                                                                                                                                          |
+| 12     | 4     | **Total size** | Entire byte count of the transaction’s parameter block **across all fragments**.                                                                                                              |
+| 16     | 4     | **Data size**  | Size of the parameter bytes **in *this* fragment**. If `Data size < Total size`, further fragments with identical header values follow until the accumulated data length equals `Total size`. |
 
 *Header length = 20 bytes.*
 
@@ -68,18 +62,17 @@ ______________________________________________________________________
 
 If `Data size > 0`, the parameter bytes begin with:
 
-| Offset | Size | Field | Meaning | | -----: | ---- | --------------- |
---------------------------------------------- | | 0 | 2 | **Param-count** |
-Number of field/value pairs in this fragment. |
+| Offset | Size | Field           | Meaning                                       |
+| -----: | ---- | --------------- | --------------------------------------------- |
+| 0      | 2    | **Param-count** | Number of field/value pairs in this fragment. |
 
 Immediately afterwards, *Param-count* **records** follow:
 
-| Offset | Size | Field | Meaning | | -----: | ------------ | ---------- |
-\-----------------------------------------------------------------------------------------
-| | 0 | 2 | Field ID | See master field-ID table (e.g. 0x0066 = *User Name*). |
-| 2 | 2 | Field size | Length of the data portion in bytes. | | 4 | *Field size*
-| Field data | Raw value. Interpretation rules: integer (16- or 32-bit), ASCII
-string, or opaque binary. |
+| Offset | Size         | Field      | Meaning                                                                                   |
+| -----: | ------------ | ---------- | ----------------------------------------------------------------------------------------- |
+| 0      | 2            | Field ID   | See master field-ID table (e.g. 0x0066 = *User Name*).                                    |
+| 2      | 2            | Field size | Length of the data portion in bytes.                                                      |
+| 4      | *Field size* | Field data | Raw value. Interpretation rules: integer (16- or 32-bit), ASCII string, or opaque binary. |
 
 Field IDs never repeat within a single transaction. Integers are unsigned; the
 sender may use 16-bit encoding if the value ≤ 0xFFFF, otherwise 32-bit.
@@ -112,11 +105,20 @@ MONTH_SECS[wMonth - 1] +
 `MONTH_SECS` is a table containing the cumulative seconds at the start of each
 month:
 
-| Month | Seconds | |-----------|--------:| | January | 0 | | February |
-2,678,400 | | March | 5,097,600 | | April | 7,776,000 | | May | 10,368,000 | |
-June | 13,046,400 | | July | 15,638,400 | | August | 18,316,800 | | September |
-20,995,200 | | October | 23,587,200 | | November | 26,265,600 | | December |
-28,857,600 |
+| Month       | Seconds    |
+| ----------- | ---------: |
+| January     | 0          |
+| February    | 2,678,400  |
+| March       | 5,097,600  |
+| April       | 7,776,000  |
+| May         | 10,368,000 |
+| June        | 13,046,400 |
+| July        | 15,638,400 |
+| August      | 18,316,800 |
+| September   | 20,995,200 |
+| October     | 23,587,200 |
+| November    | 26,265,600 |
+| December    | 28,857,600 |
 
 The year and milliseconds fields are copied directly from the original timestamp
 structure.
@@ -149,18 +151,23 @@ ______________________________________________________________________
 
 ### 5 Worked example (Login)
 
-| Field | Hex value | Comment | | -------- | ----------- |
------------------------- | | Flags | 00 | — | | Is-reply | 00 | Request | | Type
-| 00 6B | 107 decimal – *Login* | | ID | 00 00 01 27 | Arbitrary (295) | | Error
-| 00 00 00 00 | Always zero in a request | | Total | 00 00 00 14 | 20 bytes of
-parameters | | Data | 00 00 00 14 | All in one fragment |
+| Field    | Hex value   | Comment                  |
+| -------- | ----------- | ------------------------ |
+| Flags    | 00          | —                        |
+| Is-reply | 00          | Request                  |
+| Type     | 00 6B       | 107 decimal – *Login*    |
+| ID       | 00 00 01 27 | Arbitrary (295)          |
+| Error    | 00 00 00 00 | Always zero in a request |
+| Total    | 00 00 00 14 | 20 bytes of parameters   |
+| Data     | 00 00 00 14 | All in one fragment      |
 
 Parameter block:
 
-| Field ID | Size | Data (hex) | Meaning | | -------------------: | ---: |
--------------- | ------------ | | 0069 (User Login) | 0005 | 61 64 6D 69 6E |
-“admin” | | 006A (User Password) | 0000 | — | empty | | 00A0 (Version) | 0002 |
-00 97 | 0x0097 (151) |
+| Field ID             | Size | Data (hex)     | Meaning      |
+| -------------------: | ---: | -------------- | ------------ |
+| 0069 (User Login)    | 0005 | 61 64 6D 69 6E | “admin”      |
+| 006A (User Password) | 0000 | —              | empty        |
+| 00A0 (Version)       | 0002 | 00 97          | 0x0097 (151) |
 
 Total frame length: 40 bytes. The server’s reply echoes `ID = 0x00000127`, sets
 **Is-reply = 1**, inserts its own parameter list, and may set `Error code` if
@@ -338,18 +345,46 @@ bits fall into three categories: *general* (user-level), *folder* (per-folder)
 and *bundle* (logical grouping). The meaning of each bit is listed below so
 implementations can translate the bitmap into permissions:
 
-| Bit | Privilege | | ---:| --------- | | 0 | Delete File | | 1 | Upload File |
-| 2 | Download File | | 3 | Rename File | | 4 | Move File | | 5 | Create Folder
-| | 6 | Delete Folder | | 7 | Rename Folder | | 8 | Move Folder | | 9 | Read
-Chat | | 10 | Send Chat | | 11 | Open Chat | | 12 | Close Chat | | 13 | Show in
-List | | 14 | Create User | | 15 | Delete User | | 16 | Open User | | 17 |
-Modify User | | 18 | Change Own Password | | 19 | Send Private Message | | 20 |
-News Read Article | | 21 | News Post Article | | 22 | Disconnect User | | 23 |
-Cannot be Disconnected | | 24 | Get Client Info | | 25 | Upload Anywhere | | 26
-| Any Name | | 27 | No Agreement | | 28 | Set File Comment | | 29 | Set Folder
-Comment | | 30 | View Drop Boxes | | 31 | Make Alias | | 32 | Broadcast | | 33 |
-News Delete Article | | 34 | News Create Category | | 35 | News Delete Category
-| | 36 | News Create Folder | | 37 | News Delete Folder |
+| Bit  | Privilege              |
+| ---: | ---------------------- |
+| 0    | Delete File            |
+| 1    | Upload File            |
+| 2    | Download File          |
+| 3    | Rename File            |
+| 4    | Move File              |
+| 5    | Create Folder          |
+| 6    | Delete Folder          |
+| 7    | Rename Folder          |
+| 8    | Move Folder            |
+| 9    | Read Chat              |
+| 10   | Send Chat              |
+| 11   | Open Chat              |
+| 12   | Close Chat             |
+| 13   | Show in List           |
+| 14   | Create User            |
+| 15   | Delete User            |
+| 16   | Open User              |
+| 17   | Modify User            |
+| 18   | Change Own Password    |
+| 19   | Send Private Message   |
+| 20   | News Read Article      |
+| 21   | News Post Article      |
+| 22   | Disconnect User        |
+| 23   | Cannot be Disconnected |
+| 24   | Get Client Info        |
+| 25   | Upload Anywhere        |
+| 26   | Any Name               |
+| 27   | No Agreement           |
+| 28   | Set File Comment       |
+| 29   | Set Folder Comment     |
+| 30   | View Drop Boxes        |
+| 31   | Make Alias             |
+| 32   | Broadcast              |
+| 33   | News Delete Article    |
+| 34   | News Create Category   |
+| 35   | News Delete Category   |
+| 36   | News Create Folder     |
+| 37   | News Delete Folder     |
 
 ### Retrieving the User List (Transaction 300) – Client Initiates
 
