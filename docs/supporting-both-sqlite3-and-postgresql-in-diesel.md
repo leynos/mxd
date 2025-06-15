@@ -220,7 +220,7 @@ SQLite paths.
 - When using PostgreSQL, ensure the server version is **14 or greater**. The
   application performs a runtime check and fails on older versions.
 
-With that structure you can
+With that structure, you can:
 `cargo build --no-default-features --features postgres` for the version that
 targets *postgresql-embedded* (or a real server) and
 `cargo build --features sqlite` for the lightweight single-file deployment,

@@ -44,15 +44,15 @@ ______________________________________________________________________
 Every request **and** reply after the handshake is wrapped in a fixed-length
 header followed by an optional parameter block.
 
-| Offset | Size | Field          | Notes                                                                                                                                                                                         |
-| -----: | ---- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0      | 1    | **Flags**      | Reserved – **always 0** for v 1.8.5.                                                                                                                                                          |
-| 1      | 1    | **Is-reply**   | **0 = request**, **1 = reply**.                                                                                                                                                               |
-| 2      | 2    | **Type**       | Transaction ID (see full list in protocol spec – e.g. 0x006B = *Login*).                                                                                                                      |
-| 4      | 4    | **ID**         | Client-chosen non-zero number. Replies **must echo** the same value. Allows out-of-order matching.                                                                                            |
-| 8      | 4    | **Error code** | Meaningful **only when Is-reply = 1** (0 = success).                                                                                                                                          |
-| 12     | 4    | **Total size** | Entire byte count of the transaction’s parameter block **across all fragments**.                                                                                                              |
-| 16     | 4    | **Data size**  | Size of the parameter bytes **in *this* fragment**. If `Data size < Total size`, further fragments with identical header values follow until the accumulated data length equals `Total size`. |
+| Offset | Size  | Field          | Notes                                                                                                                                                                                         |
+| -----: | ----: | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0      | 1     | **Flags**      | Reserved – **always 0** for v 1.8.5.                                                                                                                                                          |
+| 1      | 1     | **Is-reply**   | **0 = request**, **1 = reply**.                                                                                                                                                               |
+| 2      | 2     | **Type**       | Transaction ID (see full list in protocol spec – e.g. 0x006B = *Login*).                                                                                                                      |
+| 4      | 4     | **ID**         | Client-chosen non-zero number. Replies **must echo** the same value. Allows out-of-order matching.                                                                                            |
+| 8      | 4     | **Error code** | Meaningful **only when Is-reply = 1** (0 = success).                                                                                                                                          |
+| 12     | 4     | **Total size** | Entire byte count of the transaction’s parameter block **across all fragments**.                                                                                                              |
+| 16     | 4     | **Data size**  | Size of the parameter bytes **in *this* fragment**. If `Data size < Total size`, further fragments with identical header values follow until the accumulated data length equals `Total size`. |
 
 *Header length = 20 bytes.*
 
