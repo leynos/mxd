@@ -1,16 +1,18 @@
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::{
+    io::{Read, Write},
+    net::TcpStream,
+};
 
 use diesel::prelude::*;
-use diesel_async::AsyncConnection;
-use diesel_async::RunQueryDsl;
-use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
-use mxd::db::DbConnection;
-use mxd::db::create_category;
-use mxd::field_id::FieldId;
-use mxd::models::NewCategory;
-use mxd::transaction::{FrameHeader, Transaction, decode_params, encode_params};
-use mxd::transaction_type::TransactionType;
+use diesel_async::{AsyncConnection, RunQueryDsl};
+use mxd::{
+    commands::NEWS_ERR_PATH_UNSUPPORTED,
+    db::{DbConnection, create_category},
+    field_id::FieldId,
+    models::NewCategory,
+    transaction::{FrameHeader, Transaction, decode_params, encode_params},
+    transaction_type::TransactionType,
+};
 use test_util::{TestServer, handshake, setup_news_db, with_db};
 
 #[test]

@@ -1,10 +1,11 @@
 use cfg_if::cfg_if;
 use diesel::prelude::*;
-use diesel_async::RunQueryDsl;
-use diesel_async::pooled_connection::AsyncDieselConnectionManager;
-use diesel_async::pooled_connection::bb8::Pool;
 #[cfg(feature = "sqlite")]
 use diesel_async::sync_connection_wrapper::SyncConnectionWrapper;
+use diesel_async::{
+    RunQueryDsl,
+    pooled_connection::{AsyncDieselConnectionManager, bb8::Pool},
+};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
 cfg_if! {
@@ -39,9 +40,7 @@ cfg_if! {
 ///
 /// ```no_run
 /// use mxd::db::establish_pool;
-/// async fn example() {
-///     let pool = establish_pool("sqlite::memory:").await;
-/// }
+/// async fn example() { let pool = establish_pool("sqlite::memory:").await; }
 /// ```
 pub async fn establish_pool(database_url: &str) -> DbPool {
     let config = AsyncDieselConnectionManager::<DbConnection>::new(database_url);
@@ -148,7 +147,8 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
 #[must_use = "handle the result"]
 /// Checks that the connected `PostgreSQL` server version is at least 14.
 ///
-/// Executes a version query and parses the result, returning an error if the version is unsupported or cannot be determined.
+/// Executes a version query and parses the result, returning an error if the version is unsupported
+/// or cannot be determined.
 ///
 /// # Returns
 ///
@@ -167,9 +167,7 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
 pub async fn audit_postgres_features(
     conn: &mut diesel_async::AsyncPgConnection,
 ) -> QueryResult<()> {
-    use diesel::result::Error as DieselError;
-    use diesel::sql_query;
-    use diesel::sql_types::Text;
+    use diesel::{result::Error as DieselError, sql_query, sql_types::Text};
 
     #[derive(QueryableByName)]
     struct PgVersion {
@@ -233,11 +231,16 @@ pub async fn create_user(
     diesel::insert_into(users).values(user).execute(conn).await
 }
 
+use thiserror::Error;
+
 use crate::news_path::{
-    BUNDLE_BODY_SQL, BUNDLE_STEP_SQL, CATEGORY_BODY_SQL, CATEGORY_STEP_SQL, build_path_cte,
+    BUNDLE_BODY_SQL,
+    BUNDLE_STEP_SQL,
+    CATEGORY_BODY_SQL,
+    CATEGORY_STEP_SQL,
+    build_path_cte,
     prepare_path,
 };
-use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PathLookupError {
@@ -253,8 +256,10 @@ async fn bundle_id_from_path(
     conn: &mut DbConnection,
     path: &str,
 ) -> Result<Option<i32>, PathLookupError> {
-    use diesel::sql_query;
-    use diesel::sql_types::{Integer, Text};
+    use diesel::{
+        sql_query,
+        sql_types::{Integer, Text},
+    };
 
     #[derive(QueryableByName)]
     struct BunId {
@@ -288,8 +293,7 @@ pub async fn list_names_at_path(
     conn: &mut DbConnection,
     path: Option<&str>,
 ) -> Result<Vec<String>, PathLookupError> {
-    use crate::schema::news_bundles::dsl as b;
-    use crate::schema::news_categories::dsl as c;
+    use crate::schema::{news_bundles::dsl as b, news_categories::dsl as c};
     let bundle_id = if let Some(p) = path {
         bundle_id_from_path(conn, p).await?
     } else {
@@ -399,8 +403,10 @@ async fn category_id_from_path(
     conn: &mut DbConnection,
     path: &str,
 ) -> Result<i32, PathLookupError> {
-    use diesel::sql_query;
-    use diesel::sql_types::{Integer, Text};
+    use diesel::{
+        sql_query,
+        sql_types::{Integer, Text},
+    };
 
     #[derive(QueryableByName)]
     struct CatId {
@@ -464,9 +470,10 @@ pub async fn create_root_article(
     data_flavor: &str,
     data: &str,
 ) -> Result<i32, PathLookupError> {
-    use crate::schema::news_articles::dsl as a;
     use chrono::Utc;
     use diesel_async::AsyncConnection;
+
+    use crate::schema::news_articles::dsl as a;
 
     conn.transaction::<_, PathLookupError, _>(|conn| {
         Box::pin(async move {
@@ -569,8 +576,7 @@ pub async fn list_files_for_user(
     conn: &mut DbConnection,
     uid: i32,
 ) -> QueryResult<Vec<crate::models::FileEntry>> {
-    use crate::schema::file_acl::dsl as a;
-    use crate::schema::files::dsl as f;
+    use crate::schema::{file_acl::dsl as a, files::dsl as f};
     f::files
         .inner_join(a::file_acl.on(a::file_id.eq(f::id)))
         .filter(a::user_id.eq(uid))
@@ -582,10 +588,11 @@ pub async fn list_files_for_user(
 
 #[cfg(test)]
 mod tests {
+    use diesel_async::AsyncConnection;
+
     use super::*;
     #[cfg(feature = "sqlite")]
     use crate::models::{NewBundle, NewCategory, NewUser};
-    use diesel_async::AsyncConnection;
 
     #[cfg(feature = "sqlite")]
     #[tokio::test]

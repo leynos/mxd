@@ -1,7 +1,8 @@
-use crate::schema::{file_acl, files};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use crate::schema::{file_acl, files};
 
 #[derive(Queryable, Serialize, Deserialize, Debug)]
 pub struct User {

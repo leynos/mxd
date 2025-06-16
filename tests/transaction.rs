@@ -1,13 +1,11 @@
-use mxd::field_id;
-use mxd::transaction::*;
-use mxd::transaction_type;
+use mxd::{field_id, transaction::*, transaction_type};
 use tokio::io::{AsyncWriteExt, duplex};
 
 fn build_tx() -> Transaction {
     let mut payload = Vec::new();
     payload.extend_from_slice(&[0x00, 0x02]);
-    payload.extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0xFF]);
-    payload.extend_from_slice(&[0x00, 0x02, 0x00, 0x02, 0xAA, 0xBB]);
+    payload.extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0xff]);
+    payload.extend_from_slice(&[0x00, 0x02, 0x00, 0x02, 0xaa, 0xbb]);
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -102,7 +100,7 @@ async fn mismatched_sizes() {
 async fn duplicate_field_error() {
     let mut tx = build_tx();
     tx.payload
-        .extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0xEE]);
+        .extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0xee]);
     tx.payload[0] = 0x00;
     tx.payload[1] = 0x03;
     tx.header.total_size = tx.payload.len() as u32;
@@ -131,8 +129,8 @@ async fn writer_payload_too_large() {
     payload.extend_from_slice(&count.to_be_bytes());
     for i in 0..count {
         payload.extend_from_slice(&(i + 1).to_be_bytes());
-        payload.extend_from_slice(&0xFFFFu16.to_be_bytes());
-        payload.extend(vec![0u8; 0xFFFF]);
+        payload.extend_from_slice(&0xffffu16.to_be_bytes());
+        payload.extend(vec![0u8; 0xffff]);
     }
     let header = FrameHeader {
         flags: 0,

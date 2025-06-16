@@ -1,7 +1,13 @@
 use argon2::{
     Argon2,
-    password_hash::Error,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+    password_hash::{
+        Error,
+        PasswordHash,
+        PasswordHasher,
+        PasswordVerifier,
+        SaltString,
+        rand_core::OsRng,
+    },
 };
 
 /// Hash a password using the provided Argon2 instance.
@@ -23,8 +29,9 @@ pub(crate) fn verify_password(hash: &str, pw: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{hash_password, verify_password};
     use argon2::Argon2;
+
+    use super::{hash_password, verify_password};
 
     #[test]
     fn test_hash_password() {

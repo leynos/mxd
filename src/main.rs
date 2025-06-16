@@ -1,39 +1,40 @@
 #![allow(non_snake_case)]
-use anyhow::Result;
-use std::io;
-use std::net::SocketAddr;
+use std::{io, net::SocketAddr};
 
+use anyhow::Result;
 use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 use clap::{Args, Parser, Subcommand};
 use clap_dispatch::clap_dispatch;
+use diesel_async::AsyncConnection;
+#[cfg(feature = "postgres")]
+use mxd::db::audit_postgres_features;
+#[cfg(feature = "sqlite")]
+use mxd::db::audit_sqlite_features;
+use mxd::{
+    db::{DbConnection, DbPool, apply_migrations, create_user, establish_pool},
+    handler::{Context as HandlerContext, Session, handle_request},
+    models,
+    protocol,
+    transaction::{TransactionError, TransactionReader, TransactionWriter},
+    users::hash_password,
+};
 use ortho_config::{OrthoConfig, load_subcommand_config, merge_cli_over_defaults};
 use serde::{Deserialize, Serialize};
+use tokio::{
+    io::{self as tokio_io, AsyncReadExt},
+    net::{TcpListener, TcpStream},
+    sync::watch,
+    task::JoinSet,
+    time::timeout,
+};
 #[cfg(feature = "postgres")]
 use url::Url;
 
-use tokio::io::{self as tokio_io, AsyncReadExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::watch;
-use tokio::task::JoinSet;
-use tokio::time::timeout;
-
-use diesel_async::AsyncConnection;
-use mxd::db::{DbConnection, DbPool, apply_migrations, create_user, establish_pool};
-
-#[cfg(feature = "sqlite")]
-use mxd::db::audit_sqlite_features;
-
-#[cfg(feature = "postgres")]
-use mxd::db::audit_postgres_features;
-use mxd::handler::{Context as HandlerContext, Session, handle_request};
-use mxd::models;
-use mxd::protocol;
-use mxd::transaction::{TransactionError, TransactionReader, TransactionWriter};
-use mxd::users::hash_password;
-
 /// Waits for a shutdown signal, completing when termination is requested.
 ///
-/// On Unix platforms, listens for either SIGTERM or Ctrl-C. On non-Unix platforms, listens for Ctrl-C only. The function returns when any of these signals are received, allowing for graceful shutdown of the application.
+/// On Unix platforms, listens for either SIGTERM or Ctrl-C. On non-Unix platforms, listens for
+/// Ctrl-C only. The function returns when any of these signals are received, allowing for graceful
+/// shutdown of the application.
 ///
 /// # Examples
 ///
@@ -75,13 +76,17 @@ enum Commands {
 }
 
 impl Run for CreateUserArgs {
-    /// Creates a new user with the specified username and password, hashing the password securely and storing the user in the database.
+    /// Creates a new user with the specified username and password, hashing the password securely
+    /// and storing the user in the database.
     ///
-    /// Validates that both username and password are provided, hashes the password using Argon2id with parameters from the configuration, runs database migrations if necessary, and inserts the new user record. Prints a confirmation message upon successful creation.
+    /// Validates that both username and password are provided, hashes the password using Argon2id
+    /// with parameters from the configuration, runs database migrations if necessary, and inserts
+    /// the new user record. Prints a confirmation message upon successful creation.
     ///
     /// # Errors
     ///
-    /// Returns an error if required arguments are missing, password hashing fails, database connection or migrations fail, or user creation is unsuccessful.
+    /// Returns an error if required arguments are missing, password hashing fails, database
+    /// connection or migrations fail, or user creation is unsuccessful.
     fn run(self, cfg: &AppConfig) -> Result<()> {
         tokio::runtime::Handle::current().block_on(async {
             let username = self
@@ -204,7 +209,7 @@ async fn create_pool(database: &str) -> DbPool {
 /// # Examples
 ///
 /// ```
-/// let pool = setup_database("mxd.db").await?;
+/// let pool = setup_database("mxd.db").await?; 
 /// ```
 async fn setup_database(database: &str) -> Result<DbPool> {
     let pool = create_pool(database).await;
@@ -264,9 +269,10 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
 
 /// Handles a single client connection, performing handshake and processing transactions.
 ///
-/// Performs a protocol handshake with the client, responding to handshake errors or timeouts as appropriate.
-/// After a successful handshake, enters a loop to read and process transactions from the client, sending responses back.
-/// Gracefully handles client disconnects and server shutdown signals.
+/// Performs a protocol handshake with the client, responding to handshake errors or timeouts as
+/// appropriate. After a successful handshake, enters a loop to read and process transactions from
+/// the client, sending responses back. Gracefully handles client disconnects and server shutdown
+/// signals.
 ///
 /// # Arguments
 ///
@@ -277,7 +283,8 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` on normal termination, or an error if a protocol or I/O error occurs outside of expected disconnects.
+/// Returns `Ok(())` on normal termination, or an error if a protocol or I/O error occurs outside of
+/// expected disconnects.
 ///
 /// # Examples
 ///
@@ -355,8 +362,9 @@ async fn handle_client(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use figment::Jail;
+
+    use super::*;
 
     #[test]
     fn env_config_loading() {

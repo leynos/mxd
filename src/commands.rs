@@ -1,16 +1,27 @@
 use std::net::SocketAddr;
 
-use crate::db::{DbConnection, DbPool, PathLookupError, list_article_titles, list_names_at_path};
-use crate::field_id::FieldId;
-use crate::header_util::reply_header;
-use crate::login::handle_login;
-use crate::transaction::{
-    FrameHeader, Transaction, decode_params, decode_params_map, encode_params, encode_vec_params,
-    first_param_i32, first_param_string, required_param_i32, required_param_string,
-};
-use crate::transaction_type::TransactionType;
 use futures_util::future::BoxFuture;
 use tracing::error;
+
+use crate::{
+    db::{DbConnection, DbPool, PathLookupError, list_article_titles, list_names_at_path},
+    field_id::FieldId,
+    header_util::reply_header,
+    login::handle_login,
+    transaction::{
+        FrameHeader,
+        Transaction,
+        decode_params,
+        decode_params_map,
+        encode_params,
+        encode_vec_params,
+        first_param_i32,
+        first_param_string,
+        required_param_i32,
+        required_param_string,
+    },
+    transaction_type::TransactionType,
+};
 
 /// Error code used when the requested news path is unsupported.
 pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 1;

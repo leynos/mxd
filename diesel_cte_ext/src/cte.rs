@@ -1,6 +1,8 @@
-use diesel::backend::Backend;
-use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
-use diesel::result::QueryResult;
+use diesel::{
+    backend::Backend,
+    query_builder::{AstPass, Query, QueryFragment, QueryId},
+    result::QueryResult,
+};
 
 fn push_identifiers<DB>(out: &mut AstPass<'_, '_, DB>, ids: &[&'static str]) -> QueryResult<()>
 where

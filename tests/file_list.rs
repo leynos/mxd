@@ -1,10 +1,13 @@
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::{
+    io::{Read, Write},
+    net::TcpStream,
+};
 
-use mxd::field_id::FieldId;
-
-use mxd::transaction::{FrameHeader, Transaction, decode_params, encode_params};
-use mxd::transaction_type::TransactionType;
+use mxd::{
+    field_id::FieldId,
+    transaction::{FrameHeader, Transaction, decode_params, encode_params},
+    transaction_type::TransactionType,
+};
 use test_util::{TestServer, handshake, setup_files_db};
 
 #[test]

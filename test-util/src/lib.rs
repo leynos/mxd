@@ -1,15 +1,15 @@
-use std::io::{BufRead, BufReader};
-use std::net::TcpListener;
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
-
-use tempfile::TempDir;
-
 #[cfg(feature = "postgres")]
 use std::error::Error as StdError;
+use std::{
+    io::{BufRead, BufReader},
+    net::TcpListener,
+    process::{Child, Command, Stdio},
+    time::{Duration, Instant},
+};
 
 #[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
+use tempfile::TempDir;
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
 compile_error!("Choose either sqlite or postgres, not both");
@@ -110,7 +110,8 @@ where
 /// let db_url = setup_sqlite(&temp_dir, |path| {
 ///     // Custom setup logic, e.g., run migrations
 ///     Ok(())
-/// }).unwrap();
+/// })
+/// .unwrap();
 /// assert!(db_url.ends_with("mxd.db"));
 /// ```
 #[cfg(feature = "sqlite")]
@@ -175,7 +176,9 @@ impl TestServer {
 
     /// Starts the test server after running a setup function on a temporary database.
     ///
-    /// The setup function is called with the database URL before the server is launched, allowing initialisation or seeding of the database for integration tests. The server is started on a random available port.
+    /// The setup function is called with the database URL before the server is launched, allowing
+    /// initialisation or seeding of the database for integration tests. The server is started on a
+    /// random available port.
     ///
     /// # Parameters
     /// - `manifest_path`: Path to the Cargo manifest for the server binary.
@@ -185,7 +188,8 @@ impl TestServer {
     /// Returns a `TestServer` instance managing the server process and test database.
     ///
     /// # Errors
-    /// Returns an error if temporary directory creation, database setup, server startup, or protocol handshake fails.
+    /// Returns an error if temporary directory creation, database setup, server startup, or
+    /// protocol handshake fails.
     ///
     /// # Examples
     ///
@@ -216,9 +220,12 @@ impl TestServer {
     }
 
     #[cfg(feature = "sqlite")]
-    /// Launches the `mxd` server on a random available port with the specified database URL for integration testing.
+    /// Launches the `mxd` server on a random available port with the specified database URL for
+    /// integration testing.
     ///
-    /// Binds a TCP listener to obtain a free port, starts the server process with the given manifest path and database URL, waits for the server to become ready, and returns a `TestServer` instance managing the process and optional temporary directory.
+    /// Binds a TCP listener to obtain a free port, starts the server process with the given
+    /// manifest path and database URL, waits for the server to become ready, and returns a
+    /// `TestServer` instance managing the process and optional temporary directory.
     ///
     /// # Returns
     ///
@@ -226,13 +233,19 @@ impl TestServer {
     ///
     /// # Errors
     ///
-    /// Returns an error if binding the port, spawning the server process, or waiting for server readiness fails.
+    /// Returns an error if binding the port, spawning the server process, or waiting for server
+    /// readiness fails.
     ///
     /// # Examples
     ///
     /// ```
     /// let temp_dir = tempfile::TempDir::new().unwrap();
-    /// let server = TestServer::launch("path/to/Cargo.toml", "sqlite://test.db".to_string(), Some(temp_dir)).unwrap();
+    /// let server = TestServer::launch(
+    ///     "path/to/Cargo.toml",
+    ///     "sqlite://test.db".to_string(),
+    ///     Some(temp_dir),
+    /// )
+    /// .unwrap();
     /// assert!(server.port() > 0);
     /// ```
     fn launch(
@@ -259,7 +272,10 @@ impl TestServer {
     #[cfg(feature = "postgres")]
     /// Launches a test instance of the `mxd` server using the specified database and configuration.
     ///
-    /// Binds the server to a random available local port, starts the server process with the provided manifest path and database URL, and waits for the server to become ready. Optionally manages a temporary directory for SQLite and an embedded PostgreSQL instance if used.
+    /// Binds the server to a random available local port, starts the server process with the
+    /// provided manifest path and database URL, and waits for the server to become ready.
+    /// Optionally manages a temporary directory for SQLite and an embedded PostgreSQL instance if
+    /// used.
     ///
     /// # Returns
     ///
@@ -267,7 +283,8 @@ impl TestServer {
     ///
     /// # Errors
     ///
-    /// Returns an error if binding the port, spawning the server process, or waiting for server readiness fails.
+    /// Returns an error if binding the port, spawning the server process, or waiting for server
+    /// readiness fails.
     ///
     /// # Examples
     ///
@@ -299,9 +316,7 @@ impl TestServer {
     }
 
     /// Return the port the server is bound to.
-    pub fn port(&self) -> u16 {
-        self.port
-    }
+    pub fn port(&self) -> u16 { self.port }
 
     /// Return the database connection URL used by the server.
     ///
@@ -317,11 +332,9 @@ impl TestServer {
     #[cfg(feature = "postgres")]
     /// Returns true if the server is using an embedded PostgreSQL instance.
     ///
-    /// This indicates that the test server started and manages its own embedded PostgreSQL database.
-    /// Returns false if an external PostgreSQL instance is used instead.
-    pub fn uses_embedded_postgres(&self) -> bool {
-        self.pg.is_some()
-    }
+    /// This indicates that the test server started and manages its own embedded PostgreSQL
+    /// database. Returns false if an external PostgreSQL instance is used instead.
+    pub fn uses_embedded_postgres(&self) -> bool { self.pg.is_some() }
 }
 
 impl Drop for TestServer {
@@ -343,8 +356,10 @@ impl Drop for TestServer {
     }
 }
 
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::{
+    io::{Read, Write},
+    net::TcpStream,
+};
 
 /// Send a valid protocol handshake and read the server reply.
 pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
@@ -367,18 +382,18 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 }
 
 use chrono::{DateTime, Utc};
-
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
-use mxd::db::{
-    DbConnection, add_file_acl, apply_migrations, create_category, create_file, create_user,
+use mxd::{
+    db::{DbConnection, add_file_acl, apply_migrations, create_category, create_file, create_user},
+    models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser},
+    users::hash_password,
 };
-use mxd::models::{NewArticle, NewCategory, NewFileAcl, NewFileEntry, NewUser};
-use mxd::users::hash_password;
 
 /// Executes an asynchronous database setup function within a temporary Tokio runtime.
 ///
-/// Establishes a database connection, runs migrations, and invokes the provided async closure with the connection. Suitable for preparing test databases synchronously from non-async contexts.
+/// Establishes a database connection, runs migrations, and invokes the provided async closure with
+/// the connection. Suitable for preparing test databases synchronously from non-async contexts.
 ///
 /// # Parameters
 /// - `db`: Database connection string.
@@ -537,8 +552,10 @@ pub fn setup_news_categories_root_db(db: &str) -> Result<(), Box<dyn std::error:
 pub fn setup_news_categories_nested_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
     with_db(db, |conn| {
         Box::pin(async move {
-            use mxd::db::{create_bundle, create_category};
-            use mxd::models::NewBundle;
+            use mxd::{
+                db::{create_bundle, create_category},
+                models::NewBundle,
+            };
 
             let root_id = insert_root_bundle(conn).await?;
 
@@ -565,8 +582,7 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), Box<dyn std::erro
 }
 
 async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, Box<dyn std::error::Error>> {
-    use mxd::db::create_bundle;
-    use mxd::models::NewBundle;
+    use mxd::{db::create_bundle, models::NewBundle};
 
     let id = create_bundle(
         conn,

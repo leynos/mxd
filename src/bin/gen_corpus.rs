@@ -1,10 +1,14 @@
-use std::fs::{self, File};
-use std::io::Write;
-use std::path::Path;
+use std::{
+    fs::{self, File},
+    io::Write,
+    path::Path,
+};
 
-use mxd::field_id::FieldId;
-use mxd::transaction::{FrameHeader, Transaction, encode_params};
-use mxd::transaction_type::TransactionType;
+use mxd::{
+    field_id::FieldId,
+    transaction::{FrameHeader, Transaction, encode_params},
+    transaction_type::TransactionType,
+};
 
 const CORPUS_DIR: &str = "fuzz/corpus";
 

@@ -1,11 +1,14 @@
 use std::net::SocketAddr;
 
-use crate::db::{DbPool, get_user_by_name};
-use crate::field_id::FieldId;
-use crate::header_util::reply_header;
-use crate::transaction::{FrameHeader, Transaction, encode_params};
-use crate::users::verify_password;
 use tracing::{info, warn};
+
+use crate::{
+    db::{DbPool, get_user_by_name},
+    field_id::FieldId,
+    header_util::reply_header,
+    transaction::{FrameHeader, Transaction, encode_params},
+    users::verify_password,
+};
 
 /// Handle a user login request.
 ///
