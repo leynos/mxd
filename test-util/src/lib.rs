@@ -221,7 +221,7 @@ impl Drop for PostgresTestDb {
 ///
 /// ```rust
 /// use rstest::rstest;
-/// use test_util::{postgres_db, PostgresTestDb};
+/// use test_util::{PostgresTestDb, postgres_db};
 ///
 /// #[rstest]
 /// fn my_test(postgres_db: PostgresTestDb) {
