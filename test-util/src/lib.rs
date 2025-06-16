@@ -150,8 +150,12 @@ fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> 
 
 fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command {
     let mut cmd = Command::new("cargo");
+    cmd.arg("run");
+    #[cfg(feature = "postgres")]
+    cmd.args(["--no-default-features", "--features", "postgres"]);
+    #[cfg(feature = "sqlite")]
+    cmd.args(["--features", "sqlite"]);
     cmd.args([
-        "run",
         "--bin",
         "mxd",
         "--manifest-path",
