@@ -8,10 +8,16 @@ use std::{
 };
 
 #[cfg(feature = "postgres")]
+use nix::unistd::geteuid;
+#[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
+#[cfg(feature = "postgres")]
+use postgresql_embedded::Settings;
 #[cfg(feature = "postgres")]
 use rstest::fixture;
 use tempfile::TempDir;
+#[cfg(feature = "postgres")]
+use tempfile::tempdir;
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
 compile_error!("Choose either sqlite or postgres, not both");
@@ -42,8 +48,37 @@ where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
     let fut = async {
-        let mut pg = PostgreSQL::default();
-        if let Err(e) = pg.setup().await {
+        use nix::unistd::geteuid;
+        use postgresql_embedded::Settings;
+
+        let mut settings = Settings::default();
+        let data_dir = tempfile::tempdir()?.into_path();
+        settings.data_dir = data_dir.clone();
+        let mut pg = PostgreSQL::new(settings.clone());
+
+        if geteuid().is_root() {
+            let mut cmd = std::process::Command::new("cargo");
+            cmd.args([
+                "run",
+                "--bin",
+                "postgres-setup-unpriv",
+                "--manifest-path",
+                "postgres_setup_unpriv/Cargo.toml",
+                "--quiet",
+            ])
+            .env("PG_DATA_DIR", &data_dir)
+            .env("PG_PORT", settings.port.to_string())
+            .env("PG_VERSION_REQ", settings.version.to_string())
+            .env("PG_SUPERUSER", &settings.username)
+            .env("PG_PASSWORD", &settings.password);
+
+            let status = cmd
+                .status()
+                .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
+            if !status.success() {
+                return Err("postgres-setup-unpriv failed".into());
+            }
+        } else if let Err(e) = pg.setup().await {
             let _ = pg.stop().await;
             return Err(format!("preparing embedded PostgreSQL: {e}").into());
         }
@@ -183,7 +218,9 @@ impl PostgresTestDb {
         Ok(Self { url, pg: Some(pg) })
     }
 
-    pub fn uses_embedded(&self) -> bool { self.pg.is_some() }
+    pub fn uses_embedded(&self) -> bool {
+        self.pg.is_some()
+    }
 }
 
 #[cfg(feature = "postgres")]
@@ -470,7 +507,9 @@ impl TestServer {
     }
 
     /// Return the port the server is bound to.
-    pub fn port(&self) -> u16 { self.port }
+    pub fn port(&self) -> u16 {
+        self.port
+    }
 
     /// Return the database connection URL used by the server.
     ///
@@ -488,7 +527,9 @@ impl TestServer {
     ///
     /// This indicates that the test server started and manages its own embedded PostgreSQL
     /// database. Returns false if an external PostgreSQL instance is used instead.
-    pub fn uses_embedded_postgres(&self) -> bool { self.pg.is_some() }
+    pub fn uses_embedded_postgres(&self) -> bool {
+        self.pg.is_some()
+    }
 }
 
 impl Drop for TestServer {
