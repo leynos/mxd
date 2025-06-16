@@ -9,6 +9,8 @@ use std::{
 
 #[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
+#[cfg(feature = "postgres")]
+use rstest::fixture;
 use tempfile::TempDir;
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
@@ -65,37 +67,50 @@ where
 }
 
 #[cfg(feature = "postgres")]
-fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-        let url = value.to_string_lossy();
-        if !url.trim().is_empty() {
-            let url = url.into_owned();
-            setup(&url)?;
-            return Ok((url, None));
-        }
-    }
+fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use postgres::{Client, NoTls};
 
-    let (url, pg) = start_embedded_postgres(setup)?;
-    Ok((url, Some(pg)))
+    let mut client = Client::connect(url, NoTls)?;
+    client.batch_execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")?;
+    Ok(())
 }
 
 #[cfg(feature = "postgres")]
-/// Configure a PostgreSQL database for tests.
-///
-/// This checks the `POSTGRES_TEST_URL` environment variable. If set, the
-/// provided URL is used and no embedded server is started. Otherwise an
-/// embedded PostgreSQL instance is spun up. The given setup callback receives
-/// the connection URL.
-pub fn setup_postgres_for_test<F>(
-    setup: F,
-) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    setup_postgres(setup)
+pub struct PostgresTestDb {
+    /// Connection string for tests.
+    pub url: String,
+    pg: Option<PostgreSQL>,
+}
+
+#[cfg(feature = "postgres")]
+impl PostgresTestDb {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+            let url = value.to_string_lossy().into_owned();
+            reset_postgres_db(&url)?;
+            return Ok(Self { url, pg: None });
+        }
+
+        let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
+        Ok(Self { url, pg: Some(pg) })
+    }
+}
+
+#[cfg(feature = "postgres")]
+impl Drop for PostgresTestDb {
+    fn drop(&mut self) {
+        let _ = reset_postgres_db(&self.url);
+        if let Some(pg) = self.pg.take() {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let _ = rt.block_on(pg.stop());
+        }
+    }
+}
+
+#[cfg(feature = "postgres")]
+#[fixture]
+pub fn postgres_db() -> PostgresTestDb {
+    PostgresTestDb::new().expect("Failed to prepare Postgres test database")
 }
 
 ///
@@ -214,7 +229,14 @@ impl TestServer {
 
         #[cfg(feature = "postgres")]
         {
-            let (db_url, pg) = setup_postgres(setup)?;
+            let (db_url, pg) = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+                let url = value.to_string_lossy().into_owned();
+                reset_postgres_db(&url)?;
+                (url, None)
+            } else {
+                start_embedded_postgres(|url| reset_postgres_db(url))?
+            };
+            setup(&db_url)?;
             return Self::launch(manifest_path, db_url, None, pg);
         }
     }
