@@ -16,6 +16,7 @@ argon2 = { version = "0.5", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
 rstest = "0.18"
+postgres = { version = "0.19", optional = true }
 
 [features]
 default = ["sqlite"]
@@ -25,6 +26,7 @@ postgres = [
     "mxd/postgres",
     "postgresql_embedded",
     "diesel_migrations/postgres",
+    "dep:postgres",
 ]
 sqlite = [
     "diesel/sqlite",
