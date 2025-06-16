@@ -103,6 +103,7 @@ where
 /// reset_postgres_db(db_url)?;
 /// // Database now has a clean public schema
 /// ```
+#[cfg(feature = "postgres")]
 fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     use postgres::{Client, NoTls};
 
@@ -172,7 +173,7 @@ pub struct PostgresTestDb {
 
 #[cfg(feature = "postgres")]
 impl PostgresTestDb {
-    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let url = value.to_string_lossy().into_owned();
             reset_postgres_db(&url)?;
@@ -182,6 +183,8 @@ impl PostgresTestDb {
         let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
         Ok(Self { url, pg: Some(pg) })
     }
+
+    pub fn uses_embedded(&self) -> bool { self.pg.is_some() }
 }
 
 #[cfg(feature = "postgres")]
@@ -221,7 +224,7 @@ impl Drop for PostgresTestDb {
 ///
 /// ```rust
 /// use rstest::rstest;
-/// use test_util::{postgres_db, PostgresTestDb};
+/// use test_util::{PostgresTestDb, postgres_db};
 ///
 /// #[rstest]
 /// fn my_test(postgres_db: PostgresTestDb) {
@@ -363,7 +366,8 @@ impl TestServer {
                 reset_postgres_db(&url)?;
                 (url, None)
             } else {
-                start_embedded_postgres(|url| reset_postgres_db(url))?
+                let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
+                (url, Some(pg))
             };
             setup(&db_url)?;
             return Self::launch(manifest_path, db_url, None, pg);
