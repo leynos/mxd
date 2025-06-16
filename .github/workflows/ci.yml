@@ -38,7 +38,7 @@ jobs:
         with:
           url: postgres://postgres:password@localhost/test
       - name: Format
-        run: rustup component add rustfmt --toolchain nightly-2025-06-10 && cargo +nightly fmt --all -- --check
+        run: rustup component add rustfmt --toolchain nightly-2025-06-10 && cargo +nightly-2025-06-10 fmt --all -- --check
       - name: Lint
         run: cargo clippy --no-default-features --features ${{ matrix.feature }} -- -D warnings
       - name: Test
