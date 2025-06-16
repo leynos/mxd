@@ -66,7 +66,6 @@ where
     Ok((url, pg))
 }
 
-#[cfg(feature = "postgres")]
 /// Resets a PostgreSQL database by dropping and recreating the public schema.
 ///
 /// This function ensures a completely clean database state by removing all tables,
@@ -103,6 +102,7 @@ where
 /// reset_postgres_db(db_url)?;
 /// // Database now has a clean public schema
 /// ```
+#[cfg(feature = "postgres")]
 fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     use postgres::{Client, NoTls};
 
@@ -111,7 +111,6 @@ fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(feature = "postgres")]
 /// RAII-style PostgreSQL test database fixture that ensures clean schema state.
 ///
 /// This struct manages the lifecycle of a PostgreSQL database for testing, automatically
@@ -157,6 +156,7 @@ fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
 ///     // ... test implementation
 /// }
 /// ```
+#[cfg(feature = "postgres")]
 pub struct PostgresTestDb {
     /// PostgreSQL connection URL for the test database.
     ///
@@ -195,8 +195,6 @@ impl Drop for PostgresTestDb {
     }
 }
 
-#[cfg(feature = "postgres")]
-#[fixture]
 /// Test fixture that provides a clean PostgreSQL database for each test.
 ///
 /// This fixture creates a `PostgresTestDb` instance that manages database lifecycle
@@ -221,7 +219,7 @@ impl Drop for PostgresTestDb {
 ///
 /// ```rust
 /// use rstest::rstest;
-/// use test_util::{postgres_db, PostgresTestDb};
+/// use test_util::{PostgresTestDb, postgres_db};
 ///
 /// #[rstest]
 /// fn my_test(postgres_db: PostgresTestDb) {
@@ -234,6 +232,8 @@ impl Drop for PostgresTestDb {
 /// ## Panics
 ///
 /// Panics if database setup fails, which indicates a fundamental testing environment issue.
+#[cfg(feature = "postgres")]
+#[fixture]
 pub fn postgres_db() -> PostgresTestDb {
     PostgresTestDb::new().expect("Failed to prepare Postgres test database")
 }
