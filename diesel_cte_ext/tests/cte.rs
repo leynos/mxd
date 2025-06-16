@@ -1,11 +1,8 @@
-use diesel::Connection;
-use diesel::dsl::sql;
-use diesel::sql_types::Integer;
+use diesel::{Connection, dsl::sql, sql_types::Integer};
 use diesel_cte_ext::with_recursive;
 
 fn sqlite_sync() -> Vec<i32> {
-    use diesel::RunQueryDsl;
-    use diesel::sqlite::SqliteConnection;
+    use diesel::{RunQueryDsl, sqlite::SqliteConnection};
     let mut conn = SqliteConnection::establish(":memory:").unwrap();
     with_recursive::<diesel::sqlite::Sqlite, _, _, _>(
         "t",
@@ -20,8 +17,11 @@ fn sqlite_sync() -> Vec<i32> {
 
 async fn sqlite_async() -> Vec<i32> {
     use diesel::sqlite::SqliteConnection;
-    use diesel_async::sync_connection_wrapper::SyncConnectionWrapper;
-    use diesel_async::{AsyncConnection, RunQueryDsl};
+    use diesel_async::{
+        AsyncConnection,
+        RunQueryDsl,
+        sync_connection_wrapper::SyncConnectionWrapper,
+    };
     let mut conn = SyncConnectionWrapper::<SqliteConnection>::establish(":memory:")
         .await
         .unwrap();
@@ -38,8 +38,7 @@ async fn sqlite_async() -> Vec<i32> {
 }
 
 async fn pg_async() -> Vec<i32> {
-    use diesel_async::AsyncPgConnection;
-    use diesel_async::{AsyncConnection, RunQueryDsl};
+    use diesel_async::{AsyncConnection, AsyncPgConnection, RunQueryDsl};
     use postgresql_embedded::PostgreSQL;
 
     let mut pg = PostgreSQL::default();
@@ -63,8 +62,7 @@ async fn pg_async() -> Vec<i32> {
 }
 
 fn pg_sync() -> Vec<i32> {
-    use diesel::RunQueryDsl;
-    use diesel::pg::PgConnection;
+    use diesel::{RunQueryDsl, pg::PgConnection};
     use postgresql_embedded::blocking::PostgreSQL;
 
     let mut pg = PostgreSQL::default();

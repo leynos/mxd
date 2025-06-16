@@ -1,5 +1,6 @@
-use crate::cte::{RecursiveBackend, WithRecursive};
 use diesel::query_builder::QueryFragment;
+
+use crate::cte::{RecursiveBackend, WithRecursive};
 
 /// Build a recursive CTE query.
 
