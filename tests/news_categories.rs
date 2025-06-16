@@ -1,16 +1,22 @@
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::{
+    io::{Read, Write},
+    net::TcpStream,
+};
 
 use diesel_async::AsyncConnection;
-use mxd::commands::NEWS_ERR_PATH_UNSUPPORTED;
-use mxd::db::{DbConnection, apply_migrations, create_category};
-use mxd::field_id::FieldId;
-use mxd::models::NewCategory;
-use mxd::transaction::encode_params;
-use mxd::transaction::{FrameHeader, Transaction, decode_params};
-use mxd::transaction_type::TransactionType;
+use mxd::{
+    commands::NEWS_ERR_PATH_UNSUPPORTED,
+    db::{DbConnection, apply_migrations, create_category},
+    field_id::FieldId,
+    models::NewCategory,
+    transaction::{FrameHeader, Transaction, decode_params, encode_params},
+    transaction_type::TransactionType,
+};
 use test_util::{
-    TestServer, handshake, setup_news_categories_nested_db, setup_news_categories_root_db,
+    TestServer,
+    handshake,
+    setup_news_categories_nested_db,
+    setup_news_categories_root_db,
 };
 
 fn list_categories(
@@ -61,10 +67,12 @@ fn list_categories(
 }
 
 #[test]
-/// Tests that listing news categories at the root path returns all root-level bundles and categories.
+/// Tests that listing news categories at the root path returns all root-level bundles and
+/// categories.
 ///
-/// Sets up a test server with one bundle ("Bundle") and two categories ("General", "Updates") at the root level.
-/// Sends a transaction requesting news categories at the root path ("/") and verifies that the response contains all expected category names.
+/// Sets up a test server with one bundle ("Bundle") and two categories ("General", "Updates") at
+/// the root level. Sends a transaction requesting news categories at the root path ("/") and
+/// verifies that the response contains all expected category names.
 ///
 /// # Errors
 ///
@@ -80,18 +88,22 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-/// Tests that listing news categories with no path parameter returns all root-level bundles and categories.
+/// Tests that listing news categories with no path parameter returns all root-level bundles and
+/// categories.
 ///
-/// Sets up a database with one bundle ("Bundle") and two categories ("General", "Updates") not associated with any bundle. Sends a transaction request without a path parameter and verifies that the response contains all three names.
+/// Sets up a database with one bundle ("Bundle") and two categories ("General", "Updates") not
+/// associated with any bundle. Sends a transaction request without a path parameter and verifies
+/// that the response contains all three names.
 ///
 /// # Errors
 ///
-/// Returns an error if the test server setup, database operations, TCP communication, or protocol decoding fails.
+/// Returns an error if the test server setup, database operations, TCP communication, or protocol
+/// decoding fails.
 ///
 /// # Examples
 ///
 /// ```
-/// list_news_categories_no_path().unwrap();
+/// list_news_categories_no_path().unwrap(); 
 /// ```
 fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
@@ -104,9 +116,11 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-/// Tests that requesting news categories with an invalid path returns the expected unsupported path error.
+/// Tests that requesting news categories with an invalid path returns the expected unsupported path
+/// error.
 ///
-/// Sets up a database with a single category, sends a transaction with an invalid path parameter, and asserts that the server responds with the `NEWS_ERR_PATH_UNSUPPORTED` error code.
+/// Sets up a database with a single category, sends a transaction with an invalid path parameter,
+/// and asserts that the server responds with the `NEWS_ERR_PATH_UNSUPPORTED` error code.
 ///
 /// # Returns
 /// Returns `Ok(())` if the test passes; otherwise, returns an error if any step fails.
@@ -137,7 +151,8 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
 /// Tests that requesting a list of news categories from an empty database returns no categories.
 ///
 /// This test sets up a test server with an empty database, performs a TCP handshake,
-/// sends a news category listing transaction, and asserts that the response contains no category names.
+/// sends a news category listing transaction, and asserts that the response contains no category
+/// names.
 ///
 /// # Errors
 ///
@@ -146,7 +161,7 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
 /// # Examples
 ///
 /// ```
-/// list_news_categories_empty().unwrap();
+/// list_news_categories_empty().unwrap(); 
 /// ```
 fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
@@ -165,13 +180,17 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-/// Tests that requesting news categories at a nested bundle path returns only the categories within that sub-bundle.
+/// Tests that requesting news categories at a nested bundle path returns only the categories within
+/// that sub-bundle.
 ///
-/// Sets up a nested bundle structure with a root bundle and a sub-bundle containing a single category. Sends a transaction requesting categories at the nested path and verifies that only the expected category is returned.
+/// Sets up a nested bundle structure with a root bundle and a sub-bundle containing a single
+/// category. Sends a transaction requesting categories at the nested path and verifies that only
+/// the expected category is returned.
 ///
 /// # Errors
 ///
-/// Returns an error if the test server setup, database operations, TCP communication, or protocol decoding fails.
+/// Returns an error if the test server setup, database operations, TCP communication, or protocol
+/// decoding fails.
 fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_nested_db)?;
 

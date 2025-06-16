@@ -1,11 +1,12 @@
-use std::collections::HashSet;
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
 
 use thiserror::Error;
-use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::{
+    io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    time::timeout,
+};
 
 use crate::field_id::FieldId;
-use tokio::time::timeout;
 
 /// Length of a transaction frame header in bytes.
 pub const HEADER_LEN: usize = 20;
@@ -62,14 +63,10 @@ pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
 }
 
 /// Write a big-endian u16 to the provided byte slice.
-pub fn write_u16(buf: &mut [u8], val: u16) {
-    buf.copy_from_slice(&val.to_be_bytes());
-}
+pub fn write_u16(buf: &mut [u8], val: u16) { buf.copy_from_slice(&val.to_be_bytes()); }
 
 /// Write a big-endian u32 to the provided byte slice.
-pub fn write_u32(buf: &mut [u8], val: u32) {
-    buf.copy_from_slice(&val.to_be_bytes());
-}
+pub fn write_u32(buf: &mut [u8], val: u32) { buf.copy_from_slice(&val.to_be_bytes()); }
 
 /// Parsed frame header according to the protocol specification.
 #[derive(Debug, Clone, PartialEq, Eq)]

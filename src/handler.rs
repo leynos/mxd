@@ -1,8 +1,10 @@
 use std::net::SocketAddr;
 
-use crate::commands::Command;
-use crate::db::DbPool;
-use crate::transaction::{Transaction, parse_transaction};
+use crate::{
+    commands::Command,
+    db::DbPool,
+    transaction::{Transaction, parse_transaction},
+};
 
 /// Per-connection context used by `handle_request`.
 pub struct Context {
@@ -18,9 +20,7 @@ pub struct Session {
 
 impl Context {
     #[must_use]
-    pub fn new(peer: SocketAddr, pool: DbPool) -> Self {
-        Self { peer, pool }
-    }
+    pub fn new(peer: SocketAddr, pool: DbPool) -> Self { Self { peer, pool } }
 }
 
 /// Parse and handle a single request frame without performing network I/O.

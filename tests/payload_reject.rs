@@ -1,9 +1,13 @@
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::{
+    io::{Read, Write},
+    net::TcpStream,
+};
 
-use mxd::field_id::FieldId;
-use mxd::transaction::{FrameHeader, Transaction, encode_params};
-use mxd::transaction_type::TransactionType;
+use mxd::{
+    field_id::FieldId,
+    transaction::{FrameHeader, Transaction, encode_params},
+    transaction_type::TransactionType,
+};
 use test_util::TestServer;
 
 fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {

@@ -11,7 +11,8 @@ macro_rules! step_sql {
             "FROM tree \n",
             "JOIN json_each(?) seg ON seg.key = tree.idx \n",
             $jt,
-            " news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)"
+            " news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND \
+             b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)"
         )
     };
 }
@@ -38,8 +39,7 @@ pub(crate) fn prepare_path(path: &str) -> Result<Option<(String, usize)>, serde_
     Ok(Some((json, len)))
 }
 
-use diesel::query_builder::QueryFragment;
-use diesel::sql_query;
+use diesel::{query_builder::QueryFragment, sql_query};
 use diesel_cte_ext::{
     cte::{RecursiveBackend, WithRecursive},
     with_recursive,
@@ -65,19 +65,19 @@ mod tests {
 
     #[test]
     fn bundle_step_sql_matches_expected() {
-        let expected = "SELECT tree.idx + 1 AS idx, b.id AS id \n\
-FROM tree \n\
-JOIN json_each(?) seg ON seg.key = tree.idx \n\
-JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
+        let expected = "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) \
+                        seg ON seg.key = tree.idx \nJOIN news_bundles b ON b.name = seg.value AND \
+                        \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR \
+                        b.parent_bundle_id = tree.id)";
         assert_eq!(BUNDLE_STEP_SQL, expected);
     }
 
     #[test]
     fn category_step_sql_matches_expected() {
-        let expected = "SELECT tree.idx + 1 AS idx, b.id AS id \n\
-FROM tree \n\
-JOIN json_each(?) seg ON seg.key = tree.idx \n\
-LEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
+        let expected = "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) \
+                        seg ON seg.key = tree.idx \nLEFT JOIN news_bundles b ON b.name = \
+                        seg.value AND \n  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR \
+                        b.parent_bundle_id = tree.id)";
         assert_eq!(CATEGORY_STEP_SQL, expected);
     }
 
@@ -88,10 +88,9 @@ LEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND b.p
 
     #[test]
     fn category_body_sql_matches_expected() {
-        let expected = "SELECT c.id AS id \n\
-FROM news_categories c \n\
-JOIN json_each(?) seg ON seg.key = ? \n\
-WHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)";
+        let expected = "SELECT c.id AS id \nFROM news_categories c \nJOIN json_each(?) seg ON \
+                        seg.key = ? \nWHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM \
+                        tree WHERE idx = ?)";
         assert_eq!(CATEGORY_BODY_SQL, expected);
     }
 

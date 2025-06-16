@@ -1,5 +1,7 @@
-use std::io::{Read, Write};
-use std::net::{Shutdown, TcpStream};
+use std::{
+    io::{Read, Write},
+    net::{Shutdown, TcpStream},
+};
 
 use test_util::TestServer;
 
