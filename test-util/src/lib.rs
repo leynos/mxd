@@ -9,6 +9,8 @@ use std::{
 
 #[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
+#[cfg(feature = "postgres")]
+use rstest::fixture;
 use tempfile::TempDir;
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
@@ -65,37 +67,175 @@ where
 }
 
 #[cfg(feature = "postgres")]
-fn setup_postgres<F>(setup: F) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-        let url = value.to_string_lossy();
-        if !url.trim().is_empty() {
-            let url = url.into_owned();
-            setup(&url)?;
-            return Ok((url, None));
-        }
-    }
+/// Resets a PostgreSQL database by dropping and recreating the public schema.
+///
+/// This function ensures a completely clean database state by removing all tables,
+/// functions, types, and other objects in the `public` schema, then creating a
+/// fresh empty schema.
+///
+/// ## Schema Reset Process
+///
+/// 1. Executes `DROP SCHEMA public CASCADE` to remove all objects
+/// 2. Executes `CREATE SCHEMA public` to create a fresh empty schema
+///
+/// The `CASCADE` option ensures that all dependent objects are removed automatically,
+/// providing a thorough cleanup regardless of the database's previous state.
+///
+/// ## Parameters
+///
+/// * `url` - PostgreSQL connection string for the database to reset
+///
+/// ## Returns
+///
+/// Returns `Ok(())` on successful schema reset, or an error if the database
+/// connection or SQL execution fails.
+///
+/// ## Errors
+///
+/// This function will return an error if:
+/// - The database connection cannot be established
+/// - The SQL commands fail to execute (e.g., insufficient permissions)
+///
+/// ## Examples
+///
+/// ```rust
+/// let db_url = "postgresql://localhost/testdb";
+/// reset_postgres_db(db_url)?;
+/// // Database now has a clean public schema
+/// ```
+fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use postgres::{Client, NoTls};
 
-    let (url, pg) = start_embedded_postgres(setup)?;
-    Ok((url, Some(pg)))
+    let mut client = Client::connect(url, NoTls)?;
+    client.batch_execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")?;
+    Ok(())
 }
 
 #[cfg(feature = "postgres")]
-/// Configure a PostgreSQL database for tests.
+/// RAII-style PostgreSQL test database fixture that ensures clean schema state.
 ///
-/// This checks the `POSTGRES_TEST_URL` environment variable. If set, the
-/// provided URL is used and no embedded server is started. Otherwise an
-/// embedded PostgreSQL instance is spun up. The given setup callback receives
-/// the connection URL.
-pub fn setup_postgres_for_test<F>(
-    setup: F,
-) -> Result<(String, Option<PostgreSQL>), Box<dyn std::error::Error>>
-where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
-{
-    setup_postgres(setup)
+/// This struct manages the lifecycle of a PostgreSQL database for testing, automatically
+/// handling schema reset both on creation and destruction. It follows the RAII pattern
+/// to guarantee that each test gets a pristine database schema regardless of how the
+/// previous test terminated.
+///
+/// The database can be either:
+/// - An external PostgreSQL instance specified via `POSTGRES_TEST_URL` environment variable
+/// - An embedded PostgreSQL server managed by this fixture
+///
+/// ## Schema Management
+///
+/// The fixture ensures database cleanliness by:
+/// 1. Dropping and recreating the `public` schema on initialization
+/// 2. Dropping and recreating the `public` schema on destruction (via `Drop` trait)
+///
+/// This guarantees that each test starts with a completely clean schema, even if previous
+/// tests crashed or left the database in an inconsistent state.
+///
+/// ## Usage with External Database
+///
+/// Set the `POSTGRES_TEST_URL` environment variable to reuse an existing PostgreSQL instance:
+/// ```bash
+/// export POSTGRES_TEST_URL="postgresql://user:pass@localhost/testdb"
+/// ```
+///
+/// ## Usage with Embedded Database
+///
+/// If `POSTGRES_TEST_URL` is not set, an embedded PostgreSQL server will be started
+/// automatically and stopped when the fixture is dropped.
+///
+/// ## Examples
+///
+/// ```rust
+/// use rstest::rstest;
+/// use test_util::postgres_db;
+///
+/// #[rstest]
+/// fn test_with_clean_database(postgres_db: PostgresTestDb) {
+///     // Test runs with a clean PostgreSQL schema
+///     let db_url = &postgres_db.url;
+///     // ... test implementation
+/// }
+/// ```
+pub struct PostgresTestDb {
+    /// PostgreSQL connection URL for the test database.
+    ///
+    /// This URL can be used to establish connections to the test database.
+    /// The database is guaranteed to have a clean `public` schema.
+    pub url: String,
+    /// Optional embedded PostgreSQL instance.
+    ///
+    /// This is `Some` when using an embedded server, `None` when using an external
+    /// database specified via `POSTGRES_TEST_URL`.
+    pg: Option<PostgreSQL>,
+}
+
+#[cfg(feature = "postgres")]
+impl PostgresTestDb {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+            let url = value.to_string_lossy().into_owned();
+            reset_postgres_db(&url)?;
+            return Ok(Self { url, pg: None });
+        }
+
+        let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
+        Ok(Self { url, pg: Some(pg) })
+    }
+}
+
+#[cfg(feature = "postgres")]
+impl Drop for PostgresTestDb {
+    fn drop(&mut self) {
+        let _ = reset_postgres_db(&self.url);
+        if let Some(pg) = self.pg.take() {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let _ = rt.block_on(pg.stop());
+        }
+    }
+}
+
+#[cfg(feature = "postgres")]
+#[fixture]
+/// Test fixture that provides a clean PostgreSQL database for each test.
+///
+/// This fixture creates a `PostgresTestDb` instance that manages database lifecycle
+/// and schema cleanliness automatically. It can be injected into any test function
+/// that requires PostgreSQL access.
+///
+/// ## Behavior
+///
+/// - **External Database**: If `POSTGRES_TEST_URL` is set, uses that database
+/// - **Embedded Database**: Otherwise, starts an embedded PostgreSQL server
+/// - **Schema Reset**: Drops and recreates the `public` schema before each test
+/// - **Cleanup**: Automatically resets schema and stops embedded server after each test
+///
+/// ## Environment Variable
+///
+/// Set `POSTGRES_TEST_URL` to reuse an existing PostgreSQL instance:
+/// ```bash
+/// export POSTGRES_TEST_URL="postgresql://localhost/testdb"
+/// ```
+///
+/// ## Usage
+///
+/// ```rust
+/// use rstest::rstest;
+/// use test_util::{postgres_db, PostgresTestDb};
+///
+/// #[rstest]
+/// fn my_test(postgres_db: PostgresTestDb) {
+///     // Test has access to clean PostgreSQL database
+///     let connection_url = &postgres_db.url;
+///     // ... test implementation
+/// }
+/// ```
+///
+/// ## Panics
+///
+/// Panics if database setup fails, which indicates a fundamental testing environment issue.
+pub fn postgres_db() -> PostgresTestDb {
+    PostgresTestDb::new().expect("Failed to prepare Postgres test database")
 }
 
 ///
@@ -218,7 +358,14 @@ impl TestServer {
 
         #[cfg(feature = "postgres")]
         {
-            let (db_url, pg) = setup_postgres(setup)?;
+            let (db_url, pg) = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+                let url = value.to_string_lossy().into_owned();
+                reset_postgres_db(&url)?;
+                (url, None)
+            } else {
+                start_embedded_postgres(|url| reset_postgres_db(url))?
+            };
+            setup(&db_url)?;
             return Self::launch(manifest_path, db_url, None, pg);
         }
     }

@@ -86,8 +86,11 @@ Integration tests live in the repository's `tests/` directory.
 
 When the `postgres` feature is enabled, tests normally spin up an embedded
 PostgreSQL server. Set `POSTGRES_TEST_URL` to reuse an existing database URL
-instead of starting the embedded server. The referenced database must be
-emptied between runs as the suite assumes a pristine schema.
+- Inject `postgres_db` into any test that needs Postgres.
+- If `POSTGRES_TEST_URL` is set, the fixture uses that database; otherwise, it
+  starts an embedded Postgres server.
+- The `public` schema is dropped and recreated **before** each test and again on
+  teardown, so every test runs against a pristine schema regardless of reuse.
 
 ## Validation harness
 
