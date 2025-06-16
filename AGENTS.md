@@ -94,7 +94,7 @@ This repository is written in Rust and uses Cargo for building and dependency
 management. Contributors should follow these best practices when working on the
 project:
 
-- Run `cargo +nightly fmt` after making any change, and run
+- Run `cargo +nightly-2025-06-10 fmt` after making any change, and run
   `cargo clippy -- -D warnings` and
   `RUSTFLAGS="-D warnings" cargo test` before committing.
 - Clippy warnings MUST be disallowed.
