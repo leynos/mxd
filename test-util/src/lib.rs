@@ -78,24 +78,54 @@ pub struct TestServer {
     child: Child,
     port: u16,
     db_url: String,
-    _temp: Option<TempDir>,
     #[cfg(feature = "postgres")]
     pg: Option<PostgreSQL>,
+    /// Keep the temporary directory alive for the lifetime of the server to
+    /// prevent early cleanup while the database is running.
+    temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
-fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+#[derive(Debug)]
+struct EmbeddedPg {
+    url: String,
+    pg: PostgreSQL,
+    temp_dir: TempDir,
+}
+
+#[cfg(feature = "postgres")]
+/// Resources required to run tests with a PostgreSQL database.
+///
+/// This wrapper combines the connection URL, the optional embedded PostgreSQL
+/// instance, and the optional temporary directory used by the embedded server.
+struct DbResources {
+    url: String,
+    pg: Option<PostgreSQL>,
+    temp_dir: Option<TempDir>,
+}
+
+#[cfg(feature = "postgres")]
+/// Start an embedded PostgreSQL instance for tests.
+///
+/// Returns an [`EmbeddedPg`] containing the connection URL, the
+/// running [`PostgreSQL`] handle, and the [`TempDir`] of the data
+/// directory. The temporary directory must be kept alive for as long
+/// as the server is running, otherwise the data directory would be
+/// removed prematurely.
+fn start_embedded_postgres<F>(setup: F) -> Result<EmbeddedPg, Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
     let fut = async {
         let mut settings = Settings::default();
-        let (tmp, data_dir) = tempfile::tempdir()?.keep()?;
-        std::mem::forget(tmp);
+        let tmp = tempfile::Builder::new().prefix("mxd-pg").tempdir()?;
+        let data_dir = tmp.path().to_path_buf();
         settings.data_dir = data_dir.clone();
 
         let mut pg = if geteuid().is_root() {
-            let bin = HELPER_BIN.clone().map_err(|e| e.into())?;
+            let bin = HELPER_BIN
+                .clone()
+                .map_err(|e| -> Box<dyn StdError> { e.into() })?;
 
             let run_status = std::process::Command::new(bin)
                 .env("PG_DATA_DIR", &data_dir)
@@ -128,14 +158,18 @@ where
             return Err(format!("creating test database: {e}").into());
         }
         let url = pg.settings().url("test");
-        Ok::<_, Box<dyn StdError>>((url, pg))
+        Ok::<_, Box<dyn StdError>>(EmbeddedPg {
+            url,
+            pg,
+            temp_dir: tmp,
+        })
     };
-    let (url, pg) = match tokio::runtime::Handle::try_current() {
+    let mut embedded = match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.block_on(fut)?,
         Err(_) => tokio::runtime::Runtime::new()?.block_on(fut)?,
     };
-    setup(&url)?;
-    Ok((url, pg))
+    setup(&embedded.url)?;
+    Ok(embedded)
 }
 
 /// Resets a PostgreSQL database by dropping and recreating the public schema.
@@ -240,6 +274,8 @@ pub struct PostgresTestDb {
     /// This is `Some` when using an embedded server, `None` when using an external
     /// database specified via `POSTGRES_TEST_URL`.
     pg: Option<PostgreSQL>,
+    /// Hold the data directory alive until after the embedded server stops.
+    temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
@@ -248,11 +284,20 @@ impl PostgresTestDb {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let url = value.to_string_lossy().into_owned();
             reset_postgres_db(&url)?;
-            return Ok(Self { url, pg: None });
+            return Ok(Self {
+                url,
+                pg: None,
+                temp_dir: None,
+            });
         }
 
-        let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
-        Ok(Self { url, pg: Some(pg) })
+        let EmbeddedPg { url, pg, temp_dir } =
+            start_embedded_postgres(|url| reset_postgres_db(url))?;
+        Ok(Self {
+            url,
+            pg: Some(pg),
+            temp_dir: Some(temp_dir),
+        })
     }
 
     pub fn uses_embedded(&self) -> bool { self.pg.is_some() }
@@ -432,16 +477,30 @@ impl TestServer {
 
         #[cfg(feature = "postgres")]
         {
-            let (db_url, pg) = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+            let resources = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
                 let url = value.to_string_lossy().into_owned();
                 reset_postgres_db(&url)?;
-                (url, None)
+                DbResources {
+                    url,
+                    pg: None,
+                    temp_dir: None,
+                }
             } else {
-                let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
-                (url, Some(pg))
+                let EmbeddedPg { url, pg, temp_dir } =
+                    start_embedded_postgres(|url| reset_postgres_db(url))?;
+                DbResources {
+                    url,
+                    pg: Some(pg),
+                    temp_dir: Some(temp_dir),
+                }
             };
-            setup(&db_url)?;
-            return Self::launch(manifest_path, db_url, None, pg);
+            setup(&resources.url)?;
+            return Self::launch(
+                manifest_path,
+                resources.url,
+                resources.temp_dir,
+                resources.pg,
+            );
         }
     }
 
@@ -477,7 +536,7 @@ impl TestServer {
     fn launch(
         manifest_path: &str,
         db_url: String,
-        temp: Option<TempDir>,
+        temp_dir: Option<TempDir>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let socket = TcpListener::bind("127.0.0.1:0")?;
         let port = socket.local_addr()?.port();
@@ -491,7 +550,7 @@ impl TestServer {
             child,
             port,
             db_url,
-            _temp: temp,
+            temp_dir,
         })
     }
 
@@ -521,7 +580,7 @@ impl TestServer {
     fn launch(
         manifest_path: &str,
         db_url: String,
-        temp: Option<TempDir>,
+        temp_dir: Option<TempDir>,
         pg: Option<PostgreSQL>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let socket = TcpListener::bind("127.0.0.1:0")?;
@@ -536,7 +595,7 @@ impl TestServer {
             child,
             port,
             db_url,
-            _temp: temp,
+            temp_dir,
             pg,
         })
     }
@@ -554,6 +613,12 @@ impl TestServer {
         // safe and avoids repeated validation.
         self.db_url.as_str()
     }
+
+    /// Return the temporary directory used by the test server, if any.
+    ///
+    /// Keeping this handle alive prevents the directory from being deleted
+    /// while the server is running.
+    pub fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
     #[cfg(feature = "postgres")]
     /// Returns true if the server is using an embedded PostgreSQL instance.
