@@ -30,6 +30,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+        with:
+          with-postgres: ${{ matrix.feature == 'postgres' }}
       - name: Export POSTGRES_TEST_URL
         if: matrix.feature == 'postgres'
         uses: ./.github/actions/export-postgres-url
@@ -64,6 +66,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+        with:
+          with-postgres: true
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov

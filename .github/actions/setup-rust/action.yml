@@ -1,5 +1,10 @@
 name: Setup Rust
-description: Install Rust, cache cargo registry, and install libpq
+description: Install Rust and cache cargo registry
+inputs:
+  with-postgres:
+    description: Install PostgreSQL system dependencies
+    required: false
+    default: false
 runs:
   using: composite
   steps:
@@ -19,5 +24,6 @@ runs:
         restore-keys: |
           ${{ runner.os }}-cargo-${{ env.BUILD_PROFILE }}-
     - name: Install system dependencies
+      if: ${{ inputs.with-postgres }}
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpq-dev
       shell: bash
