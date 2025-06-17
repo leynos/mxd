@@ -80,16 +80,28 @@ pub struct TestServer {
     db_url: String,
     #[cfg(feature = "postgres")]
     pg: Option<PostgreSQL>,
-    /// Keep the temporary directory alive for the lifetime of the server
-    /// to prevent early cleanup while the database is running.
-    _temp_dir: Option<TempDir>,
+    /// Keep the temporary directory alive for the lifetime of the server to
+    /// prevent early cleanup while the database is running.
+    temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
+#[derive(Debug)]
 struct EmbeddedPg {
     url: String,
     pg: PostgreSQL,
     temp_dir: TempDir,
+}
+
+#[cfg(feature = "postgres")]
+/// Resources required to run tests with a PostgreSQL database.
+///
+/// This wrapper combines the connection URL, the optional embedded PostgreSQL
+/// instance, and the optional temporary directory used by the embedded server.
+struct DbResources {
+    url: String,
+    pg: Option<PostgreSQL>,
+    temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
@@ -152,12 +164,12 @@ where
             temp_dir: tmp,
         })
     };
-    let EmbeddedPg { url, pg, temp_dir } = match tokio::runtime::Handle::try_current() {
+    let mut embedded = match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.block_on(fut)?,
         Err(_) => tokio::runtime::Runtime::new()?.block_on(fut)?,
     };
-    setup(&url)?;
-    Ok(EmbeddedPg { url, pg, temp_dir })
+    setup(&embedded.url)?;
+    Ok(embedded)
 }
 
 /// Resets a PostgreSQL database by dropping and recreating the public schema.
@@ -263,7 +275,7 @@ pub struct PostgresTestDb {
     /// database specified via `POSTGRES_TEST_URL`.
     pg: Option<PostgreSQL>,
     /// Hold the data directory alive until after the embedded server stops.
-    _temp_dir: Option<TempDir>,
+    temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
@@ -275,7 +287,7 @@ impl PostgresTestDb {
             return Ok(Self {
                 url,
                 pg: None,
-                _temp_dir: None,
+                temp_dir: None,
             });
         }
 
@@ -284,7 +296,7 @@ impl PostgresTestDb {
         Ok(Self {
             url,
             pg: Some(pg),
-            _temp_dir: Some(temp_dir),
+            temp_dir: Some(temp_dir),
         })
     }
 
@@ -465,17 +477,30 @@ impl TestServer {
 
         #[cfg(feature = "postgres")]
         {
-            let (db_url, pg, temp) = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+            let resources = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
                 let url = value.to_string_lossy().into_owned();
                 reset_postgres_db(&url)?;
-                (url, None, None)
+                DbResources {
+                    url,
+                    pg: None,
+                    temp_dir: None,
+                }
             } else {
                 let EmbeddedPg { url, pg, temp_dir } =
                     start_embedded_postgres(|url| reset_postgres_db(url))?;
-                (url, Some(pg), Some(temp_dir))
+                DbResources {
+                    url,
+                    pg: Some(pg),
+                    temp_dir: Some(temp_dir),
+                }
             };
-            setup(&db_url)?;
-            return Self::launch(manifest_path, db_url, temp, pg);
+            setup(&resources.url)?;
+            return Self::launch(
+                manifest_path,
+                resources.url,
+                resources.temp_dir,
+                resources.pg,
+            );
         }
     }
 
@@ -511,7 +536,7 @@ impl TestServer {
     fn launch(
         manifest_path: &str,
         db_url: String,
-        temp: Option<TempDir>,
+        temp_dir: Option<TempDir>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let socket = TcpListener::bind("127.0.0.1:0")?;
         let port = socket.local_addr()?.port();
@@ -525,7 +550,7 @@ impl TestServer {
             child,
             port,
             db_url,
-            _temp_dir: temp,
+            temp_dir,
         })
     }
 
@@ -555,7 +580,7 @@ impl TestServer {
     fn launch(
         manifest_path: &str,
         db_url: String,
-        temp: Option<TempDir>,
+        temp_dir: Option<TempDir>,
         pg: Option<PostgreSQL>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let socket = TcpListener::bind("127.0.0.1:0")?;
@@ -570,7 +595,7 @@ impl TestServer {
             child,
             port,
             db_url,
-            _temp_dir: temp,
+            temp_dir,
             pg,
         })
     }
@@ -588,6 +613,12 @@ impl TestServer {
         // safe and avoids repeated validation.
         self.db_url.as_str()
     }
+
+    /// Return the temporary directory used by the test server, if any.
+    ///
+    /// Keeping this handle alive prevents the directory from being deleted
+    /// while the server is running.
+    pub fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
     #[cfg(feature = "postgres")]
     /// Returns true if the server is using an embedded PostgreSQL instance.
