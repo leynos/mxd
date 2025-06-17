@@ -26,12 +26,12 @@ let rows: Vec<i32> = SqliteConnection::with_recursive(
 
 The resulting CTE `t` contains the following rows:
 
-| n   |
-| --- |
-| 1   |
-| 2   |
-| 3   |
-| ... |
+| n |
+|---|
+| 1 |
+| 2 |
+| 3 |
+| … |
 
 When the `async` feature is enabled, import `diesel_async::RunQueryDsl` and
 await the query as follows:

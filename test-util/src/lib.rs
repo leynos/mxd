@@ -5,6 +5,8 @@
 //! instances. It is used by integration tests in the main crate.
 #[cfg(feature = "postgres")]
 use std::error::Error as StdError;
+#[cfg(feature = "postgres")]
+use std::path::{Path, PathBuf};
 use std::{
     io::{BufRead, BufReader},
     net::TcpListener,
@@ -13,10 +15,50 @@ use std::{
 };
 
 #[cfg(feature = "postgres")]
+use nix::unistd::geteuid;
+#[cfg(feature = "postgres")]
+use once_cell::sync::Lazy;
+#[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
+#[cfg(feature = "postgres")]
+use postgresql_embedded::Settings;
 #[cfg(feature = "postgres")]
 use rstest::fixture;
 use tempfile::TempDir;
+
+#[cfg(feature = "postgres")]
+static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
+    let manifest = std::env::var("POSTGRES_SETUP_UNPRIV_MANIFEST").unwrap_or_else(|_| {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../postgres_setup_unpriv/Cargo.toml")
+            .to_string_lossy()
+            .into_owned()
+    });
+
+    let bin = Path::new(&manifest)
+        .parent()
+        .expect("manifest path has parent")
+        .join("target/debug/postgres-setup-unpriv");
+
+    // Rebuild the helper once per test session. Cargo is fast when nothing
+    // changed, so always delegate the up-to-date check to it.
+    let status = std::process::Command::new("cargo")
+        .args([
+            "build",
+            "--bin",
+            "postgres-setup-unpriv",
+            "--manifest-path",
+            &manifest,
+            "--quiet",
+        ])
+        .status()
+        .map_err(|e| format!("building postgres-setup-unpriv: {e}"))?;
+    if !status.success() {
+        return Err("building postgres-setup-unpriv failed".into());
+    }
+
+    Ok(bin)
+});
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
 compile_error!("Choose either sqlite or postgres, not both");
@@ -47,11 +89,36 @@ where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
     let fut = async {
-        let mut pg = PostgreSQL::default();
-        if let Err(e) = pg.setup().await {
-            let _ = pg.stop().await;
-            return Err(format!("preparing embedded PostgreSQL: {e}").into());
-        }
+        let mut settings = Settings::default();
+        let (tmp, data_dir) = tempfile::tempdir()?.keep()?;
+        std::mem::forget(tmp);
+        settings.data_dir = data_dir.clone();
+
+        let mut pg = if geteuid().is_root() {
+            let bin = HELPER_BIN.clone().map_err(|e| e.into())?;
+
+            let run_status = std::process::Command::new(bin)
+                .env("PG_DATA_DIR", &data_dir)
+                .env("PG_PORT", settings.port.to_string())
+                .env("PG_VERSION_REQ", settings.version.to_string())
+                .env("PG_SUPERUSER", &settings.username)
+                .env("PG_PASSWORD", &settings.password)
+                .status()
+                .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
+            if !run_status.success() {
+                return Err("postgres-setup-unpriv failed".into());
+            }
+
+            PostgreSQL::new(settings.clone())
+        } else {
+            let mut pg = PostgreSQL::new(settings.clone());
+            if let Err(e) = pg.setup().await {
+                let _ = pg.stop().await;
+                return Err(format!("preparing embedded PostgreSQL: {e}").into());
+            }
+            pg
+        };
+
         if let Err(e) = pg.start().await {
             let _ = pg.stop().await;
             return Err(format!("starting embedded PostgreSQL: {e}").into());

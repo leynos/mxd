@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 tempfile = "3"
-nix = { version = "0.27", features = ["signal"] }
+nix = { version = "0.28", default-features = false, features = ["signal", "user"] }
+once_cell = "1"
 mxd = { path = "..", default-features = false }
 tokio = { version = "1", features = ["rt", "macros"] }
 diesel = { version = "2", default-features = false, features = ["chrono"] }
