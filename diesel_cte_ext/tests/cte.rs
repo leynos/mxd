@@ -4,7 +4,7 @@ use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 fn sqlite_sync() -> Vec<i32> {
     use diesel::{RunQueryDsl, sqlite::SqliteConnection};
     let mut conn = SqliteConnection::establish(":memory:").unwrap();
-    conn.with_recursive(
+    SqliteConnection::with_recursive(
         "t",
         &["n"],
         RecursiveParts::new(
@@ -27,7 +27,7 @@ async fn sqlite_async() -> Vec<i32> {
     let mut conn = SyncConnectionWrapper::<SqliteConnection>::establish(":memory:")
         .await
         .unwrap();
-    conn.with_recursive(
+    SyncConnectionWrapper::<SqliteConnection>::with_recursive(
         "t",
         &["n"],
         RecursiveParts::new(
@@ -52,7 +52,7 @@ async fn pg_async() -> Vec<i32> {
     let url = pg.settings().url("test");
     let res = {
         let mut conn = AsyncPgConnection::establish(&url).await.unwrap();
-        conn.with_recursive(
+        AsyncPgConnection::with_recursive(
             "t",
             &["n"],
             RecursiveParts::new(
@@ -80,7 +80,7 @@ fn pg_sync() -> Vec<i32> {
     let url = pg.settings().url("test");
     let res = {
         let mut conn = PgConnection::establish(&url).unwrap();
-        conn.with_recursive(
+        PgConnection::with_recursive(
             "t",
             &["n"],
             RecursiveParts::new(

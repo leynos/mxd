@@ -3,25 +3,24 @@
 `diesel_cte_ext` adds a small helper for building recursive
 [Common Table Expressions](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-RECURSIVE)
 with Diesel. The crate exports a connection extension trait providing
-`with_recursive` which constructs a query representing a `WITH RECURSIVE`
-block.
+`with_recursive` which constructs a query representing a `WITH RECURSIVE` block.
 
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
+use diesel::sqlite::SqliteConnection;
 use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 // Count integers from 1 through 5 using a recursive CTE
 
-let rows: Vec<i32> = conn
-    .with_recursive(
-        "t",
-        &["n"],
-        RecursiveParts::new(
-            sql::<Integer>("SELECT 1"),
-            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-            sql::<Integer>("SELECT n FROM t"),
-        ),
-    )
+let rows: Vec<i32> = SqliteConnection::with_recursive(
+    "t",
+    &["n"],
+    RecursiveParts::new(
+        sql::<Integer>("SELECT 1"),
+        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+        sql::<Integer>("SELECT n FROM t"),
+    ),
+)
     .load(&mut conn)?;
 ```
 
@@ -34,17 +33,17 @@ The resulting CTE `t` contains the following rows:
 | 3 |
 | … |
 
-When the `async` feature is enabled, import `diesel_async::RunQueryDsl` and await
-the query as follows:
+When the `async` feature is enabled, import `diesel_async::RunQueryDsl` and
+await the query as follows:
 
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
 use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 use diesel_async::RunQueryDsl;
+use diesel::sqlite::SqliteConnection;
 
-let rows: Vec<i32> = conn
-    .with_recursive(
+let rows: Vec<i32> = SqliteConnection::with_recursive(
         "t",
         &["n"],
         RecursiveParts::new(
@@ -52,7 +51,7 @@ let rows: Vec<i32> = conn
             sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
             sql::<Integer>("SELECT n FROM t"),
         ),
-    )
+)
     .load(&mut conn)
     .await?;
 ```
