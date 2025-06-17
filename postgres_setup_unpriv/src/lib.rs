@@ -115,6 +115,15 @@ where
     body()
 }
 
+pub fn nobody_uid() -> Uid {
+    use nix::unistd::User;
+    User::from_name("nobody")
+        .ok()
+        .flatten()
+        .map(|u| u.uid)
+        .unwrap_or_else(|| Uid::from_raw(65534))
+}
+
 pub fn run() -> Result<()> {
     let cfg = PgEnvCfg::load().context("failed to load configuration via OrthoConfig")?;
     let settings = cfg.to_settings()?;
@@ -124,7 +133,7 @@ pub fn run() -> Result<()> {
         .build()
         .context("failed to create Tokio runtime")?;
 
-    with_temp_euid(Uid::from_raw(65534), || {
+    with_temp_euid(nobody_uid(), || {
         rt.block_on(async {
             let mut pg = PostgreSQL::new(settings);
             pg.setup().await.context("postgresql_embedded::setup() failed")?;

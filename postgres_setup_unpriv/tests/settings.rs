@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use postgres_setup_unpriv::{with_temp_euid, PgEnvCfg};
+use postgres_setup_unpriv::{nobody_uid, with_temp_euid, PgEnvCfg};
 use postgresql_embedded::{settings::AuthMethod, VersionReq};
 use nix::unistd::{geteuid, Uid};
 use rstest::rstest;
@@ -40,7 +40,7 @@ fn to_settings_invalid_auth() {
     assert!(cfg.to_settings().is_err());
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 #[rstest]
 fn with_temp_euid_changes_uid() -> anyhow::Result<()> {
     if !geteuid().is_root() {
@@ -50,8 +50,8 @@ fn with_temp_euid_changes_uid() -> anyhow::Result<()> {
 
     let original = geteuid();
 
-    with_temp_euid(Uid::from_raw(65534), || {
-        assert_eq!(geteuid(), Uid::from_raw(65534));
+    with_temp_euid(nobody_uid(), || {
+        assert_eq!(geteuid(), nobody_uid());
         Ok(())
     })?;
 
