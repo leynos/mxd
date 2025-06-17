@@ -79,7 +79,7 @@ jobs:
       - name: Generate coverage for Postgres
         uses: ./.github/actions/generate-coverage
         with:
-          no-default-features: "true"
+          no-default-features: true
           features: postgres
           output-path: lcov-postgres.info
       - name: Merge coverage results
