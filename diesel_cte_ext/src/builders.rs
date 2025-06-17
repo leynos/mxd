@@ -1,6 +1,15 @@
+//! Helper types for constructing recursive CTE queries.
+//!
+//! [`with_recursive`] builds a [`WithRecursive`] query from a name, column list
+//! and the [`RecursiveParts`] struct bundling the seed, step and body fragments.
+//! These helpers are used indirectly via [`RecursiveCTEExt::with_recursive`].
+
 use diesel::query_builder::QueryFragment;
 
-use crate::cte::{RecursiveBackend, WithRecursive};
+use crate::{
+    columns::Columns,
+    cte::{RecursiveBackend, WithRecursive},
+};
 
 /// Query fragments used by a recursive CTE.
 #[derive(Debug, Clone)]
@@ -20,11 +29,11 @@ impl<Seed, Step, Body> RecursiveParts<Seed, Step, Body> {
 
 /// Build a recursive CTE query.
 
-pub fn with_recursive<DB, Seed, Step, Body>(
+pub fn with_recursive<DB, Cols, Seed, Step, Body>(
     cte_name: &'static str,
-    columns: &'static [&'static str],
+    columns: Columns<Cols>,
     parts: RecursiveParts<Seed, Step, Body>,
-) -> WithRecursive<DB, Seed, Step, Body>
+) -> WithRecursive<DB, Cols, Seed, Step, Body>
 where
     DB: RecursiveBackend,
     Seed: QueryFragment<DB>,

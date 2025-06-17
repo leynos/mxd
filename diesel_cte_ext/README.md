@@ -9,12 +9,12 @@ with Diesel. The crate exports a connection extension trait providing
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
 use diesel::sqlite::SqliteConnection;
-use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts, Columns};
 // Count integers from 1 through 5 using a recursive CTE
 
 let rows: Vec<i32> = SqliteConnection::with_recursive(
     "t",
-    &["n"],
+    Columns::raw(&["n"]),
     RecursiveParts::new(
         sql::<Integer>("SELECT 1"),
         sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
@@ -23,6 +23,11 @@ let rows: Vec<i32> = SqliteConnection::with_recursive(
 )
     .load(&mut conn)?;
 ```
+
+`Columns<T>` couples the runtime column names with a compile-time tuple of
+Diesel column types. For ad-hoc CTEs use `Columns::raw`. When working with
+schema-defined tables you can build the list via
+`columns!(users::id, users::username)` or `table_columns!(users::table)`.
 
 The resulting CTE `t` contains the following rows:
 
@@ -39,13 +44,13 @@ await the query as follows:
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
-use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts, Columns};
 use diesel_async::RunQueryDsl;
 use diesel::sqlite::SqliteConnection;
 
 let rows: Vec<i32> = SqliteConnection::with_recursive(
         "t",
-        &["n"],
+        Columns::raw(&["n"]),
         RecursiveParts::new(
             sql::<Integer>("SELECT 1"),
             sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
@@ -68,14 +73,14 @@ connections.
 
 ## Limitations
 
-- Only supports a single CTE block and requires manually listing column names.
+- Only supports a single CTE block.
 - No integration with Diesel's query DSL or schema inference.
 - Crate is unpublished and APIs may change without notice.
 
 ## Next steps
 
-Future improvements could include typed column support, better integration with
-Diesel's query builder, and support for multiple chained CTEs.
+Future improvements could include better integration with Diesel's query builder
+and support for multiple chained CTEs.
 
 ## Caveats
 
