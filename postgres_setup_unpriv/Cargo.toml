@@ -10,3 +10,16 @@ anyhow = "1"
 tokio = { version = "1", features = ["rt", "macros"] }
 serde = { version = "1", features = ["derive"] }
 ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.1.0" }
+clap = { version = "4", features = ["derive"] }
+figment = { version = "0.10", features = ["env", "yaml", "json"] }
+xdg = "3"
+uncased = "0.9"
+
+[features]
+toml = []
+yaml = []
+json5 = []
+
+[dev-dependencies]
+rstest = "0.18"
+temp-env = "0.3"

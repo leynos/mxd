@@ -218,9 +218,7 @@ impl PostgresTestDb {
         Ok(Self { url, pg: Some(pg) })
     }
 
-    pub fn uses_embedded(&self) -> bool {
-        self.pg.is_some()
-    }
+    pub fn uses_embedded(&self) -> bool { self.pg.is_some() }
 }
 
 #[cfg(feature = "postgres")]
@@ -507,9 +505,7 @@ impl TestServer {
     }
 
     /// Return the port the server is bound to.
-    pub fn port(&self) -> u16 {
-        self.port
-    }
+    pub fn port(&self) -> u16 { self.port }
 
     /// Return the database connection URL used by the server.
     ///
@@ -527,9 +523,7 @@ impl TestServer {
     ///
     /// This indicates that the test server started and manages its own embedded PostgreSQL
     /// database. Returns false if an external PostgreSQL instance is used instead.
-    pub fn uses_embedded_postgres(&self) -> bool {
-        self.pg.is_some()
-    }
+    pub fn uses_embedded_postgres(&self) -> bool { self.pg.is_some() }
 }
 
 impl Drop for TestServer {
