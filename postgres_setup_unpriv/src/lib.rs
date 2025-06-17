@@ -27,39 +27,62 @@ impl PgEnvCfg {
     pub fn to_settings(&self) -> Result<Settings> {
         let mut s = Settings::default();
 
+        self.apply_version(&mut s)?;
+        self.apply_connection(&mut s);
+        self.apply_paths(&mut s);
+        self.apply_locale(&mut s);
+        self.apply_auth(&mut s)?;
+
+        Ok(s)
+    }
+
+    fn apply_version(&self, settings: &mut Settings) -> Result<()> {
         if let Some(ref vr) = self.version_req {
-            s.version = VersionReq::parse(vr).context("PG_VERSION_REQ invalid semver spec")?;
+            settings.version =
+                VersionReq::parse(vr).context("PG_VERSION_REQ invalid semver spec")?;
         }
+        Ok(())
+    }
+
+    fn apply_connection(&self, settings: &mut Settings) {
         if let Some(p) = self.port {
-            s.port = p;
+            settings.port = p;
         }
         if let Some(ref u) = self.superuser {
-            s.username = u.clone();
+            settings.username = u.clone();
         }
         if let Some(ref pw) = self.password {
-            s.password = pw.clone();
+            settings.password = pw.clone();
         }
+    }
+
+    fn apply_paths(&self, settings: &mut Settings) {
         if let Some(ref dir) = self.data_dir {
-            s.data_dir = dir.clone();
+            settings.data_dir = dir.clone();
         }
         if let Some(ref dir) = self.runtime_dir {
-            s.installation_dir = dir.clone();
+            settings.installation_dir = dir.clone();
         }
+    }
+
+    fn apply_locale(&self, settings: &mut Settings) {
         if let Some(ref loc) = self.locale {
-            s.configuration.insert("locale".into(), loc.clone());
+            settings.configuration.insert("locale".into(), loc.clone());
         }
         if let Some(ref enc) = self.encoding {
-            s.configuration.insert("encoding".into(), enc.clone());
+            settings.configuration.insert("encoding".into(), enc.clone());
         }
+    }
+
+    fn apply_auth(&self, settings: &mut Settings) -> Result<()> {
         if let Some(ref am) = self.auth_method {
-            s.auth_method = match am.to_ascii_lowercase().as_str() {
+            settings.auth_method = match am.to_ascii_lowercase().as_str() {
                 "trust" => AuthMethod::Trust,
                 "password" => AuthMethod::Password,
                 other => bail!("unknown PG_AUTH_METHOD '{other}'"),
             };
         }
-
-        Ok(s)
+        Ok(())
     }
 }
 

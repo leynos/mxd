@@ -40,10 +40,15 @@ fn to_settings_invalid_auth() {
     assert!(cfg.to_settings().is_err());
 }
 
+#[cfg(target_os = "linux")]
 #[rstest]
 fn with_temp_euid_changes_uid() -> anyhow::Result<()> {
+    if !geteuid().is_root() {
+        eprintln!("skipping root-dependent test");
+        return Ok(());
+    }
+
     let original = geteuid();
-    assert!(original.is_root());
 
     with_temp_euid(Uid::from_raw(65534), || {
         assert_eq!(geteuid(), Uid::from_raw(65534));

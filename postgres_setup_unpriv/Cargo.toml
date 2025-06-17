@@ -17,8 +17,6 @@ uncased = "0.9"
 
 [features]
 toml = []
-yaml = []
-json5 = []
 
 [dev-dependencies]
 rstest = "0.18"

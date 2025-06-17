@@ -16,8 +16,6 @@ use postgresql_embedded::Settings;
 #[cfg(feature = "postgres")]
 use rstest::fixture;
 use tempfile::TempDir;
-#[cfg(feature = "postgres")]
-use tempfile::tempdir;
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
 compile_error!("Choose either sqlite or postgres, not both");
@@ -62,25 +60,35 @@ where
                         .into_owned()
                 });
 
-            let mut cmd = std::process::Command::new("cargo");
-            cmd.args([
-                "run",
-                "--bin",
-                "postgres-setup-unpriv",
-                "--manifest-path",
-                &manifest_path,
-                "--quiet",
-            ])
-            .env("PG_DATA_DIR", &data_dir)
-            .env("PG_PORT", settings.port.to_string())
-            .env("PG_VERSION_REQ", settings.version.to_string())
-            .env("PG_SUPERUSER", &settings.username)
-            .env("PG_PASSWORD", &settings.password);
+            let build_status = std::process::Command::new("cargo")
+                .args([
+                    "build",
+                    "--bin",
+                    "postgres-setup-unpriv",
+                    "--manifest-path",
+                    &manifest_path,
+                    "--quiet",
+                ])
+                .status()
+                .map_err(|e| format!("building postgres-setup-unpriv: {e}"))?;
+            if !build_status.success() {
+                return Err("building postgres-setup-unpriv failed".into());
+            }
 
-            let status = cmd
+            let bin = std::path::Path::new(&manifest_path)
+                .parent()
+                .expect("manifest path has parent")
+                .join("target/debug/postgres-setup-unpriv");
+
+            let run_status = std::process::Command::new(bin)
+                .env("PG_DATA_DIR", &data_dir)
+                .env("PG_PORT", settings.port.to_string())
+                .env("PG_VERSION_REQ", settings.version.to_string())
+                .env("PG_SUPERUSER", &settings.username)
+                .env("PG_PASSWORD", &settings.password)
                 .status()
                 .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
-            if !status.success() {
+            if !run_status.success() {
                 return Err("postgres-setup-unpriv failed".into());
             }
         } else if let Err(e) = pg.setup().await {
