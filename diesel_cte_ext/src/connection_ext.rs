@@ -31,6 +31,7 @@ pub trait RecursiveCTEExt {
 
 /// Blanket implementation of [`RecursiveCTEExt`] for synchronous Diesel
 /// connections.
+#[cfg(not(feature = "async"))]
 impl<C> RecursiveCTEExt for C
 where
     C: diesel::connection::Connection,
