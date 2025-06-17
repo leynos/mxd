@@ -1,3 +1,7 @@
+//! Provides asynchronous helpers for framing, encoding, and decoding transactions.
+//!
+//! Transactions consist of a [`FrameHeader`] followed by an optional payload
+//! encoded using [`FieldId`] identifiers.
 use std::{collections::HashSet, time::Duration};
 
 use thiserror::Error;

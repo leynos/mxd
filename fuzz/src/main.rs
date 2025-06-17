@@ -1,3 +1,7 @@
+//! AFL fuzz target for transaction parsing.
+//!
+//! Reads test cases from standard input and feeds them to the transaction
+//! parser in a loop compatible with AFL's persistent mode.
 unsafe extern "C" {
     fn __AFL_LOOP(cnt: u32) -> i32;
 }

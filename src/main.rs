@@ -1,3 +1,7 @@
+//! Command line interface for the server.
+//!
+//! Provides subcommands to start the daemon, manage the database and
+//! create users. This is the primary entry point used when running `mxd`.
 #![allow(non_snake_case)]
 use std::{io, net::SocketAddr};
 

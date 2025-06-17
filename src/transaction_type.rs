@@ -1,3 +1,7 @@
+//! Enumeration of supported transaction types.
+//!
+//! Each variant corresponds to a Hotline protocol transaction identifier used
+//! for client/server communication.
 pub const FILE_NAME_LIST_ID: u16 = 200;
 pub const DOWNLOAD_BANNER_ID: u16 = 212;
 pub const USER_NAME_LIST_ID: u16 = 300;

@@ -1,3 +1,8 @@
+//! Core library for the Marrakesh Express daemon.
+//!
+//! This crate exposes database utilities, protocol types, and helper
+//! functions used by the server and supporting tools. Only one database
+//! backend (either `sqlite` or `postgres`) should be enabled at a time.
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
 compile_error!("Choose either sqlite or postgres, not both");
 

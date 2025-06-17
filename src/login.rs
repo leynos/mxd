@@ -1,3 +1,8 @@
+//! Implementation of the login transaction.
+//!
+//! Validates user credentials against the database and updates session state
+//! on success. Login attempts are logged and rejected with appropriate error
+//! codes when validation fails.
 use std::net::SocketAddr;
 
 use tracing::{info, warn};

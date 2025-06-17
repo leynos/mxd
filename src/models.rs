@@ -1,3 +1,7 @@
+//! Diesel ORM models for persisted data.
+//!
+//! These structs correspond to tables defined in `schema.rs` and are used
+//! throughout the application for reading and writing user and news records.
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,9 @@
+//! Parse and execute protocol transactions.
+//!
+//! This module converts incoming [`Transaction`] values into high level
+//! [`Command`] variants and runs the appropriate handlers. Commands are used by
+//! the connection handler to drive database operations and build reply
+//! transactions.
 use std::net::SocketAddr;
 
 use futures_util::future::BoxFuture;
