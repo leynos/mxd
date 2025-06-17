@@ -1,7 +1,9 @@
-//! Helpers for traversing news bundle paths.
+//! Utilities for traversing news bundle paths.
 //!
-//! This module builds SQL snippets for recursive CTE queries that walk the
-//! hierarchical news structure stored in the database.
+//! This module constructs SQL fragments used in recursive CTEs to walk the
+//! hierarchical bundle and category structure stored in the database.
+//! It also provides helpers for preparing path parameters and executing the
+//! recursive queries via Diesel.
 /// Generate the recursive CTE step SQL used for traversing news bundle paths.
 ///
 /// The `$jt` argument specifies the join type (`"JOIN"` or `"LEFT JOIN"`) used

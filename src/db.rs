@@ -1,9 +1,8 @@
-//! Database connection management and queries.
+//! Manage database connections and domain queries.
 //!
-//! Provides Diesel-based helpers for creating connection pools, running
-//! migrations and executing queries for users and news articles. The
-//! implementation supports both `SQLite` and `PostgreSQL` backends via feature
-//! flags.
+//! This module exposes helpers for creating pooled Diesel connections,
+//! running embedded migrations, and executing application queries.  It
+//! supports both `SQLite` and `PostgreSQL` backends, selected via feature flags.
 use cfg_if::cfg_if;
 use diesel::prelude::*;
 #[cfg(feature = "sqlite")]
