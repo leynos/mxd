@@ -4,10 +4,10 @@ inputs:
   features:
     description: Cargo features to enable
     required: false
-  no-default-features:
-    description: Disable default features
+  with-default-features:
+    description: Enable default features
     required: false
-    default: false
+    default: true
   output-path:
     description: Output file path
     required: true
@@ -21,7 +21,7 @@ runs:
     - run: |
         set -euo pipefail
         args=(--workspace)
-        if ${{ !! inputs.no-default-features }}; then
+        if ! ${{ !! inputs.with-default-features }}; then
           args+=(--no-default-features)
         fi
         if [ -n "${{ inputs.features }}" ]; then
