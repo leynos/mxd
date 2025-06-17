@@ -1,3 +1,8 @@
+//! Field identifiers used within transaction payloads.
+//!
+//! Each `FieldId` corresponds to a specific parameter or data value defined by
+//! the Hotline protocol. They are used when encoding and decoding transaction
+//! parameters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FieldId {
     /// Login name for an account.

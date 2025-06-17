@@ -1,3 +1,7 @@
+//! Utility to create AFL fuzzing corpus data.
+//!
+//! Generates a set of minimal transactions for the protocol fuzz target and
+//! writes them into the `fuzz/corpus` directory.
 use std::{
     fs::{self, File},
     io::Write,

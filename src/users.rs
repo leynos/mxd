@@ -1,3 +1,7 @@
+//! Password hashing and verification utilities.
+//!
+//! Functions in this module provide a thin wrapper around the `argon2` crate
+//! to hash and verify user passwords for authentication purposes.
 use argon2::{
     Argon2,
     password_hash::{
