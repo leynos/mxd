@@ -31,90 +31,57 @@ pub trait RecursiveCTEExt {
         Body: QueryFragment<Self::Backend>;
 }
 
-#[cfg(feature = "sqlite")]
-impl RecursiveCTEExt for diesel::sqlite::SqliteConnection {
-    type Backend = diesel::sqlite::Sqlite;
+/// Implement [`RecursiveCTEExt`] for a connection type using the specified
+/// backend.
+///
+/// This macro reduces boilerplate for each connection and backend
+/// combination.
+macro_rules! impl_recursive_cte_ext {
+    (
+        $(#[$attr:meta])* $conn:ty => $backend:ty
+    ) => {
+        $(#[$attr])*
+        impl RecursiveCTEExt for $conn {
+            type Backend = $backend;
 
-    fn with_recursive<Seed, Step, Body>(
-        &self,
-        cte_name: &'static str,
-        columns: &'static [&'static str],
-        seed: Seed,
-        step: Step,
-        body: Body,
-    ) -> WithRecursive<Self::Backend, Seed, Step, Body>
-    where
-        Seed: QueryFragment<Self::Backend>,
-        Step: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>,
-    {
-        builders::with_recursive::<Self::Backend, _, _, _>(cte_name, columns, seed, step, body)
-    }
+            fn with_recursive<Seed, Step, Body>(
+                &self,
+                cte_name: &'static str,
+                columns: &'static [&'static str],
+                seed: Seed,
+                step: Step,
+                body: Body,
+            ) -> WithRecursive<Self::Backend, Seed, Step, Body>
+            where
+                Seed: QueryFragment<Self::Backend>,
+                Step: QueryFragment<Self::Backend>,
+                Body: QueryFragment<Self::Backend>,
+            {
+                builders::with_recursive::<Self::Backend, _, _, _>(
+                    cte_name, columns, seed, step, body,
+                )
+            }
+        }
+    };
 }
 
-#[cfg(feature = "postgres")]
-impl RecursiveCTEExt for diesel::pg::PgConnection {
-    type Backend = diesel::pg::Pg;
+impl_recursive_cte_ext!(
+    #[cfg(feature = "sqlite")]
+    diesel::sqlite::SqliteConnection => diesel::sqlite::Sqlite
+);
 
-    fn with_recursive<Seed, Step, Body>(
-        &self,
-        cte_name: &'static str,
-        columns: &'static [&'static str],
-        seed: Seed,
-        step: Step,
-        body: Body,
-    ) -> WithRecursive<Self::Backend, Seed, Step, Body>
-    where
-        Seed: QueryFragment<Self::Backend>,
-        Step: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>,
-    {
-        builders::with_recursive::<Self::Backend, _, _, _>(cte_name, columns, seed, step, body)
-    }
-}
+impl_recursive_cte_ext!(
+    #[cfg(feature = "postgres")]
+    diesel::pg::PgConnection => diesel::pg::Pg
+);
 
-#[cfg(all(feature = "diesel-async", feature = "sqlite"))]
-impl RecursiveCTEExt
-    for diesel_async::sync_connection_wrapper::SyncConnectionWrapper<
-        diesel::sqlite::SqliteConnection,
-    >
-{
-    type Backend = diesel::sqlite::Sqlite;
+impl_recursive_cte_ext!(
+    #[cfg(all(feature = "diesel-async", feature = "sqlite"))]
+    diesel_async::sync_connection_wrapper::SyncConnectionWrapper<diesel::sqlite::SqliteConnection>
+        => diesel::sqlite::Sqlite
+);
 
-    fn with_recursive<Seed, Step, Body>(
-        &self,
-        cte_name: &'static str,
-        columns: &'static [&'static str],
-        seed: Seed,
-        step: Step,
-        body: Body,
-    ) -> WithRecursive<Self::Backend, Seed, Step, Body>
-    where
-        Seed: QueryFragment<Self::Backend>,
-        Step: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>,
-    {
-        builders::with_recursive::<Self::Backend, _, _, _>(cte_name, columns, seed, step, body)
-    }
-}
-
-#[cfg(all(feature = "diesel-async", feature = "postgres"))]
-impl RecursiveCTEExt for diesel_async::AsyncPgConnection {
-    type Backend = diesel::pg::Pg;
-
-    fn with_recursive<Seed, Step, Body>(
-        &self,
-        cte_name: &'static str,
-        columns: &'static [&'static str],
-        seed: Seed,
-        step: Step,
-        body: Body,
-    ) -> WithRecursive<Self::Backend, Seed, Step, Body>
-    where
-        Seed: QueryFragment<Self::Backend>,
-        Step: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>,
-    {
-        builders::with_recursive::<Self::Backend, _, _, _>(cte_name, columns, seed, step, body)
-    }
-}
+impl_recursive_cte_ext!(
+    #[cfg(all(feature = "diesel-async", feature = "postgres"))]
+    diesel_async::AsyncPgConnection => diesel::pg::Pg
+);
