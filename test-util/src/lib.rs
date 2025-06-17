@@ -90,8 +90,7 @@ where
 {
     let fut = async {
         let mut settings = Settings::default();
-        let (tmp, data_dir) = tempfile::tempdir()?.keep()?;
-        std::mem::forget(tmp);
+        let data_dir = tempfile::tempdir()?.into_path();
         settings.data_dir = data_dir.clone();
 
         let mut pg = if geteuid().is_root() {
