@@ -10,6 +10,7 @@ block.
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
 use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
+// Count integers from 1 through 5 using a recursive CTE
 
 let rows: Vec<i32> = conn
     .with_recursive(
@@ -23,6 +24,15 @@ let rows: Vec<i32> = conn
     )
     .load(&mut conn)?;
 ```
+
+The resulting CTE `t` contains the following rows:
+
+| n |
+|---|
+| 1 |
+| 2 |
+| 3 |
+| ... |
 
 When `diesel-async` is enabled, import `diesel_async::RunQueryDsl` and await the
 query as follows:
