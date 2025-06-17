@@ -93,20 +93,27 @@ struct EmbeddedPg {
 }
 
 #[cfg(feature = "postgres")]
-fn start_embedded_postgres<F>(
-    setup: F,
-) -> Result<EmbeddedPg, Box<dyn std::error::Error>>
+/// Start an embedded PostgreSQL instance for tests.
+///
+/// Returns an [`EmbeddedPg`] containing the connection URL, the
+/// running [`PostgreSQL`] handle, and the [`TempDir`] of the data
+/// directory. The temporary directory must be kept alive for as long
+/// as the server is running, otherwise the data directory would be
+/// removed prematurely.
+fn start_embedded_postgres<F>(setup: F) -> Result<EmbeddedPg, Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
     let fut = async {
         let mut settings = Settings::default();
-        let tmp = tempfile::tempdir()?;
+        let tmp = tempfile::Builder::new().prefix("mxd-pg").tempdir()?;
         let data_dir = tmp.path().to_path_buf();
         settings.data_dir = data_dir.clone();
 
         let mut pg = if geteuid().is_root() {
-            let bin = HELPER_BIN.clone().map_err(|e| -> Box<dyn StdError> { e.into() })?;
+            let bin = HELPER_BIN
+                .clone()
+                .map_err(|e| -> Box<dyn StdError> { e.into() })?;
 
             let run_status = std::process::Command::new(bin)
                 .env("PG_DATA_DIR", &data_dir)
@@ -150,11 +157,7 @@ where
         Err(_) => tokio::runtime::Runtime::new()?.block_on(fut)?,
     };
     setup(&url)?;
-    Ok(EmbeddedPg {
-        url,
-        pg,
-        temp_dir,
-    })
+    Ok(EmbeddedPg { url, pg, temp_dir })
 }
 
 /// Resets a PostgreSQL database by dropping and recreating the public schema.
