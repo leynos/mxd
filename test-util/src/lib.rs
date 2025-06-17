@@ -35,25 +35,21 @@ static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
         .expect("manifest path has parent")
         .join("target/debug/postgres-setup-unpriv");
 
-    let rebuild = match (std::fs::metadata(&bin), std::fs::metadata(&manifest)) {
-        (Ok(bin_meta), Ok(man_meta)) => bin_meta.modified().ok() < man_meta.modified().ok(),
-        _ => true,
-    };
-    if rebuild {
-        let status = std::process::Command::new("cargo")
-            .args([
-                "build",
-                "--bin",
-                "postgres-setup-unpriv",
-                "--manifest-path",
-                &manifest,
-                "--quiet",
-            ])
-            .status()
-            .map_err(|e| format!("building postgres-setup-unpriv: {e}"))?;
-        if !status.success() {
-            return Err("building postgres-setup-unpriv failed".into());
-        }
+    // Rebuild the helper once per test session. Cargo is fast when nothing
+    // changed, so always delegate the up-to-date check to it.
+    let status = std::process::Command::new("cargo")
+        .args([
+            "build",
+            "--bin",
+            "postgres-setup-unpriv",
+            "--manifest-path",
+            &manifest,
+            "--quiet",
+        ])
+        .status()
+        .map_err(|e| format!("building postgres-setup-unpriv: {e}"))?;
+    if !status.success() {
+        return Err("building postgres-setup-unpriv failed".into());
     }
 
     Ok(bin)
@@ -89,11 +85,11 @@ where
 {
     let fut = async {
         let mut settings = Settings::default();
-        let data_dir = tempfile::tempdir()?.keep()?;
+        let (tmp, data_dir) = tempfile::tempdir()?.keep()?;
+        std::mem::forget(tmp);
         settings.data_dir = data_dir.clone();
-        let mut pg = PostgreSQL::new(settings.clone());
 
-        if geteuid().is_root() {
+        let mut pg = if geteuid().is_root() {
             let bin = HELPER_BIN.clone().map_err(|e| e.into())?;
 
             let run_status = std::process::Command::new(bin)
@@ -107,10 +103,17 @@ where
             if !run_status.success() {
                 return Err("postgres-setup-unpriv failed".into());
             }
-        } else if let Err(e) = pg.setup().await {
-            let _ = pg.stop().await;
-            return Err(format!("preparing embedded PostgreSQL: {e}").into());
-        }
+
+            PostgreSQL::new(settings.clone())
+        } else {
+            let mut pg = PostgreSQL::new(settings.clone());
+            if let Err(e) = pg.setup().await {
+                let _ = pg.stop().await;
+                return Err(format!("preparing embedded PostgreSQL: {e}").into());
+            }
+            pg
+        };
+
         if let Err(e) = pg.start().await {
             let _ = pg.stop().await;
             return Err(format!("starting embedded PostgreSQL: {e}").into());
