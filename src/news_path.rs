@@ -45,23 +45,25 @@ pub(crate) fn prepare_path(path: &str) -> Result<Option<(String, usize)>, serde_
 
 use diesel::{query_builder::QueryFragment, sql_query};
 use diesel_cte_ext::{
+    RecursiveCTEExt,
     RecursiveParts,
     cte::{RecursiveBackend, WithRecursive},
-    with_recursive,
 };
 
 /// Construct a recursive CTE for traversing bundle paths.
-pub(crate) fn build_path_cte<DB, Step, Body>(
+pub(crate) fn build_path_cte<C, Step, Body>(
+    conn: &mut C,
     step: Step,
     body: Body,
-) -> WithRecursive<DB, diesel::query_builder::SqlQuery, Step, Body>
+) -> WithRecursive<C::Backend, diesel::query_builder::SqlQuery, Step, Body>
 where
-    DB: RecursiveBackend + diesel::backend::DieselReserveSpecialization,
-    Step: QueryFragment<DB>,
-    Body: QueryFragment<DB>,
+    C: RecursiveCTEExt,
+    C::Backend: RecursiveBackend + diesel::backend::DieselReserveSpecialization,
+    Step: QueryFragment<C::Backend>,
+    Body: QueryFragment<C::Backend>,
 {
     let seed = sql_query(CTE_SEED_SQL);
-    with_recursive::<DB, _, _, _>(
+    conn.with_recursive(
         "tree",
         &["idx", "id"],
         RecursiveParts::new(seed, step, body),

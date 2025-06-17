@@ -24,7 +24,7 @@ ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.1.0" 
 argon2 = { version = "0.5", features = ["std"] }
 rand = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-diesel_cte_ext = { path = "diesel_cte_ext" }
+diesel_cte_ext = { path = "diesel_cte_ext", default-features = false, features = ["async"] }
 futures-util = "0.3"
 tracing = "0.1"
 figment = { version = "0.10", features = ["toml", "env", "test"] }
@@ -40,6 +40,8 @@ postgres = [
     "diesel/postgres",
     "diesel_migrations/postgres",
     "diesel-async/postgres",
+    "diesel_cte_ext/postgres",
+    "diesel_cte_ext/async",
     "url",
     "test-util/postgres",
 ]
@@ -48,6 +50,8 @@ sqlite = [
     "diesel/returning_clauses_for_sqlite_3_35",
     "diesel_migrations/sqlite",
     "diesel-async/sqlite",
+    "diesel_cte_ext/sqlite",
+    "diesel_cte_ext/async",
     "test-util/sqlite",
 ]
 returning_clauses_for_sqlite_3_35 = ["diesel/returning_clauses_for_sqlite_3_35"]
