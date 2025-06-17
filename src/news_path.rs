@@ -1,7 +1,9 @@
-//! Helpers for traversing news bundle paths.
+//! Utilities for traversing news bundle paths.
 //!
-//! This module builds SQL snippets for recursive CTE queries that walk the
-//! hierarchical news structure stored in the database.
+//! This module constructs SQL fragments used in recursive CTEs to walk the
+//! hierarchical bundle and category structure stored in the database.
+//! It also provides helpers for preparing path parameters and executing the
+//! recursive queries via Diesel.
 /// Generate the recursive CTE step SQL used for traversing news bundle paths.
 ///
 /// The `$jt` argument specifies the join type (`"JOIN"` or `"LEFT JOIN"`) used
@@ -51,8 +53,11 @@ use diesel_cte_ext::{
 };
 
 /// Construct a recursive CTE for traversing bundle paths.
+///
+/// The connection type `C` is only used for backend inference; a concrete
+/// connection value is unnecessary. The step and body parameters are generic
+/// because their query types change once bindings are applied.
 pub(crate) fn build_path_cte<C, Step, Body>(
-    conn: &mut C,
     step: Step,
     body: Body,
 ) -> WithRecursive<C::Backend, diesel::query_builder::SqlQuery, Step, Body>
@@ -63,11 +68,27 @@ where
     Body: QueryFragment<C::Backend>,
 {
     let seed = sql_query(CTE_SEED_SQL);
-    conn.with_recursive(
+    C::with_recursive(
         "tree",
         &["idx", "id"],
         RecursiveParts::new(seed, step, body),
     )
+}
+
+/// Convenience wrapper that infers the connection type from `conn`.
+pub fn build_path_cte_with_conn<C, Step, Body>(
+    conn: &mut C,
+    step: Step,
+    body: Body,
+) -> WithRecursive<C::Backend, diesel::query_builder::SqlQuery, Step, Body>
+where
+    C: RecursiveCTEExt,
+    C::Backend: RecursiveBackend + diesel::backend::DieselReserveSpecialization,
+    Step: QueryFragment<C::Backend>,
+    Body: QueryFragment<C::Backend>,
+{
+    let _ = conn; // type inference only
+    build_path_cte::<C, Step, Body>(step, body)
 }
 
 #[cfg(test)]

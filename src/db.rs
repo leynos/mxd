@@ -1,9 +1,8 @@
-//! Database connection management and queries.
+//! Manage database connections and domain queries.
 //!
-//! Provides Diesel-based helpers for creating connection pools, running
-//! migrations and executing queries for users and news articles. The
-//! implementation supports both `SQLite` and `PostgreSQL` backends via feature
-//! flags.
+//! This module exposes helpers for creating pooled Diesel connections,
+//! running embedded migrations, and executing application queries.  It
+//! supports both `SQLite` and `PostgreSQL` backends, selected via feature flags.
 use cfg_if::cfg_if;
 use diesel::prelude::*;
 #[cfg(feature = "sqlite")]
@@ -245,7 +244,7 @@ use crate::news_path::{
     BUNDLE_STEP_SQL,
     CATEGORY_BODY_SQL,
     CATEGORY_STEP_SQL,
-    build_path_cte,
+    build_path_cte_with_conn,
     prepare_path,
 };
 
@@ -282,7 +281,7 @@ async fn bundle_id_from_path(
     let len_i32: i32 = i32::try_from(len).map_err(|_| PathLookupError::InvalidPath)?;
     let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len_i32);
 
-    let query = build_path_cte(conn, step, body);
+    let query = build_path_cte_with_conn(conn, step, body);
 
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
@@ -436,7 +435,7 @@ async fn category_id_from_path(
         .bind::<Integer, _>(len_minus_one)
         .bind::<Integer, _>(len_minus_one);
 
-    let query = build_path_cte(conn, step, body);
+    let query = build_path_cte_with_conn(conn, step, body);
 
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
     res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)
