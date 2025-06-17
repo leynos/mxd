@@ -20,7 +20,7 @@ pub trait RecursiveCTEExt {
     #[doc(alias = "builders::with_recursive")]
     #[allow(clippy::unused_self)]
     fn with_recursive<Seed, Step, Body>(
-        &self,
+        &mut self,
         cte_name: &'static str,
         columns: &'static [&'static str],
         parts: RecursiveParts<Seed, Step, Body>,
@@ -31,55 +31,52 @@ pub trait RecursiveCTEExt {
         Body: QueryFragment<Self::Backend>;
 }
 
-/// Implement [`RecursiveCTEExt`] for a connection type using the specified
-/// backend.
-///
-/// This macro reduces boilerplate for each connection and backend
-/// combination.
-macro_rules! impl_recursive_cte_ext {
-    (
-        $(#[$attr:meta])* $conn:ty => $backend:ty
-    ) => {
-        $(#[$attr])*
-        impl RecursiveCTEExt for $conn {
-            type Backend = $backend;
+/// Blanket implementation of [`RecursiveCTEExt`] for synchronous Diesel
+/// connections.
+impl<C> RecursiveCTEExt for C
+where
+    C: diesel::connection::Connection,
+    C::Backend: RecursiveBackend,
+{
+    type Backend = C::Backend;
 
-            fn with_recursive<Seed, Step, Body>(
-                &self,
-                cte_name: &'static str,
-                columns: &'static [&'static str],
-                parts: RecursiveParts<Seed, Step, Body>,
-            ) -> WithRecursive<Self::Backend, Seed, Step, Body>
-            where
-                Seed: QueryFragment<Self::Backend>,
-                Step: QueryFragment<Self::Backend>,
-                Body: QueryFragment<Self::Backend>,
-            {
-                builders::with_recursive::<Self::Backend, _, _, _>(
-                    cte_name, columns, parts,
-                )
-            }
-        }
-    };
+    fn with_recursive<Seed, Step, Body>(
+        &mut self,
+        cte_name: &'static str,
+        columns: &'static [&'static str],
+        parts: RecursiveParts<Seed, Step, Body>,
+    ) -> WithRecursive<Self::Backend, Seed, Step, Body>
+    where
+        Seed: QueryFragment<Self::Backend>,
+        Step: QueryFragment<Self::Backend>,
+        Body: QueryFragment<Self::Backend>,
+    {
+        builders::with_recursive::<Self::Backend, _, _, _>(cte_name, columns, parts)
+    }
 }
 
-impl_recursive_cte_ext!(
-    #[cfg(feature = "sqlite")]
-    diesel::sqlite::SqliteConnection => diesel::sqlite::Sqlite
-);
+/// Blanket implementation of [`RecursiveCTEExt`] for asynchronous Diesel
+/// connections.
+#[cfg(feature = "async")]
+impl<C> RecursiveCTEExt for C
+where
+    C: diesel_async::AsyncConnection,
+    C::Backend: RecursiveBackend,
+{
+    type Backend = C::Backend;
 
-impl_recursive_cte_ext!(
-    #[cfg(feature = "postgres")]
-    diesel::pg::PgConnection => diesel::pg::Pg
-);
+    fn with_recursive<Seed, Step, Body>(
+        &mut self,
+        cte_name: &'static str,
+        columns: &'static [&'static str],
+        parts: RecursiveParts<Seed, Step, Body>,
+    ) -> WithRecursive<Self::Backend, Seed, Step, Body>
+    where
+        Seed: QueryFragment<Self::Backend>,
+        Step: QueryFragment<Self::Backend>,
+        Body: QueryFragment<Self::Backend>,
+    {
+        builders::with_recursive::<Self::Backend, _, _, _>(cte_name, columns, parts)
+    }
+}
 
-impl_recursive_cte_ext!(
-    #[cfg(all(feature = "diesel-async", feature = "sqlite"))]
-    diesel_async::sync_connection_wrapper::SyncConnectionWrapper<diesel::sqlite::SqliteConnection>
-        => diesel::sqlite::Sqlite
-);
-
-impl_recursive_cte_ext!(
-    #[cfg(all(feature = "diesel-async", feature = "postgres"))]
-    diesel_async::AsyncPgConnection => diesel::pg::Pg
-);

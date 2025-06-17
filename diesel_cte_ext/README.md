@@ -34,8 +34,8 @@ The resulting CTE `t` contains the following rows:
 | 3 |
 | ... |
 
-When `diesel-async` is enabled, import `diesel_async::RunQueryDsl` and await the
-query as follows:
+When the `async` feature is enabled, import `diesel_async::RunQueryDsl` and await
+the query as follows:
 
 ```rust
 use diesel::dsl::sql;
@@ -65,7 +65,7 @@ connections.
 
 - Construct a single recursive CTE with a seed query, step query and body.
 - Tested with both SQLite and PostgreSQL back ends.
-- Compatible with Diesel 2.x synchronous and `diesel-async` connections.
+- Compatible with Diesel 2.x synchronous and `async` connections.
 
 ## Limitations
 
