@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use postgres_setup_unpriv::{with_temp_euid, PgEnvCfg};
-use postgresql_embedded::VersionReq;
+use postgresql_embedded::{settings::AuthMethod, VersionReq};
 use nix::unistd::{geteuid, Uid};
 use rstest::rstest;
 
@@ -14,7 +14,6 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
         password: Some("secret".into()),
         data_dir: Some(PathBuf::from("/tmp/data")),
         runtime_dir: Some(PathBuf::from("/tmp/runtime")),
-        cache_dir: Some(PathBuf::from("/tmp/cache")),
         locale: Some("en_US".into()),
         encoding: Some("UTF8".into()),
         auth_method: Some("trust".into()),
@@ -25,11 +24,10 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
     assert_eq!(settings.username, "admin");
     assert_eq!(settings.password, "secret");
     assert_eq!(settings.data_dir, PathBuf::from("/tmp/data"));
-    // cache_dir overwrites runtime_dir in current implementation
-    assert_eq!(settings.installation_dir, PathBuf::from("/tmp/cache"));
+    assert_eq!(settings.installation_dir, PathBuf::from("/tmp/runtime"));
     assert_eq!(settings.configuration.get("locale"), Some(&"en_US".to_string()));
     assert_eq!(settings.configuration.get("encoding"), Some(&"UTF8".to_string()));
-    assert_eq!(settings.configuration.get("auth_method"), Some(&"trust".to_string()));
+    assert_eq!(settings.auth_method, postgresql_embedded::settings::AuthMethod::Trust);
     Ok(())
 }
 

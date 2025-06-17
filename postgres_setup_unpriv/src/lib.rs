@@ -3,7 +3,7 @@
 use anyhow::{bail, Context, Result};
 use nix::unistd::{getresuid, geteuid, setresuid, Uid};
 use ortho_config::OrthoConfig;
-use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
+use postgresql_embedded::{settings::AuthMethod, PostgreSQL, Settings, VersionReq};
 use serde::{Deserialize, Serialize};
 
 #[allow(non_snake_case)]
@@ -17,7 +17,6 @@ pub struct PgEnvCfg {
     pub password: Option<String>,
     pub data_dir: Option<std::path::PathBuf>,
     pub runtime_dir: Option<std::path::PathBuf>,
-    pub cache_dir: Option<std::path::PathBuf>,
     pub locale: Option<String>,
     pub encoding: Option<String>,
     pub auth_method: Option<String>,
@@ -46,9 +45,6 @@ impl PgEnvCfg {
         if let Some(ref dir) = self.runtime_dir {
             s.installation_dir = dir.clone();
         }
-        if let Some(ref dir) = self.cache_dir {
-            s.installation_dir = dir.clone();
-        }
         if let Some(ref loc) = self.locale {
             s.configuration.insert("locale".into(), loc.clone());
         }
@@ -56,14 +52,11 @@ impl PgEnvCfg {
             s.configuration.insert("encoding".into(), enc.clone());
         }
         if let Some(ref am) = self.auth_method {
-            s.configuration.insert(
-                "auth_method".into(),
-                match am.to_ascii_lowercase().as_str() {
-                    "trust" => "trust".to_string(),
-                    "password" => "password".to_string(),
-                    other => bail!("unknown PG_AUTH_METHOD '{other}'"),
-                },
-            );
+            s.auth_method = match am.to_ascii_lowercase().as_str() {
+                "trust" => AuthMethod::Trust,
+                "password" => AuthMethod::Password,
+                other => bail!("unknown PG_AUTH_METHOD '{other}'"),
+            };
         }
 
         Ok(s)
@@ -78,15 +71,25 @@ where
     if !geteuid().is_root() {
         bail!("must start as root to drop privileges temporarily");
     }
-
     let ids = getresuid().context("getresuid failed")?;
     setresuid(ids.real, target, ids.saved).context("failed to set euid")?;
 
-    let res = body();
+    struct Guard {
+        real: Uid,
+        saved: Uid,
+    }
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let _ = setresuid(self.real, Uid::from_raw(0), self.saved);
+        }
+    }
 
-    setresuid(ids.real, Uid::from_raw(0), ids.saved).context("failed to restore euid")?;
+    let _guard = Guard {
+        real: ids.real,
+        saved: ids.saved,
+    };
 
-    res
+    body()
 }
 
 pub fn run() -> Result<()> {

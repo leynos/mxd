@@ -48,22 +48,27 @@ where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
     let fut = async {
-        use nix::unistd::geteuid;
-        use postgresql_embedded::Settings;
-
         let mut settings = Settings::default();
         let data_dir = tempfile::tempdir()?.into_path();
         settings.data_dir = data_dir.clone();
         let mut pg = PostgreSQL::new(settings.clone());
 
         if geteuid().is_root() {
+            let manifest_path =
+                std::env::var("POSTGRES_SETUP_UNPRIV_MANIFEST").unwrap_or_else(|_| {
+                    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../postgres_setup_unpriv/Cargo.toml")
+                        .to_string_lossy()
+                        .into_owned()
+                });
+
             let mut cmd = std::process::Command::new("cargo");
             cmd.args([
                 "run",
                 "--bin",
                 "postgres-setup-unpriv",
                 "--manifest-path",
-                "postgres_setup_unpriv/Cargo.toml",
+                &manifest_path,
                 "--quiet",
             ])
             .env("PG_DATA_DIR", &data_dir)
