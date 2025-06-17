@@ -32,7 +32,7 @@ The resulting CTE `t` contains the following rows:
 | 1 |
 | 2 |
 | 3 |
-| ... |
+| … |
 
 When the `async` feature is enabled, import `diesel_async::RunQueryDsl` and await
 the query as follows:
