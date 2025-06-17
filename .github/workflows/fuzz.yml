@@ -11,9 +11,11 @@ jobs:
     timeout-minutes: 360
     env:
       FUZZ_HARNESS: /usr/local/bin/fuzz
+      BUILD_PROFILE: debug
 
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
 
       - name: Build fuzzing container
         run: docker build -t mxd-fuzz -f fuzz/Dockerfile .
