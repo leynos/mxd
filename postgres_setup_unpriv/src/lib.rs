@@ -79,6 +79,8 @@ impl PgEnvCfg {
             settings.auth_method = match am.to_ascii_lowercase().as_str() {
                 "trust" => AuthMethod::Trust,
                 "password" => AuthMethod::Password,
+                "md5" => AuthMethod::Md5,
+                "scram-sha-256" => AuthMethod::ScramSha256,
                 other => bail!("unknown PG_AUTH_METHOD '{other}'"),
             };
         }

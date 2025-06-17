@@ -1,5 +1,7 @@
 #[cfg(feature = "postgres")]
 use std::error::Error as StdError;
+#[cfg(feature = "postgres")]
+use std::path::{Path, PathBuf};
 use std::{
     io::{BufRead, BufReader},
     net::TcpListener,
@@ -10,12 +12,52 @@ use std::{
 #[cfg(feature = "postgres")]
 use nix::unistd::geteuid;
 #[cfg(feature = "postgres")]
+use once_cell::sync::Lazy;
+#[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
 #[cfg(feature = "postgres")]
 use postgresql_embedded::Settings;
 #[cfg(feature = "postgres")]
 use rstest::fixture;
 use tempfile::TempDir;
+
+#[cfg(feature = "postgres")]
+static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
+    let manifest = std::env::var("POSTGRES_SETUP_UNPRIV_MANIFEST").unwrap_or_else(|_| {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../postgres_setup_unpriv/Cargo.toml")
+            .to_string_lossy()
+            .into_owned()
+    });
+
+    let bin = Path::new(&manifest)
+        .parent()
+        .expect("manifest path has parent")
+        .join("target/debug/postgres-setup-unpriv");
+
+    let rebuild = match (std::fs::metadata(&bin), std::fs::metadata(&manifest)) {
+        (Ok(bin_meta), Ok(man_meta)) => bin_meta.modified().ok() < man_meta.modified().ok(),
+        _ => true,
+    };
+    if rebuild {
+        let status = std::process::Command::new("cargo")
+            .args([
+                "build",
+                "--bin",
+                "postgres-setup-unpriv",
+                "--manifest-path",
+                &manifest,
+                "--quiet",
+            ])
+            .status()
+            .map_err(|e| format!("building postgres-setup-unpriv: {e}"))?;
+        if !status.success() {
+            return Err("building postgres-setup-unpriv failed".into());
+        }
+    }
+
+    Ok(bin)
+});
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
 compile_error!("Choose either sqlite or postgres, not both");
@@ -47,38 +89,12 @@ where
 {
     let fut = async {
         let mut settings = Settings::default();
-        let data_dir = tempfile::tempdir()?.keep();
+        let data_dir = tempfile::tempdir()?.keep()?;
         settings.data_dir = data_dir.clone();
         let mut pg = PostgreSQL::new(settings.clone());
 
         if geteuid().is_root() {
-            let manifest_path =
-                std::env::var("POSTGRES_SETUP_UNPRIV_MANIFEST").unwrap_or_else(|_| {
-                    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../postgres_setup_unpriv/Cargo.toml")
-                        .to_string_lossy()
-                        .into_owned()
-                });
-
-            let build_status = std::process::Command::new("cargo")
-                .args([
-                    "build",
-                    "--bin",
-                    "postgres-setup-unpriv",
-                    "--manifest-path",
-                    &manifest_path,
-                    "--quiet",
-                ])
-                .status()
-                .map_err(|e| format!("building postgres-setup-unpriv: {e}"))?;
-            if !build_status.success() {
-                return Err("building postgres-setup-unpriv failed".into());
-            }
-
-            let bin = std::path::Path::new(&manifest_path)
-                .parent()
-                .expect("manifest path has parent")
-                .join("target/debug/postgres-setup-unpriv");
+            let bin = HELPER_BIN.clone().map_err(|e| e.into())?;
 
             let run_status = std::process::Command::new(bin)
                 .env("PG_DATA_DIR", &data_dir)
