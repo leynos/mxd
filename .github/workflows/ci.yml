@@ -27,11 +27,12 @@ jobs:
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
+      BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          with-postgres: ${{ matrix.feature == 'postgres' }}
+          install-postgres-deps: ${{ matrix.feature == 'postgres' }}
       - name: Export POSTGRES_TEST_URL
         if: matrix.feature == 'postgres'
         uses: ./.github/actions/export-postgres-url
@@ -63,11 +64,12 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       CODESCENE_CLI_SHA256: "a1c38415c5978908283c0608b648b27e954c93882b15d8b91d052d846c3eabd8"
+      BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          with-postgres: true
+          install-postgres-deps: true
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
