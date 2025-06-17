@@ -2,22 +2,24 @@
 
 `diesel_cte_ext` adds a small helper for building recursive
 [Common Table Expressions](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-RECURSIVE)
-with Diesel. The crate exports the `with_recursive` function which constructs a
-query representing a `WITH RECURSIVE` block.
+with Diesel. The crate exports a connection extension trait providing
+`with_recursive` which constructs a query representing a `WITH RECURSIVE`
+block.
 
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
-use diesel_cte_ext::with_recursive;
+use diesel_cte_ext::RecursiveCTEExt;
 
-let rows: Vec<i32> = with_recursive::<diesel::sqlite::Sqlite, _, _, _>(
-    "t",
-    &["n"],
-    sql::<Integer>("SELECT 1"),
-    sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-    sql::<Integer>("SELECT n FROM t"),
-)
-.load(&mut conn)?;
+let rows: Vec<i32> = conn
+    .with_recursive(
+        "t",
+        &["n"],
+        sql::<Integer>("SELECT 1"),
+        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+        sql::<Integer>("SELECT n FROM t"),
+    )
+    .load(&mut conn)?;
 ```
 
 The builder works with either SQLite or PostgreSQL depending on the enabled
