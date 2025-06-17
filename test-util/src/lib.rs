@@ -47,7 +47,7 @@ where
 {
     let fut = async {
         let mut settings = Settings::default();
-        let data_dir = tempfile::tempdir()?.into_path();
+        let data_dir = tempfile::tempdir()?.keep();
         settings.data_dir = data_dir.clone();
         let mut pg = PostgreSQL::new(settings.clone());
 
