@@ -84,14 +84,16 @@ pub struct TestServer {
 }
 
 #[cfg(feature = "postgres")]
-fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+fn start_embedded_postgres<F>(
+    setup: F,
+) -> Result<(String, PostgreSQL, TempDir), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
     let fut = async {
         let mut settings = Settings::default();
-        let (tmp, data_dir) = tempfile::tempdir()?.keep()?;
-        std::mem::forget(tmp);
+        let tmp = tempfile::tempdir()?;
+        let data_dir = tmp.path().to_path_buf();
         settings.data_dir = data_dir.clone();
 
         let mut pg = if geteuid().is_root() {
@@ -128,14 +130,14 @@ where
             return Err(format!("creating test database: {e}").into());
         }
         let url = pg.settings().url("test");
-        Ok::<_, Box<dyn StdError>>((url, pg))
+        Ok::<_, Box<dyn StdError>>((url, pg, tmp))
     };
-    let (url, pg) = match tokio::runtime::Handle::try_current() {
+    let (url, pg, tmp) = match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.block_on(fut)?,
         Err(_) => tokio::runtime::Runtime::new()?.block_on(fut)?,
     };
     setup(&url)?;
-    Ok((url, pg))
+    Ok((url, pg, tmp))
 }
 
 /// Resets a PostgreSQL database by dropping and recreating the public schema.
@@ -240,6 +242,7 @@ pub struct PostgresTestDb {
     /// This is `Some` when using an embedded server, `None` when using an external
     /// database specified via `POSTGRES_TEST_URL`.
     pg: Option<PostgreSQL>,
+    _temp: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
@@ -248,11 +251,19 @@ impl PostgresTestDb {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let url = value.to_string_lossy().into_owned();
             reset_postgres_db(&url)?;
-            return Ok(Self { url, pg: None });
+            return Ok(Self {
+                url,
+                pg: None,
+                _temp: None,
+            });
         }
 
-        let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
-        Ok(Self { url, pg: Some(pg) })
+        let (url, pg, tmp) = start_embedded_postgres(|url| reset_postgres_db(url))?;
+        Ok(Self {
+            url,
+            pg: Some(pg),
+            _temp: Some(tmp),
+        })
     }
 
     pub fn uses_embedded(&self) -> bool { self.pg.is_some() }
@@ -432,16 +443,16 @@ impl TestServer {
 
         #[cfg(feature = "postgres")]
         {
-            let (db_url, pg) = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+            let (db_url, pg, temp) = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
                 let url = value.to_string_lossy().into_owned();
                 reset_postgres_db(&url)?;
-                (url, None)
+                (url, None, None)
             } else {
-                let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
-                (url, Some(pg))
+                let (url, pg, tmp) = start_embedded_postgres(|url| reset_postgres_db(url))?;
+                (url, Some(pg), Some(tmp))
             };
             setup(&db_url)?;
-            return Self::launch(manifest_path, db_url, None, pg);
+            return Self::launch(manifest_path, db_url, temp, pg);
         }
     }
 
