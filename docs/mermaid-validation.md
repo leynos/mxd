@@ -6,14 +6,7 @@ includes a `mermaid` code block must be checked before merging.
 
 ## Requirements
 
-- **Node.js** must be available in your `PATH`.
-- The validator uses `npx` to run the
-  [`@mermaid-js/mermaid-cli`](https://github.com/mermaid-js/mermaid-cli)
-  package. Installing it globally speeds things up:
-
-```bash
-npm install -g @mermaid-js/mermaid-cli
-```
+- Install the `nixie` CLI and ensure it is available on your `PATH`.
 
 ## Running the validator
 
