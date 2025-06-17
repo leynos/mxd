@@ -46,9 +46,9 @@ async fn pg_async() -> Vec<i32> {
     pg.start().await.unwrap();
     pg.create_database("test").await.unwrap();
     let url = pg.settings().url("test");
-    let mut conn = AsyncPgConnection::establish(&url).await.unwrap();
-    let res = conn
-        .with_recursive(
+    let res = {
+        let mut conn = AsyncPgConnection::establish(&url).await.unwrap();
+        conn.with_recursive(
             "t",
             &["n"],
             sql::<Integer>("SELECT 1"),
@@ -57,7 +57,8 @@ async fn pg_async() -> Vec<i32> {
         )
         .load(&mut conn)
         .await
-        .unwrap();
+        .unwrap()
+    };
     pg.stop().await.unwrap();
     res
 }
@@ -71,9 +72,9 @@ fn pg_sync() -> Vec<i32> {
     pg.start().unwrap();
     pg.create_database("test").unwrap();
     let url = pg.settings().url("test");
-    let mut conn = PgConnection::establish(&url).unwrap();
-    let res = conn
-        .with_recursive(
+    let res = {
+        let mut conn = PgConnection::establish(&url).unwrap();
+        conn.with_recursive(
             "t",
             &["n"],
             sql::<Integer>("SELECT 1"),
@@ -81,7 +82,8 @@ fn pg_sync() -> Vec<i32> {
             sql::<Integer>("SELECT n FROM t"),
         )
         .load(&mut conn)
-        .unwrap();
+        .unwrap()
+    };
     pg.stop().unwrap();
     res
 }

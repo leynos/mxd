@@ -17,6 +17,8 @@ pub trait RecursiveCTEExt {
     /// Create a [`WithRecursive`] builder for this connection's backend.
     ///
     /// See [`builders::with_recursive`] for parameter details.
+    #[doc(alias = "builders::with_recursive")]
+    #[allow(clippy::unused_self)]
     fn with_recursive<Seed, Step, Body>(
         &self,
         cte_name: &'static str,

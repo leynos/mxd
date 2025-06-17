@@ -22,6 +22,27 @@ let rows: Vec<i32> = conn
     .load(&mut conn)?;
 ```
 
+When using `diesel-async`, import `diesel_async::RunQueryDsl` and await the
+query:
+
+```rust
+use diesel::dsl::sql;
+use diesel::sql_types::Integer;
+use diesel_cte_ext::RecursiveCTEExt;
+use diesel_async::RunQueryDsl;
+
+let rows: Vec<i32> = conn
+    .with_recursive(
+        "t",
+        &["n"],
+        sql::<Integer>("SELECT 1"),
+        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+        sql::<Integer>("SELECT n FROM t"),
+    )
+    .load(&mut conn)
+    .await?;
+```
+
 The builder works with either SQLite or PostgreSQL depending on the enabled
 Cargo feature. It can be used with synchronous or asynchronous Diesel
 connections.

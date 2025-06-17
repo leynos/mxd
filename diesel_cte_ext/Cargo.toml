@@ -6,13 +6,13 @@ publish = false
 
 [dependencies]
 diesel = { version = "2", default-features = false }
-diesel-async = { version = "0.5", default-features = false }
+diesel-async = { version = "0.5", default-features = false, optional = true }
 
 [features]
-default = ["sqlite", "postgres", "diesel-async"]
+default = ["sqlite", "postgres"]
 sqlite = ["diesel/sqlite", "diesel-async/sqlite"]
 postgres = ["diesel/postgres", "diesel-async/postgres"]
-diesel-async = []
+diesel-async = ["dep:diesel-async"]
 
 [dev-dependencies]
 diesel = { version = "2", default-features = false, features = ["sqlite", "postgres", "chrono"] }
