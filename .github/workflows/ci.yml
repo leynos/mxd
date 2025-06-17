@@ -29,16 +29,16 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpq-dev
+      - uses: ./.github/actions/setup-rust
+        with:
+          with-postgres: ${{ matrix.feature == 'postgres' }}
       - name: Export POSTGRES_TEST_URL
         if: matrix.feature == 'postgres'
         uses: ./.github/actions/export-postgres-url
         with:
           url: postgres://postgres:password@localhost/test
       - name: Format
-        run: rustup component add rustfmt --toolchain nightly-2025-06-10 && cargo +nightly-2025-06-10 fmt --all -- --check
+        run: cargo fmt --all -- --check
       - name: Lint
         run: cargo clippy --no-default-features --features ${{ matrix.feature }} -- -D warnings
       - name: Test
@@ -65,24 +65,27 @@ jobs:
       CODESCENE_CLI_SHA256: "a1c38415c5978908283c0608b648b27e954c93882b15d8b91d052d846c3eabd8"
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
         with:
-          components: llvm-tools-preview
+          with-postgres: true
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpq-dev
       - uses: ./.github/actions/export-postgres-url
         with:
           url: postgres://postgres:password@localhost/test
       - name: Generate coverage for SQLite
-        run: |
-          cargo llvm-cov --workspace --features sqlite --lcov --output-path lcov-sqlite.info
+        uses: ./.github/actions/generate-coverage
+        with:
+          features: sqlite
+          output-path: lcov-sqlite.info
       - name: Generate coverage for Postgres
-        run: |
-          cargo llvm-cov --workspace --no-default-features --features postgres --lcov --output-path lcov-postgres.info
+        uses: ./.github/actions/generate-coverage
+        with:
+          with-default-features: false
+          features: postgres
+          output-path: lcov-postgres.info
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
       - name: Install CodeScene coverage tool
