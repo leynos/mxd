@@ -73,6 +73,22 @@ where
     )
 }
 
+/// Convenience wrapper that infers the connection type from `conn`.
+pub fn build_path_cte_with_conn<C, Step, Body>(
+    conn: &mut C,
+    step: Step,
+    body: Body,
+) -> WithRecursive<C::Backend, diesel::query_builder::SqlQuery, Step, Body>
+where
+    C: RecursiveCTEExt,
+    C::Backend: RecursiveBackend + diesel::backend::DieselReserveSpecialization,
+    Step: QueryFragment<C::Backend>,
+    Body: QueryFragment<C::Backend>,
+{
+    let _ = conn; // type inference only
+    build_path_cte::<C, Step, Body>(step, body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
