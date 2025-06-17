@@ -155,12 +155,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg = cli.config;
     if let Some(cmd) = cli.command {
-        let cmd = match cmd {
+        match cmd {
             Commands::CreateUser(args) => {
-                Commands::CreateUser(load_and_merge_subcommand_for::<CreateUserArgs>(&args)?)
+                let args = load_and_merge_subcommand_for::<CreateUserArgs>(&args)?;
+                return args.run(&cfg);
             }
-        };
-        return cmd.run(&cfg);
+        }
     }
 
     let bind = cfg.bind;
