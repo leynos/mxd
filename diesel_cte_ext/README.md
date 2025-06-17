@@ -9,35 +9,39 @@ block.
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
-use diesel_cte_ext::RecursiveCTEExt;
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 
 let rows: Vec<i32> = conn
     .with_recursive(
         "t",
         &["n"],
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
+        RecursiveParts::new(
+            sql::<Integer>("SELECT 1"),
+            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+            sql::<Integer>("SELECT n FROM t"),
+        ),
     )
     .load(&mut conn)?;
 ```
 
-When using `diesel-async`, import `diesel_async::RunQueryDsl` and await the
-query:
+When `diesel-async` is enabled, import `diesel_async::RunQueryDsl` and await the
+query as follows:
 
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
-use diesel_cte_ext::RecursiveCTEExt;
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 use diesel_async::RunQueryDsl;
 
 let rows: Vec<i32> = conn
     .with_recursive(
         "t",
         &["n"],
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
+        RecursiveParts::new(
+            sql::<Integer>("SELECT 1"),
+            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+            sql::<Integer>("SELECT n FROM t"),
+        ),
     )
     .load(&mut conn)
     .await?;

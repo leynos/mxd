@@ -1,5 +1,5 @@
 use diesel::{Connection, dsl::sql, sql_types::Integer};
-use diesel_cte_ext::RecursiveCTEExt;
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 
 fn sqlite_sync() -> Vec<i32> {
     use diesel::{RunQueryDsl, sqlite::SqliteConnection};
@@ -7,9 +7,11 @@ fn sqlite_sync() -> Vec<i32> {
     conn.with_recursive(
         "t",
         &["n"],
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
+        RecursiveParts::new(
+            sql::<Integer>("SELECT 1"),
+            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+            sql::<Integer>("SELECT n FROM t"),
+        ),
     )
     .load(&mut conn)
     .unwrap()
@@ -28,9 +30,11 @@ async fn sqlite_async() -> Vec<i32> {
     conn.with_recursive(
         "t",
         &["n"],
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
+        RecursiveParts::new(
+            sql::<Integer>("SELECT 1"),
+            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+            sql::<Integer>("SELECT n FROM t"),
+        ),
     )
     .load(&mut conn)
     .await
@@ -51,9 +55,11 @@ async fn pg_async() -> Vec<i32> {
         conn.with_recursive(
             "t",
             &["n"],
-            sql::<Integer>("SELECT 1"),
-            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-            sql::<Integer>("SELECT n FROM t"),
+            RecursiveParts::new(
+                sql::<Integer>("SELECT 1"),
+                sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+                sql::<Integer>("SELECT n FROM t"),
+            ),
         )
         .load(&mut conn)
         .await
@@ -77,9 +83,11 @@ fn pg_sync() -> Vec<i32> {
         conn.with_recursive(
             "t",
             &["n"],
-            sql::<Integer>("SELECT 1"),
-            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-            sql::<Integer>("SELECT n FROM t"),
+            RecursiveParts::new(
+                sql::<Integer>("SELECT 1"),
+                sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+                sql::<Integer>("SELECT n FROM t"),
+            ),
         )
         .load(&mut conn)
         .unwrap()

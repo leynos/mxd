@@ -1,7 +1,7 @@
 use diesel::query_builder::QueryFragment;
 
 use crate::{
-    builders,
+    builders::{self, RecursiveParts},
     cte::{RecursiveBackend, WithRecursive},
 };
 
@@ -23,9 +23,7 @@ pub trait RecursiveCTEExt {
         &self,
         cte_name: &'static str,
         columns: &'static [&'static str],
-        seed: Seed,
-        step: Step,
-        body: Body,
+        parts: RecursiveParts<Seed, Step, Body>,
     ) -> WithRecursive<Self::Backend, Seed, Step, Body>
     where
         Seed: QueryFragment<Self::Backend>,
@@ -50,9 +48,7 @@ macro_rules! impl_recursive_cte_ext {
                 &self,
                 cte_name: &'static str,
                 columns: &'static [&'static str],
-                seed: Seed,
-                step: Step,
-                body: Body,
+                parts: RecursiveParts<Seed, Step, Body>,
             ) -> WithRecursive<Self::Backend, Seed, Step, Body>
             where
                 Seed: QueryFragment<Self::Backend>,
@@ -60,7 +56,7 @@ macro_rules! impl_recursive_cte_ext {
                 Body: QueryFragment<Self::Backend>,
             {
                 builders::with_recursive::<Self::Backend, _, _, _>(
-                    cte_name, columns, seed, step, body,
+                    cte_name, columns, parts,
                 )
             }
         }
