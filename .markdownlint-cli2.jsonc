@@ -7,6 +7,7 @@
       "code_block_line_length": 120,
       "tables": false
     },
-    // Keep MD032 enabled to enforce blank lines around lists
+    // Disable MD032 so lists don't require surrounding blank lines
+    "MD032": false
   }
 }

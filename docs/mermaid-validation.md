@@ -6,7 +6,8 @@ includes a `mermaid` code block must be checked before merging.
 
 ## Requirements
 
-- Install the `nixie` CLI and ensure it is available on your `PATH`.
+- Install the [`nixie` CLI](https://github.com/leynos/nixie) and ensure it is
+  available on your `PATH`.
 
 ## Running the validator
 
@@ -33,12 +34,12 @@ nixie --concurrency 8 docs/*.md
 ```
 
 The script extracts each
-\`\`\`mermaid`block and attempts to render it using`mmdc\`. Any syntax errors
-will cause the script to exit with a non-zero status. The failing diagram's line
-and a pointer to the error location are printed to help you fix the issue.
+\`\`\`mermaid` block and attempts to render it using an embedded Mermaid
+renderer. Any syntax errors cause `nixie` to exit with a non-zero status. The
+failing diagram's line and a pointer to the error location are printed to help
+you fix the issue.
 
-If the required tools are missing the validator explains that Node.js and
-`@mermaid-js/mermaid-cli` must be installed.
+If `nixie` is not found on your `PATH` the validator explains how to install it.
 
 Include this step in your workflow whenever you edit Markdown documentation
 containing Mermaid diagrams.
