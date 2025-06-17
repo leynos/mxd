@@ -51,8 +51,11 @@ use diesel_cte_ext::{
 };
 
 /// Construct a recursive CTE for traversing bundle paths.
+///
+/// The connection type `C` is only used for backend inference; a concrete
+/// connection value is unnecessary. The step and body parameters are generic
+/// because their query types change once bindings are applied.
 pub(crate) fn build_path_cte<C, Step, Body>(
-    conn: &mut C,
     step: Step,
     body: Body,
 ) -> WithRecursive<C::Backend, diesel::query_builder::SqlQuery, Step, Body>
@@ -63,7 +66,7 @@ where
     Body: QueryFragment<C::Backend>,
 {
     let seed = sql_query(CTE_SEED_SQL);
-    conn.with_recursive(
+    C::with_recursive(
         "tree",
         &["idx", "id"],
         RecursiveParts::new(seed, step, body),

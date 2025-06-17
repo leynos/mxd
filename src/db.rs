@@ -282,7 +282,7 @@ async fn bundle_id_from_path(
     let len_i32: i32 = i32::try_from(len).map_err(|_| PathLookupError::InvalidPath)?;
     let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len_i32);
 
-    let query = build_path_cte(conn, step, body);
+    let query = build_path_cte::<DbConnection, _, _>(step, body);
 
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
@@ -436,7 +436,7 @@ async fn category_id_from_path(
         .bind::<Integer, _>(len_minus_one)
         .bind::<Integer, _>(len_minus_one);
 
-    let query = build_path_cte(conn, step, body);
+    let query = build_path_cte::<DbConnection, _, _>(step, body);
 
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
     res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)
