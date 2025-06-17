@@ -18,9 +18,7 @@ pub trait RecursiveCTEExt {
     ///
     /// See [`builders::with_recursive`] for parameter details.
     #[doc(alias = "builders::with_recursive")]
-    #[allow(clippy::unused_self)]
     fn with_recursive<Seed, Step, Body>(
-        &mut self,
         cte_name: &'static str,
         columns: &'static [&'static str],
         parts: RecursiveParts<Seed, Step, Body>,
@@ -41,7 +39,6 @@ where
     type Backend = C::Backend;
 
     fn with_recursive<Seed, Step, Body>(
-        &mut self,
         cte_name: &'static str,
         columns: &'static [&'static str],
         parts: RecursiveParts<Seed, Step, Body>,
@@ -66,7 +63,6 @@ where
     type Backend = C::Backend;
 
     fn with_recursive<Seed, Step, Body>(
-        &mut self,
         cte_name: &'static str,
         columns: &'static [&'static str],
         parts: RecursiveParts<Seed, Step, Body>,
@@ -79,4 +75,3 @@ where
         builders::with_recursive::<Self::Backend, _, _, _>(cte_name, columns, parts)
     }
 }
-
