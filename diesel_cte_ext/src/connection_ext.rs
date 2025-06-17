@@ -79,4 +79,3 @@ where
         builders::with_recursive::<Self::Backend, _, _, _>(cte_name, columns, parts)
     }
 }
-
