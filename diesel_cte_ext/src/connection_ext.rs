@@ -25,15 +25,16 @@ pub trait RecursiveCTEExt {
     ///
     /// See [`builders::with_recursive`] for parameter details.
     #[doc(alias = "builders::with_recursive")]
-    fn with_recursive<Cols, Seed, Step, Body>(
+    fn with_recursive<Cols, Seed, Step, Body, ColSpec>(
         cte_name: &'static str,
-        columns: Columns<Cols>,
+        columns: ColSpec,
         parts: RecursiveParts<Seed, Step, Body>,
     ) -> WithRecursive<Self::Backend, Cols, Seed, Step, Body>
     where
         Seed: QueryFragment<Self::Backend>,
         Step: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>;
+        Body: QueryFragment<Self::Backend>,
+        ColSpec: Into<Columns<Cols>>;
 }
 
 /// Blanket implementation of [`RecursiveCTEExt`] for synchronous Diesel
@@ -46,17 +47,18 @@ where
 {
     type Backend = C::Backend;
 
-    fn with_recursive<Cols, Seed, Step, Body>(
+    fn with_recursive<Cols, Seed, Step, Body, ColSpec>(
         cte_name: &'static str,
-        columns: Columns<Cols>,
+        columns: ColSpec,
         parts: RecursiveParts<Seed, Step, Body>,
     ) -> WithRecursive<Self::Backend, Cols, Seed, Step, Body>
     where
         Seed: QueryFragment<Self::Backend>,
         Step: QueryFragment<Self::Backend>,
         Body: QueryFragment<Self::Backend>,
+        ColSpec: Into<Columns<Cols>>,
     {
-        builders::with_recursive::<Self::Backend, Cols, _, _, _>(cte_name, columns, parts)
+        builders::with_recursive::<Self::Backend, Cols, _, _, _, _>(cte_name, columns, parts)
     }
 }
 
@@ -70,16 +72,17 @@ where
 {
     type Backend = C::Backend;
 
-    fn with_recursive<Cols, Seed, Step, Body>(
+    fn with_recursive<Cols, Seed, Step, Body, ColSpec>(
         cte_name: &'static str,
-        columns: Columns<Cols>,
+        columns: ColSpec,
         parts: RecursiveParts<Seed, Step, Body>,
     ) -> WithRecursive<Self::Backend, Cols, Seed, Step, Body>
     where
         Seed: QueryFragment<Self::Backend>,
         Step: QueryFragment<Self::Backend>,
         Body: QueryFragment<Self::Backend>,
+        ColSpec: Into<Columns<Cols>>,
     {
-        builders::with_recursive::<Self::Backend, Cols, _, _, _>(cte_name, columns, parts)
+        builders::with_recursive::<Self::Backend, Cols, _, _, _, _>(cte_name, columns, parts)
     }
 }

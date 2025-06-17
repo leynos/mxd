@@ -8,7 +8,7 @@ fn sqlite_sync() -> Vec<i32> {
     let mut conn = SqliteConnection::establish(":memory:").unwrap();
     SqliteConnection::with_recursive(
         "t",
-        Columns::raw(&["n"]),
+        &["n"],
         RecursiveParts::new(
             sql::<Integer>("SELECT 1"),
             sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
@@ -31,7 +31,7 @@ async fn sqlite_async() -> Vec<i32> {
         .unwrap();
     SyncConnectionWrapper::<SqliteConnection>::with_recursive(
         "t",
-        Columns::raw(&["n"]),
+        &["n"],
         RecursiveParts::new(
             sql::<Integer>("SELECT 1"),
             sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
@@ -56,7 +56,7 @@ async fn pg_async() -> Vec<i32> {
         let mut conn = AsyncPgConnection::establish(&url).await.unwrap();
         AsyncPgConnection::with_recursive(
             "t",
-            Columns::raw(&["n"]),
+            &["n"],
             RecursiveParts::new(
                 sql::<Integer>("SELECT 1"),
                 sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
@@ -84,7 +84,7 @@ fn pg_sync() -> Vec<i32> {
         let mut conn = PgConnection::establish(&url).unwrap();
         PgConnection::with_recursive(
             "t",
-            Columns::raw(&["n"]),
+            &["n"],
             RecursiveParts::new(
                 sql::<Integer>("SELECT 1"),
                 sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),

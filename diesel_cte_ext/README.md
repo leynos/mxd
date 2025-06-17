@@ -9,12 +9,12 @@ with Diesel. The crate exports a connection extension trait providing
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
 use diesel::sqlite::SqliteConnection;
-use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts, Columns};
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 // Count integers from 1 through 5 using a recursive CTE
 
 let rows: Vec<i32> = SqliteConnection::with_recursive(
     "t",
-    Columns::raw(&["n"]),
+    &["n"],
     RecursiveParts::new(
         sql::<Integer>("SELECT 1"),
         sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
@@ -25,9 +25,26 @@ let rows: Vec<i32> = SqliteConnection::with_recursive(
 ```
 
 `Columns<T>` couples the runtime column names with a compile-time tuple of
-Diesel column types. For ad-hoc CTEs use `Columns::raw`. When working with
-schema-defined tables you can build the list via
-`columns!(users::id, users::username)` or `table_columns!(users::table)`.
+Diesel column types. For ad-hoc CTEs use a string slice directly or
+`Columns::raw`. When working with schema-defined tables you can build the list
+via the provided helper macros.
+
+```rust
+use diesel_cte_ext::{columns, table_columns};
+use crate::schema::users;
+
+let user_cte = SqliteConnection::with_recursive(
+    "u",
+    columns!(users::id, users::parent_id),
+    RecursiveParts::new(todo!(), todo!(), todo!()),
+);
+
+let table_cte = SqliteConnection::with_recursive(
+    "u",
+    table_columns!(users::table),
+    RecursiveParts::new(todo!(), todo!(), todo!()),
+);
+```
 
 The resulting CTE `t` contains the following rows:
 
@@ -44,13 +61,13 @@ await the query as follows:
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
-use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts, Columns};
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 use diesel_async::RunQueryDsl;
 use diesel::sqlite::SqliteConnection;
 
 let rows: Vec<i32> = SqliteConnection::with_recursive(
         "t",
-        Columns::raw(&["n"]),
+        &["n"],
         RecursiveParts::new(
             sql::<Integer>("SELECT 1"),
             sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),

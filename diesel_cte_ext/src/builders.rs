@@ -29,9 +29,9 @@ impl<Seed, Step, Body> RecursiveParts<Seed, Step, Body> {
 
 /// Build a recursive CTE query.
 
-pub fn with_recursive<DB, Cols, Seed, Step, Body>(
+pub fn with_recursive<DB, Cols, Seed, Step, Body, ColSpec>(
     cte_name: &'static str,
-    columns: Columns<Cols>,
+    columns: ColSpec,
     parts: RecursiveParts<Seed, Step, Body>,
 ) -> WithRecursive<DB, Cols, Seed, Step, Body>
 where
@@ -39,10 +39,11 @@ where
     Seed: QueryFragment<DB>,
     Step: QueryFragment<DB>,
     Body: QueryFragment<DB>,
+    ColSpec: Into<Columns<Cols>>,
 {
     WithRecursive {
         cte_name,
-        columns,
+        columns: columns.into(),
         seed: parts.seed,
         step: parts.step,
         body: parts.body,

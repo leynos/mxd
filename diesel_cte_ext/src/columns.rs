@@ -2,7 +2,9 @@
 //!
 //! [`Columns`] couples runtime column names with a compile-time tuple of Diesel
 //! column types. Helper macros build these lists from individual column paths or
-//! complete table definitions.
+//! complete table definitions. The provided tuple implementations cover up to
+//! sixteen columns (`A` through `P`). Extend the [`tuple_column_names!`] macro
+//! invocations if you need support for more columns.
 
 use diesel::{Table, query_source::Column};
 
@@ -42,12 +44,25 @@ impl Columns<()> {
     }
 }
 
+impl From<&'static [&'static str]> for Columns<()> {
+    fn from(names: &'static [&'static str]) -> Self { Self::raw(names) }
+}
+
+impl<const N: usize> From<&'static [&'static str; N]> for Columns<()> {
+    fn from(names: &'static [&'static str; N]) -> Self { Self::raw(&names[..]) }
+}
+
 /// Helper trait yielding column name arrays for tuples of Diesel column types.
 pub trait ColumnNames {
     /// Column names in query order.
     const NAMES: &'static [&'static str];
 }
 
+/// Implements [`ColumnNames`] for tuples of Diesel column types.
+///
+/// This macro is expanded below for tuples of up to sixteen columns. If you
+/// need to support a larger tuple, simply extend the invocations using
+/// additional identifiers.
 macro_rules! tuple_column_names {
     ($($name:ident),+) => {
         impl<$($name),+> ColumnNames for ($($name,)+)
@@ -59,6 +74,7 @@ macro_rules! tuple_column_names {
     };
 }
 
+// Support tuples up to 16 columns (A..P).
 tuple_column_names!(A);
 tuple_column_names!(A, B);
 tuple_column_names!(A, B, C);
@@ -67,6 +83,14 @@ tuple_column_names!(A, B, C, D, E);
 tuple_column_names!(A, B, C, D, E, F);
 tuple_column_names!(A, B, C, D, E, F, G);
 tuple_column_names!(A, B, C, D, E, F, G, H);
+tuple_column_names!(A, B, C, D, E, F, G, H, I);
+tuple_column_names!(A, B, C, D, E, F, G, H, I, J);
+tuple_column_names!(A, B, C, D, E, F, G, H, I, J, K);
+tuple_column_names!(A, B, C, D, E, F, G, H, I, J, K, L);
+tuple_column_names!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+tuple_column_names!(A, B, C, D, E, F, G, H, I, J, K, L, M, N);
+tuple_column_names!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O);
+tuple_column_names!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
 
 #[macro_export]
 macro_rules! columns {
