@@ -45,6 +45,7 @@ pub(crate) fn prepare_path(path: &str) -> Result<Option<(String, usize)>, serde_
 
 use diesel::{query_builder::QueryFragment, sql_query};
 use diesel_cte_ext::{
+    RecursiveParts,
     cte::{RecursiveBackend, WithRecursive},
     with_recursive,
 };
@@ -60,7 +61,11 @@ where
     Body: QueryFragment<DB>,
 {
     let seed = sql_query(CTE_SEED_SQL);
-    with_recursive::<DB, _, _, _>("tree", &["idx", "id"], seed, step, body)
+    with_recursive::<DB, _, _, _>(
+        "tree",
+        &["idx", "id"],
+        RecursiveParts::new(seed, step, body),
+    )
 }
 
 #[cfg(test)]
