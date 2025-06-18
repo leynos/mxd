@@ -38,9 +38,6 @@ const fn assert_column_names_impl<T: ColumnNames>() {}
 
 impl Columns<()> {
     /// Construct column names from a Diesel table definition.
-        // Provide a clear compile-time error if the table's column tuple
-        // lacks a `ColumnNames` implementation.
-        assert_column_names_impl::<Tbl::AllColumns>();
     ///
     /// # Note
     ///
@@ -52,13 +49,9 @@ impl Columns<()> {
         Tbl: Table,
         <Tbl as Table>::AllColumns: ColumnNames,
     {
-        // This static assertion provides a clearer error message if the macro limit is exceeded.
-        // If you hit this, your table likely has more than 16 columns.
-        const _: () = {
-            // This will fail to compile if ColumnNames is not implemented (i.e., >16 columns)
-            fn assert_column_names_impl<T: ColumnNames>() {}
-            let _ = assert_column_names_impl::<Tbl::AllColumns>;
-        };
+        // Touch the helper to surface a clearer error if `ColumnNames` is missing.
+        // Fails to compile for tables with more than 16 columns supported by the macro.
+        let _ = assert_column_names_impl::<Tbl::AllColumns>;
         Columns::<Tbl::AllColumns>::default()
     }
 }
