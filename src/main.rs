@@ -22,7 +22,7 @@ use mxd::{
     transaction::{TransactionError, TransactionReader, TransactionWriter},
     users::hash_password,
 };
-use ortho_config::{OrthoConfig, load_subcommand_config, merge_cli_over_defaults};
+use ortho_config::{OrthoConfig, load_and_merge_subcommand_for};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self as tokio_io, AsyncReadExt},
@@ -66,7 +66,8 @@ async fn shutdown_signal() {
     }
 }
 
-#[derive(Parser, Deserialize, Serialize, Default, Debug, Clone)]
+#[derive(Parser, Deserialize, Serialize, Default, Debug, Clone, OrthoConfig)]
+#[ortho_config(prefix = "MXD_")]
 struct CreateUserArgs {
     username: Option<String>,
     password: Option<String>,
@@ -154,13 +155,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg = cli.config;
     if let Some(cmd) = cli.command {
-        let cmd = match cmd {
+        match cmd {
             Commands::CreateUser(args) => {
-                let defaults: CreateUserArgs = load_subcommand_config("MXD_", "create-user")?;
-                Commands::CreateUser(merge_cli_over_defaults(&defaults, &args)?)
+                let args = load_and_merge_subcommand_for::<CreateUserArgs>(&args)?;
+                return args.run(&cfg);
             }
-        };
-        return cmd.run(&cfg);
+        }
     }
 
     let bind = cfg.bind;
