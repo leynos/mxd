@@ -30,7 +30,7 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
 }
 
 #[rstest]
-fn to_settings_invalid_auth() {
+fn to_settings_default_config() {
     let cfg = PgEnvCfg::default();
     assert!(cfg.to_settings().is_ok());
 }
