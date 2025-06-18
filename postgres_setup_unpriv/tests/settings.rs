@@ -5,7 +5,6 @@ use postgresql_embedded::VersionReq;
 use nix::unistd::{geteuid, Uid};
 use rstest::rstest;
 
-#[rstest]
 /// Tests that a `PgEnvCfg` with specific settings is correctly converted to a `settings` object,
 /// and that all relevant fields and configuration values are preserved.
 ///
@@ -16,6 +15,7 @@ use rstest::rstest;
 /// ```no_run
 /// to_settings_roundtrip()?;
 /// ```
+#[rstest]
 fn to_settings_roundtrip() -> anyhow::Result<()> {
     let cfg = PgEnvCfg {
         version_req: Some("=16.4.0".into()),
@@ -39,8 +39,8 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[rstest]
 /// Tests that the default `PgEnvCfg` configuration can be converted to settings without error.
+#[rstest]
 fn to_settings_invalid_auth() {
     let cfg = PgEnvCfg::default();
     assert!(cfg.to_settings().is_ok());
@@ -48,6 +48,7 @@ fn to_settings_invalid_auth() {
 
 #[cfg(unix)]
 #[rstest]
+/// Verify that the effective uid is changed within the passed block
 fn with_temp_euid_changes_uid() -> anyhow::Result<()> {
     if !geteuid().is_root() {
         eprintln!("skipping root-dependent test");
