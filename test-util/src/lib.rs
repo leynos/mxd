@@ -327,7 +327,9 @@ impl Drop for PostgresTestDb {
                 let admin_url = pg.settings().url("postgres");
                 if let Ok(mut client) = postgres::Client::connect(&admin_url, postgres::NoTls) {
                     let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
-                    let _ = client.batch_execute(&query);
+                    if let Err(e) = client.batch_execute(&query) {
+                        eprintln!("error dropping database {}: {}", db_name, e);
+                    }
                 }
             } else {
                 let _ = reset_postgres_db(&self.url);
