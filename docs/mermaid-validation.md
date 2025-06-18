@@ -36,7 +36,7 @@ nixie --concurrency 8 docs/*.md
 The script extracts each `mermaid` block and attempts to render it using an
 embedded Mermaid renderer. Any syntax errors cause `nixie` to exit with a
 non-zero status. The failing diagram's line and a pointer to the error location
-are printed to help you fix the issue.
+are printed to aid in fixing the issue.
 
 If `nixie` is not found on your `PATH` the validator explains how to install it.
 
