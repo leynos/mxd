@@ -153,11 +153,17 @@ where
             let _ = pg.stop().await;
             return Err(format!("starting embedded PostgreSQL: {e}").into());
         }
-        if let Err(e) = pg.create_database("test").await {
+        let db_name = format!(
+            "test_{}",
+            chrono::Utc::now()
+                .timestamp_nanos_opt()
+                .expect("valid timestamp")
+        );
+        if let Err(e) = pg.create_database(&db_name).await {
             let _ = pg.stop().await;
             return Err(format!("creating test database: {e}").into());
         }
-        let url = pg.settings().url("test");
+        let url = pg.settings().url(&db_name);
         Ok::<_, Box<dyn StdError>>(EmbeddedPg {
             url,
             pg,

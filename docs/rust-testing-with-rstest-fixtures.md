@@ -1317,3 +1317,9 @@ provided by `rstest`:
 By mastering `rstest`, Rust developers can significantly elevate the quality and
 efficiency of their testing practices, leading to more reliable and maintainable
 software.
+
+### C. Project-Specific Fixtures
+
+The `test_util` crate's `PostgresTestDb` fixture now generates a uniquely named
+database for each invocation. This ensures tests can run in parallel without
+database name conflicts.
