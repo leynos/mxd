@@ -70,9 +70,11 @@ impl PgEnvCfg {
         }
     }
 
-    /// Applies locale and encoding settings to the PostgreSQL configuration if specified in the environment.
+    /// Applies locale and encoding settings to the PostgreSQL configuration if specified
+    /// in the environment.
     ///
-    /// Inserts the `locale` and `encoding` values into the settings configuration map when present in the environment configuration.
+    /// Inserts the `locale` and `encoding` values into the settings configuration map when
+    /// present in the environment configuration.
     fn apply_locale(&self, settings: &mut Settings) {
         if let Some(ref loc) = self.locale {
             settings.configuration.insert("locale".into(), loc.clone());
