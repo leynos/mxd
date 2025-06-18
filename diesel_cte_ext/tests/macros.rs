@@ -1,3 +1,4 @@
+//! Compile-time tests verifying the columns macros build valid queries.
 use diesel::{dsl::sql, sql_types::Integer, sqlite::SqliteConnection};
 use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts, columns, table_columns};
 
