@@ -45,6 +45,27 @@ jobs:
       - name: Test
         run: cargo test --no-default-features --features ${{ matrix.feature }}
 
+  windows-build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        feature: [sqlite]
+      fail-fast: false
+    env:
+      CARGO_TERM_COLOR: always
+      BUILD_PROFILE: debug
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - name: Add Windows GNU target
+        run: rustup target add x86_64-pc-windows-gnu
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy --no-default-features --features ${{ matrix.feature }} -- -D warnings
+      - name: Build for Windows GNU
+        run: cargo build --target x86_64-pc-windows-gnu --no-default-features --features ${{ matrix.feature }}
+
   coverage:
     runs-on: ubuntu-latest
     services:
