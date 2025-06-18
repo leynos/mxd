@@ -1,4 +1,4 @@
-.PHONY: all clean test corpus sqlite postgres sqlite-release postgres-release
+.PHONY: all clean test test-postgres test-sqlite corpus sqlite postgres sqlite-release postgres-release
 
 corpus:
 	cargo run --bin gen_corpus
@@ -14,8 +14,13 @@ clean:
 	cargo clean
 	rm -rf target/postgres
 
-test:
-	cargo test --quiet
+test: test-postgres test-sqlite
+
+test-postgres:
+	RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres
+
+test-sqlite:
+	RUSTFLAGS="-D warnings" cargo test --features sqlite
 
 target/debug/mxd:
 	cargo build --bin mxd --features sqlite
