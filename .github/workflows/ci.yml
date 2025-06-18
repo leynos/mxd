@@ -65,6 +65,8 @@ jobs:
         run: cargo clippy --no-default-features --features ${{ matrix.feature }} -- -D warnings
       - name: Build for Windows GNU
         run: cargo build --target x86_64-pc-windows-gnu --no-default-features --features ${{ matrix.feature }}
+      - name: Test for Windows GNU
+        run: cargo test --target x86_64-pc-windows-gnu --no-default-features --features ${{ matrix.feature }}
 
   coverage:
     runs-on: ubuntu-latest
