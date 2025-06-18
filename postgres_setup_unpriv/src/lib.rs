@@ -23,7 +23,13 @@ pub struct PgEnvCfg {
 }
 
 impl PgEnvCfg {
-    /// Convert into a fully‑formed `postgresql_embedded::Settings`.
+    /// Converts the configuration into a complete `postgresql_embedded::Settings` object.
+    ///
+    /// Applies version, connection, path, and locale settings from the current configuration.
+    /// Returns an error if the version requirement is invalid.
+    ///
+    /// # Returns
+    /// A fully configured `Settings` instance on success, or an error if configuration fails.
     pub fn to_settings(&self) -> Result<Settings> {
         let mut s = Settings::default();
 
@@ -64,6 +70,9 @@ impl PgEnvCfg {
         }
     }
 
+    /// Applies locale and encoding settings to the PostgreSQL configuration if specified in the environment.
+    ///
+    /// Inserts the `locale` and `encoding` values into the settings configuration map when present in the environment configuration.
     fn apply_locale(&self, settings: &mut Settings) {
         if let Some(ref loc) = self.locale {
             settings.configuration.insert("locale".into(), loc.clone());

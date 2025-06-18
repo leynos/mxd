@@ -6,6 +6,16 @@ use nix::unistd::{geteuid, Uid};
 use rstest::rstest;
 
 #[rstest]
+/// Tests that a `PgEnvCfg` with specific settings is correctly converted to a `settings` object,
+/// and that all relevant fields and configuration values are preserved.
+///
+/// # Returns
+/// An `anyhow::Result` indicating success or failure of the round-trip conversion.
+///
+/// # Examples
+/// ```no_run
+/// to_settings_roundtrip()?;
+/// ```
 fn to_settings_roundtrip() -> anyhow::Result<()> {
     let cfg = PgEnvCfg {
         version_req: Some("=16.4.0".into()),
@@ -30,6 +40,7 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
 }
 
 #[rstest]
+/// Tests that the default `PgEnvCfg` configuration can be converted to settings without error.
 fn to_settings_invalid_auth() {
     let cfg = PgEnvCfg::default();
     assert!(cfg.to_settings().is_ok());
