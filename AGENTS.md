@@ -98,10 +98,9 @@ This repository is written in Rust and uses Cargo for building and dependency
 management. Contributors should follow these best practices when working on the
 project:
 
-- Run `cargo fmt --all` after making any change, and run
-  `cargo clippy -- -D warnings` and
-  `RUSTFLAGS="-D warnings" cargo test` before committing.
-- Clippy warnings MUST be disallowed.
+- Run `cargo fmt --all`, and `cargo clippy -- -D warnings` after making any
+  change.
+- Run `make test` before committing, in addition to the above.
 - Fix any warnings emitted during tests in the code itself rather than
   silencing them.
 - Where a function is too long, extract meaningfully named helper functions
