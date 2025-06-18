@@ -225,6 +225,20 @@ fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[cfg(feature = "postgres")]
+/// Drop the specified database on the running embedded PostgreSQL instance.
+///
+/// Errors are logged but do not propagate to avoid panics during `Drop`.
+fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
+    let admin_url = pg.settings().url("postgres");
+    if let Ok(mut client) = postgres::Client::connect(&admin_url, postgres::NoTls) {
+        let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
+        if let Err(e) = client.batch_execute(&query) {
+            eprintln!("error dropping database {}: {}", db_name, e);
+        }
+    }
+}
+
 /// RAII-style PostgreSQL test database fixture that ensures clean schema state.
 ///
 /// This struct manages the lifecycle of a PostgreSQL database for testing, automatically
@@ -322,20 +336,11 @@ impl PostgresTestDb {
 #[cfg(feature = "postgres")]
 impl Drop for PostgresTestDb {
     fn drop(&mut self) {
-        if let Some(pg) = &self.pg {
-            if let Some(db_name) = &self.db_name {
-                let admin_url = pg.settings().url("postgres");
-                if let Ok(mut client) = postgres::Client::connect(&admin_url, postgres::NoTls) {
-                    let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
-                    if let Err(e) = client.batch_execute(&query) {
-                        eprintln!("error dropping database {}: {}", db_name, e);
-                    }
-                }
-            } else {
+        match (&self.pg, &self.db_name) {
+            (Some(pg), Some(name)) => drop_embedded_db(pg, name),
+            _ => {
                 let _ = reset_postgres_db(&self.url);
             }
-        } else {
-            let _ = reset_postgres_db(&self.url);
         }
         if let Some(pg) = self.pg.take() {
             let rt = tokio::runtime::Runtime::new().unwrap();
