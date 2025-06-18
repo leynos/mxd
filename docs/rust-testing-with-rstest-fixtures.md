@@ -1321,6 +1321,7 @@ software.
 ### C. Project-Specific Fixtures
 
 The `test_util` crate's `PostgresTestDb` fixture now generates a uniquely named
-database for each invocation using a random UUID suffix. The database is dropped
-when the fixture is cleaned up, allowing parallel tests without leaving orphaned
-databases behind.
+database for each invocation using a time-based UUID v7 suffix. The helper that
+creates these names accepts a custom prefix, making the logic reusable. The
+database is dropped when the fixture is cleaned up, allowing parallel tests
+without leaving orphaned databases behind.

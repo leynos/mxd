@@ -25,6 +25,8 @@ use postgresql_embedded::Settings;
 #[cfg(feature = "postgres")]
 use rstest::fixture;
 use tempfile::TempDir;
+#[cfg(feature = "postgres")]
+use uuid::Uuid;
 
 #[cfg(feature = "postgres")]
 static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
@@ -106,6 +108,9 @@ struct DbResources {
 }
 
 #[cfg(feature = "postgres")]
+fn generate_db_name(prefix: &str) -> String { format!("{}{}", prefix, Uuid::now_v7().simple()) }
+
+#[cfg(feature = "postgres")]
 /// Start an embedded PostgreSQL instance for tests.
 ///
 /// Returns an [`EmbeddedPg`] containing the connection URL, the
@@ -154,7 +159,7 @@ where
             let _ = pg.stop().await;
             return Err(format!("starting embedded PostgreSQL: {e}").into());
         }
-        let db_name = format!("test_{}", uuid::Uuid::new_v4().simple());
+        let db_name = generate_db_name("test_");
         if let Err(e) = pg.create_database(&db_name).await {
             let _ = pg.stop().await;
             return Err(format!("creating test database {db_name}: {e}").into());
@@ -509,8 +514,9 @@ impl TestServer {
                     temp_dir: None,
                 }
             } else {
-                let EmbeddedPg { url, pg, temp_dir, .. } =
-                    start_embedded_postgres(|url| reset_postgres_db(url))?;
+                let EmbeddedPg {
+                    url, pg, temp_dir, ..
+                } = start_embedded_postgres(|url| reset_postgres_db(url))?;
                 DbResources {
                     url,
                     pg: Some(pg),
