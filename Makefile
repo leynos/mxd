@@ -17,8 +17,7 @@ clean:
 test: test-postgres test-sqlite
 
 test-postgres:
-	RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres
-
+	@RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres --quiet
 test-sqlite:
 	RUSTFLAGS="-D warnings" cargo test --features sqlite
 
