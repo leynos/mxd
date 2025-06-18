@@ -25,6 +25,8 @@ use postgresql_embedded::Settings;
 #[cfg(feature = "postgres")]
 use rstest::fixture;
 use tempfile::TempDir;
+#[cfg(feature = "postgres")]
+use uuid::Uuid;
 
 #[cfg(feature = "postgres")]
 static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
@@ -89,6 +91,7 @@ pub struct TestServer {
 #[derive(Debug)]
 struct EmbeddedPg {
     url: String,
+    db_name: String,
     pg: PostgreSQL,
     temp_dir: TempDir,
 }
@@ -103,6 +106,9 @@ struct DbResources {
     pg: Option<PostgreSQL>,
     temp_dir: Option<TempDir>,
 }
+
+#[cfg(feature = "postgres")]
+fn generate_db_name(prefix: &str) -> String { format!("{}{}", prefix, Uuid::now_v7().simple()) }
 
 #[cfg(feature = "postgres")]
 /// Start an embedded PostgreSQL instance for tests.
@@ -153,13 +159,15 @@ where
             let _ = pg.stop().await;
             return Err(format!("starting embedded PostgreSQL: {e}").into());
         }
-        if let Err(e) = pg.create_database("test").await {
+        let db_name = generate_db_name("test_");
+        if let Err(e) = pg.create_database(&db_name).await {
             let _ = pg.stop().await;
-            return Err(format!("creating test database: {e}").into());
+            return Err(format!("creating test database {db_name}: {e}").into());
         }
-        let url = pg.settings().url("test");
+        let url = pg.settings().url(&db_name);
         Ok::<_, Box<dyn StdError>>(EmbeddedPg {
             url,
+            db_name,
             pg,
             temp_dir: tmp,
         })
@@ -215,6 +223,20 @@ fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::connect(url, NoTls)?;
     client.batch_execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")?;
     Ok(())
+}
+
+#[cfg(feature = "postgres")]
+/// Drop the specified database on the running embedded PostgreSQL instance.
+///
+/// Errors are logged but do not propagate to avoid panics during `Drop`.
+fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
+    let admin_url = pg.settings().url("postgres");
+    if let Ok(mut client) = postgres::Client::connect(&admin_url, postgres::NoTls) {
+        let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
+        if let Err(e) = client.batch_execute(&query) {
+            eprintln!("error dropping database {}: {}", db_name, e);
+        }
+    }
 }
 
 /// RAII-style PostgreSQL test database fixture that ensures clean schema state.
@@ -274,6 +296,8 @@ pub struct PostgresTestDb {
     /// This is `Some` when using an embedded server, `None` when using an external
     /// database specified via `POSTGRES_TEST_URL`.
     pg: Option<PostgreSQL>,
+    /// Name of the database created for embedded PostgreSQL instances.
+    db_name: Option<String>,
     /// Hold the data directory alive until after the embedded server stops.
     _temp_dir: Option<TempDir>,
 }
@@ -287,15 +311,21 @@ impl PostgresTestDb {
             return Ok(Self {
                 url,
                 pg: None,
+                db_name: None,
                 _temp_dir: None,
             });
         }
 
-        let EmbeddedPg { url, pg, temp_dir } =
-            start_embedded_postgres(|url| reset_postgres_db(url))?;
+        let EmbeddedPg {
+            url,
+            pg,
+            temp_dir,
+            db_name,
+        } = start_embedded_postgres(|url| reset_postgres_db(url))?;
         Ok(Self {
             url,
             pg: Some(pg),
+            db_name: Some(db_name),
             _temp_dir: Some(temp_dir),
         })
     }
@@ -306,7 +336,12 @@ impl PostgresTestDb {
 #[cfg(feature = "postgres")]
 impl Drop for PostgresTestDb {
     fn drop(&mut self) {
-        let _ = reset_postgres_db(&self.url);
+        match (&self.pg, &self.db_name) {
+            (Some(pg), Some(name)) => drop_embedded_db(pg, name),
+            _ => {
+                let _ = reset_postgres_db(&self.url);
+            }
+        }
         if let Some(pg) = self.pg.take() {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let _ = rt.block_on(pg.stop());
@@ -486,8 +521,9 @@ impl TestServer {
                     temp_dir: None,
                 }
             } else {
-                let EmbeddedPg { url, pg, temp_dir } =
-                    start_embedded_postgres(|url| reset_postgres_db(url))?;
+                let EmbeddedPg {
+                    url, pg, temp_dir, ..
+                } = start_embedded_postgres(|url| reset_postgres_db(url))?;
                 DbResources {
                     url,
                     pg: Some(pg),

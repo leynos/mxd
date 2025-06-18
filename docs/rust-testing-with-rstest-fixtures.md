@@ -1317,3 +1317,11 @@ provided by `rstest`:
 By mastering `rstest`, Rust developers can significantly elevate the quality and
 efficiency of their testing practices, leading to more reliable and maintainable
 software.
+
+### C. Project-Specific Fixtures
+
+The `test_util` crate's `PostgresTestDb` fixture now generates a uniquely named
+database for each invocation using a time-based UUID v7 suffix. The helper that
+creates these names accepts a custom prefix, making the logic reusable. The
+database is dropped when the fixture is cleaned up, allowing parallel tests
+without leaving orphaned databases behind.
