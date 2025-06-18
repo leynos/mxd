@@ -17,6 +17,10 @@
   what was changed and why.
 - **Name things precisely.** Use clear, descriptive variable and function names.
   For booleans, prefer names with `is`, `has`, or `should`.
+- **Use hyphens (`kebab-case`) for crate names** as defined in `Cargo.toml`.
+- **Use underscores (`snake_case`) for directory names and module files.**
+  Example: a crate named `my-crate` maps to `src/my_crate.rs` or the
+  `my_crate/` directory.
 - **Structure logically.** Each file should encapsulate a coherent module. Group
   related code (e.g., models + utilities + fixtures) close together.
 - **Group by feature, not layer.** Colocate views, logic, fixtures, and helpers
@@ -124,9 +128,11 @@ top-level `tests/` directory (not under `validator/tests`).**
 ## Markdown Guidance
 
 - Validate Markdown files using `markdownlint`.
-- Validate Markdown Mermaid diagrams using the `nixie` CLI.
-  `nixie` is a standalone command-line tool, not an npm package, so invoke it
-  directly rather than via `npx`.
+- Validate Markdown Mermaid diagrams using the `nixie` CLI. `nixie` is a
+  standalone command-line tool, not an npm package. Invoke it directly with
+  Markdown paths:
+  `nixie <file1.md> <file2.md> [...]`. Use glob patterns like
+  `nixie '**/*.md'` to check everything at once.
 
 **These practices will help maintain a high-quality codebase and make
 collaboration easier**

@@ -2,22 +2,58 @@
 
 `diesel_cte_ext` adds a small helper for building recursive
 [Common Table Expressions](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-RECURSIVE)
-with Diesel. The crate exports the `with_recursive` function which constructs a
-query representing a `WITH RECURSIVE` block.
+with Diesel. The crate exports a connection extension trait providing
+`with_recursive` which constructs a query representing a `WITH RECURSIVE` block.
 
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
-use diesel_cte_ext::with_recursive;
+use diesel::sqlite::SqliteConnection;
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
+// Count integers from 1 through 5 using a recursive CTE
 
-let rows: Vec<i32> = with_recursive::<diesel::sqlite::Sqlite, _, _, _>(
+let rows: Vec<i32> = SqliteConnection::with_recursive(
     "t",
     &["n"],
-    sql::<Integer>("SELECT 1"),
-    sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-    sql::<Integer>("SELECT n FROM t"),
+    RecursiveParts::new(
+        sql::<Integer>("SELECT 1"),
+        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+        sql::<Integer>("SELECT n FROM t"),
+    ),
 )
-.load(&mut conn)?;
+    .load(&mut conn)?;
+```
+
+The resulting CTE `t` contains the following rows:
+
+| n   |
+| --- |
+| 1   |
+| 2   |
+| 3   |
+| …   |
+
+When the `async` feature is enabled, import `diesel_async::RunQueryDsl` and
+await the query as follows:
+
+```rust
+use diesel::dsl::sql;
+use diesel::sql_types::Integer;
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
+use diesel_async::RunQueryDsl;
+use diesel::sqlite::SqliteConnection;
+
+let rows: Vec<i32> = SqliteConnection::with_recursive(
+        "t",
+        &["n"],
+        RecursiveParts::new(
+            sql::<Integer>("SELECT 1"),
+            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+            sql::<Integer>("SELECT n FROM t"),
+        ),
+)
+    .load(&mut conn)
+    .await?;
 ```
 
 The builder works with either SQLite or PostgreSQL depending on the enabled
@@ -28,7 +64,7 @@ connections.
 
 - Construct a single recursive CTE with a seed query, step query and body.
 - Tested with both SQLite and PostgreSQL back ends.
-- Compatible with Diesel 2.x synchronous and `diesel-async` connections.
+- Compatible with Diesel 2.x synchronous and `async` connections.
 
 ## Limitations
 

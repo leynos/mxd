@@ -1,3 +1,8 @@
+//! Constants and helpers for the wire protocol.
+//!
+//! The protocol module defines handshake sequences and utility functions for
+//! talking to Hotline clients. It contains the numeric constants used by the
+//! framing layer and basic handshake implementation.
 use std::time::Duration;
 
 use thiserror::Error;

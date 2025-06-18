@@ -1,3 +1,8 @@
+//! Connection-level request processing.
+//!
+//! The handler owns per-client [`Session`] state and dispatches incoming
+//! transactions to [`Command`] processors. Each connection runs in its own
+//! asynchronous task.
 use std::net::SocketAddr;
 
 use crate::{

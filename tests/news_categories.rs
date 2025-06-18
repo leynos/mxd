@@ -66,7 +66,6 @@ fn list_categories(
     Ok((reply_tx.header, names))
 }
 
-#[test]
 /// Tests that listing news categories at the root path returns all root-level bundles and
 /// categories.
 ///
@@ -77,6 +76,7 @@ fn list_categories(
 /// # Errors
 ///
 /// Returns an error if the test server setup, TCP communication, or protocol validation fails.
+#[test]
 fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
 
@@ -87,7 +87,6 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[test]
 /// Tests that listing news categories with no path parameter returns all root-level bundles and
 /// categories.
 ///
@@ -105,6 +104,7 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
 /// ```
 /// list_news_categories_no_path().unwrap(); 
 /// ```
+#[test]
 fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
 
@@ -115,7 +115,6 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[test]
 /// Tests that requesting news categories with an invalid path returns the expected unsupported path
 /// error.
 ///
@@ -124,6 +123,7 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// # Returns
 /// Returns `Ok(())` if the test passes; otherwise, returns an error if any step fails.
+#[test]
 fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
         let rt = tokio::runtime::Runtime::new()?;
@@ -147,7 +147,6 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
     assert_eq!(hdr.error, NEWS_ERR_PATH_UNSUPPORTED);
     Ok(())
 }
-#[test]
 /// Tests that requesting a list of news categories from an empty database returns no categories.
 ///
 /// This test sets up a test server with an empty database, performs a TCP handshake,
@@ -163,6 +162,7 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
 /// ```
 /// list_news_categories_empty().unwrap(); 
 /// ```
+#[test]
 fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", |db| {
         let rt = tokio::runtime::Runtime::new()?;
@@ -179,7 +179,6 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[test]
 /// Tests that requesting news categories at a nested bundle path returns only the categories within
 /// that sub-bundle.
 ///
@@ -191,6 +190,7 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// Returns an error if the test server setup, database operations, TCP communication, or protocol
 /// decoding fails.
+#[test]
 fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
     let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_nested_db)?;
 

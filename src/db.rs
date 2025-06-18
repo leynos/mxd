@@ -1,3 +1,8 @@
+//! Manage database connections and domain queries.
+//!
+//! This module exposes helpers for creating pooled Diesel connections,
+//! running embedded migrations, and executing application queries.  It
+//! supports both `SQLite` and `PostgreSQL` backends, selected via feature flags.
 use cfg_if::cfg_if;
 use diesel::prelude::*;
 #[cfg(feature = "sqlite")]
@@ -29,12 +34,11 @@ cfg_if! {
 
 /// Create a pooled connection to the configured database.
 ///
+/// Asynchronously establishes a database connection pool for the configured
+/// backend.
+///
 /// # Panics
 /// Panics if the connection pool cannot be created.
-#[must_use = "handle the pool"]
-/// Asynchronously establishes a database connection pool for the configured backend.
-///
-/// Panics if the pool cannot be created.
 ///
 /// # Examples
 ///
@@ -42,6 +46,7 @@ cfg_if! {
 /// use mxd::db::establish_pool;
 /// async fn example() { let pool = establish_pool("sqlite::memory:").await; }
 /// ```
+#[must_use = "handle the pool"]
 pub async fn establish_pool(database_url: &str) -> DbPool {
     let config = AsyncDieselConnectionManager::<DbConnection>::new(database_url);
     Pool::builder()
@@ -143,8 +148,7 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
 /// # Errors
 /// Returns any error produced by the version query or if the version string
 /// cannot be parsed.
-#[cfg(feature = "postgres")]
-#[must_use = "handle the result"]
+///
 /// Checks that the connected `PostgreSQL` server version is at least 14.
 ///
 /// Executes a version query and parses the result, returning an error if the version is unsupported
@@ -164,6 +168,8 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
 /// assert!(result.is_ok());
 /// # }
 /// ```
+#[cfg(feature = "postgres")]
+#[must_use = "handle the result"]
 pub async fn audit_postgres_features(
     conn: &mut diesel_async::AsyncPgConnection,
 ) -> QueryResult<()> {
@@ -238,7 +244,7 @@ use crate::news_path::{
     BUNDLE_STEP_SQL,
     CATEGORY_BODY_SQL,
     CATEGORY_STEP_SQL,
-    build_path_cte,
+    build_path_cte_with_conn,
     prepare_path,
 };
 
@@ -275,7 +281,7 @@ async fn bundle_id_from_path(
     let len_i32: i32 = i32::try_from(len).map_err(|_| PathLookupError::InvalidPath)?;
     let body = sql_query(BUNDLE_BODY_SQL).bind::<Integer, _>(len_i32);
 
-    let query = build_path_cte::<Backend, _, _>(step, body);
+    let query = build_path_cte_with_conn(conn, step, body);
 
     let res: Option<BunId> = query.get_result(conn).await.optional()?;
     match res.and_then(|b| b.id) {
@@ -429,7 +435,7 @@ async fn category_id_from_path(
         .bind::<Integer, _>(len_minus_one)
         .bind::<Integer, _>(len_minus_one);
 
-    let query = build_path_cte::<Backend, _, _>(step, body);
+    let query = build_path_cte_with_conn(conn, step, body);
 
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
     res.map(|c| c.id).ok_or(PathLookupError::InvalidPath)

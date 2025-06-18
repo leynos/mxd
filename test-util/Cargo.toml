@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 tempfile = "3"
-nix = { version = "0.27", features = ["signal"] }
+nix = { version = "0.28", default-features = false, features = ["signal", "user"] }
+once_cell = "1"
 mxd = { path = "..", default-features = false }
 tokio = { version = "1", features = ["rt", "macros"] }
 diesel = { version = "2", default-features = false, features = ["chrono"] }
@@ -16,6 +17,7 @@ argon2 = { version = "0.5", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
 rstest = "0.18"
+postgres = { version = "0.19", optional = true }
 
 [features]
 default = ["sqlite"]
@@ -25,6 +27,7 @@ postgres = [
     "mxd/postgres",
     "postgresql_embedded",
     "diesel_migrations/postgres",
+    "dep:postgres",
 ]
 sqlite = [
     "diesel/sqlite",

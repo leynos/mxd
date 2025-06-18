@@ -1,5 +1,12 @@
+//! Utilities for integration tests.
+//!
+//! The `test-util` crate provides helpers to spin up temporary servers and,
+//! when the `postgres` feature is enabled, manage embedded PostgreSQL
+//! instances. It is used by integration tests in the main crate.
 #[cfg(feature = "postgres")]
 use std::error::Error as StdError;
+#[cfg(feature = "postgres")]
+use std::path::{Path, PathBuf};
 use std::{
     io::{BufRead, BufReader},
     net::TcpListener,
@@ -8,10 +15,50 @@ use std::{
 };
 
 #[cfg(feature = "postgres")]
+use nix::unistd::geteuid;
+#[cfg(feature = "postgres")]
+use once_cell::sync::Lazy;
+#[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
+#[cfg(feature = "postgres")]
+use postgresql_embedded::Settings;
 #[cfg(feature = "postgres")]
 use rstest::fixture;
 use tempfile::TempDir;
+
+#[cfg(feature = "postgres")]
+static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
+    let manifest = std::env::var("POSTGRES_SETUP_UNPRIV_MANIFEST").unwrap_or_else(|_| {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../postgres_setup_unpriv/Cargo.toml")
+            .to_string_lossy()
+            .into_owned()
+    });
+
+    let bin = Path::new(&manifest)
+        .parent()
+        .expect("manifest path has parent")
+        .join("target/debug/postgres-setup-unpriv");
+
+    // Rebuild the helper once per test session. Cargo is fast when nothing
+    // changed, so always delegate the up-to-date check to it.
+    let status = std::process::Command::new("cargo")
+        .args([
+            "build",
+            "--bin",
+            "postgres-setup-unpriv",
+            "--manifest-path",
+            &manifest,
+            "--quiet",
+        ])
+        .status()
+        .map_err(|e| format!("building postgres-setup-unpriv: {e}"))?;
+    if !status.success() {
+        return Err("building postgres-setup-unpriv failed".into());
+    }
+
+    Ok(bin)
+});
 
 #[cfg(all(feature = "sqlite", feature = "postgres"))]
 compile_error!("Choose either sqlite or postgres, not both");
@@ -31,22 +78,77 @@ pub struct TestServer {
     child: Child,
     port: u16,
     db_url: String,
-    _temp: Option<TempDir>,
     #[cfg(feature = "postgres")]
     pg: Option<PostgreSQL>,
+    /// Keep the temporary directory alive for the lifetime of the server to
+    /// prevent early cleanup while the database is running.
+    temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
-fn start_embedded_postgres<F>(setup: F) -> Result<(String, PostgreSQL), Box<dyn std::error::Error>>
+#[derive(Debug)]
+struct EmbeddedPg {
+    url: String,
+    pg: PostgreSQL,
+    temp_dir: TempDir,
+}
+
+#[cfg(feature = "postgres")]
+/// Resources required to run tests with a PostgreSQL database.
+///
+/// This wrapper combines the connection URL, the optional embedded PostgreSQL
+/// instance, and the optional temporary directory used by the embedded server.
+struct DbResources {
+    url: String,
+    pg: Option<PostgreSQL>,
+    temp_dir: Option<TempDir>,
+}
+
+#[cfg(feature = "postgres")]
+/// Start an embedded PostgreSQL instance for tests.
+///
+/// Returns an [`EmbeddedPg`] containing the connection URL, the
+/// running [`PostgreSQL`] handle, and the [`TempDir`] of the data
+/// directory. The temporary directory must be kept alive for as long
+/// as the server is running, otherwise the data directory would be
+/// removed prematurely.
+fn start_embedded_postgres<F>(setup: F) -> Result<EmbeddedPg, Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
     let fut = async {
-        let mut pg = PostgreSQL::default();
-        if let Err(e) = pg.setup().await {
-            let _ = pg.stop().await;
-            return Err(format!("preparing embedded PostgreSQL: {e}").into());
-        }
+        let mut settings = Settings::default();
+        let tmp = tempfile::Builder::new().prefix("mxd-pg").tempdir()?;
+        let data_dir = tmp.path().to_path_buf();
+        settings.data_dir = data_dir.clone();
+
+        let mut pg = if geteuid().is_root() {
+            let bin = HELPER_BIN
+                .clone()
+                .map_err(|e| -> Box<dyn StdError> { e.into() })?;
+
+            let run_status = std::process::Command::new(bin)
+                .env("PG_DATA_DIR", &data_dir)
+                .env("PG_PORT", settings.port.to_string())
+                .env("PG_VERSION_REQ", settings.version.to_string())
+                .env("PG_SUPERUSER", &settings.username)
+                .env("PG_PASSWORD", &settings.password)
+                .status()
+                .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
+            if !run_status.success() {
+                return Err("postgres-setup-unpriv failed".into());
+            }
+
+            PostgreSQL::new(settings.clone())
+        } else {
+            let mut pg = PostgreSQL::new(settings.clone());
+            if let Err(e) = pg.setup().await {
+                let _ = pg.stop().await;
+                return Err(format!("preparing embedded PostgreSQL: {e}").into());
+            }
+            pg
+        };
+
         if let Err(e) = pg.start().await {
             let _ = pg.stop().await;
             return Err(format!("starting embedded PostgreSQL: {e}").into());
@@ -56,17 +158,20 @@ where
             return Err(format!("creating test database: {e}").into());
         }
         let url = pg.settings().url("test");
-        Ok::<_, Box<dyn StdError>>((url, pg))
+        Ok::<_, Box<dyn StdError>>(EmbeddedPg {
+            url,
+            pg,
+            temp_dir: tmp,
+        })
     };
-    let (url, pg) = match tokio::runtime::Handle::try_current() {
+    let mut embedded = match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.block_on(fut)?,
         Err(_) => tokio::runtime::Runtime::new()?.block_on(fut)?,
     };
-    setup(&url)?;
-    Ok((url, pg))
+    setup(&embedded.url)?;
+    Ok(embedded)
 }
 
-#[cfg(feature = "postgres")]
 /// Resets a PostgreSQL database by dropping and recreating the public schema.
 ///
 /// This function ensures a completely clean database state by removing all tables,
@@ -103,6 +208,7 @@ where
 /// reset_postgres_db(db_url)?;
 /// // Database now has a clean public schema
 /// ```
+#[cfg(feature = "postgres")]
 fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     use postgres::{Client, NoTls};
 
@@ -111,7 +217,6 @@ fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(feature = "postgres")]
 /// RAII-style PostgreSQL test database fixture that ensures clean schema state.
 ///
 /// This struct manages the lifecycle of a PostgreSQL database for testing, automatically
@@ -157,6 +262,7 @@ fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
 ///     // ... test implementation
 /// }
 /// ```
+#[cfg(feature = "postgres")]
 pub struct PostgresTestDb {
     /// PostgreSQL connection URL for the test database.
     ///
@@ -168,20 +274,33 @@ pub struct PostgresTestDb {
     /// This is `Some` when using an embedded server, `None` when using an external
     /// database specified via `POSTGRES_TEST_URL`.
     pg: Option<PostgreSQL>,
+    /// Hold the data directory alive until after the embedded server stops.
+    temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
 impl PostgresTestDb {
-    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let url = value.to_string_lossy().into_owned();
             reset_postgres_db(&url)?;
-            return Ok(Self { url, pg: None });
+            return Ok(Self {
+                url,
+                pg: None,
+                temp_dir: None,
+            });
         }
 
-        let (url, pg) = start_embedded_postgres(|url| reset_postgres_db(url))?;
-        Ok(Self { url, pg: Some(pg) })
+        let EmbeddedPg { url, pg, temp_dir } =
+            start_embedded_postgres(|url| reset_postgres_db(url))?;
+        Ok(Self {
+            url,
+            pg: Some(pg),
+            temp_dir: Some(temp_dir),
+        })
     }
+
+    pub fn uses_embedded(&self) -> bool { self.pg.is_some() }
 }
 
 #[cfg(feature = "postgres")]
@@ -195,8 +314,6 @@ impl Drop for PostgresTestDb {
     }
 }
 
-#[cfg(feature = "postgres")]
-#[fixture]
 /// Test fixture that provides a clean PostgreSQL database for each test.
 ///
 /// This fixture creates a `PostgresTestDb` instance that manages database lifecycle
@@ -234,6 +351,8 @@ impl Drop for PostgresTestDb {
 /// ## Panics
 ///
 /// Panics if database setup fails, which indicates a fundamental testing environment issue.
+#[cfg(feature = "postgres")]
+#[fixture]
 pub fn postgres_db() -> PostgresTestDb {
     PostgresTestDb::new().expect("Failed to prepare Postgres test database")
 }
@@ -358,15 +477,30 @@ impl TestServer {
 
         #[cfg(feature = "postgres")]
         {
-            let (db_url, pg) = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+            let resources = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
                 let url = value.to_string_lossy().into_owned();
                 reset_postgres_db(&url)?;
-                (url, None)
+                DbResources {
+                    url,
+                    pg: None,
+                    temp_dir: None,
+                }
             } else {
-                start_embedded_postgres(|url| reset_postgres_db(url))?
+                let EmbeddedPg { url, pg, temp_dir } =
+                    start_embedded_postgres(|url| reset_postgres_db(url))?;
+                DbResources {
+                    url,
+                    pg: Some(pg),
+                    temp_dir: Some(temp_dir),
+                }
             };
-            setup(&db_url)?;
-            return Self::launch(manifest_path, db_url, None, pg);
+            setup(&resources.url)?;
+            return Self::launch(
+                manifest_path,
+                resources.url,
+                resources.temp_dir,
+                resources.pg,
+            );
         }
     }
 
@@ -402,7 +536,7 @@ impl TestServer {
     fn launch(
         manifest_path: &str,
         db_url: String,
-        temp: Option<TempDir>,
+        temp_dir: Option<TempDir>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let socket = TcpListener::bind("127.0.0.1:0")?;
         let port = socket.local_addr()?.port();
@@ -416,7 +550,7 @@ impl TestServer {
             child,
             port,
             db_url,
-            _temp: temp,
+            temp_dir,
         })
     }
 
@@ -446,7 +580,7 @@ impl TestServer {
     fn launch(
         manifest_path: &str,
         db_url: String,
-        temp: Option<TempDir>,
+        temp_dir: Option<TempDir>,
         pg: Option<PostgreSQL>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let socket = TcpListener::bind("127.0.0.1:0")?;
@@ -461,7 +595,7 @@ impl TestServer {
             child,
             port,
             db_url,
-            _temp: temp,
+            temp_dir,
             pg,
         })
     }
@@ -479,6 +613,12 @@ impl TestServer {
         // safe and avoids repeated validation.
         self.db_url.as_str()
     }
+
+    /// Return the temporary directory used by the test server, if any.
+    ///
+    /// Keeping this handle alive prevents the directory from being deleted
+    /// while the server is running.
+    pub fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
     #[cfg(feature = "postgres")]
     /// Returns true if the server is using an embedded PostgreSQL instance.

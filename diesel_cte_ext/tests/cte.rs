@@ -1,15 +1,17 @@
 use diesel::{Connection, dsl::sql, sql_types::Integer};
-use diesel_cte_ext::with_recursive;
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
 
 fn sqlite_sync() -> Vec<i32> {
     use diesel::{RunQueryDsl, sqlite::SqliteConnection};
     let mut conn = SqliteConnection::establish(":memory:").unwrap();
-    with_recursive::<diesel::sqlite::Sqlite, _, _, _>(
+    SqliteConnection::with_recursive(
         "t",
         &["n"],
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
+        RecursiveParts::new(
+            sql::<Integer>("SELECT 1"),
+            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+            sql::<Integer>("SELECT n FROM t"),
+        ),
     )
     .load(&mut conn)
     .unwrap()
@@ -25,12 +27,14 @@ async fn sqlite_async() -> Vec<i32> {
     let mut conn = SyncConnectionWrapper::<SqliteConnection>::establish(":memory:")
         .await
         .unwrap();
-    with_recursive::<diesel::sqlite::Sqlite, _, _, _>(
+    SyncConnectionWrapper::<SqliteConnection>::with_recursive(
         "t",
         &["n"],
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
+        RecursiveParts::new(
+            sql::<Integer>("SELECT 1"),
+            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+            sql::<Integer>("SELECT n FROM t"),
+        ),
     )
     .load(&mut conn)
     .await
@@ -46,17 +50,21 @@ async fn pg_async() -> Vec<i32> {
     pg.start().await.unwrap();
     pg.create_database("test").await.unwrap();
     let url = pg.settings().url("test");
-    let mut conn = AsyncPgConnection::establish(&url).await.unwrap();
-    let res = with_recursive::<diesel::pg::Pg, _, _, _>(
-        "t",
-        &["n"],
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
-    )
-    .load(&mut conn)
-    .await
-    .unwrap();
+    let res = {
+        let mut conn = AsyncPgConnection::establish(&url).await.unwrap();
+        AsyncPgConnection::with_recursive(
+            "t",
+            &["n"],
+            RecursiveParts::new(
+                sql::<Integer>("SELECT 1"),
+                sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+                sql::<Integer>("SELECT n FROM t"),
+            ),
+        )
+        .load(&mut conn)
+        .await
+        .unwrap()
+    };
     pg.stop().await.unwrap();
     res
 }
@@ -70,16 +78,20 @@ fn pg_sync() -> Vec<i32> {
     pg.start().unwrap();
     pg.create_database("test").unwrap();
     let url = pg.settings().url("test");
-    let mut conn = PgConnection::establish(&url).unwrap();
-    let res = with_recursive::<diesel::pg::Pg, _, _, _>(
-        "t",
-        &["n"],
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
-    )
-    .load(&mut conn)
-    .unwrap();
+    let res = {
+        let mut conn = PgConnection::establish(&url).unwrap();
+        PgConnection::with_recursive(
+            "t",
+            &["n"],
+            RecursiveParts::new(
+                sql::<Integer>("SELECT 1"),
+                sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
+                sql::<Integer>("SELECT n FROM t"),
+            ),
+        )
+        .load(&mut conn)
+        .unwrap()
+    };
     pg.stop().unwrap();
     res
 }

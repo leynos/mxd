@@ -21,7 +21,7 @@ runs:
     - run: |
         set -euo pipefail
         args=(--workspace)
-        if ! ${{ !! inputs.with-default-features }}; then
+        if [[ "${{ inputs.with-default-features }}" == "false" ]]; then
           args+=(--no-default-features)
         fi
         if [ -n "${{ inputs.features }}" ]; then
