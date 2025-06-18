@@ -126,7 +126,13 @@ top-level `tests/` directory (not under `validator/tests`).**
 
 ## Markdown Guidance
 
-- Validate Markdown files using `markdownlint`.
+- Validate Markdown files using the provided `markdownlint` executable.
+  This wrapper already configures `markdownlint-cli2` so run it directly.
+
+  ```bash
+  markdownlint '**/*.md'
+  ```
+
 - Validate Markdown Mermaid diagrams using the `nixie` CLI. `nixie` is a
   standalone command-line tool, not an npm package. Invoke it directly with
   Markdown paths:
