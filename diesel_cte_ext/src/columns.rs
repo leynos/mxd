@@ -39,7 +39,8 @@ impl Columns<()> {
     /// # Note
     ///
     /// This method only works for tables with up to 16 columns due to macro limitations in Diesel.
-    /// Attempting to use this with tables having more than 16 columns will result in a compile-time error.
+    /// Attempting to use this with tables having more than 16 columns will result in a compile-time
+    /// error.
     pub fn for_table<Tbl>() -> Columns<<Tbl as Table>::AllColumns>
     where
         Tbl: Table,
