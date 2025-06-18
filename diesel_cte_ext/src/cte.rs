@@ -1,13 +1,24 @@
+//! Core types modeling a recursive CTE query.
+//!
+//! [`WithRecursive`] represents the raw query fragment containing the CTE, and
+//! [`RecursiveBackend`] marks Diesel backends that support recursive queries.
+
 use diesel::{
     backend::Backend,
     query_builder::{AstPass, Query, QueryFragment, QueryId},
     result::QueryResult,
 };
 
-fn push_identifiers<DB>(out: &mut AstPass<'_, '_, DB>, ids: &[&'static str]) -> QueryResult<()>
+use crate::columns::Columns;
+
+fn push_identifiers<DB, Cols>(
+    out: &mut AstPass<'_, '_, DB>,
+    cols: &Columns<Cols>,
+) -> QueryResult<()>
 where
     DB: Backend,
 {
+    let ids = cols.names;
     if ids.is_empty() {
         return Ok(());
     }
@@ -33,18 +44,19 @@ impl RecursiveBackend for diesel::pg::Pg {}
 
 /// Representation of a recursive CTE query.
 #[derive(Debug, Clone)]
-pub struct WithRecursive<DB: Backend, Seed, Step, Body> {
+pub struct WithRecursive<DB: Backend, Cols, Seed, Step, Body> {
     pub cte_name: &'static str,
-    pub columns: &'static [&'static str],
+    pub columns: Columns<Cols>,
     pub seed: Seed,
     pub step: Step,
     pub body: Body,
     pub _marker: std::marker::PhantomData<DB>,
 }
 
-impl<DB, Seed, Step, Body> QueryId for WithRecursive<DB, Seed, Step, Body>
+impl<DB, Cols, Seed, Step, Body> QueryId for WithRecursive<DB, Cols, Seed, Step, Body>
 where
     DB: Backend + 'static,
+    Cols: 'static,
     Seed: 'static,
     Step: 'static,
     Body: 'static,
@@ -53,7 +65,7 @@ where
     const HAS_STATIC_QUERY_ID: bool = true;
 }
 
-impl<DB, Seed, Step, Body> Query for WithRecursive<DB, Seed, Step, Body>
+impl<DB, Cols, Seed, Step, Body> Query for WithRecursive<DB, Cols, Seed, Step, Body>
 where
     DB: Backend,
     Body: Query,
@@ -61,7 +73,7 @@ where
     type SqlType = <Body as Query>::SqlType;
 }
 
-impl<DB, Seed, Step, Body> QueryFragment<DB> for WithRecursive<DB, Seed, Step, Body>
+impl<DB, Cols, Seed, Step, Body> QueryFragment<DB> for WithRecursive<DB, Cols, Seed, Step, Body>
 where
     DB: Backend,
     Seed: QueryFragment<DB>,
@@ -71,7 +83,7 @@ where
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, DB>) -> QueryResult<()> {
         out.push_sql("WITH RECURSIVE ");
         out.push_identifier(self.cte_name)?;
-        push_identifiers(&mut out, self.columns)?;
+        push_identifiers(&mut out, &self.columns)?;
         out.push_sql(" AS (");
         self.seed.walk_ast(out.reborrow())?;
         out.push_sql(" UNION ALL ");
@@ -81,8 +93,8 @@ where
     }
 }
 
-impl<DB, Seed, Step, Body, Conn> diesel::query_dsl::RunQueryDsl<Conn>
-    for WithRecursive<DB, Seed, Step, Body>
+impl<DB, Cols, Seed, Step, Body, Conn> diesel::query_dsl::RunQueryDsl<Conn>
+    for WithRecursive<DB, Cols, Seed, Step, Body>
 where
     DB: Backend,
     Conn: diesel::connection::Connection<Backend = DB>,

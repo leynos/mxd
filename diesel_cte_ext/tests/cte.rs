@@ -1,5 +1,7 @@
+//! Behavioural tests for recursive CTE helpers using SQLite and PostgreSQL.
+
 use diesel::{Connection, dsl::sql, sql_types::Integer};
-use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
+use diesel_cte_ext::{Columns, RecursiveCTEExt, RecursiveParts};
 
 fn sqlite_sync() -> Vec<i32> {
     use diesel::{RunQueryDsl, sqlite::SqliteConnection};

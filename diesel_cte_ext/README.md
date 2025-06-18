@@ -24,6 +24,28 @@ let rows: Vec<i32> = SqliteConnection::with_recursive(
     .load(&mut conn)?;
 ```
 
+`Columns<T>` couples the runtime column names with a compile-time tuple of
+Diesel column types. For ad-hoc CTEs use a string slice directly or
+`Columns::raw`. When working with schema-defined tables you can build the list
+via the provided helper macros.
+
+```rust
+use diesel_cte_ext::{columns, table_columns};
+use crate::schema::users;
+
+let user_cte = SqliteConnection::with_recursive(
+    "u",
+    columns!(users::id, users::parent_id),
+    RecursiveParts::new(todo!(), todo!(), todo!()),
+);
+
+let table_cte = SqliteConnection::with_recursive(
+    "u",
+    table_columns!(users::table),
+    RecursiveParts::new(todo!(), todo!(), todo!()),
+);
+```
+
 The resulting CTE `t` contains the following rows:
 
 | n   |
@@ -68,14 +90,14 @@ connections.
 
 ## Limitations
 
-- Only supports a single CTE block and requires manually listing column names.
+- Only supports a single CTE block.
 - No integration with Diesel's query DSL or schema inference.
 - Crate is unpublished and APIs may change without notice.
 
 ## Next steps
 
-Future improvements could include typed column support, better integration with
-Diesel's query builder, and support for multiple chained CTEs.
+Future improvements could include better integration with Diesel's query builder
+and support for multiple chained CTEs.
 
 ## Caveats
 
