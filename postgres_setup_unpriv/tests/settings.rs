@@ -1,10 +1,20 @@
 use std::path::PathBuf;
 
 use postgres_setup_unpriv::{nobody_uid, with_temp_euid, PgEnvCfg};
-use postgresql_embedded::{settings::AuthMethod, VersionReq};
+use postgresql_embedded::VersionReq;
 use nix::unistd::{geteuid, Uid};
 use rstest::rstest;
 
+/// Tests that a `PgEnvCfg` with specific settings is correctly converted to a `settings` object,
+/// and that all relevant fields and configuration values are preserved.
+///
+/// # Returns
+/// An `anyhow::Result` indicating success or failure of the round-trip conversion.
+///
+/// # Examples
+/// ```no_run
+/// to_settings_roundtrip()?;
+/// ```
 #[rstest]
 fn to_settings_roundtrip() -> anyhow::Result<()> {
     let cfg = PgEnvCfg {
@@ -16,7 +26,6 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
         runtime_dir: Some(PathBuf::from("/tmp/runtime")),
         locale: Some("en_US".into()),
         encoding: Some("UTF8".into()),
-        auth_method: Some("trust".into()),
     };
     let settings = cfg.to_settings()?;
     assert_eq!(settings.version, VersionReq::parse("=16.4.0")?);
@@ -27,21 +36,19 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
     assert_eq!(settings.installation_dir, PathBuf::from("/tmp/runtime"));
     assert_eq!(settings.configuration.get("locale"), Some(&"en_US".to_string()));
     assert_eq!(settings.configuration.get("encoding"), Some(&"UTF8".to_string()));
-    assert_eq!(settings.auth_method, postgresql_embedded::settings::AuthMethod::Trust);
     Ok(())
 }
 
+/// Tests that the default `PgEnvCfg` configuration can be converted to settings without error.
 #[rstest]
-fn to_settings_invalid_auth() {
-    let cfg = PgEnvCfg {
-        auth_method: Some("invalid".into()),
-        ..Default::default()
-    };
-    assert!(cfg.to_settings().is_err());
+fn to_settings_default_config() {
+    let cfg = PgEnvCfg::default();
+    assert!(cfg.to_settings().is_ok());
 }
 
 #[cfg(unix)]
 #[rstest]
+/// Verify that the effective uid is changed within the passed block
 fn with_temp_euid_changes_uid() -> anyhow::Result<()> {
     if !geteuid().is_root() {
         eprintln!("skipping root-dependent test");
