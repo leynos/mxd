@@ -164,7 +164,7 @@ where
             temp_dir: tmp,
         })
     };
-    let mut embedded = match tokio::runtime::Handle::try_current() {
+    let embedded = match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.block_on(fut)?,
         Err(_) => tokio::runtime::Runtime::new()?.block_on(fut)?,
     };
@@ -275,7 +275,7 @@ pub struct PostgresTestDb {
     /// database specified via `POSTGRES_TEST_URL`.
     pg: Option<PostgreSQL>,
     /// Hold the data directory alive until after the embedded server stops.
-    temp_dir: Option<TempDir>,
+    _temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
@@ -287,7 +287,7 @@ impl PostgresTestDb {
             return Ok(Self {
                 url,
                 pg: None,
-                temp_dir: None,
+                _temp_dir: None,
             });
         }
 
@@ -296,7 +296,7 @@ impl PostgresTestDb {
         Ok(Self {
             url,
             pg: Some(pg),
-            temp_dir: Some(temp_dir),
+            _temp_dir: Some(temp_dir),
         })
     }
 
