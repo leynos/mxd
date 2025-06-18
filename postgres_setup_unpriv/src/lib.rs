@@ -1,9 +1,10 @@
 // Library for postgres_setup_unpriv
+#![allow(non_snake_case)]
 
 use anyhow::{bail, Context, Result};
 use nix::unistd::{getresuid, geteuid, setresuid, Uid};
 use ortho_config::OrthoConfig;
-use postgresql_embedded::{settings::AuthMethod, PostgreSQL, Settings, VersionReq};
+use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
 use serde::{Deserialize, Serialize};
 
 #[allow(non_snake_case)]
@@ -19,7 +20,6 @@ pub struct PgEnvCfg {
     pub runtime_dir: Option<std::path::PathBuf>,
     pub locale: Option<String>,
     pub encoding: Option<String>,
-    pub auth_method: Option<String>,
 }
 
 impl PgEnvCfg {
@@ -31,7 +31,6 @@ impl PgEnvCfg {
         self.apply_connection(&mut s);
         self.apply_paths(&mut s);
         self.apply_locale(&mut s);
-        self.apply_auth(&mut s)?;
 
         Ok(s)
     }
@@ -74,18 +73,6 @@ impl PgEnvCfg {
         }
     }
 
-    fn apply_auth(&self, settings: &mut Settings) -> Result<()> {
-        if let Some(ref am) = self.auth_method {
-            settings.auth_method = match am.to_ascii_lowercase().as_str() {
-                "trust" => AuthMethod::Trust,
-                "password" => AuthMethod::Password,
-                "md5" => AuthMethod::Md5,
-                "scram-sha-256" => AuthMethod::ScramSha256,
-                other => bail!("unknown PG_AUTH_METHOD '{other}'"),
-            };
-        }
-        Ok(())
-    }
 }
 
 /// Temporary privilege drop helper (process‑wide!)

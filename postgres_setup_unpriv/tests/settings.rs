@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use postgres_setup_unpriv::{nobody_uid, with_temp_euid, PgEnvCfg};
-use postgresql_embedded::{settings::AuthMethod, VersionReq};
+use postgresql_embedded::VersionReq;
 use nix::unistd::{geteuid, Uid};
 use rstest::rstest;
 
@@ -16,7 +16,6 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
         runtime_dir: Some(PathBuf::from("/tmp/runtime")),
         locale: Some("en_US".into()),
         encoding: Some("UTF8".into()),
-        auth_method: Some("trust".into()),
     };
     let settings = cfg.to_settings()?;
     assert_eq!(settings.version, VersionReq::parse("=16.4.0")?);
@@ -27,17 +26,13 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
     assert_eq!(settings.installation_dir, PathBuf::from("/tmp/runtime"));
     assert_eq!(settings.configuration.get("locale"), Some(&"en_US".to_string()));
     assert_eq!(settings.configuration.get("encoding"), Some(&"UTF8".to_string()));
-    assert_eq!(settings.auth_method, postgresql_embedded::settings::AuthMethod::Trust);
     Ok(())
 }
 
 #[rstest]
 fn to_settings_invalid_auth() {
-    let cfg = PgEnvCfg {
-        auth_method: Some("invalid".into()),
-        ..Default::default()
-    };
-    assert!(cfg.to_settings().is_err());
+    let cfg = PgEnvCfg::default();
+    assert!(cfg.to_settings().is_ok());
 }
 
 #[cfg(unix)]
