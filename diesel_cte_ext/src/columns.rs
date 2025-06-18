@@ -33,8 +33,14 @@ where
     fn default() -> Self { Self::raw(T::NAMES) }
 }
 
+/// Compile-time check for [`ColumnNames`] implementations.
+const fn assert_column_names_impl<T: ColumnNames>() {}
+
 impl Columns<()> {
     /// Construct column names from a Diesel table definition.
+        // Provide a clear compile-time error if the table's column tuple
+        // lacks a `ColumnNames` implementation.
+        assert_column_names_impl::<Tbl::AllColumns>();
     ///
     /// # Note
     ///
