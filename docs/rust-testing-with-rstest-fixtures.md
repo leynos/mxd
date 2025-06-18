@@ -1321,5 +1321,6 @@ software.
 ### C. Project-Specific Fixtures
 
 The `test_util` crate's `PostgresTestDb` fixture now generates a uniquely named
-database for each invocation. This ensures tests can run in parallel without
-database name conflicts.
+database for each invocation using a random UUID suffix. The database is dropped
+when the fixture is cleaned up, allowing parallel tests without leaving orphaned
+databases behind.
