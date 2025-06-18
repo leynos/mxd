@@ -5,6 +5,16 @@ use postgresql_embedded::VersionReq;
 use nix::unistd::{geteuid, Uid};
 use rstest::rstest;
 
+/// Tests that a `PgEnvCfg` with specific settings is correctly converted to a `settings` object,
+/// and that all relevant fields and configuration values are preserved.
+///
+/// # Returns
+/// An `anyhow::Result` indicating success or failure of the round-trip conversion.
+///
+/// # Examples
+/// ```no_run
+/// to_settings_roundtrip()?;
+/// ```
 #[rstest]
 fn to_settings_roundtrip() -> anyhow::Result<()> {
     let cfg = PgEnvCfg {
@@ -29,6 +39,7 @@ fn to_settings_roundtrip() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Tests that the default `PgEnvCfg` configuration can be converted to settings without error.
 #[rstest]
 fn to_settings_default_config() {
     let cfg = PgEnvCfg::default();
@@ -37,6 +48,7 @@ fn to_settings_default_config() {
 
 #[cfg(unix)]
 #[rstest]
+/// Verify that the effective uid is changed within the passed block
 fn with_temp_euid_changes_uid() -> anyhow::Result<()> {
     if !geteuid().is_root() {
         eprintln!("skipping root-dependent test");
