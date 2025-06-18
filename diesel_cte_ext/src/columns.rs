@@ -35,11 +35,23 @@ where
 
 impl Columns<()> {
     /// Construct column names from a Diesel table definition.
+    ///
+    /// # Note
+    ///
+    /// This method only works for tables with up to 16 columns due to macro limitations in Diesel.
+    /// Attempting to use this with tables having more than 16 columns will result in a compile-time error.
     pub fn for_table<Tbl>() -> Columns<<Tbl as Table>::AllColumns>
     where
         Tbl: Table,
         <Tbl as Table>::AllColumns: ColumnNames,
     {
+        // This static assertion provides a clearer error message if the macro limit is exceeded.
+        // If you hit this, your table likely has more than 16 columns.
+        const _: () = {
+            // This will fail to compile if ColumnNames is not implemented (i.e., >16 columns)
+            fn assert_column_names_impl<T: ColumnNames>() {}
+            let _ = assert_column_names_impl::<Tbl::AllColumns>;
+        };
         Columns::<Tbl::AllColumns>::default()
     }
 }
