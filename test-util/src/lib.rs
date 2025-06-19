@@ -4,10 +4,9 @@
 //! when the `postgres` feature is enabled, manage embedded PostgreSQL
 //! instances. It is used by integration tests in the main crate.
 #[cfg(feature = "postgres")]
-use std::error::Error as StdError;
-#[cfg(feature = "postgres")]
 use std::path::{Path, PathBuf};
 use std::{
+    ffi::OsString,
     io::{BufRead, BufReader},
     net::TcpListener,
     process::{Child, Command, Stdio},
@@ -15,20 +14,18 @@ use std::{
 };
 
 #[cfg(feature = "postgres")]
-use nix::unistd::geteuid;
-#[cfg(feature = "postgres")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "postgres")]
 use postgresql_embedded::PostgreSQL;
-#[cfg(feature = "postgres")]
-use postgresql_embedded::Settings;
-#[cfg(feature = "postgres")]
-use rstest::fixture;
 use tempfile::TempDir;
+
+#[cfg(feature = "postgres")]
+pub mod postgres;
 #[cfg(feature = "postgres")]
 use tracing::warn;
 #[cfg(feature = "postgres")]
 use uuid::Uuid;
+pub use postgres::{PostgresTestDb, postgres_db};
 
 #[cfg(feature = "postgres")]
 static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
@@ -90,20 +87,6 @@ pub struct TestServer {
 }
 
 #[cfg(feature = "postgres")]
-#[derive(Debug)]
-struct EmbeddedPg {
-    url: String,
-    db_name: String,
-    pg: PostgreSQL,
-    temp_dir: TempDir,
-    _runtime_temp: Option<TempDir>,
-}
-
-#[cfg(feature = "postgres")]
-/// Resources required to run tests with a PostgreSQL database.
-///
-/// This wrapper combines the connection URL, the optional embedded PostgreSQL
-/// instance, and the optional temporary directory used by the embedded server.
 struct DbResources {
     url: String,
     pg: Option<PostgreSQL>,
@@ -539,7 +522,11 @@ fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command {
-    let mut cmd = Command::new("cargo");
+    // Use the same cargo executable as the parent process for consistency
+    // and to allow environments without `cargo` in `PATH`. `var_os` handles
+    // potentially non-UTF-8 paths.
+    let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
+    let mut cmd = Command::new(cargo);
     cmd.arg("run");
     #[cfg(feature = "postgres")]
     cmd.args(["--no-default-features", "--features", "postgres"]);
@@ -610,16 +597,18 @@ impl TestServer {
         {
             let resources = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
                 let url = value.to_string_lossy().into_owned();
-                reset_postgres_db(&url)?;
+                crate::postgres::reset_postgres_db(&url)?;
                 DbResources {
                     url,
                     pg: None,
                     temp_dir: None,
                 }
             } else {
-                let EmbeddedPg {
+                let crate::postgres::EmbeddedPg {
                     url, pg, temp_dir, ..
-                } = start_embedded_postgres(|url| reset_postgres_db(url))?;
+                } = crate::postgres::start_embedded_postgres(|url| {
+                    crate::postgres::reset_postgres_db(url)
+                })?;
                 DbResources {
                     url,
                     pg: Some(pg),
