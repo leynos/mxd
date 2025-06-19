@@ -94,6 +94,7 @@ struct EmbeddedPg {
     db_name: String,
     pg: PostgreSQL,
     temp_dir: TempDir,
+    _runtime_temp: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
@@ -128,13 +129,22 @@ where
         let data_dir = tmp.path().to_path_buf();
         settings.data_dir = data_dir.clone();
 
+        #[cfg(unix)]
+        let runtime_temp = None;
+        #[cfg(not(unix))]
+        let runtime_temp = Some(tempfile::Builder::new().prefix("mxd-runtime").tempdir()?);
+
+        #[cfg(unix)]
+        let runtime_dir = std::path::PathBuf::from("/usr/libexec/theseus");
+        #[cfg(not(unix))]
+        let runtime_dir = runtime_temp.as_ref().unwrap().path().to_path_buf();
+
+        settings.installation_dir = runtime_dir.clone();
+
         let mut pg = if geteuid().is_root() {
             let bin = HELPER_BIN
                 .clone()
                 .map_err(|e| -> Box<dyn StdError> { e.into() })?;
-
-            let runtime_dir = std::path::PathBuf::from("/usr/libexec/theseus");
-            settings.installation_dir = runtime_dir.clone();
 
             // Lock the runtime directory to avoid concurrent modifications.
             let lock_path = runtime_dir.join(".install_lock");
@@ -186,6 +196,7 @@ where
             db_name,
             pg,
             temp_dir: tmp,
+            _runtime_temp: runtime_temp,
         })
     };
     let embedded = match tokio::runtime::Handle::try_current() {
@@ -337,6 +348,7 @@ impl PostgresTestDb {
             pg,
             temp_dir,
             db_name,
+            ..
         } = start_embedded_postgres(|url| reset_postgres_db(url))?;
         Ok(Self {
             url,
