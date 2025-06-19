@@ -143,6 +143,10 @@ where
         settings.installation_dir = runtime_dir.clone();
 
         let mut pg = if geteuid().is_root() {
+            // Ensure the runtime directory exists before attempting to
+            // acquire the lock. `postgres-setup-unpriv` expects this
+            // directory to be present for installing the binaries.
+            std::fs::create_dir_all(&runtime_dir)?;
             let bin = HELPER_BIN
                 .clone()
                 .map_err(|e| -> Box<dyn StdError> { e.into() })?;
