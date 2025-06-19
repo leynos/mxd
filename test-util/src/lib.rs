@@ -8,6 +8,7 @@ use std::error::Error as StdError;
 #[cfg(feature = "postgres")]
 use std::path::{Path, PathBuf};
 use std::{
+    ffi::OsString,
     io::{BufRead, BufReader},
     net::TcpListener,
     process::{Child, Command, Stdio},
@@ -460,8 +461,9 @@ fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> 
 
 fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command {
     // Use the same cargo executable as the parent process for consistency
-    // and to allow environments without `cargo` in `PATH`.
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    // and to allow environments without `cargo` in `PATH`. `var_os` handles
+    // potentially non-UTF-8 paths.
+    let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut cmd = Command::new(cargo);
     cmd.arg("run");
     #[cfg(feature = "postgres")]
