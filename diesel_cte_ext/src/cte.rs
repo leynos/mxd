@@ -1,7 +1,8 @@
-//! Core types modeling a recursive CTE query.
+//! Core types modeling CTE queries.
 //!
-//! [`WithRecursive`] represents the raw query fragment containing the CTE, and
-//! [`RecursiveBackend`] marks Diesel backends that support recursive queries.
+//! [`WithRecursive`] represents recursive CTEs and [`WithCte`] represents
+//! non-recursive CTEs, both as raw query fragments. [`RecursiveBackend`] marks
+//! Diesel backends that support recursive queries.
 
 use diesel::{
     backend::Backend,

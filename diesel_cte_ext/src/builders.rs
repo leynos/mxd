@@ -4,7 +4,7 @@
 //! and the [`RecursiveParts`] struct bundling the seed, step and body fragments.
 //! These helpers are used indirectly via [`RecursiveCTEExt::with_recursive`].
 
-use diesel::query_builder::QueryFragment;
+use diesel::{backend::Backend, query_builder::QueryFragment};
 
 use crate::{
     columns::Columns,
@@ -59,7 +59,7 @@ pub fn with_cte<DB, Cols, Cte, Body, ColSpec>(
     body: Body,
 ) -> WithCte<DB, Cols, Cte, Body>
 where
-    DB: RecursiveBackend,
+    DB: Backend,
     Cte: QueryFragment<DB>,
     Body: QueryFragment<DB>,
     ColSpec: Into<Columns<Cols>>,

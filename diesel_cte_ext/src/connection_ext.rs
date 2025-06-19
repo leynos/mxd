@@ -34,7 +34,10 @@ pub trait RecursiveCTEExt {
         Seed: QueryFragment<Self::Backend>,
         Step: QueryFragment<Self::Backend>,
         Body: QueryFragment<Self::Backend>,
-        ColSpec: Into<Columns<Cols>>;
+        ColSpec: Into<Columns<Cols>>,
+    {
+        builders::with_recursive::<Self::Backend, Cols, _, _, _, _>(cte_name, columns, parts)
+    }
 
     /// Create a [`WithCte`] builder for this connection's backend.
     fn with_cte<Cols, Cte, Body, ColSpec>(
@@ -46,7 +49,10 @@ pub trait RecursiveCTEExt {
     where
         Cte: QueryFragment<Self::Backend>,
         Body: QueryFragment<Self::Backend>,
-        ColSpec: Into<Columns<Cols>>;
+        ColSpec: Into<Columns<Cols>>,
+    {
+        builders::with_cte::<Self::Backend, Cols, _, _, _>(cte_name, columns, cte, body)
+    }
 }
 
 /// Blanket implementation of [`RecursiveCTEExt`] for synchronous Diesel
@@ -58,34 +64,6 @@ where
     C::Backend: RecursiveBackend,
 {
     type Backend = C::Backend;
-
-    fn with_recursive<Cols, Seed, Step, Body, ColSpec>(
-        cte_name: &'static str,
-        columns: ColSpec,
-        parts: RecursiveParts<Seed, Step, Body>,
-    ) -> WithRecursive<Self::Backend, Cols, Seed, Step, Body>
-    where
-        Seed: QueryFragment<Self::Backend>,
-        Step: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>,
-        ColSpec: Into<Columns<Cols>>,
-    {
-        builders::with_recursive::<Self::Backend, Cols, _, _, _, _>(cte_name, columns, parts)
-    }
-
-    fn with_cte<Cols, Cte, Body, ColSpec>(
-        cte_name: &'static str,
-        columns: ColSpec,
-        cte: Cte,
-        body: Body,
-    ) -> WithCte<Self::Backend, Cols, Cte, Body>
-    where
-        Cte: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>,
-        ColSpec: Into<Columns<Cols>>,
-    {
-        builders::with_cte::<Self::Backend, Cols, _, _, _>(cte_name, columns, cte, body)
-    }
 }
 
 /// Blanket implementation of [`RecursiveCTEExt`] for asynchronous Diesel
@@ -97,32 +75,4 @@ where
     C::Backend: RecursiveBackend,
 {
     type Backend = C::Backend;
-
-    fn with_recursive<Cols, Seed, Step, Body, ColSpec>(
-        cte_name: &'static str,
-        columns: ColSpec,
-        parts: RecursiveParts<Seed, Step, Body>,
-    ) -> WithRecursive<Self::Backend, Cols, Seed, Step, Body>
-    where
-        Seed: QueryFragment<Self::Backend>,
-        Step: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>,
-        ColSpec: Into<Columns<Cols>>,
-    {
-        builders::with_recursive::<Self::Backend, Cols, _, _, _, _>(cte_name, columns, parts)
-    }
-
-    fn with_cte<Cols, Cte, Body, ColSpec>(
-        cte_name: &'static str,
-        columns: ColSpec,
-        cte: Cte,
-        body: Body,
-    ) -> WithCte<Self::Backend, Cols, Cte, Body>
-    where
-        Cte: QueryFragment<Self::Backend>,
-        Body: QueryFragment<Self::Backend>,
-        ColSpec: Into<Columns<Cols>>,
-    {
-        builders::with_cte::<Self::Backend, Cols, _, _, _>(cte_name, columns, cte, body)
-    }
 }
