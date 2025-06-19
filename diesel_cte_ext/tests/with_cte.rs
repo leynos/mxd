@@ -1,46 +1,6 @@
-use diesel::{Connection, dsl::sql, sql_types::Integer};
+use diesel::{dsl::sql, sql_types::Integer};
 use diesel_cte_ext::RecursiveCTEExt;
-
-fn with_pg_sync<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut diesel::pg::PgConnection) -> R,
-{
-    use diesel::pg::PgConnection;
-    use postgresql_embedded::blocking::PostgreSQL;
-
-    let mut pg = PostgreSQL::default();
-    pg.setup().unwrap();
-    pg.start().unwrap();
-    pg.create_database("test").unwrap();
-    let url = pg.settings().url("test");
-    let res = {
-        let mut conn = PgConnection::establish(&url).unwrap();
-        f(&mut conn)
-    };
-    pg.stop().unwrap();
-    res
-}
-
-async fn with_pg_async<F, Fut, R>(f: F) -> R
-where
-    F: FnOnce(&mut diesel_async::AsyncPgConnection) -> Fut,
-    Fut: std::future::Future<Output = R>,
-{
-    use diesel_async::{AsyncConnection, AsyncPgConnection};
-    use postgresql_embedded::PostgreSQL;
-
-    let mut pg = PostgreSQL::default();
-    pg.setup().await.unwrap();
-    pg.start().await.unwrap();
-    pg.create_database("test").await.unwrap();
-    let url = pg.settings().url("test");
-    let res = {
-        let mut conn = AsyncPgConnection::establish(&url).await.unwrap();
-        f(&mut conn).await
-    };
-    pg.stop().await.unwrap();
-    res
-}
+mod pg_util;
 
 fn sqlite_sync() -> i32 {
     use diesel::{RunQueryDsl, sqlite::SqliteConnection};
@@ -79,7 +39,7 @@ async fn sqlite_async() -> i32 {
 async fn pg_async() -> i32 {
     use diesel_async::RunQueryDsl;
 
-    with_pg_async(|conn| async move {
+    pg_util::with_pg_async(|conn| async move {
         diesel_async::AsyncPgConnection::with_cte(
             "t",
             &["n"],
@@ -96,7 +56,7 @@ async fn pg_async() -> i32 {
 fn pg_sync() -> i32 {
     use diesel::RunQueryDsl;
 
-    with_pg_sync(|conn| {
+    pg_util::with_pg_sync(|conn| {
         diesel::pg::PgConnection::with_cte(
             "t",
             &["n"],
