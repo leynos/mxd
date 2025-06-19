@@ -8,7 +8,7 @@ use diesel::query_builder::QueryFragment;
 
 use crate::{
     columns::Columns,
-    cte::{RecursiveBackend, WithRecursive},
+    cte::{RecursiveBackend, WithCte, WithRecursive},
 };
 
 /// Query fragments used by a recursive CTE.
@@ -47,6 +47,28 @@ where
         seed: parts.seed,
         step: parts.step,
         body: parts.body,
+        _marker: std::marker::PhantomData,
+    }
+}
+
+/// Build a non-recursive CTE query.
+pub fn with_cte<DB, Cols, Cte, Body, ColSpec>(
+    cte_name: &'static str,
+    columns: ColSpec,
+    cte: Cte,
+    body: Body,
+) -> WithCte<DB, Cols, Cte, Body>
+where
+    DB: RecursiveBackend,
+    Cte: QueryFragment<DB>,
+    Body: QueryFragment<DB>,
+    ColSpec: Into<Columns<Cols>>,
+{
+    WithCte {
+        cte_name,
+        columns: columns.into(),
+        cte,
+        body,
         _marker: std::marker::PhantomData,
     }
 }
