@@ -459,7 +459,10 @@ fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command {
-    let mut cmd = Command::new("cargo");
+    // Use the same cargo executable as the parent process for consistency
+    // and to allow environments without `cargo` in `PATH`.
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let mut cmd = Command::new(cargo);
     cmd.arg("run");
     #[cfg(feature = "postgres")]
     cmd.args(["--no-default-features", "--features", "postgres"]);
