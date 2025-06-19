@@ -9,20 +9,24 @@ with Diesel. The crate exports a connection extension trait providing
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
 use diesel::sqlite::SqliteConnection;
-use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts, seed_query, step_query};
 // Count integers from 1 through 5 using a recursive CTE
 
 let rows: Vec<i32> = SqliteConnection::with_recursive(
     "t",
     &["n"],
     RecursiveParts::new(
-        sql::<Integer>("SELECT 1"),
-        sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-        sql::<Integer>("SELECT n FROM t"),
+        seed_query!(sql::<Integer>("SELECT 1")),
+        step_query!(sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5")),
+        step_query!(sql::<Integer>("SELECT n FROM t")),
     ),
 )
     .load(&mut conn)?;
 ```
+
+The `seed_query!` and `step_query!` macros wrap regular Diesel expressions so
+they can be embedded in the recursive CTE builder without implementing
+`QueryFragment` manually.
 
 `Columns<T>` couples the runtime column names with a compile-time tuple of
 Diesel column types. For ad-hoc CTEs use a string slice directly or
@@ -61,7 +65,7 @@ await the query as follows:
 ```rust
 use diesel::dsl::sql;
 use diesel::sql_types::Integer;
-use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts};
+use diesel_cte_ext::{RecursiveCTEExt, RecursiveParts, seed_query, step_query};
 use diesel_async::RunQueryDsl;
 use diesel::sqlite::SqliteConnection;
 
@@ -69,14 +73,17 @@ let rows: Vec<i32> = SqliteConnection::with_recursive(
         "t",
         &["n"],
         RecursiveParts::new(
-            sql::<Integer>("SELECT 1"),
-            sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5"),
-            sql::<Integer>("SELECT n FROM t"),
+            seed_query!(sql::<Integer>("SELECT 1")),
+            step_query!(sql::<Integer>("SELECT n + 1 FROM t WHERE n < 5")),
+            step_query!(sql::<Integer>("SELECT n FROM t")),
         ),
 )
     .load(&mut conn)
     .await?;
 ```
+
+These macros allow building the CTE entirely with Diesel's query DSL and avoid
+manually writing SQL strings.
 
 The builder works with either SQLite or PostgreSQL depending on the enabled
 Cargo feature. It can be used with synchronous or asynchronous Diesel
