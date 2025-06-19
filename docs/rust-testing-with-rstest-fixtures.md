@@ -1325,3 +1325,22 @@ database for each invocation using a time-based UUID v7 suffix. The helper that
 creates these names accepts a custom prefix, making the logic reusable. The
 database is dropped when the fixture is cleaned up, allowing parallel tests
 without leaving orphaned databases behind.
+
+### D. Preventing Concurrent Embedded PostgreSQL Installs
+
+The helper function `start_embedded_postgres` in `test_util` sets up an isolated
+PostgreSQL server for tests. When running with root privileges, it spawns the
+`postgres-setup-unpriv` binary located in `/usr/libexec/theseus` to initialize
+the runtime directory. To avoid races when multiple test processes invoke this
+binary concurrently, the function uses the `fs2` crate to take an exclusive
+advisory lock on `.install_lock` in that directory. Advisory locks rely on
+cooperative processes, so behaviour can differ on network filesystems such as
+NFS. The lock is held only for the duration of the setup command, ensuring at
+most one installation runs at a time while keeping tests free to execute in
+parallel.
+
+If a test aborts during setup, a stale `.install_lock` file may remain. The lock
+is released automatically when the process exits, so a lingering file usually
+indicates a previous crash. You can check whether any process still holds the
+lock using tools like `lsof` or `fuser`. If no process references the file,
+delete it manually to avoid blocking subsequent runs.
