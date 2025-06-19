@@ -4,7 +4,7 @@ use postgres_setup_unpriv::{nobody_uid, with_temp_euid, PgEnvCfg};
 use postgresql_embedded::VersionReq;
 use nix::unistd::geteuid;
 use rstest::rstest;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tempfile::tempdir;
 
 /// Tests that a `PgEnvCfg` with specific settings is correctly converted to a `settings` object,
@@ -78,9 +78,23 @@ fn make_dir_accessible_allows_nobody() -> anyhow::Result<()> {
 
     let tmp = tempdir()?;
     let dir = tmp.path().join("foo");
-    super::make_dir_accessible(&dir, nobody_uid())?;
+    postgres_setup_unpriv::make_dir_accessible(&dir, nobody_uid())?;
     let meta = std::fs::metadata(&dir)?;
     assert_eq!(meta.uid(), nobody_uid().as_raw());
     assert_eq!(meta.permissions().mode() & 0o777, 0o755);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[rstest]
+fn run_requires_root() -> anyhow::Result<()> {
+    if !geteuid().is_root() {
+        eprintln!("skipping root-dependent test");
+        return Ok(());
+    }
+
+    let err = with_temp_euid(nobody_uid(), || postgres_setup_unpriv::run())
+        .expect_err("run should fail for non-root user");
+    assert!(err.to_string().contains("must be run as root"));
     Ok(())
 }

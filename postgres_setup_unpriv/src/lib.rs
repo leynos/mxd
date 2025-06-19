@@ -145,6 +145,11 @@ pub fn nobody_uid() -> Uid {
 }
 
 pub fn run() -> Result<()> {
+    // Running as non-root can't change ownership of installation/data
+    // directories. Fail fast instead of attempting setup and confusing users.
+    if !geteuid().is_root() {
+        bail!("must be run as root");
+    }
     let cfg = PgEnvCfg::load().context("failed to load configuration via OrthoConfig")?;
     let settings = cfg.to_settings()?;
 
