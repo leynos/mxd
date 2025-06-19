@@ -2,10 +2,13 @@
 #![allow(non_snake_case)]
 
 use anyhow::{bail, Context, Result};
-use nix::unistd::{getresuid, geteuid, setresuid, Uid};
+use nix::unistd::{chown, getresuid, geteuid, setresuid, Uid};
 use ortho_config::OrthoConfig;
 use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Serialize, Deserialize, OrthoConfig, Default)]
@@ -115,6 +118,23 @@ where
     body()
 }
 
+/// Prepare `dir` so `uid` can access it.
+///
+/// Creates the directory if it does not exist, sets its owner to `uid`, and
+/// applies permissions (0755) so the unprivileged user can read and execute its
+/// contents.
+#[cfg(unix)]
+pub fn make_dir_accessible<P: AsRef<Path>>(dir: P, uid: Uid) -> Result<()> {
+    let dir = dir.as_ref();
+    fs::create_dir_all(dir)
+        .with_context(|| format!("create {}", dir.display()))?;
+    chown(dir, Some(uid), None)
+        .with_context(|| format!("chown {}", dir.display()))?;
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o755))
+        .with_context(|| format!("chmod {}", dir.display()))?;
+    Ok(())
+}
+
 pub fn nobody_uid() -> Uid {
     use nix::unistd::User;
     User::from_name("nobody")
@@ -133,13 +153,27 @@ pub fn run() -> Result<()> {
         .build()
         .context("failed to create Tokio runtime")?;
 
-    with_temp_euid(nobody_uid(), || {
+    #[cfg(unix)]
+    {
+        let nobody = nobody_uid();
+        make_dir_accessible(&settings.installation_dir, nobody)?;
+        make_dir_accessible(&settings.data_dir, nobody)?;
+        with_temp_euid(nobody, || {
+            rt.block_on(async {
+                let mut pg = PostgreSQL::new(settings);
+                pg.setup().await.context("postgresql_embedded::setup() failed")?;
+                Ok::<(), anyhow::Error>(())
+            })
+        })?;
+    }
+    #[cfg(not(unix))]
+    {
         rt.block_on(async {
             let mut pg = PostgreSQL::new(settings);
             pg.setup().await.context("postgresql_embedded::setup() failed")?;
             Ok::<(), anyhow::Error>(())
-        })
-    })?;
+        })?;
+    }
 
     Ok(())
 }
