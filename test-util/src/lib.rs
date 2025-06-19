@@ -127,8 +127,11 @@ where
                 .clone()
                 .map_err(|e| -> Box<dyn StdError> { e.into() })?;
 
+            let runtime_dir = std::path::PathBuf::from("/usr/libexec/theseus");
+            settings.installation_dir = runtime_dir.clone();
             let run_status = std::process::Command::new(bin)
                 .env("PG_DATA_DIR", &data_dir)
+                .env("PG_RUNTIME_DIR", &runtime_dir)
                 .env("PG_PORT", settings.port.to_string())
                 .env("PG_VERSION_REQ", settings.version.to_string())
                 .env("PG_SUPERUSER", &settings.username)

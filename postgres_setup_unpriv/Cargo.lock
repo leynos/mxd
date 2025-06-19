@@ -1260,8 +1260,8 @@ dependencies = [
 
 [[package]]
 name = "ortho_config"
-version = "0.1.0"
-source = "git+https://github.com/leynos/ortho-config?tag=v0.1.0#f7524ef4e57a1e5bb84ab17871711445e5875b74"
+version = "0.2.0"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.2.0#79860f4fb0f6c1293e0fce024f75acee17254f0e"
 dependencies = [
  "clap",
  "clap-dispatch",
@@ -1276,8 +1276,8 @@ dependencies = [
 
 [[package]]
 name = "ortho_config_macros"
-version = "0.1.0"
-source = "git+https://github.com/leynos/ortho-config?tag=v0.1.0#f7524ef4e57a1e5bb84ab17871711445e5875b74"
+version = "0.2.0"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.2.0#79860f4fb0f6c1293e0fce024f75acee17254f0e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1398,6 +1398,7 @@ dependencies = [
  "rstest",
  "serde",
  "temp-env",
+ "tempfile",
  "tokio",
  "uncased",
  "xdg",
