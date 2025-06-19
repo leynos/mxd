@@ -2602,6 +2602,7 @@ dependencies = [
  "rstest",
  "tempfile",
  "tokio",
+ "tracing",
  "url",
  "uuid",
 ]

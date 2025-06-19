@@ -21,6 +21,7 @@ rstest = "0.18"
 postgres = { version = "0.19", optional = true }
 uuid = { version = "1", features = ["v7"], optional = true }
 url = { version = "2", optional = true }
+tracing = "0.1"
 
 [features]
 default = ["sqlite"]

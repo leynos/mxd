@@ -26,6 +26,8 @@ use postgresql_embedded::Settings;
 use rstest::fixture;
 use tempfile::TempDir;
 #[cfg(feature = "postgres")]
+use tracing::warn;
+#[cfg(feature = "postgres")]
 use uuid::Uuid;
 
 #[cfg(feature = "postgres")]
@@ -253,17 +255,46 @@ fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(feature = "postgres")]
-/// Drop the specified database on the running embedded PostgreSQL instance.
-///
-/// Errors are logged but do not propagate to avoid panics during `Drop`.
-fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
-    let admin_url = pg.settings().url("postgres");
-    if let Ok(mut client) = postgres::Client::connect(&admin_url, postgres::NoTls) {
-        let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
-        if let Err(e) = client.batch_execute(&query) {
-            eprintln!("error dropping database {}: {}", db_name, e);
+fn retry_postgres<F>(mut op: F) -> Result<(), postgres::Error>
+where
+    F: FnMut() -> Result<(), postgres::Error>,
+{
+    use std::{thread, time::Duration};
+
+    let mut delay = Duration::from_millis(50);
+    for attempt in 0..5 {
+        match op() {
+            Ok(()) => return Ok(()),
+            Err(_e) if attempt < 4 => {
+                thread::sleep(delay);
+                delay = std::cmp::min(delay * 2, Duration::from_secs(1));
+            }
+            Err(e) => return Err(e),
         }
     }
+    unreachable!();
+}
+
+#[cfg(feature = "postgres")]
+fn create_db(admin_url: &str, db_name: &str) -> Result<(), postgres::Error> {
+    retry_postgres(|| {
+        let mut client = postgres::Client::connect(admin_url, postgres::NoTls)?;
+        client.batch_execute(&format!("CREATE DATABASE \"{}\"", db_name))
+    })
+}
+
+#[cfg(feature = "postgres")]
+fn drop_db(admin_url: &str, db_name: &str) -> Result<(), postgres::Error> {
+    retry_postgres(|| {
+        let mut client = postgres::Client::connect(admin_url, postgres::NoTls)?;
+        client.batch_execute(&format!("DROP DATABASE IF EXISTS \"{}\"", db_name))
+    })
+}
+
+#[cfg(feature = "postgres")]
+fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) -> Result<(), postgres::Error> {
+    let admin_url = pg.settings().url("postgres");
+    drop_db(&admin_url, db_name)
 }
 
 #[cfg(feature = "postgres")]
@@ -271,26 +302,17 @@ fn create_external_db(
     admin_url: &str,
     db_name: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    use postgres::{Client, NoTls};
     use url::Url;
 
-    let mut client = Client::connect(admin_url, NoTls)?;
-    let query = format!("CREATE DATABASE \"{}\"", db_name);
-    client.batch_execute(&query)?;
-
+    create_db(admin_url, db_name)?;
     let mut url = Url::parse(admin_url)?;
     url.set_path(&format!("/{}", db_name));
     Ok(url.to_string())
 }
 
 #[cfg(feature = "postgres")]
-fn drop_external_db(admin_url: &str, db_name: &str) {
-    if let Ok(mut client) = postgres::Client::connect(admin_url, postgres::NoTls) {
-        let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
-        if let Err(e) = client.batch_execute(&query) {
-            eprintln!("error dropping database {}: {}", db_name, e);
-        }
-    }
+fn drop_external_db(admin_url: &str, db_name: &str) -> Result<(), postgres::Error> {
+    drop_db(admin_url, db_name)
 }
 
 /// RAII-style PostgreSQL test database fixture that ensures clean schema state.
@@ -399,14 +421,14 @@ impl PostgresTestDb {
 #[cfg(feature = "postgres")]
 impl Drop for PostgresTestDb {
     fn drop(&mut self) {
-        match (&self.pg, &self.db_name) {
-            (Some(pg), Some(name)) => drop_embedded_db(pg, name),
-            (None, Some(name)) => {
-                if let Some(admin) = &self.admin_url {
-                    drop_external_db(admin, name);
-                }
+        if let (Some(name), Some(admin)) = (self.db_name.as_deref(), self.admin_url.as_deref()) {
+            if let Err(e) = drop_external_db(admin, name) {
+                warn!(%name, error = %e, "failed to drop external test database");
             }
-            _ => {}
+        } else if let (Some(pg), Some(name)) = (self.pg.as_ref(), self.db_name.as_deref()) {
+            if let Err(e) = drop_embedded_db(pg, name) {
+                warn!(%name, error = %e, "failed to drop embedded test database");
+            }
         }
         if let Some(pg) = self.pg.take() {
             let rt = tokio::runtime::Runtime::new().unwrap();
