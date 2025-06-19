@@ -109,6 +109,38 @@ struct DbResources {
 }
 
 #[cfg(feature = "postgres")]
+struct InstallLock {
+    file: std::fs::File,
+    path: std::path::PathBuf,
+}
+
+#[cfg(feature = "postgres")]
+impl InstallLock {
+    fn new(path: &std::path::Path) -> std::io::Result<Self> {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(path)?;
+        if let Err(e) = fs2::FileExt::lock_exclusive(&file) {
+            let _ = std::fs::remove_file(path);
+            return Err(e);
+        }
+        Ok(Self {
+            file,
+            path: path.to_path_buf(),
+        })
+    }
+}
+
+#[cfg(feature = "postgres")]
+impl Drop for InstallLock {
+    fn drop(&mut self) {
+        let _ = fs2::FileExt::unlock(&self.file);
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[cfg(feature = "postgres")]
 fn generate_db_name(prefix: &str) -> String { format!("{}{}", prefix, Uuid::now_v7().simple()) }
 
 #[cfg(feature = "postgres")]
@@ -187,11 +219,7 @@ async fn prepare_postgres(
             .map_err(|e| -> Box<dyn StdError> { e.into() })?;
 
         let lock_path = runtime_dir.join(".install_lock");
-        let lock_file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(&lock_path)?;
-        fs2::FileExt::lock_exclusive(&lock_file)?;
+        let _lock = InstallLock::new(&lock_path)?;
 
         let run_status = std::process::Command::new(bin)
             .env("PG_DATA_DIR", data_dir)
@@ -202,8 +230,6 @@ async fn prepare_postgres(
             .env("PG_PASSWORD", &settings.password)
             .status()
             .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
-
-        fs2::FileExt::unlock(&lock_file)?;
 
         if !run_status.success() {
             return Err("postgres-setup-unpriv failed".into());
