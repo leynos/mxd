@@ -8,7 +8,7 @@ use test_util::PostgresTestDb;
 fn external_postgres_is_used() -> Result<(), Box<dyn std::error::Error>> {
     with_var("POSTGRES_TEST_URL", Some("postgres://example"), || {
         let db = PostgresTestDb::new()?;
-        assert_eq!(db.url, "postgres://example");
+        assert!(db.url.starts_with("postgres://example/"));
         assert!(!db.uses_embedded());
         Ok::<_, Box<dyn std::error::Error>>(())
     })

@@ -266,6 +266,33 @@ fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
     }
 }
 
+#[cfg(feature = "postgres")]
+fn create_external_db(
+    admin_url: &str,
+    db_name: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    use postgres::{Client, NoTls};
+    use url::Url;
+
+    let mut client = Client::connect(admin_url, NoTls)?;
+    let query = format!("CREATE DATABASE \"{}\"", db_name);
+    client.batch_execute(&query)?;
+
+    let mut url = Url::parse(admin_url)?;
+    url.set_path(&format!("/{}", db_name));
+    Ok(url.to_string())
+}
+
+#[cfg(feature = "postgres")]
+fn drop_external_db(admin_url: &str, db_name: &str) {
+    if let Ok(mut client) = postgres::Client::connect(admin_url, postgres::NoTls) {
+        let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
+        if let Err(e) = client.batch_execute(&query) {
+            eprintln!("error dropping database {}: {}", db_name, e);
+        }
+    }
+}
+
 /// RAII-style PostgreSQL test database fixture that ensures clean schema state.
 ///
 /// This struct manages the lifecycle of a PostgreSQL database for testing, automatically
@@ -274,7 +301,7 @@ fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
 /// previous test terminated.
 ///
 /// The database can be either:
-/// - An external PostgreSQL instance specified via `POSTGRES_TEST_URL` environment variable
+/// - A dedicated database on an external PostgreSQL server specified via `POSTGRES_TEST_URL`
 /// - An embedded PostgreSQL server managed by this fixture
 ///
 /// ## Schema Management
@@ -288,7 +315,8 @@ fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
 ///
 /// ## Usage with External Database
 ///
-/// Set the `POSTGRES_TEST_URL` environment variable to reuse an existing PostgreSQL instance:
+/// Set the `POSTGRES_TEST_URL` environment variable to point to an existing
+/// PostgreSQL server. A new database will be created for each test fixture:
 /// ```bash
 /// export POSTGRES_TEST_URL="postgresql://user:pass@localhost/testdb"
 /// ```
@@ -323,8 +351,11 @@ pub struct PostgresTestDb {
     /// This is `Some` when using an embedded server, `None` when using an external
     /// database specified via `POSTGRES_TEST_URL`.
     pg: Option<PostgreSQL>,
-    /// Name of the database created for embedded PostgreSQL instances.
+    /// Name of the database created for this instance.
     db_name: Option<String>,
+    /// Base connection URL used to create and drop the database when using an
+    /// external PostgreSQL server.
+    admin_url: Option<String>,
     /// Hold the data directory alive until after the embedded server stops.
     _temp_dir: Option<TempDir>,
 }
@@ -333,12 +364,15 @@ pub struct PostgresTestDb {
 impl PostgresTestDb {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-            let url = value.to_string_lossy().into_owned();
+            let admin_url = value.to_string_lossy().into_owned();
+            let db_name = generate_db_name("test_");
+            let url = create_external_db(&admin_url, &db_name)?;
             reset_postgres_db(&url)?;
             return Ok(Self {
                 url,
                 pg: None,
-                db_name: None,
+                db_name: Some(db_name),
+                admin_url: Some(admin_url),
                 _temp_dir: None,
             });
         }
@@ -354,6 +388,7 @@ impl PostgresTestDb {
             url,
             pg: Some(pg),
             db_name: Some(db_name),
+            admin_url: None,
             _temp_dir: Some(temp_dir),
         })
     }
@@ -366,9 +401,12 @@ impl Drop for PostgresTestDb {
     fn drop(&mut self) {
         match (&self.pg, &self.db_name) {
             (Some(pg), Some(name)) => drop_embedded_db(pg, name),
-            _ => {
-                let _ = reset_postgres_db(&self.url);
+            (None, Some(name)) => {
+                if let Some(admin) = &self.admin_url {
+                    drop_external_db(admin, name);
+                }
             }
+            _ => {}
         }
         if let Some(pg) = self.pg.take() {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -385,14 +423,16 @@ impl Drop for PostgresTestDb {
 ///
 /// ## Behavior
 ///
-/// - **External Database**: If `POSTGRES_TEST_URL` is set, uses that database
+/// - **External Database**: If `POSTGRES_TEST_URL` is set, creates a temporary database on that
+///   server
 /// - **Embedded Database**: Otherwise, starts an embedded PostgreSQL server
 /// - **Schema Reset**: Drops and recreates the `public` schema before each test
-/// - **Cleanup**: Automatically resets schema and stops embedded server after each test
+/// - **Cleanup**: Drops the database and stops the embedded server after each test
 ///
 /// ## Environment Variable
 ///
-/// Set `POSTGRES_TEST_URL` to reuse an existing PostgreSQL instance:
+/// Set `POSTGRES_TEST_URL` to point to an existing PostgreSQL server. The
+/// fixture will create and later drop a temporary database:
 /// ```bash
 /// export POSTGRES_TEST_URL="postgresql://localhost/testdb"
 /// ```

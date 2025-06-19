@@ -1322,6 +1322,7 @@ software.
 
 The `test_util` crate's `PostgresTestDb` fixture now generates a uniquely named
 database for each invocation using a time-based UUID v7 suffix. The helper that
-creates these names accepts a custom prefix, making the logic reusable. The
-database is dropped when the fixture is cleaned up, allowing parallel tests
-without leaving orphaned databases behind.
+creates these names accepts a custom prefix, making the logic reusable. Each
+fixture creates and later drops its own database—even when `POSTGRES_TEST_URL`
+points to an existing server—allowing parallel tests without leaving orphaned
+databases behind.
