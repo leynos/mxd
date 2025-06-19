@@ -255,6 +255,12 @@ fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(feature = "postgres")]
+/// Retry a PostgreSQL operation with exponential backoff.
+///
+/// The closure is executed up to five times, doubling the delay
+/// between attempts from 50ms to a maximum of one second. This
+/// mitigates transient lock or contention errors that may occur
+/// when tests run concurrently.
 fn retry_postgres<F>(mut op: F) -> Result<(), postgres::Error>
 where
     F: FnMut() -> Result<(), postgres::Error>,
