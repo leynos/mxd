@@ -123,88 +123,102 @@ fn start_embedded_postgres<F>(setup: F) -> Result<EmbeddedPg, Box<dyn std::error
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
 {
-    let fut = async {
-        let mut settings = Settings::default();
-        let tmp = tempfile::Builder::new().prefix("mxd-pg").tempdir()?;
-        let data_dir = tmp.path().to_path_buf();
-        settings.data_dir = data_dir.clone();
-
-        #[cfg(unix)]
-        let runtime_temp = None;
-        #[cfg(not(unix))]
-        let runtime_temp = Some(tempfile::Builder::new().prefix("mxd-runtime").tempdir()?);
-
-        #[cfg(unix)]
-        let runtime_dir = std::path::PathBuf::from("/usr/libexec/theseus");
-        #[cfg(not(unix))]
-        let runtime_dir = runtime_temp.as_ref().unwrap().path().to_path_buf();
-
-        settings.installation_dir = runtime_dir.clone();
-
-        let mut pg = if geteuid().is_root() {
-            let bin = HELPER_BIN
-                .clone()
-                .map_err(|e| -> Box<dyn StdError> { e.into() })?;
-
-            // Lock the runtime directory to avoid concurrent modifications.
-            let lock_path = runtime_dir.join(".install_lock");
-            let lock_file = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(&lock_path)?;
-            fs2::FileExt::lock_exclusive(&lock_file)?;
-
-            let run_status = std::process::Command::new(bin)
-                .env("PG_DATA_DIR", &data_dir)
-                .env("PG_RUNTIME_DIR", &runtime_dir)
-                .env("PG_PORT", settings.port.to_string())
-                .env("PG_VERSION_REQ", settings.version.to_string())
-                .env("PG_SUPERUSER", &settings.username)
-                .env("PG_PASSWORD", &settings.password)
-                .status()
-                .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
-
-            // Release the lock immediately after setup completes.
-            fs2::FileExt::unlock(&lock_file)?;
-
-            if !run_status.success() {
-                return Err("postgres-setup-unpriv failed".into());
-            }
-
-            PostgreSQL::new(settings.clone())
-        } else {
-            let mut pg = PostgreSQL::new(settings.clone());
-            if let Err(e) = pg.setup().await {
-                let _ = pg.stop().await;
-                return Err(format!("preparing embedded PostgreSQL: {e}").into());
-            }
-            pg
-        };
-
-        if let Err(e) = pg.start().await {
-            let _ = pg.stop().await;
-            return Err(format!("starting embedded PostgreSQL: {e}").into());
-        }
-        let db_name = generate_db_name("test_");
-        if let Err(e) = pg.create_database(&db_name).await {
-            let _ = pg.stop().await;
-            return Err(format!("creating test database {db_name}: {e}").into());
-        }
-        let url = pg.settings().url(&db_name);
-        Ok::<_, Box<dyn StdError>>(EmbeddedPg {
-            url,
-            db_name,
-            pg,
-            temp_dir: tmp,
-            _runtime_temp: runtime_temp,
-        })
-    };
+    let fut = async { init_embedded_postgres().await };
     let embedded = match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.block_on(fut)?,
         Err(_) => tokio::runtime::Runtime::new()?.block_on(fut)?,
     };
     setup(&embedded.url)?;
     Ok(embedded)
+}
+
+async fn init_embedded_postgres() -> Result<EmbeddedPg, Box<dyn std::error::Error>> {
+    let mut settings = Settings::default();
+    let tmp = tempfile::Builder::new().prefix("mxd-pg").tempdir()?;
+    let data_dir = tmp.path().to_path_buf();
+    settings.data_dir = data_dir.clone();
+
+    let (runtime_dir, runtime_temp) = prepare_runtime_dir()?;
+    let mut pg = prepare_postgres(settings.clone(), &runtime_dir, &data_dir).await?;
+
+    if let Err(e) = pg.start().await {
+        let _ = pg.stop().await;
+        return Err(format!("starting embedded PostgreSQL: {e}").into());
+    }
+    let db_name = generate_db_name("test_");
+    if let Err(e) = pg.create_database(&db_name).await {
+        let _ = pg.stop().await;
+        return Err(format!("creating test database {db_name}: {e}").into());
+    }
+    let url = pg.settings().url(&db_name);
+    Ok::<_, Box<dyn StdError>>(EmbeddedPg {
+        url,
+        db_name,
+        pg,
+        temp_dir: tmp,
+        _runtime_temp: runtime_temp,
+    })
+}
+
+fn prepare_runtime_dir() -> Result<(std::path::PathBuf, Option<TempDir>), Box<dyn std::error::Error>>
+{
+    #[cfg(unix)]
+    {
+        Ok((std::path::PathBuf::from("/usr/libexec/theseus"), None))
+    }
+    #[cfg(not(unix))]
+    {
+        let runtime_temp = tempfile::Builder::new().prefix("mxd-runtime").tempdir()?;
+        let runtime_dir = runtime_temp.path().to_path_buf();
+        Ok((runtime_dir, Some(runtime_temp)))
+    }
+}
+
+async fn prepare_postgres(
+    mut settings: Settings,
+    runtime_dir: &std::path::Path,
+    data_dir: &std::path::Path,
+) -> Result<PostgreSQL, Box<dyn std::error::Error>> {
+    settings.installation_dir = runtime_dir.to_path_buf();
+
+    let pg = if geteuid().is_root() {
+        let bin = HELPER_BIN
+            .clone()
+            .map_err(|e| -> Box<dyn StdError> { e.into() })?;
+
+        let lock_path = runtime_dir.join(".install_lock");
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&lock_path)?;
+        fs2::FileExt::lock_exclusive(&lock_file)?;
+
+        let run_status = std::process::Command::new(bin)
+            .env("PG_DATA_DIR", data_dir)
+            .env("PG_RUNTIME_DIR", runtime_dir)
+            .env("PG_PORT", settings.port.to_string())
+            .env("PG_VERSION_REQ", settings.version.to_string())
+            .env("PG_SUPERUSER", &settings.username)
+            .env("PG_PASSWORD", &settings.password)
+            .status()
+            .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
+
+        fs2::FileExt::unlock(&lock_file)?;
+
+        if !run_status.success() {
+            return Err("postgres-setup-unpriv failed".into());
+        }
+
+        PostgreSQL::new(settings)
+    } else {
+        let mut pg = PostgreSQL::new(settings);
+        if let Err(e) = pg.setup().await {
+            let _ = pg.stop().await;
+            return Err(format!("preparing embedded PostgreSQL: {e}").into());
+        }
+        pg
+    };
+    Ok(pg)
 }
 
 /// Resets a PostgreSQL database by dropping and recreating the public schema.
