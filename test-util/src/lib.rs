@@ -129,6 +129,15 @@ where
 
             let runtime_dir = std::path::PathBuf::from("/usr/libexec/theseus");
             settings.installation_dir = runtime_dir.clone();
+
+            // Lock the runtime directory to avoid concurrent modifications.
+            let lock_path = runtime_dir.join(".install_lock");
+            let lock_file = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(&lock_path)?;
+            fs2::FileExt::lock_exclusive(&lock_file)?;
+
             let run_status = std::process::Command::new(bin)
                 .env("PG_DATA_DIR", &data_dir)
                 .env("PG_RUNTIME_DIR", &runtime_dir)
@@ -138,6 +147,10 @@ where
                 .env("PG_PASSWORD", &settings.password)
                 .status()
                 .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
+
+            // Release the lock immediately after setup completes.
+            fs2::FileExt::unlock(&lock_file)?;
+
             if !run_status.success() {
                 return Err("postgres-setup-unpriv failed".into());
             }
