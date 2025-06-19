@@ -1,5 +1,2 @@
-[unstable]
-check-cfg = true
-
 [check-cfg]
 features = ["json5", "yaml", "toml"]
