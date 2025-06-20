@@ -32,32 +32,21 @@ impl std::fmt::Display for DatabaseUrl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DatabaseName(String);
-
 impl DatabaseName {
     pub fn new(name: impl Into<String>) -> Result<Self, String> {
         let name = name.into();
         if name.trim().is_empty() {
             return Err("database name cannot be empty".into());
         }
+        if name.len() > 63 {
+            return Err("database name cannot exceed 63 characters".into());
+        }
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err("database name contains invalid characters".into());
+        }
         Ok(Self(name))
     }
 }
-
-impl Deref for DatabaseName {
-    type Target = str;
-    fn deref(&self) -> &Self::Target { &self.0 }
-}
-
-impl AsRef<str> for DatabaseName {
-    fn as_ref(&self) -> &str { &self.0 }
-}
-
-impl std::fmt::Display for DatabaseName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
-}
-
 #[derive(Debug)]
 pub(crate) struct EmbeddedPg {
     pub url: DatabaseUrl,
