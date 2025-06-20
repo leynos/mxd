@@ -85,7 +85,7 @@ pub struct TestServer {
 
 #[cfg(feature = "postgres")]
 struct DbResources {
-    url: String,
+    url: crate::postgres::DatabaseUrl,
     pg: Option<PostgreSQL>,
     temp_dir: Option<TempDir>,
 }
@@ -215,7 +215,7 @@ impl TestServer {
         #[cfg(feature = "postgres")]
         {
             let resources = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-                let url = value.to_string_lossy().into_owned();
+                let url = crate::postgres::DatabaseUrl::parse(&value.to_string_lossy())?;
                 crate::postgres::reset_postgres_db(&url)?;
                 DbResources {
                     url,
@@ -234,10 +234,10 @@ impl TestServer {
                     temp_dir: Some(temp_dir),
                 }
             };
-            setup(&resources.url)?;
+            setup(resources.url.as_ref())?;
             return Self::launch(
                 manifest_path,
-                resources.url,
+                resources.url.to_string(),
                 resources.temp_dir,
                 resources.pg,
             );

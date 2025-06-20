@@ -1,17 +1,67 @@
 #![cfg(feature = "postgres")]
 
-use std::{error::Error as StdError, path::PathBuf};
+use std::{error::Error as StdError, ops::Deref, path::PathBuf};
 
 use nix::unistd::geteuid;
 use postgresql_embedded::{PostgreSQL, Settings};
 use rstest::fixture;
 use tempfile::TempDir;
+use url::Url;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabaseUrl(String);
+
+impl DatabaseUrl {
+    pub fn parse(url: &str) -> Result<Self, url::ParseError> {
+        Url::parse(url)?;
+        Ok(Self(url.to_string()))
+    }
+}
+
+impl Deref for DatabaseUrl {
+    type Target = str;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl AsRef<str> for DatabaseUrl {
+    fn as_ref(&self) -> &str { &self.0 }
+}
+
+impl std::fmt::Display for DatabaseUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabaseName(String);
+
+impl DatabaseName {
+    pub fn new(name: impl Into<String>) -> Result<Self, String> {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return Err("database name cannot be empty".into());
+        }
+        Ok(Self(name))
+    }
+}
+
+impl Deref for DatabaseName {
+    type Target = str;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl AsRef<str> for DatabaseName {
+    fn as_ref(&self) -> &str { &self.0 }
+}
+
+impl std::fmt::Display for DatabaseName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
+}
 
 #[derive(Debug)]
 pub(crate) struct EmbeddedPg {
-    pub url: String,
-    pub db_name: String,
+    pub url: DatabaseUrl,
+    pub db_name: DatabaseName,
     pub pg: PostgreSQL,
     pub temp_dir: TempDir,
     pub _runtime_temp: Option<TempDir>,
@@ -49,11 +99,14 @@ impl Drop for InstallLock {
     }
 }
 
-fn generate_db_name(prefix: &str) -> String { format!("{}{}", prefix, Uuid::now_v7().simple()) }
+fn generate_db_name(prefix: &str) -> DatabaseName {
+    let name = format!("{}{}", prefix, Uuid::now_v7().simple());
+    DatabaseName::new(name).expect("generated database name")
+}
 
 pub(crate) fn start_embedded_postgres<F>(setup: F) -> Result<EmbeddedPg, Box<dyn std::error::Error>>
 where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+    F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn std::error::Error>>,
 {
     let fut = async { init_embedded_postgres().await };
     let embedded = match tokio::runtime::Handle::try_current() {
@@ -82,7 +135,7 @@ async fn init_embedded_postgres() -> Result<EmbeddedPg, Box<dyn std::error::Erro
         let _ = pg.stop().await;
         return Err(format!("creating test database {db_name}: {e}").into());
     }
-    let url = pg.settings().url(&db_name);
+    let url = DatabaseUrl::parse(&pg.settings().url(&db_name))?;
     Ok(EmbeddedPg {
         url,
         db_name,
@@ -146,15 +199,15 @@ async fn prepare_postgres(
     Ok(pg)
 }
 
-pub(crate) fn reset_postgres_db(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn reset_postgres_db(url: &DatabaseUrl) -> Result<(), Box<dyn std::error::Error>> {
     use postgres::{Client, NoTls};
 
-    let mut client = Client::connect(url, NoTls)?;
+    let mut client = Client::connect(url.as_ref(), NoTls)?;
     client.batch_execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")?;
     Ok(())
 }
 
-fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
+fn drop_embedded_db(pg: &PostgreSQL, db_name: &DatabaseName) {
     let admin_url = pg.settings().url("postgres");
     if let Ok(mut client) = postgres::Client::connect(&admin_url, postgres::NoTls) {
         let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
@@ -164,22 +217,22 @@ fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
     }
 }
 
-fn create_external_db(base_url: &str) -> Result<(String, String), Box<dyn StdError>> {
+fn create_external_db(
+    base_url: &DatabaseUrl,
+) -> Result<(DatabaseUrl, DatabaseName), Box<dyn StdError>> {
     use postgres::{Client, NoTls};
-    use url::Url;
-
-    let mut url = Url::parse(base_url)?;
+    let mut url = Url::parse(base_url.as_ref())?;
     let db_name = generate_db_name("test_");
     let admin_url = url.to_string();
     let mut client = Client::connect(&admin_url, NoTls)?;
     let query = format!("CREATE DATABASE \"{}\"", db_name);
     client.batch_execute(&query)?;
     url.set_path(&db_name);
-    Ok((url.to_string(), db_name))
+    Ok((DatabaseUrl::parse(url.as_str())?, db_name))
 }
 
-fn drop_external_db(admin_url: &str, db_name: &str) {
-    if let Ok(mut client) = postgres::Client::connect(admin_url, postgres::NoTls) {
+fn drop_external_db(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
+    if let Ok(mut client) = postgres::Client::connect(admin_url.as_ref(), postgres::NoTls) {
         let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
         if let Err(e) = client.batch_execute(&query) {
             eprintln!("error dropping database {}: {}", db_name, e);
@@ -188,17 +241,17 @@ fn drop_external_db(admin_url: &str, db_name: &str) {
 }
 
 pub struct PostgresTestDb {
-    pub url: String,
-    admin_url: Option<String>,
+    pub url: DatabaseUrl,
+    admin_url: Option<DatabaseUrl>,
     pg: Option<PostgreSQL>,
-    db_name: Option<String>,
+    db_name: Option<DatabaseName>,
     _temp_dir: Option<TempDir>,
 }
 
 impl PostgresTestDb {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-            let admin_url = value.to_string_lossy().into_owned();
+            let admin_url = DatabaseUrl::parse(&value.to_string_lossy())?;
             let (url, db_name) = create_external_db(&admin_url)?;
             return Ok(Self {
                 url,
