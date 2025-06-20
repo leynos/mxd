@@ -14,6 +14,10 @@ impl<T> QueryPart<T> {
     pub fn new(expr: T) -> Self { Self(expr) }
 }
 
+impl<T> From<T> for QueryPart<T> {
+    fn from(expr: T) -> Self { Self(expr) }
+}
+
 impl<DB, T> QueryFragment<DB> for QueryPart<T>
 where
     DB: Backend,
@@ -35,6 +39,17 @@ macro_rules! cte_query {
 }
 
 #[macro_export]
+#[doc = "Wrap a Diesel expression to use as the seed query in a recursive CTE."]
+#[doc = ""]
+#[doc = "# Example"]
+#[doc = ""]
+#[doc = "```"]
+#[doc = "use diesel::dsl::sql;"]
+#[doc = "use diesel::sql_types::Integer;"]
+#[doc = "use diesel_cte_ext::seed_query;"]
+#[doc = ""]
+#[doc = "let part = seed_query!(sql::<Integer>(\"SELECT 1\"));"]
+#[doc = "```"]
 macro_rules! seed_query {
     ($expr:expr $(,)?) => {
         $crate::cte_query!($expr)
@@ -42,6 +57,17 @@ macro_rules! seed_query {
 }
 
 #[macro_export]
+#[doc = "Wrap a Diesel expression to use as a step query within a recursive CTE."]
+#[doc = ""]
+#[doc = "# Example"]
+#[doc = ""]
+#[doc = "```"]
+#[doc = "use diesel::dsl::sql;"]
+#[doc = "use diesel::sql_types::Integer;"]
+#[doc = "use diesel_cte_ext::step_query;"]
+#[doc = ""]
+#[doc = "let part = step_query!(sql::<Integer>(\"SELECT n + 1 FROM t\"));"]
+#[doc = "```"]
 macro_rules! step_query {
     ($expr:expr $(,)?) => {
         $crate::cte_query!($expr)

@@ -26,7 +26,8 @@ let rows: Vec<i32> = SqliteConnection::with_recursive(
 
 The `seed_query!` and `step_query!` macros wrap regular Diesel expressions so
 they can be embedded in the recursive CTE builder without implementing
-`QueryFragment` manually.
+`QueryFragment` manually. Alternatively, call `.into()` on the expression to
+convert it into a `QueryPart`.
 
 `Columns<T>` couples the runtime column names with a compile-time tuple of
 Diesel column types. For ad-hoc CTEs use a string slice directly or
