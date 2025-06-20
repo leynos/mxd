@@ -133,18 +133,28 @@ async fn prepare_postgres(
         let lock_path = runtime_dir.join(".install_lock");
         let _lock = InstallLock::new(&lock_path)?;
 
-        let run_status = std::process::Command::new(bin)
+        let output = std::process::Command::new(bin)
             .env("PG_DATA_DIR", data_dir)
             .env("PG_RUNTIME_DIR", runtime_dir)
             .env("PG_PORT", settings.port.to_string())
             .env("PG_VERSION_REQ", settings.version.to_string())
             .env("PG_SUPERUSER", &settings.username)
             .env("PG_PASSWORD", &settings.password)
-            .status()
+            .output()
             .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
 
-        if !run_status.success() {
-            return Err("postgres-setup-unpriv failed".into());
+        if !output.status.success() {
+            let code = output
+                .status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "signal".into());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Err(format!(
+                "postgres-setup-unpriv failed (exit {code})\nstdout:\n{stdout}\nstderr:\n{stderr}"
+            )
+            .into());
         }
 
         PostgreSQL::new(settings)
