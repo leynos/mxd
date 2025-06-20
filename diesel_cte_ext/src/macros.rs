@@ -1,6 +1,7 @@
+//! Macros and helpers for embedding Diesel expressions inside recursive CTEs.
 use diesel::{
     backend::Backend,
-    query_builder::{AstPass, QueryFragment},
+    query_builder::{AstPass, QueryFragment, QueryId},
     result::QueryResult,
 };
 
@@ -21,16 +22,28 @@ where
     fn walk_ast<'b>(&'b self, out: AstPass<'_, 'b, DB>) -> QueryResult<()> { self.0.walk_ast(out) }
 }
 
+impl<T> QueryId for QueryPart<T> {
+    type QueryId = ();
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+#[macro_export]
+macro_rules! cte_query {
+    ($expr:expr $(,)?) => {
+        $crate::QueryPart::new($expr)
+    };
+}
+
 #[macro_export]
 macro_rules! seed_query {
     ($expr:expr $(,)?) => {
-        $crate::macros::QueryPart::new($expr)
+        $crate::cte_query!($expr)
     };
 }
 
 #[macro_export]
 macro_rules! step_query {
     ($expr:expr $(,)?) => {
-        $crate::macros::QueryPart::new($expr)
+        $crate::cte_query!($expr)
     };
 }
