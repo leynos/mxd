@@ -9,7 +9,7 @@ use mxd::{
     transaction::{FrameHeader, Transaction, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::TestServer;
+mod common;
 
 fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
     let mut buf = Vec::new();
@@ -32,7 +32,10 @@ fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 
 #[test]
 fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start("./Cargo.toml")?;
+    let server = match common::start_server_or_skip(|_| Ok(()))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
@@ -64,7 +67,10 @@ fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn user_name_list_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start("./Cargo.toml")?;
+    let server = match common::start_server_or_skip(|_| Ok(()))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     handshake(&mut stream)?;

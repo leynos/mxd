@@ -30,7 +30,7 @@ cfg_if::cfg_if! {
             "SELECT c.id AS id \n",
             "FROM news_categories c \n",
             "JOIN json_each($1) seg ON seg.key = $2 \n",
-            "WHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = $3)"
+            "WHERE c.name = seg.value AND c.bundle_id IS NOT DISTINCT FROM (SELECT id FROM tree WHERE idx = $3)"
         );
     } else {
         macro_rules! step_sql {
@@ -173,7 +173,8 @@ mod tests {
     fn category_body_sql_matches_expected() {
         let expected = if cfg!(feature = "postgres") {
             "SELECT c.id AS id \nFROM news_categories c \nJOIN json_each($1) seg ON seg.key = $2 \
-             \nWHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = $3)"
+             \nWHERE c.name = seg.value AND c.bundle_id IS NOT DISTINCT FROM (SELECT id FROM tree \
+             WHERE idx = $3)"
         } else {
             "SELECT c.id AS id \nFROM news_categories c \nJOIN json_each(?) seg ON seg.key = ? \
              \nWHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)"

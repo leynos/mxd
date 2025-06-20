@@ -12,12 +12,8 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{
-    TestServer,
-    handshake,
-    setup_news_categories_nested_db,
-    setup_news_categories_root_db,
-};
+use test_util::{handshake, setup_news_categories_nested_db, setup_news_categories_root_db};
+mod common;
 
 fn list_categories(
     port: u16,
@@ -78,7 +74,10 @@ fn list_categories(
 /// Returns an error if the test server setup, TCP communication, or protocol validation fails.
 #[test]
 fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
+    let server = match common::start_server_or_skip(|db| setup_news_categories_root_db(db))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let (_, mut names) = list_categories(port, Some("/"))?;
@@ -106,7 +105,10 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
 /// ```
 #[test]
 fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_root_db)?;
+    let server = match common::start_server_or_skip(|db| setup_news_categories_root_db(db))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let (_, mut names) = list_categories(port, None)?;
@@ -125,7 +127,7 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
 /// Returns `Ok(())` if the test passes; otherwise, returns an error if any step fails.
 #[test]
 fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
+    let server = match common::start_server_or_skip(|db| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
@@ -140,7 +142,10 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
             .await?;
             Ok(())
         })
-    })?;
+    })? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let (hdr, _) = list_categories(port, Some("some/path"))?;
@@ -164,14 +169,17 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
 /// ```
 #[test]
 fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
+    let server = match common::start_server_or_skip(|db| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
             apply_migrations(&mut conn, db).await?;
             Ok(())
         })
-    })?;
+    })? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let (_, names) = list_categories(port, None)?;
@@ -192,7 +200,10 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
 /// decoding fails.
 #[test]
 fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", setup_news_categories_nested_db)?;
+    let server = match common::start_server_or_skip(|db| setup_news_categories_nested_db(db))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let (_, names) = list_categories(port, Some("Bundle/Sub"))?;

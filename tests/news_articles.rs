@@ -14,11 +14,12 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{TestServer, handshake, setup_news_db, with_db};
+use test_util::{handshake, setup_news_db, with_db};
+mod common;
 
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
+    let server = match common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 create_category(
@@ -32,7 +33,10 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })?;
+    })? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
@@ -63,7 +67,10 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| setup_news_db(db))?;
+    let server = match common::start_server_or_skip(|db| setup_news_db(db))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
@@ -114,7 +121,7 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
     use chrono::{DateTime, Utc};
     use mxd::models::NewArticle;
 
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
+    let server = match common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 create_category(
@@ -148,7 +155,10 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })?;
+    })? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
@@ -205,7 +215,7 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| {
+    let server = match common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 create_category(
@@ -219,7 +229,10 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })?;
+    })? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;

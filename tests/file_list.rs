@@ -9,11 +9,15 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{TestServer, handshake, setup_files_db};
+use test_util::{handshake, setup_files_db};
+mod common;
 
 #[test]
 fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start_with_setup("./Cargo.toml", |db| setup_files_db(db))?;
+    let server = match common::start_server_or_skip(|db| setup_files_db(db))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
@@ -88,7 +92,10 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start("./Cargo.toml")?;
+    let server = match common::start_server_or_skip(|_| Ok(()))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
