@@ -15,8 +15,6 @@ use std::{
 
 #[cfg(feature = "postgres")]
 use once_cell::sync::Lazy;
-#[cfg(feature = "postgres")]
-use postgresql_embedded::PostgreSQL;
 use tempfile::TempDir;
 
 #[cfg(feature = "postgres")]
@@ -77,18 +75,17 @@ pub struct TestServer {
     port: u16,
     db_url: String,
     #[cfg(feature = "postgres")]
-    pg: Option<PostgreSQL>,
+    db: PostgresTestDb,
     /// Keep the temporary directory alive for the lifetime of the server to
-    /// prevent early cleanup while the database is running.
+    /// prevent early cleanup while the database is running. For PostgreSQL the
+    /// temporary directory is managed by `PostgresTestDb` and this field remains
+    /// `None`.
     temp_dir: Option<TempDir>,
 }
 
 #[cfg(feature = "postgres")]
-struct DbResources {
-    url: crate::postgres::DatabaseUrl,
-    pg: Option<PostgreSQL>,
-    temp_dir: Option<TempDir>,
-}
+// No additional resource wrapper needed; `PostgresTestDb` handles
+// temporary database setup and teardown for tests.
 
 ///
 /// Returns the SQLite database URL as a string on success, or an error if setup fails.
@@ -214,33 +211,9 @@ impl TestServer {
 
         #[cfg(feature = "postgres")]
         {
-            let resources = if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-                let url = crate::postgres::DatabaseUrl::parse(&value.to_string_lossy())?;
-                crate::postgres::reset_postgres_db(&url)?;
-                DbResources {
-                    url,
-                    pg: None,
-                    temp_dir: None,
-                }
-            } else {
-                let crate::postgres::EmbeddedPg {
-                    url, pg, temp_dir, ..
-                } = crate::postgres::start_embedded_postgres(|url| {
-                    crate::postgres::reset_postgres_db(url)
-                })?;
-                DbResources {
-                    url,
-                    pg: Some(pg),
-                    temp_dir: Some(temp_dir),
-                }
-            };
-            setup(resources.url.as_ref())?;
-            return Self::launch(
-                manifest_path,
-                resources.url.to_string(),
-                resources.temp_dir,
-                resources.pg,
-            );
+            let db = crate::postgres::PostgresTestDb::new()?;
+            setup(db.url.as_ref())?;
+            return Self::launch(manifest_path, db);
         }
     }
 
@@ -314,15 +287,13 @@ impl TestServer {
     /// # Examples
     ///
     /// ```
-    /// let server = TestServer::launch("Cargo.toml", db_url, None, None)?;
+    /// let db = PostgresTestDb::new()?;
+    /// let server = TestServer::launch("Cargo.toml", db)?;
     /// assert!(server.port() > 0);
     /// ```
-    fn launch(
-        manifest_path: &str,
-        db_url: String,
-        temp_dir: Option<TempDir>,
-        pg: Option<PostgreSQL>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    fn launch(manifest_path: &str, db: PostgresTestDb) -> Result<Self, Box<dyn std::error::Error>> {
+        let db_url = db.url.to_string();
+        let temp_dir = None;
         let socket = TcpListener::bind("127.0.0.1:0")?;
         let port = socket.local_addr()?.port();
         drop(socket);
@@ -335,8 +306,8 @@ impl TestServer {
             child,
             port,
             db_url,
+            db,
             temp_dir,
-            pg,
         })
     }
 
@@ -365,7 +336,7 @@ impl TestServer {
     ///
     /// This indicates that the test server started and manages its own embedded PostgreSQL
     /// database. Returns false if an external PostgreSQL instance is used instead.
-    pub fn uses_embedded_postgres(&self) -> bool { self.pg.is_some() }
+    pub fn uses_embedded_postgres(&self) -> bool { self.db.uses_embedded() }
 }
 
 impl Drop for TestServer {
@@ -380,9 +351,9 @@ impl Drop for TestServer {
         }
         let _ = self.child.wait();
         #[cfg(feature = "postgres")]
-        if let Some(pg) = &mut self.pg {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            let _ = rt.block_on(pg.stop());
+        {
+            // `PostgresTestDb` cleans up the database and stops the embedded
+            // server in its `Drop` implementation.
         }
     }
 }
