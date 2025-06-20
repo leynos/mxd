@@ -20,6 +20,7 @@ futures-util = "0.3"
 rstest = "0.18"
 postgres = { version = "0.19", optional = true }
 uuid = { version = "1", features = ["v7"], optional = true }
+url = { version = "2", optional = true }
 
 [features]
 default = ["sqlite"]
@@ -31,6 +32,7 @@ postgres = [
     "diesel_migrations/postgres",
     "dep:postgres",
     "dep:uuid",
+    "dep:url",
 ]
 sqlite = [
     "diesel/sqlite",

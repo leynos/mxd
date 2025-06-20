@@ -164,8 +164,32 @@ fn drop_embedded_db(pg: &PostgreSQL, db_name: &str) {
     }
 }
 
+fn create_external_db(base_url: &str) -> Result<(String, String), Box<dyn StdError>> {
+    use postgres::{Client, NoTls};
+    use url::Url;
+
+    let mut url = Url::parse(base_url)?;
+    let db_name = generate_db_name("test_");
+    let admin_url = url.to_string();
+    let mut client = Client::connect(&admin_url, NoTls)?;
+    let query = format!("CREATE DATABASE \"{}\"", db_name);
+    client.batch_execute(&query)?;
+    url.set_path(&db_name);
+    Ok((url.to_string(), db_name))
+}
+
+fn drop_external_db(admin_url: &str, db_name: &str) {
+    if let Ok(mut client) = postgres::Client::connect(admin_url, postgres::NoTls) {
+        let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
+        if let Err(e) = client.batch_execute(&query) {
+            eprintln!("error dropping database {}: {}", db_name, e);
+        }
+    }
+}
+
 pub struct PostgresTestDb {
     pub url: String,
+    admin_url: Option<String>,
     pg: Option<PostgreSQL>,
     db_name: Option<String>,
     _temp_dir: Option<TempDir>,
@@ -174,12 +198,13 @@ pub struct PostgresTestDb {
 impl PostgresTestDb {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-            let url = value.to_string_lossy().into_owned();
-            reset_postgres_db(&url)?;
+            let admin_url = value.to_string_lossy().into_owned();
+            let (url, db_name) = create_external_db(&admin_url)?;
             return Ok(Self {
                 url,
+                admin_url: Some(admin_url),
                 pg: None,
-                db_name: None,
+                db_name: Some(db_name),
                 _temp_dir: None,
             });
         }
@@ -193,6 +218,7 @@ impl PostgresTestDb {
         } = start_embedded_postgres(|url| reset_postgres_db(url))?;
         Ok(Self {
             url,
+            admin_url: None,
             pg: Some(pg),
             db_name: Some(db_name),
             _temp_dir: Some(temp_dir),
@@ -204,8 +230,9 @@ impl PostgresTestDb {
 
 impl Drop for PostgresTestDb {
     fn drop(&mut self) {
-        match (&self.pg, &self.db_name) {
-            (Some(pg), Some(name)) => drop_embedded_db(pg, name),
+        match (&self.pg, &self.db_name, &self.admin_url) {
+            (Some(pg), Some(name), _) => drop_embedded_db(pg, name),
+            (None, Some(name), Some(admin)) => drop_external_db(admin, name),
             _ => {
                 let _ = reset_postgres_db(&self.url);
             }
