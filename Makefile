@@ -22,11 +22,8 @@ clean:
 test: test-postgres test-sqlite
 
 test-postgres: target/debug/postgres-setup-unpriv
-<tab>RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres
+	RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres -- --nocapture
 test-sqlite:
-# File: Makefile
-# (around line 27)
-
 	RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --features sqlite
 
 target/debug/mxd:

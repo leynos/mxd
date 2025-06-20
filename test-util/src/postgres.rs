@@ -2,15 +2,21 @@
 
 use std::{error::Error as StdError, ops::Deref, path::PathBuf};
 
-use nix::unistd::geteuid;
+use nix::unistd::{Uid, User, chown, geteuid};
 use postgresql_embedded::{PostgreSQL, Settings};
 use rstest::fixture;
 use tempfile::TempDir;
 use url::Url;
 use uuid::Uuid;
 
+/// Fallback UID for the `nobody` user if lookup fails.
+const NOBODY_UID: u32 = 65_534;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseUrl(String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabaseName(String);
 
 impl DatabaseUrl {
     pub fn parse(url: &str) -> Result<Self, url::ParseError> {
@@ -32,6 +38,19 @@ impl std::fmt::Display for DatabaseUrl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
 }
 
+impl Deref for DatabaseName {
+    type Target = str;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl AsRef<str> for DatabaseName {
+    fn as_ref(&self) -> &str { &self.0 }
+}
+
+impl std::fmt::Display for DatabaseName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
+}
+
 impl DatabaseName {
     pub fn new(name: impl Into<String>) -> Result<Self, String> {
         let name = name.into();
@@ -47,6 +66,7 @@ impl DatabaseName {
         Ok(Self(name))
     }
 }
+
 #[derive(Debug)]
 pub(crate) struct EmbeddedPg {
     pub url: DatabaseUrl,
@@ -154,6 +174,26 @@ async fn prepare_postgres(
 ) -> Result<PostgreSQL, Box<dyn std::error::Error>> {
     settings.installation_dir = runtime_dir.to_path_buf();
 
+    // Always ensure the runtime directory exists. The helper binary expects
+    // it to be present even when running without privileges.
+    std::fs::create_dir_all(runtime_dir)?;
+
+    #[cfg(unix)]
+    if geteuid().is_root() {
+        let uid = User::from_name("nobody")
+            .ok()
+            .flatten()
+            .map(|u| u.uid)
+            .unwrap_or_else(|| Uid::from_raw(NOBODY_UID));
+        if let Err(e) = chown(runtime_dir, Some(uid), None) {
+            eprintln!(
+                "warning: failed to chown {} to nobody: {}",
+                runtime_dir.display(),
+                e
+            );
+        }
+    }
+
     let pg = if geteuid().is_root() {
         let bin = crate::HELPER_BIN
             .clone()
@@ -162,7 +202,7 @@ async fn prepare_postgres(
         let lock_path = runtime_dir.join(".install_lock");
         let _lock = InstallLock::new(&lock_path)?;
 
-        let run_status = std::process::Command::new(bin)
+        let status = std::process::Command::new(bin)
             .env("PG_DATA_DIR", data_dir)
             .env("PG_RUNTIME_DIR", runtime_dir)
             .env("PG_PORT", settings.port.to_string())
@@ -172,8 +212,12 @@ async fn prepare_postgres(
             .status()
             .map_err(|e| format!("running postgres-setup-unpriv: {e}"))?;
 
-        if !run_status.success() {
-            return Err("postgres-setup-unpriv failed".into());
+        if !status.success() {
+            let code = status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "signal".into());
+            return Err(format!("postgres-setup-unpriv failed with status {code}").into());
         }
 
         PostgreSQL::new(settings)
