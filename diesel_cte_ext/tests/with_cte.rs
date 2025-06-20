@@ -1,5 +1,8 @@
 use diesel::{dsl::sql, sql_types::Integer};
 use diesel_cte_ext::RecursiveCTEExt;
+
+const SELECT_42: &str = "SELECT 42";
+const SELECT_N_FROM_T: &str = "SELECT n FROM t";
 mod pg_util;
 
 fn sqlite_sync() -> i32 {
@@ -8,8 +11,8 @@ fn sqlite_sync() -> i32 {
     SqliteConnection::with_cte(
         "t",
         &["n"],
-        sql::<Integer>("SELECT 42"),
-        sql::<Integer>("SELECT n FROM t"),
+        sql::<Integer>(SELECT_42),
+        sql::<Integer>(SELECT_N_FROM_T),
     )
     .get_result(&mut conn)
     .unwrap()
@@ -28,8 +31,8 @@ async fn sqlite_async() -> i32 {
     SyncConnectionWrapper::<SqliteConnection>::with_cte(
         "t",
         &["n"],
-        sql::<Integer>("SELECT 42"),
-        sql::<Integer>("SELECT n FROM t"),
+        sql::<Integer>(SELECT_42),
+        sql::<Integer>(SELECT_N_FROM_T),
     )
     .get_result(&mut conn)
     .await
@@ -43,8 +46,8 @@ async fn pg_async() -> i32 {
         diesel_async::AsyncPgConnection::with_cte(
             "t",
             &["n"],
-            sql::<Integer>("SELECT 42"),
-            sql::<Integer>("SELECT n FROM t"),
+            sql::<Integer>(SELECT_42),
+            sql::<Integer>(SELECT_N_FROM_T),
         )
         .get_result(conn)
         .await
@@ -60,8 +63,8 @@ fn pg_sync() -> i32 {
         diesel::pg::PgConnection::with_cte(
             "t",
             &["n"],
-            sql::<Integer>("SELECT 42"),
-            sql::<Integer>("SELECT n FROM t"),
+            sql::<Integer>(SELECT_42),
+            sql::<Integer>(SELECT_N_FROM_T),
         )
         .get_result(conn)
         .unwrap()
