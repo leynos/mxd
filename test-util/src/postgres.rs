@@ -2,7 +2,7 @@
 
 use std::{error::Error as StdError, path::PathBuf};
 
-use nix::unistd::geteuid;
+use nix::unistd::{Uid, User, chown, geteuid};
 use postgresql_embedded::{PostgreSQL, Settings};
 use rstest::fixture;
 use tempfile::TempDir;
@@ -113,6 +113,19 @@ async fn prepare_postgres(
     settings.installation_dir = runtime_dir.to_path_buf();
 
     let pg = if geteuid().is_root() {
+        // Ensure the runtime directory exists before attempting to
+        // acquire the lock. `postgres-setup-unpriv` expects this
+        // directory to be present for installing the binaries.
+        std::fs::create_dir_all(&runtime_dir)?;
+        #[cfg(unix)]
+        {
+            let uid = User::from_name("nobody")
+                .ok()
+                .flatten()
+                .map(|u| u.uid)
+                .unwrap_or_else(|| Uid::from_raw(65534));
+            let _ = chown(runtime_dir, Some(uid), None);
+        }
         let bin = crate::HELPER_BIN
             .clone()
             .map_err(|e| -> Box<dyn StdError> { e.into() })?;
