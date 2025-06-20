@@ -1,4 +1,7 @@
+use std::time::Duration;
+
 use mxd::{field_id, transaction::*, transaction_type};
+use rstest::rstest;
 use tokio::io::{AsyncWriteExt, duplex};
 
 fn build_tx() -> Transaction {
@@ -18,7 +21,9 @@ fn build_tx() -> Transaction {
     Transaction { header, payload }
 }
 
+#[rstest]
 #[tokio::test]
+#[timeout(Duration::from_secs(20))]
 async fn roundtrip_single_frame() {
     let tx = build_tx();
     let (mut a, mut b) = duplex(1024);
@@ -29,7 +34,9 @@ async fn roundtrip_single_frame() {
     assert_eq!(tx, rx);
 }
 
+#[rstest]
 #[tokio::test]
+#[timeout(Duration::from_secs(20))]
 async fn roundtrip_multi_frame() {
     let mut payload = Vec::new();
     payload.extend_from_slice(&[0x00, 0x01]); // one param
@@ -55,7 +62,9 @@ async fn roundtrip_multi_frame() {
     assert_eq!(tx, rx);
 }
 
+#[rstest]
 #[tokio::test]
+#[timeout(Duration::from_secs(20))]
 async fn invalid_flags_error() {
     let mut tx = build_tx();
     tx.header.flags = 1;
@@ -74,7 +83,9 @@ async fn invalid_flags_error() {
     }
 }
 
+#[rstest]
 #[tokio::test]
+#[timeout(Duration::from_secs(20))]
 async fn mismatched_sizes() {
     let tx = build_tx();
     let (mut a, mut b) = duplex(1024);
@@ -96,7 +107,9 @@ async fn mismatched_sizes() {
     }
 }
 
+#[rstest]
 #[tokio::test]
+#[timeout(Duration::from_secs(20))]
 async fn duplicate_field_error() {
     let mut tx = build_tx();
     tx.payload
@@ -122,7 +135,9 @@ async fn duplicate_field_error() {
     }
 }
 
+#[rstest]
 #[tokio::test]
+#[timeout(Duration::from_secs(20))]
 async fn writer_payload_too_large() {
     let count = 16u16;
     let mut payload = Vec::new();
@@ -150,7 +165,9 @@ async fn writer_payload_too_large() {
     }
 }
 
+#[rstest]
 #[tokio::test]
+#[timeout(Duration::from_secs(20))]
 async fn roundtrip_empty_payload() {
     let header = FrameHeader {
         flags: 0,
@@ -174,7 +191,9 @@ async fn roundtrip_empty_payload() {
     assert_eq!(tx, rx);
 }
 
+#[rstest]
 #[tokio::test]
+#[timeout(Duration::from_secs(20))]
 async fn oversized_payload() {
     let mut tx = build_tx();
     tx.payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];

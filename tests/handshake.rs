@@ -1,6 +1,7 @@
 use std::{
     io::{Read, Write},
     net::{Shutdown, TcpStream},
+    time::Duration,
 };
 
 use test_util::TestServer;
@@ -11,6 +12,8 @@ fn handshake() -> Result<(), Box<dyn std::error::Error>> {
     let port = server.port();
 
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     let mut handshake = Vec::new();
     handshake.extend_from_slice(b"TRTP");
     handshake.extend_from_slice(&0u32.to_be_bytes());

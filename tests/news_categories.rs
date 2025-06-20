@@ -24,8 +24,8 @@ fn list_categories(
     path: Option<&str>,
 ) -> Result<(FrameHeader, Vec<String>), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
-    stream.set_write_timeout(Some(std::time::Duration::from_secs(1)))?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(20)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(20)))?;
     handshake(&mut stream)?;
     let params = path
         .map(|p| vec![(FieldId::NewsPath, p.as_bytes())])

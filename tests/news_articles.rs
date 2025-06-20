@@ -1,6 +1,7 @@
 use std::{
     io::{Read, Write},
     net::TcpStream,
+    time::Duration,
 };
 
 use diesel::prelude::*;
@@ -35,6 +36,8 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     handshake(&mut stream)?;
 
     let params = vec![(FieldId::NewsPath, b"Missing".as_ref())];
@@ -64,6 +67,8 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     handshake(&mut stream)?;
 
     let params = vec![(FieldId::NewsPath, b"General".as_ref())];
@@ -147,6 +152,8 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     handshake(&mut stream)?;
 
     let mut params = Vec::new();
@@ -216,6 +223,8 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
 
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     handshake(&mut stream)?;
 
     let mut params = Vec::new();
