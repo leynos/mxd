@@ -8,6 +8,9 @@ use rstest::fixture;
 use tempfile::TempDir;
 use uuid::Uuid;
 
+/// Fallback UID for the `nobody` user if lookup fails.
+const NOBODY_UID: u32 = 65_534;
+
 #[derive(Debug)]
 pub(crate) struct EmbeddedPg {
     pub url: String,
@@ -112,20 +115,27 @@ async fn prepare_postgres(
 ) -> Result<PostgreSQL, Box<dyn std::error::Error>> {
     settings.installation_dir = runtime_dir.to_path_buf();
 
-    let pg = if geteuid().is_root() {
-        // Ensure the runtime directory exists before attempting to
-        // acquire the lock. `postgres-setup-unpriv` expects this
-        // directory to be present for installing the binaries.
-        std::fs::create_dir_all(&runtime_dir)?;
-        #[cfg(unix)]
-        {
-            let uid = User::from_name("nobody")
-                .ok()
-                .flatten()
-                .map(|u| u.uid)
-                .unwrap_or_else(|| Uid::from_raw(65534));
-            let _ = chown(runtime_dir, Some(uid), None);
+    // Always ensure the runtime directory exists. The helper binary expects
+    // it to be present even when running without privileges.
+    std::fs::create_dir_all(runtime_dir)?;
+
+    #[cfg(unix)]
+    if geteuid().is_root() {
+        let uid = User::from_name("nobody")
+            .ok()
+            .flatten()
+            .map(|u| u.uid)
+            .unwrap_or_else(|| Uid::from_raw(NOBODY_UID));
+        if let Err(e) = chown(runtime_dir, Some(uid), None) {
+            eprintln!(
+                "warning: failed to chown {} to nobody: {}",
+                runtime_dir.display(),
+                e
+            );
         }
+    }
+
+    let pg = if geteuid().is_root() {
         let bin = crate::HELPER_BIN
             .clone()
             .map_err(|e| -> Box<dyn StdError> { e.into() })?;
