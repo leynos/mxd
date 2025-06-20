@@ -37,8 +37,6 @@ fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(Duration::from_secs(20)))?;
-    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     handshake(&mut stream)?;
 
     let params = encode_params(&[(FieldId::Other(1), b"bogus".as_ref())])?;
