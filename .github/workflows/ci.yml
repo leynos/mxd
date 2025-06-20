@@ -113,14 +113,11 @@ jobs:
           output-path: lcov-postgres.info
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
-      - name: Install CodeScene coverage tool
-        run: |
-          set -euo pipefail
-          curl -fsSL -o install-cs-coverage-tool.sh https://downloads.codescene.io/enterprise/cli/install-cs-coverage-tool.sh
-          echo "${CODESCENE_CLI_SHA256}  install-cs-coverage-tool.sh" | sha256sum -c -
-          bash install-cs-coverage-tool.sh -y
-          rm install-cs-coverage-tool.sh
       - name: Upload coverage data to CodeScene
-        run: cs-coverage upload --format "lcov" --metric "line-coverage" "lcov.info"
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@v1
+        with:
+          path: lcov.info
+          format: lcov
         env:
           CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
+          CODESCENE_CLI_SHA256: ${{ env.CODESCENE_CLI_SHA256 }}
