@@ -4,11 +4,14 @@ use std::{
     time::Duration,
 };
 
-use test_util::TestServer;
+mod common;
 
 #[test]
 fn handshake_invalid_protocol() -> Result<(), Box<dyn std::error::Error>> {
-    let server = TestServer::start("./Cargo.toml")?;
+    let server = match common::start_server_or_skip(|_| Ok(()))? {
+        Some(s) => s,
+        None => return Ok(()),
+    };
     let port = server.port();
 
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;

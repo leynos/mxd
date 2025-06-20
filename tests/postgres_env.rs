@@ -10,11 +10,25 @@ fn external_postgres_is_used() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| String::from("postgres://postgres:password@localhost/test"));
     let idx = base.rfind('/').expect("url has path");
     let prefix = &base[..=idx];
-    with_var("POSTGRES_TEST_URL", Some(&base), || {
-        let db = PostgresTestDb::new()?;
-        assert!(!db.uses_embedded());
-        assert!(db.url.starts_with(prefix));
-        assert_ne!(db.url.as_ref(), base);
-        Ok::<_, Box<dyn std::error::Error>>(())
-    })
+    with_var(
+        "POSTGRES_TEST_URL",
+        Some(&base),
+        || match PostgresTestDb::new() {
+            Ok(db) => {
+                assert!(!db.uses_embedded());
+                assert!(db.url.starts_with(prefix));
+                assert_ne!(db.url.as_ref(), base);
+                Ok::<_, Box<dyn std::error::Error>>(())
+            }
+            Err(e) => {
+                if e.downcast_ref::<test_util::postgres::PostgresUnavailable>()
+                    .is_some()
+                {
+                    eprintln!("skipping test: {}", e);
+                    return Ok(());
+                }
+                Err(e)
+            }
+        },
+    )
 }

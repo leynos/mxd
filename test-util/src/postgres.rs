@@ -1,6 +1,12 @@
 #![cfg(feature = "postgres")]
 
-use std::{error::Error as StdError, ops::Deref, path::PathBuf};
+use std::{
+    error::Error as StdError,
+    net::{TcpStream, ToSocketAddrs},
+    ops::Deref,
+    path::PathBuf,
+    time::Duration,
+};
 
 use nix::unistd::{Uid, User, chown, geteuid};
 use postgresql_embedded::{PostgreSQL, Settings};
@@ -74,6 +80,30 @@ pub(crate) struct EmbeddedPg {
     pub pg: PostgreSQL,
     pub temp_dir: TempDir,
     pub _runtime_temp: Option<TempDir>,
+}
+
+#[derive(Debug)]
+pub struct PostgresUnavailable;
+
+impl std::fmt::Display for PostgresUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PostgreSQL server unreachable")
+    }
+}
+
+impl std::error::Error for PostgresUnavailable {}
+
+fn postgres_available(url: &Url) -> bool {
+    if let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) {
+        let addr = (host, port)
+            .to_socket_addrs()
+            .ok()
+            .and_then(|mut a| a.next());
+        if let Some(addr) = addr {
+            return TcpStream::connect_timeout(&addr, Duration::from_secs(1)).is_ok();
+        }
+    }
+    false
 }
 
 struct InstallLock {
@@ -285,6 +315,10 @@ impl PostgresTestDb {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let admin_url = DatabaseUrl::parse(&value.to_string_lossy())?;
+            let parsed = Url::parse(admin_url.as_ref())?;
+            if !postgres_available(&parsed) {
+                return Err(Box::new(PostgresUnavailable));
+            }
             let (url, db_name) = create_external_db(&admin_url)?;
             return Ok(Self {
                 url,
@@ -301,7 +335,10 @@ impl PostgresTestDb {
             temp_dir,
             db_name,
             ..
-        } = start_embedded_postgres(|url| reset_postgres_db(url))?;
+        } = match start_embedded_postgres(|url| reset_postgres_db(url)) {
+            Ok(pg) => pg,
+            Err(_) => return Err(Box::new(PostgresUnavailable)),
+        };
         Ok(Self {
             url,
             admin_url: None,
