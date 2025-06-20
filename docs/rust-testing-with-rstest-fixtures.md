@@ -1326,7 +1326,10 @@ creates these names accepts a custom prefix, making the logic reusable. The
 database is dropped when the fixture is cleaned up, allowing parallel tests
 without leaving orphaned databases behind. This happens even when
 `POSTGRES_TEST_URL` points at an external server—the fixture connects to that
-server, creates a temporary database, and removes it again on drop.
+server, creates a temporary database, and removes it again on drop. Connection
+URLs and database names use the new `DatabaseUrl` and `DatabaseName` types
+instead of bare strings to reduce primitive obsession and provide basic
+validation at compile time.
 
 ### D. Preventing Concurrent Embedded PostgreSQL Installs
 

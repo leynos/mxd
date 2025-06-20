@@ -1,7 +1,8 @@
 //! Behavioural tests for recursive CTE helpers using SQLite and PostgreSQL.
 
-use diesel::{Connection, dsl::sql, sql_types::Integer};
+use diesel::{dsl::sql, sql_types::Integer};
 use diesel_cte_ext::{Columns, RecursiveCTEExt, RecursiveParts};
+mod pg_util;
 
 fn sqlite_sync() -> Vec<i32> {
     use diesel::{RunQueryDsl, sqlite::SqliteConnection};
@@ -44,16 +45,9 @@ async fn sqlite_async() -> Vec<i32> {
 }
 
 async fn pg_async() -> Vec<i32> {
-    use diesel_async::{AsyncConnection, AsyncPgConnection, RunQueryDsl};
-    use postgresql_embedded::PostgreSQL;
+    use diesel_async::{AsyncPgConnection, RunQueryDsl};
 
-    let mut pg = PostgreSQL::default();
-    pg.setup().await.unwrap();
-    pg.start().await.unwrap();
-    pg.create_database("test").await.unwrap();
-    let url = pg.settings().url("test");
-    let res = {
-        let mut conn = AsyncPgConnection::establish(&url).await.unwrap();
+    pg_util::with_pg_async(|conn| async move {
         AsyncPgConnection::with_recursive(
             "t",
             &["n"],
@@ -63,25 +57,17 @@ async fn pg_async() -> Vec<i32> {
                 sql::<Integer>("SELECT n FROM t"),
             ),
         )
-        .load(&mut conn)
+        .load(conn)
         .await
         .unwrap()
-    };
-    pg.stop().await.unwrap();
-    res
+    })
+    .await
 }
 
 fn pg_sync() -> Vec<i32> {
     use diesel::{RunQueryDsl, pg::PgConnection};
-    use postgresql_embedded::blocking::PostgreSQL;
 
-    let mut pg = PostgreSQL::default();
-    pg.setup().unwrap();
-    pg.start().unwrap();
-    pg.create_database("test").unwrap();
-    let url = pg.settings().url("test");
-    let res = {
-        let mut conn = PgConnection::establish(&url).unwrap();
+    pg_util::with_pg_sync(|conn| {
         PgConnection::with_recursive(
             "t",
             &["n"],
@@ -91,11 +77,9 @@ fn pg_sync() -> Vec<i32> {
                 sql::<Integer>("SELECT n FROM t"),
             ),
         )
-        .load(&mut conn)
+        .load(conn)
         .unwrap()
-    };
-    pg.stop().unwrap();
-    res
+    })
 }
 
 #[test]
