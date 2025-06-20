@@ -83,7 +83,6 @@ pub struct TestServer {
     temp_dir: Option<TempDir>,
 }
 
-#[cfg(feature = "postgres")]
 // No additional resource wrapper needed; `PostgresTestDb` handles
 // temporary database setup and teardown for tests.
 
