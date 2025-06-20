@@ -23,7 +23,7 @@ test: test-postgres test-sqlite
 
 test-postgres: target/debug/postgres-setup-unpriv
 	RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres
-test-sqlite: target/debug/postgres-setup-unpriv
+test-sqlite:
 	RUSTFLAGS="-D warnings" cargo test --features sqlite
 
 target/debug/mxd:
