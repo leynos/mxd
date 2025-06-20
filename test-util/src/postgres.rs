@@ -18,7 +18,7 @@ pub(crate) struct EmbeddedPg {
 }
 
 struct InstallLock {
-    file: std::fs::File,
+    file: Option<std::fs::File>,
     path: PathBuf,
 }
 
@@ -33,7 +33,7 @@ impl InstallLock {
             return Err(e);
         }
         Ok(Self {
-            file,
+            file: Some(file),
             path: path.to_path_buf(),
         })
     }
@@ -41,7 +41,10 @@ impl InstallLock {
 
 impl Drop for InstallLock {
     fn drop(&mut self) {
-        let _ = fs2::FileExt::unlock(&self.file);
+        if let Some(file) = self.file.take() {
+            let _ = fs2::FileExt::unlock(&file);
+            drop(file);
+        }
         let _ = std::fs::remove_file(&self.path);
     }
 }
