@@ -119,34 +119,44 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rstest::{fixture, rstest};
+
     use super::*;
 
-    #[test]
-    fn bundle_step_sql_matches_expected() {
-        let expected = if cfg!(feature = "postgres") {
-            "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each($1) seg ON \
-             seg.key = tree.idx \nJOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS \
-             NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)"
+    fn expected_step_sql(join_type: &str) -> String {
+        if cfg!(feature = "postgres") {
+            format!(
+                "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each($1) seg ON \
+                 seg.key = tree.idx \n{jt} news_bundles b ON b.name = seg.value AND \n  ((tree.id \
+                 IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)",
+                jt = join_type,
+            )
         } else {
-            "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON seg.key \
-             = tree.idx \nJOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL AND \
-             b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)"
-        };
-        assert_eq!(BUNDLE_STEP_SQL, expected);
+            format!(
+                "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON \
+                 seg.key = tree.idx \n{jt} news_bundles b ON b.name = seg.value AND \n  ((tree.id \
+                 IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)",
+                jt = join_type,
+            )
+        }
     }
 
-    #[test]
-    fn category_step_sql_matches_expected() {
-        let expected = if cfg!(feature = "postgres") {
-            "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each($1) seg ON \
-             seg.key = tree.idx \nLEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id \
-             IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)"
-        } else {
-            "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON seg.key \
-             = tree.idx \nLEFT JOIN news_bundles b ON b.name = seg.value AND \n  ((tree.id IS NULL \
-             AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)"
-        };
-        assert_eq!(CATEGORY_STEP_SQL, expected);
+    #[fixture]
+    #[allow(unused_braces)]
+    fn expected_bundle_step_sql() -> String { expected_step_sql("JOIN") }
+
+    #[fixture]
+    #[allow(unused_braces)]
+    fn expected_category_step_sql() -> String { expected_step_sql("LEFT JOIN") }
+
+    #[rstest]
+    fn bundle_step_sql_matches_expected(expected_bundle_step_sql: String) {
+        assert_eq!(BUNDLE_STEP_SQL, expected_bundle_step_sql);
+    }
+
+    #[rstest]
+    fn category_step_sql_matches_expected(expected_category_step_sql: String) {
+        assert_eq!(CATEGORY_STEP_SQL, expected_category_step_sql);
     }
 
     #[test]
