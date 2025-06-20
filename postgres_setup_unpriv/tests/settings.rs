@@ -9,14 +9,14 @@ use rstest::rstest;
 /// and that all relevant fields and configuration values are preserved.
 ///
 /// # Returns
-/// An `anyhow::Result` indicating success or failure of the round-trip conversion.
+/// A `color_eyre::Result` indicating success or failure of the round-trip conversion.
 ///
 /// # Examples
 /// ```no_run
 /// to_settings_roundtrip()?;
 /// ```
 #[rstest]
-fn to_settings_roundtrip() -> anyhow::Result<()> {
+fn to_settings_roundtrip() -> color_eyre::Result<()> {
     let cfg = PgEnvCfg {
         version_req: Some("=16.4.0".into()),
         port: Some(5433),
@@ -49,7 +49,7 @@ fn to_settings_default_config() {
 #[cfg(unix)]
 #[rstest]
 /// Verify that the effective uid is changed within the passed block
-fn with_temp_euid_changes_uid() -> anyhow::Result<()> {
+fn with_temp_euid_changes_uid() -> color_eyre::Result<()> {
     if !geteuid().is_root() {
         eprintln!("skipping root-dependent test");
         return Ok(());
@@ -74,7 +74,7 @@ mod dir_accessible_tests {
     use tempfile::tempdir;
 
     #[rstest]
-    fn make_dir_accessible_allows_nobody() -> anyhow::Result<()> {
+    fn make_dir_accessible_allows_nobody() -> color_eyre::Result<()> {
         if !geteuid().is_root() {
             eprintln!("skipping root-dependent test");
             return Ok(());
@@ -92,7 +92,7 @@ mod dir_accessible_tests {
 
 #[cfg(unix)]
 #[rstest]
-fn run_requires_root() -> anyhow::Result<()> {
+fn run_requires_root() -> color_eyre::Result<()> {
     if !geteuid().is_root() {
         eprintln!("skipping root-dependent test");
         return Ok(());

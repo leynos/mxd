@@ -1,7 +1,7 @@
 // Library for postgres_setup_unpriv
 #![allow(non_snake_case)]
 
-use anyhow::{bail, Context, Result};
+use color_eyre::eyre::{bail, Context, Result};
 use nix::unistd::{chown, getresuid, geteuid, setresuid, Uid};
 use ortho_config::OrthoConfig;
 use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
@@ -145,6 +145,8 @@ pub fn nobody_uid() -> Uid {
 }
 
 pub fn run() -> Result<()> {
+    color_eyre::install()?;
+
     // Running as non-root can't change ownership of installation/data
     // directories. Fail fast instead of attempting setup and confusing users.
     if !geteuid().is_root() {
@@ -166,8 +168,10 @@ pub fn run() -> Result<()> {
         with_temp_euid(nobody, || {
             rt.block_on(async {
                 let mut pg = PostgreSQL::new(settings);
-                pg.setup().await.context("postgresql_embedded::setup() failed")?;
-                Ok::<(), anyhow::Error>(())
+                pg.setup()
+                    .await
+                    .wrap_err("postgresql_embedded::setup() failed")?;
+                Ok::<(), color_eyre::Report>(())
             })
         })?;
     }
@@ -175,8 +179,10 @@ pub fn run() -> Result<()> {
     {
         rt.block_on(async {
             let mut pg = PostgreSQL::new(settings);
-            pg.setup().await.context("postgresql_embedded::setup() failed")?;
-            Ok::<(), anyhow::Error>(())
+            pg.setup()
+                .await
+                .wrap_err("postgresql_embedded::setup() failed")?;
+            Ok::<(), color_eyre::Report>(())
         })?;
     }
 
