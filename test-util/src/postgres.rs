@@ -15,6 +15,9 @@ const NOBODY_UID: u32 = 65_534;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseUrl(String);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabaseName(String);
+
 impl DatabaseUrl {
     pub fn parse(url: &str) -> Result<Self, url::ParseError> {
         Url::parse(url)?;
@@ -32,6 +35,19 @@ impl AsRef<str> for DatabaseUrl {
 }
 
 impl std::fmt::Display for DatabaseUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
+}
+
+impl Deref for DatabaseName {
+    type Target = str;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl AsRef<str> for DatabaseName {
+    fn as_ref(&self) -> &str { &self.0 }
+}
+
+impl std::fmt::Display for DatabaseName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(f) }
 }
 
