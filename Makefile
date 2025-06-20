@@ -22,9 +22,9 @@ clean:
 test: test-postgres test-sqlite
 
 test-postgres: target/debug/postgres-setup-unpriv
-	RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres
+        RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres
 test-sqlite:
-	RUSTFLAGS="-D warnings" cargo test --features sqlite
+        RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --features sqlite
 
 target/debug/mxd:
 	cargo build --bin mxd --features sqlite

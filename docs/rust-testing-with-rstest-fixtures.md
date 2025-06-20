@@ -832,6 +832,9 @@ A default timeout for all `rstest` async tests can also be set using the
 compile time.10 This built-in timeout support is a practical feature for
 ensuring test suite stability.
 
+The `Makefile` sets `RSTEST_TIMEOUT=20` when running tests so async
+integration tests fail after 20 seconds if they hang.
+
 ## VII. Working with External Resources and Test Data
 
 Tests often need to interact with the filesystem, databases, or network
