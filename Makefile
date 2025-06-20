@@ -24,7 +24,10 @@ test: test-postgres test-sqlite
 test-postgres: target/debug/postgres-setup-unpriv
         RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres
 test-sqlite:
-        RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --features sqlite
+# File: Makefile
+# (around line 27)
+
+	RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --features sqlite
 
 target/debug/mxd:
 	cargo build --bin mxd --features sqlite
