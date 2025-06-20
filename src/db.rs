@@ -162,7 +162,7 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
 /// # Examples
 ///
 /// ```
-/// # use your_crate::audit_postgres_features;
+/// # use mxd::db::audit_postgres_features;
 /// # async fn check(conn: &mut diesel_async::AsyncPgConnection) {
 /// let result = audit_postgres_features(conn).await;
 /// assert!(result.is_ok());
