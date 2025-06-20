@@ -10,9 +10,9 @@ pub mod connection_ext;
 pub mod cte;
 pub mod macros;
 
-pub use builders::RecursiveParts;
 #[deprecated(note = "Use `RecursiveCTEExt::with_recursive` instead")]
 pub use builders::with_recursive;
+pub use builders::{RecursiveParts, with_cte};
 pub use columns::Columns;
 pub use connection_ext::RecursiveCTEExt;
 pub use cte::RecursiveBackend;

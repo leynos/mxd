@@ -1,9 +1,10 @@
 # diesel_cte_ext
 
-`diesel_cte_ext` adds a small helper for building recursive
-[Common Table Expressions](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-RECURSIVE)
-with Diesel. The crate exports a connection extension trait providing
-`with_recursive` which constructs a query representing a `WITH RECURSIVE` block.
+`diesel_cte_ext` adds small helpers for building Common Table Expressions
+([CTEs](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-RECURSIVE))
+with Diesel. The crate exports a connection extension trait providing two
+builders: `with_recursive` for recursive CTEs and `with_cte` for plain `WITH`
+blocks.
 
 ```rust
 use diesel::dsl::sql;
@@ -22,6 +23,15 @@ let rows: Vec<i32> = SqliteConnection::with_recursive(
     ),
 )
     .load(&mut conn)?;
+
+// Plain CTE using `with_cte`
+let val: i32 = SqliteConnection::with_cte(
+    "x",
+    &["n"],
+    sql::<Integer>("SELECT 42"),
+    sql::<Integer>("SELECT n FROM x"),
+)
+    .get_result(&mut conn)?;
 ```
 
 The `seed_query!` and `step_query!` macros wrap regular Diesel expressions so
@@ -93,8 +103,53 @@ connections.
 ## Capabilities
 
 - Construct a single recursive CTE with a seed query, step query and body.
+- Build a simple `WITH` block via `with_cte`.
 - Tested with both SQLite and PostgreSQL back ends.
 - Compatible with Diesel 2.x synchronous and `async` connections.
+
+## Diagram
+
+```mermaid
+classDiagram
+    class WithCte {
+        +ctename: &'static str
+        +columns: Columns<Cols>
+        +cte: Cte
+        +body: Body
+        +_marker: PhantomData<DB>
+    }
+    WithCte <|.. QueryId
+    WithCte <|.. Query
+    WithCte <|.. QueryFragment
+    WithCte <|.. RunQueryDsl
+
+    class RecursiveCTEExt {
+        <<trait>>
+        +with_recursive(...): ...
+        +with_cte(...): WithCte
+    }
+    RecursiveCTEExt <|.. SqliteConnection
+    RecursiveCTEExt <|.. AsyncConnection
+
+    class builders {
+        +with_recursive(...)
+        +with_cte(...): WithCte
+    }
+
+    class Columns {
+        <<generic>>
+    }
+
+    class SqliteConnection
+    class AsyncConnection
+
+    WithCte o-- Columns
+    RecursiveCTEExt ..> WithCte : returns
+    builders ..> WithCte : returns
+    RecursiveCTEExt ..> builders : uses
+    SqliteConnection ..|> RecursiveCTEExt
+    AsyncConnection ..|> RecursiveCTEExt
+```
 
 ## Limitations
 
