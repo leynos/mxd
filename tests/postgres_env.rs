@@ -14,7 +14,7 @@ fn external_postgres_is_used() -> Result<(), Box<dyn std::error::Error>> {
         let db = PostgresTestDb::new()?;
         assert!(!db.uses_embedded());
         assert!(db.url.starts_with(prefix));
-        assert_ne!(db.url, base);
+        assert_ne!(db.url.as_ref(), base);
         Ok::<_, Box<dyn std::error::Error>>(())
     })
 }
