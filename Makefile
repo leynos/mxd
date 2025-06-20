@@ -2,11 +2,16 @@
 
 corpus:
 	cargo run --bin gen_corpus
-
+	
 sqlite: target/debug/mxd
 postgres: target/postgres/debug/mxd
 sqlite-release: target/release/mxd
 postgres-release: target/postgres/release/mxd
+
+POSTGRES_SETUP_SRCS := $(wildcard postgres_setup_unpriv/src/*.rs)
+
+target/debug/postgres-setup-unpriv: $(POSTGRES_SETUP_SRCS) postgres_setup_unpriv/Cargo.toml
+	cargo build --bin postgres-setup-unpriv --manifest-path postgres_setup_unpriv/Cargo.toml --target-dir target
 
 all: sqlite-release
 
@@ -16,9 +21,9 @@ clean:
 
 test: test-postgres test-sqlite
 
-test-postgres:
+test-postgres: target/debug/postgres-setup-unpriv
 	RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres
-test-sqlite:
+test-sqlite: target/debug/postgres-setup-unpriv
 	RUSTFLAGS="-D warnings" cargo test --features sqlite
 
 target/debug/mxd:
