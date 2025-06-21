@@ -30,7 +30,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
+      - uses: leynos/shared-actions/.github/actions/setup-rust@v1
         with:
           install-postgres-deps: ${{ matrix.feature == 'postgres' }}
       - name: Export POSTGRES_TEST_URL
@@ -56,7 +56,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
+      - uses: leynos/shared-actions/.github/actions/setup-rust@v1
       - name: Add Windows GNU target
         run: rustup target add x86_64-pc-windows-gnu
       - name: Format
@@ -90,7 +90,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
+      - uses: leynos/shared-actions/.github/actions/setup-rust@v1
         with:
           install-postgres-deps: true
       - uses: taiki-e/install-action@v2
