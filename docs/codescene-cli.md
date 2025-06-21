@@ -1,8 +1,8 @@
 # CodeScene Coverage Tool
 
 This repository uses the CodeScene CLI to report code coverage metrics in CI.
-A shared GitHub Action (`leynos/shared-actions/upload-codescene-coverage@v1.0.3`)
-handles downloading and caching the CLI before uploading coverage results. The
+A shared GitHub Action (`leynos/shared-actions/upload-codescene-coverage@v1.1.0`)
+  handles downloading and caching the CLI before uploading coverage results. The
 action verifies the installer using a pinned SHA-256 checksum.
 
 The expected checksum is stored in the workflow as the environment variable
