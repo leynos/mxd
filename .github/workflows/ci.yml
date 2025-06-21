@@ -30,9 +30,10 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
+      - uses: leynos/shared-actions/.github/actions/setup-rust@v1.1.0
         with:
           install-postgres-deps: ${{ matrix.feature == 'postgres' }}
+          install-sqlite-deps: ${{ matrix.feature == 'sqlite' }}
       - name: Export POSTGRES_TEST_URL
         if: matrix.feature == 'postgres'
         uses: ./.github/actions/export-postgres-url
@@ -56,7 +57,9 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
+      - uses: leynos/shared-actions/.github/actions/setup-rust@v1.1.0
+        with:
+          install-sqlite-deps: true
       - name: Add Windows GNU target
         run: rustup target add x86_64-pc-windows-gnu
       - name: Format
@@ -90,7 +93,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
+      - uses: leynos/shared-actions/.github/actions/setup-rust@v1.1.0
         with:
           install-postgres-deps: true
       - uses: taiki-e/install-action@v2
@@ -114,10 +117,10 @@ jobs:
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
       - name: Upload coverage data to CodeScene
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@v1
+        if: ${{ secrets.CS_ACCESS_TOKEN != '' }}
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@v1.1.0
         with:
           path: lcov.info
           format: lcov
-        env:
-          CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
-          CODESCENE_CLI_SHA256: ${{ env.CODESCENE_CLI_SHA256 }}
+          access-token: ${{ secrets.CS_ACCESS_TOKEN }}
+          installer-checksum: ${{ env.CODESCENE_CLI_SHA256 }}
