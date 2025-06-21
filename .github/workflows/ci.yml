@@ -117,6 +117,7 @@ jobs:
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
       - name: Upload coverage data to CodeScene
+        if: ${{ secrets.CS_ACCESS_TOKEN != '' }}
         uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@v1.1.0
         with:
           path: lcov.info
