@@ -120,6 +120,5 @@ jobs:
         with:
           path: lcov.info
           format: lcov
-        env:
-          CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
-          CODESCENE_CLI_SHA256: ${{ env.CODESCENE_CLI_SHA256 }}
+          access-token: ${{ secrets.CS_ACCESS_TOKEN }}
+          installer-checksum: ${{ env.CODESCENE_CLI_SHA256 }}
