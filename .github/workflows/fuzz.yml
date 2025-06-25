@@ -16,8 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      # Cache ~/.cargo and target/
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache Cargo directories
+        uses: Swatinem/rust-cache@v2
 
       - name: Build fuzzing container
         run: docker build -t mxd-fuzz -f fuzz/Dockerfile .
