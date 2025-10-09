@@ -12,24 +12,23 @@ use mxd::{
 use test_util::{handshake, setup_files_db};
 mod common;
 
-#[test]
-fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
-    let Some(server) = common::start_server_or_skip(setup_files_db)? else {
-        return Ok(());
-    };
-
-    let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
-
-    handshake(&mut stream)?;
-
-    // login
-    let params = vec![
-        (FieldId::Login, b"alice".as_ref()),
-        (FieldId::Password, b"secret".as_ref()),
-    ];
+/// Performs the login transaction for a test connection.
+///
+/// # Examples
+/// ```no_run
+/// # use std::{error::Error, net::TcpStream};
+/// # fn demo() -> Result<(), Box<dyn Error>> {
+/// # let mut stream = TcpStream::connect(("127.0.0.1", 9999))?;
+/// perform_login(&mut stream, b"alice", b"secret")?;
+/// # Ok(())
+/// # }
+/// ```
+fn perform_login(
+    stream: &mut TcpStream,
+    username: &[u8],
+    password: &[u8],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let params = vec![(FieldId::Login, username), (FieldId::Password, password)];
     let payload = encode_params(&params)?;
     let payload_len = u32::try_from(payload.len())
         .expect("payload length fits within the 32-bit header field");
@@ -52,7 +51,22 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_eq!(reply_hdr.error, 0);
 
-    // list files
+    Ok(())
+}
+
+/// Requests the remote file list and returns the decoded filenames.
+///
+/// # Examples
+/// ```no_run
+/// # use std::{error::Error, net::TcpStream};
+/// # fn demo() -> Result<(), Box<dyn Error>> {
+/// # let mut stream = TcpStream::connect(("127.0.0.1", 9999))?;
+/// let names = get_file_list(&mut stream)?;
+/// # assert!(names.is_empty());
+/// # Ok(())
+/// # }
+/// ```
+fn get_file_list(stream: &mut TcpStream) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -67,6 +81,7 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
         payload: Vec::new(),
     };
     stream.write_all(&tx.to_bytes())?;
+    let mut buf = [0u8; 20];
     stream.read_exact(&mut buf)?;
     let hdr = FrameHeader::from_bytes(&buf);
     let mut payload = vec![0u8; hdr.data_size as usize];
@@ -77,16 +92,34 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
     };
     assert_eq!(resp.header.error, 0);
     let params = decode_params(&resp.payload)?;
-    let names: Vec<String> = params
+    let names = params
         .into_iter()
-        .filter_map(|(id, d)| {
+        .filter_map(|(id, data)| {
             if id == FieldId::FileName {
-                Some(String::from_utf8(d).unwrap())
+                Some(String::from_utf8(data).expect("field data is valid UTF-8"))
             } else {
                 None
             }
         })
         .collect();
+
+    Ok(names)
+}
+
+#[test]
+fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
+    let Some(server) = common::start_server_or_skip(setup_files_db)? else {
+        return Ok(());
+    };
+
+    let port = server.port();
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
+
+    handshake(&mut stream)?;
+    perform_login(&mut stream, b"alice", b"secret")?;
+    let names = get_file_list(&mut stream)?;
     assert_eq!(names, vec!["fileA.txt", "fileC.txt"]);
     Ok(())
 }
