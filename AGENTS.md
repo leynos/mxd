@@ -9,22 +9,29 @@
 - **Clarity over cleverness.** Be concise, but favour explicit over terse or
   obscure idioms. Prefer code that's easy to follow.
 - **Use functions and composition.** Avoid repetition by extracting reusable
-  logic. Prefer generators or comprehensions, and declarative code to imperative
-  repetition when readable.
+  logic. Prefer generators or comprehensions, and declarative code to
+  imperative repetition when readable.
 - **Small, meaningful functions.** Functions must be small, clear in purpose,
   single responsibility, and obey command/query segregation.
 - **Clear commit messages.** Commit messages should be descriptive, explaining
   what was changed and why.
 - **Name things precisely.** Use clear, descriptive variable and function names.
   For booleans, prefer names with `is`, `has`, or `should`.
-- **Use hyphens (`kebab-case`) for crate names** as defined in `Cargo.toml`.
-- **Use underscores (`snake_case`) for directory names and module files.**
-  Example: a crate named `my-crate` maps to `src/my_crate.rs` or the
-  `my_crate/` directory.
 - **Structure logically.** Each file should encapsulate a coherent module. Group
   related code (e.g., models + utilities + fixtures) close together.
 - **Group by feature, not layer.** Colocate views, logic, fixtures, and helpers
   related to a domain concept rather than splitting by type.
+- **Use consistent spelling and grammar.** Comments must use en-GB-oxendict
+  ("-ize" / "-yse" / "-our") spelling and grammar, with the exception of
+  references to external APIs.
+- **Illustrate with clear examples.** Function documentation must include clear
+  examples demonstrating the usage and outcome of the function. Test
+  documentation should omit examples where the example serves only to reiterate
+  the test logic.
+- **Keep file size manageable.** No single code file may be longer than 400
+  lines.  Long switch statements or dispatch tables should be broken up by
+  feature and constituents colocated with targets. Large blocks of test data
+  should be moved to external data files.
 
 ## Documentation Maintenance
 
@@ -33,8 +40,11 @@
   choices, and architectural decisions.
 - **Update:** When new decisions are made, requirements change, libraries are
   added/removed, or architectural patterns evolve, **proactively update** the
-  relevant file(s) in the `docs/` directory to reflect the latest state. Ensure
-  the documentation remains accurate and current.
+  relevant file(s) in the `docs/` directory to reflect the latest state.
+  **Ensure the documentation remains accurate and current.**
+- Documentation must use en-GB-oxendict ("-ize" / "-yse" / "-our") spelling
+  and grammar. (EXCEPTION: the naming of the "LICENSE" file, which is to be
+  left unchanged for community consistency.)
 
 ## Change Quality & Committing
 
@@ -42,7 +52,12 @@
   subsequent commit) should represent a single logical unit of work.
 - **Quality Gates:** Before considering a change complete or proposing a commit,
   ensure it meets the following criteria:
-  - Passes all relevant unit and behavioral tests according to the guidelines
+  - New functionality or changes in behaviour are fully validated by relevant
+    unit tests and behavioural tests.
+  - Where a bug is being fixed, a unittest has been provided demonstrating the
+    behaviour being corrected both to validate the fix and to guard against
+    regression.
+  - Passes all relevant unit and behavioural tests according to the guidelines
     above.
   - Passes lint checks
   - Adheres to formatting standards tested using a formatting validator.
@@ -98,9 +113,34 @@ This repository is written in Rust and uses Cargo for building and dependency
 management. Contributors should follow these best practices when working on the
 project:
 
-- Run `cargo fmt --all`, and `cargo clippy -- -D warnings` after making any
-  change.
-- Run `make test` before committing, in addition to the above.
+- Run `make check-fmt`, `make lint`, and `make test` before committing. These
+  targets wrap the following commands so contributors understand the exact
+  behaviour and policy enforced:
+  - `make check-fmt` executes:
+
+    ```sh
+    cargo fmt --workspace -- --check
+    ```
+
+    validating formatting across the entire workspace without modifying files.
+  - `make lint` executes:
+
+    ```sh
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    ```
+
+    linting every target with all features enabled and denying all Clippy
+    warnings.
+  - `make test` executes:
+
+    ```sh
+    cargo test --workspace
+    ```
+
+    running the full workspace test suite. Use `make fmt`
+    (`cargo fmt --workspace`) to apply formatting fixes reported by the
+    formatter check.
+- Clippy warnings MUST be disallowed.
 - Fix any warnings emitted during tests in the code itself rather than
   silencing them.
 - Where a function is too long, extract meaningfully named helper functions
@@ -111,6 +151,8 @@ project:
   amount of data returned.
 - Write unit and behavioural tests for new functionality. Run both before and
   after making any change.
+- Every module **must** begin with a module level (`//!`) comment explaining the
+  module's purpose and utility.
 - Document public APIs using Rustdoc comments (`///`) so documentation can be
   generated with cargo doc.
 - Prefer immutable data and avoid unnecessary `mut` bindings.
@@ -118,26 +160,125 @@ project:
 - Use explicit version ranges in `Cargo.toml` and keep dependencies up-to-date.
 - Avoid `unsafe` code unless absolutely necessary and document any usage
   clearly.
-- **Do not construct SQL by concatenating strings.** Always use Diesel's query
-  builder or parameter binding to avoid injection vulnerabilities.
+- Place function attributes **after** doc comments.
+- Do not use `return` in single-line functions.
+- Use predicate functions for conditional criteria with more than two branches.
+- Lints must not be silenced except as a **last resort**.
+- Lint rule suppressions must be tightly scoped and include a clear reason.
+- Prefer `expect` over `allow`.
+- Use `rstest` fixtures for shared setup.
+- Replace duplicated tests with `#[rstest(...)]` parameterised cases.
+- Prefer `mockall` for mocks/stubs.
+- Prefer `.expect()` over `.unwrap()`.
+- Use `concat!()` to combine long string literals rather than escaping newlines
+  with a backslash.
+- Prefer single line versions of functions where appropriate. I.e.,
 
-**Behavioral tests for the `mxd` application should be placed in the repository
-top-level `tests/` directory (not under `validator/tests`).**
+  ```rust
+  pub fn new(id: u64) -> Self { Self(id) }
+  ```
+
+  Instead of:
+
+  ```rust
+  pub fn new(id: u64) -> Self {
+      Self(id)
+  }
+  ```
+
+- Use NewTypes to model domain values and eliminate "integer soup". Reach for
+  `newt-hype` when introducing many homogeneous wrappers that share behaviour;
+  add small shims such as `From<&str>` and `AsRef<str>` for string-backed
+  wrappers. For path-centric wrappers implement `AsRef<Path>` alongside
+  `into_inner()` and `to_path_buf()`; avoid attempting
+  `impl From<Wrapper> for PathBuf` because of the orphan rule. Prefer explicit
+  tuple structs whenever bespoke validation or tailored trait surfaces are
+  required, customising `Deref`, `AsRef`, and `TryFrom` per type. Use
+  `the-newtype` when defining traits and needing blanket implementations that
+  apply across wrappers satisfying `Newtype + AsRef/AsMut<Inner>`, or when
+  establishing a coherent internal convention that keeps trait forwarding
+  consistent without per-type boilerplate. Combine approaches: lean on
+  `newt-hype` for the common case, tuple structs for outliers, and
+  `the-newtype` to unify behaviour when you own the trait definitions.
+
+### Dependency Management
+
+- **Mandate caret requirements for all dependencies.** All crate versions
+  specified in `Cargo.toml` must use SemVer-compatible caret requirements
+  (e.g., `some-crate = "1.2.3"`). This is Cargo's default and allows for safe,
+  non-breaking updates to minor and patch versions while preventing breaking
+  changes from new major versions. This approach is critical for ensuring build
+  stability and reproducibility.
+- **Prohibit unstable version specifiers.** The use of wildcard (`*`) or
+  open-ended inequality (`>=`) version requirements is strictly forbidden as
+  they introduce unacceptable risk and unpredictability. Tilde requirements
+  (`~`) should only be used where a dependency must be locked to patch-level
+  updates for a specific, documented reason.
+
+### Error Handling
+
+- **Prefer semantic error enums**. Derive `std::error::Error` (via the
+  `thiserror` crate) for any condition the caller might inspect, retry, or map
+  to an HTTP status.
+- **Use an *opaque* error only at the app boundary**. Use `eyre::Report` for
+  human-readable logs; these should not be exposed in public APIs.
+- **Never export the opaque type from a library**. Convert to domain enums at
+  API boundaries, and to `eyre` only in the main `main()` entrypoint or
+  top-level async task.
 
 ## Markdown Guidance
 
-- Validate Markdown files using the provided `markdownlint` executable.
-  This wrapper already configures `markdownlint-cli2` so run it directly.
+- Validate Markdown files using `make markdownlint`.
+- Run `make fmt` after any documentation changes to format all Markdown
+  files and fix table markup.
+- Validate Mermaid diagrams in Markdown files by running `make nixie`.
+- Markdown paragraphs and bullet points must be wrapped at 80 columns.
+- Code blocks must be wrapped at 120 columns.
+- Tables and headings must not be wrapped.
+- Use dashes (`-`) for list bullets.
+- Use GitHub-flavoured Markdown footnotes (`[^1]`) for references and
+  footnotes.
 
-  ```bash
-  markdownlint '**/*.md'
-  ```
+## Additional tooling
 
-- Validate Markdown Mermaid diagrams using the `nixie` CLI. `nixie` is a
-  standalone command-line tool, not an npm package. Invoke it directly with
-  Markdown paths:
-  `nixie <file1.md> <file2.md> [...]`. Use glob patterns like
-  `nixie '**/*.md'` to check everything at once.
+The following tooling is available in this environment:
 
-**These practices will help maintain a high-quality codebase and make
-collaboration easier**
+- `mbake` – A Makefile validator. Run using `mbake validate Makefile`.
+- `strace` – Traces system calls and signals made by a process; useful for
+  debugging runtime behaviour and syscalls.
+- `gdb` – The GNU Debugger, for inspecting and controlling programs as they
+  execute (or post-mortem via core dumps).
+- `ripgrep` – Fast, recursive text search tool (`grep` alternative) that
+  respects `.gitignore` files.
+- `ltrace` – Traces calls to dynamic library functions made by a process.
+- `valgrind` – Suite for detecting memory leaks, profiling, and debugging
+  low-level memory errors.
+- `bpftrace` – High-level tracing tool for eBPF, using a custom scripting
+  language for kernel and application tracing.
+- `lsof` – Lists open files and the processes using them.
+- `htop` – Interactive process viewer (visual upgrade to `top`).
+- `iotop` – Displays and monitors I/O usage by processes.
+- `ncdu` – NCurses-based disk usage viewer for finding large files/folders.
+- `tree` – Displays directory structure as a tree.
+- `bat` – `cat` clone with syntax highlighting, Git integration, and paging.
+- `delta` – Syntax-highlighted pager for Git and diff output.
+- `tcpdump` – Captures and analyses network traffic at the packet level.
+- `nmap` – Network scanner for host discovery, port scanning, and service
+  identification.
+- `lldb` – LLVM debugger, alternative to `gdb`.
+- `eza` – Modern `ls` replacement with more features and better defaults.
+- `fzf` – Interactive fuzzy finder for selecting files, commands, etc.
+- `hyperfine` – Command-line benchmarking tool with statistical output.
+- `shellcheck` – Linter for shell scripts, identifying errors and bad practices.
+- `fd` – Fast, user-friendly `find` alternative with sensible defaults.
+- `checkmake` – Linter for `Makefile`s, ensuring they follow best practices and
+  conventions.
+- `srgn` – [Structural grep](https://github.com/alexpovel/srgn), searches code
+  and enables editing by syntax tree patterns.
+- `difft` **(Difftastic)** – Semantic diff tool that compares code structure
+  rather than just text differences.
+
+## Key Takeaway
+
+These practices help maintain a high-quality codebase and facilitate
+collaboration.
