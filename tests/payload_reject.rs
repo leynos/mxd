@@ -1,4 +1,5 @@
 use std::{
+    convert::TryFrom,
     io::{Read, Write},
     net::TcpStream,
     time::Duration,
@@ -26,15 +27,14 @@ fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
         "protocol mismatch in handshake reply"
     );
     let code = u32::from_be_bytes(reply[4..8].try_into().unwrap());
-    assert_eq!(code, 0, "handshake returned error code {}", code);
+    assert_eq!(code, 0, "handshake returned error code {code}");
     Ok(())
 }
 
 #[test]
 fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|_| Ok(()))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
+        return Ok(());
     };
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
@@ -43,14 +43,15 @@ fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
     handshake(&mut stream)?;
 
     let params = encode_params(&[(FieldId::Other(1), b"bogus".as_ref())])?;
+    let size = u32::try_from(params.len()).expect("params fit in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::DownloadBanner.into(),
         id: 10,
         error: 0,
-        total_size: params.len() as u32,
-        data_size: params.len() as u32,
+        total_size: size,
+        data_size: size,
     };
     let tx = Transaction {
         header,
@@ -67,23 +68,23 @@ fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn user_name_list_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|_| Ok(()))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
+        return Ok(());
     };
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     handshake(&mut stream)?;
 
     let params = encode_params(&[(FieldId::Other(1), b"bogus".as_ref())])?;
+    let size = u32::try_from(params.len()).expect("params fit in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::GetUserNameList.into(),
         id: 11,
         error: 0,
-        total_size: params.len() as u32,
-        data_size: params.len() as u32,
+        total_size: size,
+        data_size: size,
     };
     let tx = Transaction {
         header,

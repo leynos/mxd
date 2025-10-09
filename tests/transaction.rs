@@ -9,14 +9,16 @@ fn build_tx() -> Transaction {
     payload.extend_from_slice(&[0x00, 0x02]);
     payload.extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0xff]);
     payload.extend_from_slice(&[0x00, 0x02, 0x00, 0x02, 0xaa, 0xbb]);
+    let payload_len = u32::try_from(payload.len())
+        .expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: 1,
         id: 1,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_len,
+        data_size: payload_len,
     };
     Transaction { header, payload }
 }
@@ -41,17 +43,20 @@ async fn roundtrip_multi_frame() {
     let mut payload = Vec::new();
     payload.extend_from_slice(&[0x00, 0x01]); // one param
     payload.extend_from_slice(&[0x00, 0x10]); // field id 16
-    let big_size = (MAX_FRAME_DATA as u16) + 1;
+    let big_size = u16::try_from(MAX_FRAME_DATA + 1)
+        .expect("frame data limit fits within 16 bits when split");
     payload.extend_from_slice(&big_size.to_be_bytes());
     payload.extend(vec![0u8; big_size as usize]);
+    let payload_len = u32::try_from(payload.len())
+        .expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: 1,
         id: 2,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_len,
+        data_size: payload_len,
     };
     let tx = Transaction { header, payload };
     let (mut a, mut b) = duplex(65536);
@@ -116,7 +121,8 @@ async fn duplicate_field_error() {
         .extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0xee]);
     tx.payload[0] = 0x00;
     tx.payload[1] = 0x03;
-    tx.header.total_size = tx.payload.len() as u32;
+    tx.header.total_size = u32::try_from(tx.payload.len())
+        .expect("payload length fits within the 32-bit header field");
     tx.header.data_size = tx.header.total_size;
     let (mut a, mut b) = duplex(MAX_PAYLOAD_SIZE * 2);
     let mut writer = TransactionWriter::new(&mut a);
@@ -147,14 +153,16 @@ async fn writer_payload_too_large() {
         payload.extend_from_slice(&0xffffu16.to_be_bytes());
         payload.extend(vec![0u8; 0xffff]);
     }
+    let payload_len = u32::try_from(payload.len())
+        .expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: 1,
         id: 99,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_len,
+        data_size: payload_len,
     };
     let tx = Transaction { header, payload };
     let (mut w, _) = duplex(MAX_PAYLOAD_SIZE * 2);
@@ -197,7 +205,8 @@ async fn roundtrip_empty_payload() {
 async fn oversized_payload() {
     let mut tx = build_tx();
     tx.payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
-    tx.header.total_size = tx.payload.len() as u32;
+    tx.header.total_size = u32::try_from(tx.payload.len())
+        .expect("payload length fits within the 32-bit header field");
     tx.header.data_size = tx.header.total_size;
     let (mut a, mut b) = duplex(MAX_PAYLOAD_SIZE * 2);
     let mut buf = [0u8; HEADER_LEN];
@@ -229,14 +238,16 @@ fn short_frame_error() {
 #[test]
 fn parse_transaction_rejects_large_frame() {
     let payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
+    let payload_len = u32::try_from(payload.len())
+        .expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: 9,
         id: 5,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_len,
+        data_size: payload_len,
     };
     let tx = Transaction { header, payload };
     let frame = tx.to_bytes();
@@ -265,14 +276,16 @@ fn duplicate_news_category_fields_allowed() {
         (FieldId::NewsCategory, b"Updates".as_ref()),
     ];
     let payload = encode_params(&params).unwrap();
+    let payload_len = u32::try_from(payload.len())
+        .expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::NewsCategoryNameList.into(),
         id: 5,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_len,
+        data_size: payload_len,
     };
     let tx = Transaction { header, payload };
     let frame = tx.to_bytes();

@@ -56,11 +56,16 @@ static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
     Ok(bin)
 });
 
-#[cfg(all(feature = "sqlite", feature = "postgres"))]
-compile_error!("Choose either sqlite or postgres, not both");
-
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
+
+#[inline]
+fn ensure_single_backend() {
+    assert!(
+        !cfg!(all(feature = "sqlite", feature = "postgres")),
+        "Choose either sqlite or postgres, not both",
+    );
+}
 
 #[cfg(unix)]
 use nix::sys::signal::{Signal, kill};
@@ -102,7 +107,7 @@ pub struct TestServer {
 /// .unwrap();
 /// assert!(db_url.ends_with("mxd.db"));
 /// ```
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<String, Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
@@ -201,7 +206,8 @@ impl TestServer {
     where
         F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
     {
-        #[cfg(feature = "sqlite")]
+        ensure_single_backend();
+        #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
         {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
@@ -216,7 +222,7 @@ impl TestServer {
         }
     }
 
-    #[cfg(feature = "sqlite")]
+    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
     /// Launches the `mxd` server on a random available port with the specified database URL for
     /// integration testing.
     ///

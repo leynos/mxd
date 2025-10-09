@@ -27,15 +27,18 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 diesel_cte_ext = { path = "diesel_cte_ext", default-features = false, features = ["async"] }
 futures-util = "0.3"
 tracing = "0.1"
-figment = { version = "0.10", features = ["toml", "env", "test"] }
+figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"
 anyhow = "1"
 clap-dispatch = "0.1"
 url = { version = "2", optional = true }
+figment-json5 = { version = "0.1", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+toml = { version = "0.8", optional = true }
 
 [features]
-default = ["sqlite"]
+default = ["sqlite", "toml"]
 postgres = [
     "diesel/postgres",
     "diesel_migrations/postgres",
@@ -55,9 +58,10 @@ sqlite = [
     "test-util/sqlite",
 ]
 returning_clauses_for_sqlite_3_35 = ["diesel/returning_clauses_for_sqlite_3_35"]
-json5 = []
-yaml = []
-toml = []
+json5 = ["figment-json5"]
+yaml = ["figment/yaml", "serde_yaml"]
+toml = ["figment/toml", "dep:toml"]
+lint = []
 
 [dev-dependencies]
 test-util = { path = "test-util", default-features = false }

@@ -10,7 +10,7 @@ use argon2::{Algorithm, Argon2, Params, ParamsBuilder, Version};
 use clap::{Args, Parser, Subcommand};
 use clap_dispatch::clap_dispatch;
 use diesel_async::AsyncConnection;
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use mxd::db::audit_postgres_features;
 #[cfg(feature = "sqlite")]
 use mxd::db::audit_sqlite_features;
@@ -31,7 +31,7 @@ use tokio::{
     task::JoinSet,
     time::timeout,
 };
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use url::Url;
 
 /// Waits for a shutdown signal, completing when termination is requested.
@@ -182,7 +182,7 @@ async fn main() -> Result<()> {
     accept_connections(listener, pool).await
 }
 
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 fn is_postgres_url(s: &str) -> bool {
     Url::parse(s)
         .map(|u| matches!(u.scheme(), "postgres" | "postgresql"))
@@ -190,7 +190,7 @@ fn is_postgres_url(s: &str) -> bool {
 }
 
 async fn create_pool(database: &str) -> DbPool {
-    #[cfg(feature = "postgres")]
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     if is_postgres_url(database) {
         return establish_pool(database).await;
     }
@@ -221,8 +221,10 @@ async fn setup_database(database: &str) -> Result<DbPool> {
         let mut conn = pool.get().await.expect("failed to get db connection");
         #[cfg(feature = "sqlite")]
         audit_sqlite_features(&mut conn).await?;
-        #[cfg(feature = "postgres")]
-        audit_postgres_features(&mut conn).await?;
+        #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+        if is_postgres_url(database) {
+            audit_postgres_features(&mut *conn).await?;
+        }
         apply_migrations(&mut conn, database).await?;
     }
     Ok(pool)

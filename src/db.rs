@@ -14,13 +14,15 @@ use diesel_async::{
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
 cfg_if! {
-    if #[cfg(feature = "sqlite")] {
+    if #[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))] {
+        compile_error!("Either feature 'sqlite' or 'postgres' must be enabled, not both");
+    } else if #[cfg(feature = "sqlite")] {
         use diesel::sqlite::{Sqlite, SqliteConnection};
         pub type Backend = Sqlite;
         pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/sqlite");
         pub type DbConnection = SyncConnectionWrapper<SqliteConnection>;
         pub type DbPool = Pool<DbConnection>;
-    } else if #[cfg(feature = "postgres")] {
+    } else if #[cfg(all(feature = "postgres", not(feature = "sqlite")))] {
         use diesel::pg::Pg;
         use diesel_async::AsyncPgConnection;
         pub type Backend = Pg;
@@ -56,7 +58,9 @@ pub async fn establish_pool(database_url: &str) -> DbPool {
 }
 
 cfg_if! {
-    if #[cfg(feature = "sqlite")] {
+    if #[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))] {
+        compile_error!("Either feature 'sqlite' or 'postgres' must be enabled, not both");
+    } else if #[cfg(feature = "sqlite")] {
         /// Run embedded database migrations.
         ///
         /// # Errors
@@ -74,7 +78,7 @@ cfg_if! {
             .await?;
             Ok(())
         }
-    } else if #[cfg(feature = "postgres")] {
+    } else if #[cfg(all(feature = "postgres", not(feature = "sqlite")))] {
         /// Run embedded database migrations.
         ///
         /// # Errors
@@ -105,13 +109,26 @@ cfg_if! {
 ///
 /// # Errors
 /// Returns any error produced by Diesel while running migrations.
-#[allow(unused_variables)]
+/// Apply embedded migrations for the current backend.
+///
+/// # Errors
+/// Returns any error produced by Diesel while running migrations.
+#[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
 pub async fn apply_migrations(conn: &mut DbConnection, url: &str) -> QueryResult<()> {
-    #[cfg(feature = "postgres")]
-    return run_migrations(url).await;
-    #[cfg(feature = "sqlite")]
-    return run_migrations(conn).await;
+    let _ = url;
+    run_migrations(conn).await
+}
+
+/// Apply embedded migrations for the current backend.
+///
+/// # Errors
+/// Returns any error produced by Diesel while running migrations.
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+#[must_use = "handle the result"]
+pub async fn apply_migrations(conn: &mut DbConnection, url: &str) -> QueryResult<()> {
+    let _ = conn;
+    run_migrations(url).await
 }
 
 /// Verify that `SQLite` supports features required by the application.
@@ -643,7 +660,7 @@ mod tests {
 
     #[cfg(feature = "postgres")]
     #[tokio::test]
-    #[ignore]
+    #[ignore = "requires embedded PostgreSQL server"]
     async fn test_audit_postgres() {
         use postgresql_embedded::PostgreSQL;
 

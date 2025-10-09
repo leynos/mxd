@@ -124,21 +124,14 @@ mod tests {
     use super::*;
 
     fn expected_step_sql(join_type: &str) -> String {
-        if cfg!(feature = "postgres") {
-            format!(
-                "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each($1) seg ON \
-                 seg.key = tree.idx \n{jt} news_bundles b ON b.name = seg.value AND \n  ((tree.id \
-                 IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)",
-                jt = join_type,
-            )
-        } else {
-            format!(
-                "SELECT tree.idx + 1 AS idx, b.id AS id \nFROM tree \nJOIN json_each(?) seg ON \
-                 seg.key = tree.idx \n{jt} news_bundles b ON b.name = seg.value AND \n  ((tree.id \
-                 IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)",
-                jt = join_type,
-            )
-        }
+        let sql = r"SELECT tree.idx + 1 AS idx, b.id AS id
+FROM tree
+JOIN json_each({source}) seg ON seg.key = tree.idx
+{join_type} news_bundles b ON b.name = seg.value AND
+  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
+        let source = if cfg!(feature = "postgres") { "$1" } else { "?" };
+        sql.replace("{source}", source)
+            .replace("{join_type}", join_type)
     }
 
     #[fixture]

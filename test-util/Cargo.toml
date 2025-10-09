@@ -40,3 +40,4 @@ sqlite = [
     "diesel-async/sqlite",
     "mxd/sqlite",
 ]
+lint = []
