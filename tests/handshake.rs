@@ -8,9 +8,8 @@ mod common;
 
 #[test]
 fn handshake() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|_| Ok(()))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
+        return Ok(());
     };
     let port = server.port();
 

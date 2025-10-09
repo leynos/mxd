@@ -1,4 +1,5 @@
 use std::{
+    convert::TryFrom,
     io::{Read, Write},
     net::TcpStream,
     time::Duration,
@@ -19,7 +20,7 @@ mod common;
 
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 create_category(
@@ -33,9 +34,8 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })? {
-        Some(s) => s,
-        None => return Ok(()),
+    })? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -46,14 +46,15 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
 
     let params = vec![(FieldId::NewsPath, b"Missing".as_ref())];
     let payload = encode_params(&params)?;
+    let payload_size = u32::try_from(payload.len()).expect("payload fits in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::NewsArticleNameList.into(),
         id: 6,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_size,
+        data_size: payload_size,
     };
     let tx = Transaction { header, payload };
     stream.write_all(&tx.to_bytes())?;
@@ -67,9 +68,8 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| setup_news_db(db))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(setup_news_db)? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -80,14 +80,15 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error>> {
 
     let params = vec![(FieldId::NewsPath, b"General".as_ref())];
     let payload = encode_params(&params)?;
+    let payload_size = u32::try_from(payload.len()).expect("payload fits in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::NewsArticleNameList.into(),
         id: 7,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_size,
+        data_size: payload_size,
     };
     let tx = Transaction { header, payload };
     stream.write_all(&tx.to_bytes())?;
@@ -121,9 +122,11 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
     use chrono::{DateTime, Utc};
     use mxd::models::NewArticle;
 
-    let server = match common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
+                use mxd::schema::news_articles::dsl as a;
+
                 create_category(
                     conn,
                     &NewCategory {
@@ -132,7 +135,6 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
                     },
                 )
                 .await?;
-                use mxd::schema::news_articles::dsl as a;
                 let posted = DateTime::<Utc>::from_timestamp(1000, 0)
                     .expect("valid timestamp")
                     .naive_utc();
@@ -155,9 +157,8 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })? {
-        Some(s) => s,
-        None => return Ok(()),
+    })? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -172,14 +173,15 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
     params.push((FieldId::NewsArticleId, id_bytes.as_ref()));
     params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
     let payload = encode_params(&params)?;
+    let payload_size = u32::try_from(payload.len()).expect("payload fits in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::NewsArticleData.into(),
         id: 8,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_size,
+        data_size: payload_size,
     };
     let tx = Transaction { header, payload };
     stream.write_all(&tx.to_bytes())?;
@@ -215,7 +217,7 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 create_category(
@@ -229,9 +231,8 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })? {
-        Some(s) => s,
-        None => return Ok(()),
+    })? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -248,14 +249,15 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
     params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
     params.push((FieldId::NewsArticleData, b"hi".as_ref()));
     let payload = encode_params(&params)?;
+    let payload_size = u32::try_from(payload.len()).expect("payload fits in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::PostNewsArticle.into(),
         id: 9,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_size,
+        data_size: payload_size,
     };
     let tx = Transaction { header, payload };
     stream.write_all(&tx.to_bytes())?;
@@ -279,8 +281,9 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let mut conn = DbConnection::establish(server.db_url()).await?;
         use mxd::schema::news_articles::dsl as a;
+
+        let mut conn = DbConnection::establish(server.db_url()).await?;
         let titles = a::news_articles
             .select(a::title)
             .load::<String>(&mut conn)

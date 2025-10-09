@@ -24,7 +24,7 @@ fn external_postgres_is_used() -> Result<(), Box<dyn std::error::Error>> {
                 if e.downcast_ref::<test_util::postgres::PostgresUnavailable>()
                     .is_some()
                 {
-                    eprintln!("skipping test: {}", e);
+                    eprintln!("skipping test: {e}");
                     return Ok(());
                 }
                 Err(e)

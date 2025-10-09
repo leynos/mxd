@@ -1,4 +1,5 @@
 use std::{
+    convert::TryFrom,
     io::{Read, Write},
     net::TcpStream,
 };
@@ -27,14 +28,15 @@ fn list_categories(
         .map(|p| vec![(FieldId::NewsPath, p.as_bytes())])
         .unwrap_or_default();
     let payload = encode_params(&params)?;
+    let payload_size = u32::try_from(payload.len()).expect("payload fits in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::NewsCategoryNameList.into(),
         id: 1,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_size,
+        data_size: payload_size,
     };
     let tx = Transaction { header, payload };
     stream.write_all(&tx.to_bytes())?;
@@ -74,9 +76,8 @@ fn list_categories(
 /// Returns an error if the test server setup, TCP communication, or protocol validation fails.
 #[test]
 fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| setup_news_categories_root_db(db))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -105,9 +106,8 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
 /// ```
 #[test]
 fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| setup_news_categories_root_db(db))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -127,7 +127,7 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
 /// Returns `Ok(())` if the test passes; otherwise, returns an error if any step fails.
 #[test]
 fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
@@ -142,9 +142,8 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
             .await?;
             Ok(())
         })
-    })? {
-        Some(s) => s,
-        None => return Ok(()),
+    })? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -169,16 +168,15 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
 /// ```
 #[test]
 fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
             apply_migrations(&mut conn, db).await?;
             Ok(())
         })
-    })? {
-        Some(s) => s,
-        None => return Ok(()),
+    })? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -200,9 +198,8 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
 /// decoding fails.
 #[test]
 fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| setup_news_categories_nested_db(db))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
+        return Ok(());
     };
 
     let port = server.port();

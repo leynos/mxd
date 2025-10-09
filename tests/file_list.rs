@@ -14,9 +14,8 @@ mod common;
 
 #[test]
 fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|db| setup_files_db(db))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(setup_files_db)? else {
+        return Ok(());
     };
 
     let port = server.port();
@@ -32,14 +31,16 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
         (FieldId::Password, b"secret".as_ref()),
     ];
     let payload = encode_params(&params)?;
+    let payload_len = u32::try_from(payload.len())
+        .expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::Login.into(),
         id: 1,
         error: 0,
-        total_size: payload.len() as u32,
-        data_size: payload.len() as u32,
+        total_size: payload_len,
+        data_size: payload_len,
     };
     let tx = Transaction { header, payload };
     stream.write_all(&tx.to_bytes())?;
@@ -92,9 +93,8 @@ fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|_| Ok(()))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
+        return Ok(());
     };
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
@@ -106,14 +106,16 @@ fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
 
     // send GetFileNameList with bogus payload
     let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())])?;
+    let params_len = u32::try_from(params.len())
+        .expect("parameter block length fits within the header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::GetFileNameList.into(),
         id: 99,
         error: 0,
-        total_size: params.len() as u32,
-        data_size: params.len() as u32,
+        total_size: params_len,
+        data_size: params_len,
     };
     let tx = Transaction {
         header,

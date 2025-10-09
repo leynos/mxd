@@ -8,9 +8,8 @@ mod common;
 
 #[test]
 fn handshake_unsupported_version() -> Result<(), Box<dyn std::error::Error>> {
-    let server = match common::start_server_or_skip(|_| Ok(()))? {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
+        return Ok(());
     };
     let port = server.port();
 
@@ -27,7 +26,14 @@ fn handshake_unsupported_version() -> Result<(), Box<dyn std::error::Error>> {
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
     assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 2);
+    assert_eq!(
+        u32::from_be_bytes(
+            reply[4..8]
+                .try_into()
+                .expect("slice is 4 bytes due to reply buffer length"),
+        ),
+        2,
+    );
 
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
