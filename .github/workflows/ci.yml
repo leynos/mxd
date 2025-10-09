@@ -29,7 +29,7 @@ jobs:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@v1.1.0
         with:
           install-postgres-deps: ${{ matrix.feature == 'postgres' }}
@@ -58,7 +58,7 @@ jobs:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@v1.1.0
         with:
           install-sqlite-deps: true
@@ -96,7 +96,7 @@ jobs:
       CODESCENE_CLI_SHA256: "a1c38415c5978908283c0608b648b27e954c93882b15d8b91d052d846c3eabd8"
       BUILD_PROFILE: debug
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@v1.1.0
         with:
           install-postgres-deps: true
