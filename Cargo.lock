@@ -1426,7 +1426,7 @@ dependencies = [
  "serde_yaml",
  "temp-env",
  "test-util",
- "thiserror 1.0.69",
+ "thiserror 2.0.12",
  "tokio",
  "toml",
  "tracing",
