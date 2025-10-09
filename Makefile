@@ -1,39 +1,82 @@
-.PHONY: all clean test test-postgres test-sqlite corpus sqlite postgres sqlite-release postgres-release
+.PHONY: help all clean build release test test-postgres test-sqlite lint fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release postgres-setup
 
-corpus:
-	cargo run --bin gen_corpus
-	
-sqlite: target/debug/mxd
-postgres: target/postgres/debug/mxd
-sqlite-release: target/release/mxd
-postgres-release: target/postgres/release/mxd
-
+APP ?= mxd
+CARGO ?= cargo
+BUILD_JOBS ?=
+CLIPPY_FLAGS ?= --workspace --all-targets --all-features -- -D warnings
+MDLINT ?= markdownlint-cli2
+NIXIE ?= nixie
+RSTEST_TIMEOUT ?= 20
+SQLITE_FEATURES := --features sqlite
+POSTGRES_FEATURES := --no-default-features --features postgres
+POSTGRES_TARGET_DIR := target/postgres
+POSTGRES_SETUP_BIN ?= postgres-setup-unpriv
+POSTGRES_SETUP_TARGET := target/debug/$(POSTGRES_SETUP_BIN)
+POSTGRES_SETUP_MANIFEST := postgres_setup_unpriv/Cargo.toml
 POSTGRES_SETUP_SRCS := $(wildcard postgres_setup_unpriv/src/*.rs)
 
-target/debug/postgres-setup-unpriv: $(POSTGRES_SETUP_SRCS) postgres_setup_unpriv/Cargo.toml
-	cargo build --bin postgres-setup-unpriv --manifest-path postgres_setup_unpriv/Cargo.toml --target-dir target
+all: release ## Build release binaries for sqlite and postgres
 
-all: sqlite-release
+help: ## Show available targets
+	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \
+	awk 'BEGIN {printf "Available targets:\n"} match($$0, /^([a-zA-Z_-]+):[^#]*##[ 	]*(.*)$$/, m) {printf "  %-20s %s\n", m[1], m[2]}'
 
-clean:
-	cargo clean
-	rm -rf target/postgres
+build: sqlite postgres ## Build debug binaries for sqlite and postgres
 
-test: test-postgres test-sqlite
+release: sqlite-release postgres-release ## Build release binaries for sqlite and postgres
 
-test-postgres: target/debug/postgres-setup-unpriv
-	RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --no-default-features --features postgres -- --nocapture
-test-sqlite:
-	RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo test --features sqlite
+clean: ## Remove build artefacts
+	$(CARGO) clean
+	rm -rf $(POSTGRES_TARGET_DIR)
 
-target/debug/mxd:
-	cargo build --bin mxd --features sqlite
+corpus: ## Generate the fuzzing corpus
+	$(CARGO) run --bin gen_corpus
 
-target/postgres/debug/mxd:
-	cargo build --bin mxd --no-default-features --features postgres --target-dir target/postgres
+fmt: ## Format Rust and Markdown sources
+	$(CARGO) fmt
+	mdformat-all
 
-target/release/mxd:
-	cargo build --release --bin mxd --features sqlite
+check-fmt: ## Verify formatting for Rust sources
+	$(CARGO) fmt -- --check
 
-target/postgres/release/mxd:
-	cargo build --release --bin mxd --no-default-features --features postgres --target-dir target/postgres
+lint: ## Run Clippy with warnings denied
+	$(CARGO) clippy $(CLIPPY_FLAGS)
+
+markdownlint: ## Lint Markdown files
+	$(MDLINT) '**/*.md'
+
+nixie: ## Validate Mermaid diagrams
+	$(NIXIE) --no-sandbox
+
+test: test-postgres test-sqlite ## Run sqlite and postgres test suites
+
+test-postgres: $(POSTGRES_SETUP_TARGET) ## Run tests with the postgres backend
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(POSTGRES_FEATURES) -- --nocapture
+
+test-sqlite: ## Run tests with the sqlite backend
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(SQLITE_FEATURES)
+
+postgres-setup: $(POSTGRES_SETUP_TARGET) ## Build the unprivileged postgres setup helper
+
+$(POSTGRES_SETUP_TARGET): $(POSTGRES_SETUP_SRCS) $(POSTGRES_SETUP_MANIFEST)
+	$(CARGO) build $(BUILD_JOBS) --bin $(POSTGRES_SETUP_BIN) --manifest-path $(POSTGRES_SETUP_MANIFEST) --target-dir target
+
+sqlite: target/debug/$(APP) ## Build debug sqlite binary
+
+postgres: $(POSTGRES_TARGET_DIR)/debug/$(APP) ## Build debug postgres binary
+
+sqlite-release: target/release/$(APP) ## Build release sqlite binary
+
+postgres-release: $(POSTGRES_TARGET_DIR)/release/$(APP) ## Build release postgres binary
+
+target/debug/$(APP):
+	$(CARGO) build $(BUILD_JOBS) --bin $(APP) $(SQLITE_FEATURES)
+
+$(POSTGRES_TARGET_DIR)/debug/$(APP):
+	$(CARGO) build $(BUILD_JOBS) --bin $(APP) $(POSTGRES_FEATURES) --target-dir $(POSTGRES_TARGET_DIR)
+
+target/release/$(APP):
+	$(CARGO) build $(BUILD_JOBS) --release --bin $(APP) $(SQLITE_FEATURES)
+
+$(POSTGRES_TARGET_DIR)/release/$(APP):
+	$(CARGO) build $(BUILD_JOBS) --release --bin $(APP) $(POSTGRES_FEATURES) --target-dir $(POSTGRES_TARGET_DIR)
