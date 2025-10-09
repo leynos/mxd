@@ -65,7 +65,7 @@ lint = []
 
 [dev-dependencies]
 test-util = { path = "test-util", default-features = false }
-postgresql_embedded = { version = "0.18.5", features = ["tokio"] }
+postgresql_embedded = { version = "0.20.0", features = ["tokio"] }
 temp-env = "0.3"
 rstest = "0.26"
 
