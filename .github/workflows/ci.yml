@@ -35,7 +35,7 @@ jobs:
           install-postgres-deps: ${{ matrix.feature == 'postgres' }}
           install-sqlite-deps: ${{ matrix.feature == 'sqlite' }}
       - name: Cache Cargo directories
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
       - name: Export POSTGRES_TEST_URL
         if: matrix.feature == 'postgres'
         uses: ./.github/actions/export-postgres-url
@@ -63,7 +63,7 @@ jobs:
         with:
           install-sqlite-deps: true
       - name: Cache Cargo directories
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
       - name: Add Windows GNU target
         run: rustup target add x86_64-pc-windows-gnu
       - name: Format
@@ -101,7 +101,7 @@ jobs:
         with:
           install-postgres-deps: true
       - name: Cache Cargo directories
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
