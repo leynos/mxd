@@ -46,6 +46,7 @@ postgres = [
     "diesel_cte_ext/postgres",
     "diesel_cte_ext/async",
     "url",
+    "toml",
     "test-util/postgres",
 ]
 sqlite = [
