@@ -142,7 +142,8 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
             .await?;
             Ok(())
         })
-    })? else {
+    })?
+    else {
         return Ok(());
     };
 
@@ -175,7 +176,8 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
             apply_migrations(&mut conn, db).await?;
             Ok(())
         })
-    })? else {
+    })?
+    else {
         return Ok(());
     };
 
