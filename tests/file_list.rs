@@ -14,8 +14,12 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{handshake, setup_files_db};
+use rstest::{fixture, rstest};
+use test_util::{TestServer, handshake, setup_files_db};
 mod common;
+
+type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
+type SetupFn = fn(&str) -> TestResult<()>;
 
 /// Performs the login transaction for a test connection.
 ///
@@ -35,8 +39,8 @@ fn perform_login(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let params = vec![(FieldId::Login, username), (FieldId::Password, password)];
     let payload = encode_params(&params)?;
-    let payload_len = u32::try_from(payload.len())
-        .expect("payload length fits within the 32-bit header field");
+    let payload_len =
+        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -98,64 +102,67 @@ fn get_file_list(stream: &mut TcpStream) -> Result<Vec<String>, Box<dyn std::err
         payload,
     };
     if resp.header.error != 0 {
-        return Err(
-            format!(
-                "file list request failed with error code {}",
-                resp.header.error
-            )
-            .into(),
-        );
+        return Err(format!(
+            "file list request failed with error code {}",
+            resp.header.error
+        )
+        .into());
     }
     let params = decode_params(&resp.payload)?;
-    let names = params
-        .into_iter()
-        .filter_map(|(id, data)| {
-            if id == FieldId::FileName {
-                Some(String::from_utf8(data).expect("field data is valid UTF-8"))
-            } else {
-                None
-            }
-        })
-        .collect();
+    let mut names = Vec::new();
+    for (id, data) in params {
+        if id == FieldId::FileName {
+            let name =
+                String::from_utf8(data).map_err(|err| Box::<dyn std::error::Error>::from(err))?;
+            names.push(name);
+        }
+    }
 
     Ok(names)
 }
 
-#[test]
-fn list_files_acl() -> Result<(), Box<dyn std::error::Error>> {
-    let Some(server) = common::start_server_or_skip(setup_files_db)? else {
-        return Ok(());
+#[fixture]
+fn test_stream(
+    #[default(setup_files_db as SetupFn)] setup: SetupFn,
+) -> TestResult<Option<(TestServer, TcpStream)>> {
+    let Some(server) = common::start_server_or_skip(setup)? else {
+        return Ok(None);
     };
-
     let port = server.port();
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(Duration::from_secs(20)))?;
 
     handshake(&mut stream)?;
+    Ok(Some((server, stream)))
+}
+
+fn noop_setup(_: &str) -> TestResult<()> { Ok(()) }
+
+#[rstest]
+fn list_files_acl(test_stream: TestResult<Option<(TestServer, TcpStream)>>) -> TestResult<()> {
+    let Some((server, mut stream)) = test_stream? else {
+        return Ok(());
+    };
+    let _server = server;
     perform_login(&mut stream, b"alice", b"secret")?;
     let names = get_file_list(&mut stream)?;
     assert_eq!(names, vec!["fileA.txt", "fileC.txt"]);
     Ok(())
 }
 
-#[test]
-fn list_files_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
-    let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
+#[rstest]
+fn list_files_reject_payload(
+    #[with(noop_setup)] test_stream: TestResult<Option<(TestServer, TcpStream)>>,
+) -> TestResult<()> {
+    let Some((server, mut stream)) = test_stream? else {
         return Ok(());
     };
-    let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(20)))?;
-
-    // handshake
-    handshake(&mut stream)?;
-
+    let _server = server;
     // send GetFileNameList with bogus payload
     let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())])?;
-    let params_len = u32::try_from(params.len())
-        .expect("parameter block length fits within the header field");
+    let params_len =
+        u32::try_from(params.len()).expect("parameter block length fits within the header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
