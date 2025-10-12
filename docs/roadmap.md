@@ -2,6 +2,8 @@
 
 This roadmap sequences the work required to deliver a Hotline-compatible server
 on top of the `wireframe` transport. It consolidates requirements captured in
+`docs/design.md`,
+`docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`,
 `docs/protocol.md`, `docs/file-sharing-design.md`,
 `docs/cte-extension-design.md`, `docs/chat-schema.md`, `docs/news-schema.md`,
 `docs/fuzzing.md`, and
@@ -14,8 +16,9 @@ criteria and explicit dependencies. Timeframes are intentionally omitted.
 ### Step: Bootstrap the wireframe server
 
 - [ ] Task: Extract protocol and domain logic into reusable library modules.
-  Acceptance: `mxd` builds as a library crate consumed by both binaries and
-  existing integration smoke tests pass unchanged.
+  Acceptance: `mxd` builds as a library crate consumed by both binaries,
+  existing integration smoke tests pass unchanged, and core modules remain
+  free of `wireframe::*` imports as prescribed in `docs/design.md`.
   Dependencies: None.
 - [ ] Task: Create the `mxd-wireframe-server` binary that depends on
   `wireframe` and the refactored library.
@@ -25,7 +28,9 @@ criteria and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] Task: Retire the bespoke networking loop once the wireframe pipeline is
   feature-complete.
   Acceptance: The legacy frame handler is gated behind a feature flag or
-  removed without reducing existing automated test coverage.
+  removed without reducing existing automated test coverage, aligning with the
+  adapter strategy in
+  `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`.
   Dependencies: Step “Route transactions through wireframe”.
 
 ### Step: Implement the wireframe handshake
@@ -72,23 +77,38 @@ criteria and explicit dependencies. Timeframes are intentionally omitted.
 
 ### Step: Route transactions through wireframe
 
+- [ ] Task: Implement a domain-backed `WireframeProtocol` adapter registered
+  via `.with_protocol(...)`.
+  Acceptance: The server initialisation builds the adapter described in
+  `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`,
+  and routing smoke tests exercise every handler through this port without
+  invoking legacy wiring.
+  Dependencies: Step “Adopt wireframe transaction framing”.
 - [ ] Task: Map every implemented transaction ID to a `wireframe` route that
   delegates to the existing domain handlers.
   Acceptance: Login, news listing, and file listing integration tests run
   against the wireframe server without code duplication.
-  Dependencies: Step “Adopt wireframe transaction framing”.
+  Dependencies: Task “Implement a domain-backed `WireframeProtocol` adapter
+  registered via `.with_protocol(...)`.”
 - [ ] Task: Introduce a shared session context that tracks the authenticated
   user, privileges, and connection flags.
   Acceptance: Session state survives across handlers and enforces privilege
   checks defined in `docs/protocol.md`.
   Dependencies: Task “Map every implemented transaction ID to a `wireframe`
   route that delegates to the existing domain handlers.”
+- [ ] Task: Provide outbound transport and messaging traits so domain code can
+  respond without depending on `wireframe` types.
+  Acceptance: Domain modules interact with adapter traits defined alongside
+  the server boundary, and the crate continues compiling with no direct
+  `wireframe` imports, matching guidance in `docs/design.md`.
+  Dependencies: Task “Map every implemented transaction ID to a `wireframe`
+  route that delegates to the existing domain handlers.”
 - [ ] Task: Provide a reply builder that mirrors Hotline error propagation and
   logging conventions.
   Acceptance: Error replies retain the original transaction IDs and are logged
   through the existing tracing infrastructure.
-  Dependencies: Task “Map every implemented transaction ID to a `wireframe`
-  route that delegates to the existing domain handlers.”
+  Dependencies: Task “Provide outbound transport and messaging traits so
+  domain code can respond without depending on `wireframe` types.”
 
 ### Step: Validate Hotline and SynHX compatibility
 
