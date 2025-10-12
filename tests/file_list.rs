@@ -1,3 +1,8 @@
+//! Integration tests for file list operations.
+//!
+//! Exercises the GetFileNameList transaction with ACL filtering and error
+//! handling scenarios.
+
 use std::{
     io::{Read, Write},
     net::TcpStream,
@@ -49,7 +54,9 @@ fn perform_login(
     let mut data = vec![0u8; reply_hdr.data_size as usize];
     stream.read_exact(&mut data)?;
 
-    assert_eq!(reply_hdr.error, 0);
+    if reply_hdr.error != 0 {
+        return Err(format!("login failed with error code {}", reply_hdr.error).into());
+    }
 
     Ok(())
 }
@@ -90,7 +97,15 @@ fn get_file_list(stream: &mut TcpStream) -> Result<Vec<String>, Box<dyn std::err
         header: hdr,
         payload,
     };
-    assert_eq!(resp.header.error, 0);
+    if resp.header.error != 0 {
+        return Err(
+            format!(
+                "file list request failed with error code {}",
+                resp.header.error
+            )
+            .into(),
+        );
+    }
     let params = decode_params(&resp.payload)?;
     let names = params
         .into_iter()
