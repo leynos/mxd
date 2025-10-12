@@ -9,8 +9,8 @@ fn build_tx() -> Transaction {
     payload.extend_from_slice(&[0x00, 0x02]);
     payload.extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0xff]);
     payload.extend_from_slice(&[0x00, 0x02, 0x00, 0x02, 0xaa, 0xbb]);
-    let payload_len = u32::try_from(payload.len())
-        .expect("payload length fits within the 32-bit header field");
+    let payload_len =
+        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -43,12 +43,12 @@ async fn roundtrip_multi_frame() {
     let mut payload = Vec::new();
     payload.extend_from_slice(&[0x00, 0x01]); // one param
     payload.extend_from_slice(&[0x00, 0x10]); // field id 16
-    let big_size = u16::try_from(MAX_FRAME_DATA + 1)
-        .expect("frame data limit fits within 16 bits when split");
+    let big_size =
+        u16::try_from(MAX_FRAME_DATA + 1).expect("frame data limit fits within 16 bits when split");
     payload.extend_from_slice(&big_size.to_be_bytes());
     payload.extend(vec![0u8; big_size as usize]);
-    let payload_len = u32::try_from(payload.len())
-        .expect("payload length fits within the 32-bit header field");
+    let payload_len =
+        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -153,8 +153,8 @@ async fn writer_payload_too_large() {
         payload.extend_from_slice(&0xffffu16.to_be_bytes());
         payload.extend(vec![0u8; 0xffff]);
     }
-    let payload_len = u32::try_from(payload.len())
-        .expect("payload length fits within the 32-bit header field");
+    let payload_len =
+        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -238,8 +238,8 @@ fn short_frame_error() {
 #[test]
 fn parse_transaction_rejects_large_frame() {
     let payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
-    let payload_len = u32::try_from(payload.len())
-        .expect("payload length fits within the 32-bit header field");
+    let payload_len =
+        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -276,8 +276,8 @@ fn duplicate_news_category_fields_allowed() {
         (FieldId::NewsCategory, b"Updates".as_ref()),
     ];
     let payload = encode_params(&params).unwrap();
-    let payload_len = u32::try_from(payload.len())
-        .expect("payload length fits within the 32-bit header field");
+    let payload_len =
+        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,

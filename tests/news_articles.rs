@@ -34,7 +34,8 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })? else {
+    })?
+    else {
         return Ok(());
     };
 
@@ -157,7 +158,8 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })? else {
+    })?
+    else {
         return Ok(());
     };
 
@@ -231,7 +233,8 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             })
         })
-    })? else {
+    })?
+    else {
         return Ok(());
     };
 

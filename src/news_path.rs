@@ -129,7 +129,11 @@ FROM tree
 JOIN json_each({source}) seg ON seg.key = tree.idx
 {join_type} news_bundles b ON b.name = seg.value AND
   ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
-        let source = if cfg!(feature = "postgres") { "$1" } else { "?" };
+        let source = if cfg!(feature = "postgres") {
+            "$1"
+        } else {
+            "?"
+        };
         sql.replace("{source}", source)
             .replace("{join_type}", join_type)
     }
