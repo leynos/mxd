@@ -38,6 +38,12 @@ values from multiple sources. The core features are:
 - **Customizable behaviour** – Attributes such as `default`, `cli_long`,
   `cli_short`, and `merge_strategy` provide fine‑grained control over naming
   and merging behaviour.
+- **Declarative merge tooling** – Every configuration struct exposes a
+  `merge_from_layers` helper along with `MergeComposer`, making it simple to
+  compose defaults, files, environment captures, and CLI values in unit tests
+  or bespoke loaders without instantiating the CLI parser. Vector fields honour
+  the append strategy by default, so defaults flow through alongside
+  environment and CLI additions.
 
 The workspace bundles an executable Hello World example under
 `examples/hello_world`. It layers defaults, environment variables, and CLI
@@ -90,13 +96,55 @@ The repository ships `config/overrides.toml`, which extends
 preamble, and swap the greet punctuation for `!!!`. Behavioural tests and demo
 scripts assert the uppercase output to guard this layering.
 
+### Declarative merging
+
+The derive macro now emits helpers for composing configuration layers without
+going through Figment directly. `MergeComposer` collects `MergeLayer` instances
+for defaults, files, environment, and CLI input; once constructed, pass the
+layers to `YourConfig::merge_from_layers` to build the final struct:
+
+```rust
+use ortho_config::{MergeComposer, OrthoConfig};
+use serde::Deserialize;
+use serde_json::json;
+
+#[derive(Debug, Deserialize, OrthoConfig)]
+struct AppConfig {
+    recipient: String,
+    salutations: Vec<String>,
+}
+
+let mut composer = MergeComposer::new();
+composer.push_defaults(json!({"recipient": "Defaults", "salutations": ["Hi"] }));
+composer.push_environment(json!({"salutations": ["Env"] }));
+composer.push_cli(json!({"recipient": "Cli" }));
+
+let merged = AppConfig::merge_from_layers(composer.layers())?;
+assert_eq!(merged.recipient, "Cli");
+assert_eq!(
+    merged.salutations,
+    vec![String::from("Hi"), String::from("Env")]
+);
+```
+
+This API surfaces the same precedence as the generated `load()` method while
+making it trivial to drive unit and behavioural tests with hand-crafted layers.
+`Vec<_>` fields accumulate values from each layer in order, so defaults can
+coexist with environment or CLI extensions. The Hello World example’s
+behavioural suite includes a dedicated scenario that parses JSON descriptors
+into `MergeLayer` values and asserts the merged configuration via these
+helpers. Unit tests can mirror this approach with `rstest` fixtures: define
+fixtures for default payloads, then enumerate cases for file, environment, and
+CLI layers. This validates every precedence permutation without copy-pasting
+setup.
+
 ## Installation and dependencies
 
 Add `ortho_config` as a dependency in `Cargo.toml` along with `serde`:
 
 ```toml
 [dependencies]
-ortho_config = "0.5.0"            # replace with the latest version
+ortho_config = "0.6.0"            # replace with the latest version
 serde = { version = "1.0", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }    # required for CLI support
 ```
@@ -107,7 +155,7 @@ corresponding cargo features:
 
 ```toml
 [dependencies]
-ortho_config = { version = "0.5.0", features = ["json5", "yaml"] }
+ortho_config = { version = "0.6.0", features = ["json5", "yaml"] }
 # Enabling these features expands file formats; precedence stays: defaults < file < env < CLI.
 ```
 
@@ -119,8 +167,18 @@ during discovery and do not cause errors if present.
 
 `ortho_config` re-exports its parsing dependencies, so consumers do not need to
 declare them directly. Access `figment`, `uncased`, `xdg` (on Unix-like and
-Redox targets), and the optional parsers (`figment_json5`, `json5`,
-`serde_yaml`, `toml`) via `ortho_config::` paths.
+Redox targets), and the optional parsers
+(`figment_json5`, `json5`, `serde_saphyr`, `toml`) via `ortho_config::` paths.
+The `serde_json` re-export is enabled by default because the crate relies on it
+internally; disable default features only when explicitly opting back into
+`serde_json`.
+
+YAML parsing is handled by the pure-Rust `serde-saphyr` crate. It adheres to
+the YAML 1.2 specification, so unquoted scalars such as `yes`, `on`, and `off`
+remain strings. The provider enables `Options::strict_booleans`, ensuring only
+`true` and `false` deserialize as booleans, while legacy YAML 1.1 literals are
+treated as plain strings. Duplicate mapping keys surface as parsing errors
+instead of silently accepting the last entry, helping catch typos early.
 
 ## Migrating from earlier versions
 
@@ -202,6 +260,11 @@ Field attributes modify how a field is sourced or merged:
 Unrecognized keys are ignored by the derive macro for forwards compatibility.
 Unknown keys will therefore silently do nothing. Developers who require
 stricter validation may add manual `compile_error!` guards.
+
+Vector append buffers operate on raw JSON values, so element types only need to
+implement `serde::Deserialize`. Deriving `serde::Serialize` remains useful when
+applications serialize configuration back out (for example, to emit defaults),
+but it is no longer required merely to opt into the append strategy.
 
 By default, each field receives a long flag derived from its name in kebab‑case
 and a short flag. The macro chooses the short flag using these rules:
@@ -448,9 +511,10 @@ CLI values.
 Environment variables are upper‑cased and use underscores. The struct‑level
 prefix (if supplied) is prepended without any separator, and nested fields are
 separated by double underscores. For the `AppConfig` and `DatabaseConfig`
-example above, valid environment variables include `APP_LOG_LEVEL`, `APP_PORT`,
-`APP_DATABASE__URL` and `APP_DATABASE__POOL_SIZE`. If the nested struct has its
-own prefix (`DB`), then the environment variable becomes `APP_DB_URL`.
+example above, valid environment variables include
+`APP_LOG_LEVEL`, `APP_PORT`, `APP_DATABASE__URL` and `APP_DATABASE__POOL_SIZE`.
+If the nested struct has its own prefix (`DB`), then the environment variable
+becomes `APP_DB_URL`.
 
 Comma-separated values such as `DDLINT_RULES=A,B,C` are parsed as lists. The
 loader converts these strings into arrays before merging, so array fields
@@ -463,10 +527,12 @@ to disable list parsing.
 A configuration file may specify an `extends` key pointing to another file. The
 referenced file is loaded first and the current file's values override it. The
 path is resolved relative to the file containing the `extends` directive.
-Precedence across all sources becomes base file → extending file → environment
-variables → CLI flags. Cycles are detected and reported via a `CyclicExtends`
-error. Prefix handling and subcommand namespaces work as normal when
-inheritance is in use.
+Missing files raise a not-found error that includes both the resolved absolute
+path and the file that declared `extends`, making it clear what needs to be
+created. Precedence across all sources becomes base file → extending file →
+environment variables → CLI flags. Cycles are detected and reported via a
+`CyclicExtends` error. Prefix handling and subcommand namespaces work as normal
+when inheritance is in use.
 
 ## Dynamic rule tables
 
@@ -508,11 +574,10 @@ flags via the `append` merge strategy.
 Many CLI applications use `clap` subcommands to perform different operations.
 `OrthoConfig` supports per‑subcommand defaults via a dedicated `cmds`
 namespace. The helper function `load_and_merge_subcommand_for` loads defaults
-for a specific subcommand and merges them beneath the CLI values. The legacy
-`load_subcommand_config` and `load_subcommand_config_for` helpers were removed
-in v0.5.0. The merged struct is returned as a new instance; the original `cli`
-struct remains unchanged. CLI fields left unset (`None`) do not override
-environment or file defaults, avoiding accidental loss of configuration.
+for a specific subcommand and merges them beneath the CLI values. The merged
+struct is returned as a new instance; the original `cli` struct remains
+unchanged. CLI fields left unset (`None`) do not override environment or file
+defaults, avoiding accidental loss of configuration.
 
 ### How it works
 
@@ -585,25 +650,28 @@ tool continues using the CLI value instead of exiting with an error.
 
 ### Hello world walkthrough
 
+<https://github.com/leynos/ortho-config/tree/main/examples/hello_world>
+
 The `hello_world` example crate demonstrates these patterns in a compact
 setting. Global options such as `--recipient` or `--salutation` are parsed via
 `load_global_config`, which layers configuration files and environment
 variables beneath any CLI overrides. The `greet` subcommand adds optional
 behaviour like a preamble (`--preamble "Good morning"`) or custom punctuation
 while reusing the merged global configuration. The `take-leave` subcommand
-combines switches and optional arguments (`--wave`, `--gift`,
-`--channel email`, `--remind-in 15`) alongside greeting adjustments
-(`--preamble "Until next time"`, `--punctuation ?`) to describe how the
-farewell should unfold. Each subcommand struct derives `OrthoConfig` so
+combines switches and optional arguments
+(`--wave`, `--gift`, `--channel email`, `--remind-in 15`) alongside greeting
+adjustments (`--preamble "Until next time"`, `--punctuation ?`) to describe how
+the farewell should unfold. Each subcommand struct derives `OrthoConfig` so
 defaults from `[cmds.greet]` or `[cmds.take-leave]` merge automatically when
 `load_and_merge()` is called.
 
 Behavioural tests in `examples/hello_world/tests` exercise scenarios such as
 `hello_world greet --preamble "Good morning"` and running
-`hello_world --is-excited take-leave` with `--gift biscuits`, `--remind-in 15`,
-`--channel email`, and `--wave`. These end-to-end checks verify that CLI
-arguments override configuration files and that validation errors surface
-cleanly when callers provide blank strings or conflicting switches.
+`hello_world --is-excited take-leave` with
+`--gift biscuits`, `--remind-in 15`, `--channel email`, and `--wave`. These
+end-to-end checks verify that CLI arguments override configuration files and
+that validation errors surface cleanly when callers provide blank strings or
+conflicting switches.
 
 Sample configuration files live in `examples/hello_world/config`. The
 `baseline.toml` defaults underpin both the automated tests and the demo
@@ -704,9 +772,16 @@ fn interop(r: ortho_config::OrthoResult<MyCfg>) -> Result<MyCfg, figment::Error>
 
 - **Vector merging** – For `Vec<T>` fields the default merge strategy is
   `append`, meaning that values from the configuration file appear first, then
-  environment variables and finally CLI arguments. The
-  `merge_strategy = "append"` attribute can be used for clarity, though it is
-  implied.
+  environment variables and finally CLI arguments. Use
+  `merge_strategy = "append"` explicitly for clarity. When overrides should
+  discard earlier layers entirely (for example, to replace a default list with
+  a CLI-provided value) apply `merge_strategy = "replace"` instead.
+- **Map merging** – Map fields (such as `BTreeMap<String, _>`) default to keyed
+  merges, where later layers update only the entries they define. Apply
+  `merge_strategy = "replace"` when later layers must replace the entire map.
+  The hello_world example exposes a `greeting_templates` map that uses this
+  strategy, so declarative configuration files can swap the full template set
+  at once.
 
 - **Option&lt;T&gt; fields** – Fields of type `Option<T>` are not treated as
   required. They default to `None` and can be set via any source. Required CLI
