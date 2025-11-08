@@ -30,7 +30,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v5
-      - uses: leynos/shared-actions/.github/actions/setup-rust@v1.1.0
+      - uses: leynos/shared-actions/.github/actions/setup-rust@a455a06f519e8eedf22695232f72da420d19879b
         with:
           install-postgres-deps: ${{ matrix.feature == 'postgres' }}
           install-sqlite-deps: ${{ matrix.feature == 'sqlite' }}
@@ -42,7 +42,7 @@ jobs:
         with:
           url: postgres://postgres:password@localhost/test
       - name: Format
-        run: cargo fmt --all -- --check
+        run: make check-fmt
       - name: Lint
         run: cargo clippy --no-default-features --features ${{ matrix.feature }} -- -D warnings
       - name: Test
@@ -69,7 +69,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v5
-      - uses: leynos/shared-actions/.github/actions/setup-rust@v1.1.0
+      - uses: leynos/shared-actions/.github/actions/setup-rust@a455a06f519e8eedf22695232f72da420d19879b
         with:
           install-postgres-deps: true
       - name: Cache Cargo directories

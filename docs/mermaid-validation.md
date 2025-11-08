@@ -1,8 +1,8 @@
 # Mermaid Diagram Validation
 
 Mermaid diagrams are rendered client-side, so a small syntax error can leave a
-broken image in the documentation. To prevent this, every Markdown document that
-includes a `mermaid` code block must be checked before merging.
+broken image in the documentation. To prevent this, every Markdown document
+that includes a `mermaid` code block must be checked before merging.
 
 ## Requirements
 
@@ -26,17 +26,17 @@ nixie docs/*.md
 
 For machines with many cores, increasing the concurrency can speed up
 validation. By default the script uses the number of CPU cores detected on your
-system. Use the `--concurrency` flag to override the number of diagrams rendered
-in parallel:
+system. Use the `--concurrency` flag to override the number of diagrams
+rendered in parallel:
 
 ```bash
 nixie --concurrency 8 docs/*.md
 ```
 
-The script extracts each `mermaid` code block and attempts to render it using an
-embedded Mermaid renderer. Any syntax errors cause `nixie` to exit with a
-non-zero status. The failing diagram's line and a pointer to assist in resolving
-the error.
+The script extracts each `mermaid` code block and attempts to render it using
+an embedded Mermaid renderer. Any syntax errors cause `nixie` to exit with a
+non-zero status. The failing diagram's line and a pointer to assist in
+resolving the error.
 
 If `nixie` is not found on your `PATH` the validator explains how to install it.
 

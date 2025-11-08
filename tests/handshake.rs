@@ -4,10 +4,12 @@ use std::{
     time::Duration,
 };
 
+use test_util::AnyError;
+
 mod common;
 
 #[test]
-fn handshake() -> Result<(), Box<dyn std::error::Error>> {
+fn handshake() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
         return Ok(());
     };

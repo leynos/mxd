@@ -10,6 +10,7 @@ use mxd::{
     transaction::{FrameHeader, Transaction, encode_params},
     transaction_type::TransactionType,
 };
+use test_util::AnyError;
 mod common;
 
 fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
@@ -32,7 +33,7 @@ fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 }
 
 #[test]
-fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
+fn download_banner_reject_payload() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
         return Ok(());
     };
@@ -67,7 +68,7 @@ fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn user_name_list_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
+fn user_name_list_reject_payload() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
         return Ok(());
     };

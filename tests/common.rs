@@ -1,8 +1,6 @@
-use std::error::Error;
-
-use test_util::TestServer;
 #[cfg(feature = "postgres")]
 use test_util::postgres::PostgresUnavailable;
+use test_util::{AnyError, TestServer};
 
 /// Start the server for a test or skip if prerequisites are unavailable.
 ///
@@ -12,9 +10,9 @@ use test_util::postgres::PostgresUnavailable;
 /// # Errors
 ///
 /// Returns any error produced by the setup callback or while launching the server.
-pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, Box<dyn Error>>
+pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, AnyError>
 where
-    F: FnOnce(&str) -> Result<(), Box<dyn Error>>,
+    F: FnOnce(&str) -> Result<(), AnyError>,
 {
     match TestServer::start_with_setup("./Cargo.toml", setup) {
         Ok(s) => Ok(Some(s)),

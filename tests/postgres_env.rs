@@ -1,11 +1,11 @@
 #[cfg(feature = "postgres")]
 use temp_env::with_var;
 #[cfg(feature = "postgres")]
-use test_util::PostgresTestDb;
+use test_util::{AnyError, PostgresTestDb};
 
 #[cfg(feature = "postgres")]
 #[test]
-fn external_postgres_is_used() -> Result<(), Box<dyn std::error::Error>> {
+fn external_postgres_is_used() -> Result<(), AnyError> {
     let base = std::env::var("POSTGRES_TEST_URL")
         .unwrap_or_else(|_| String::from("postgres://postgres:password@localhost/test"));
     let idx = base.rfind('/').expect("url has path");
@@ -18,7 +18,7 @@ fn external_postgres_is_used() -> Result<(), Box<dyn std::error::Error>> {
                 assert!(!db.uses_embedded());
                 assert!(db.url.starts_with(prefix));
                 assert_ne!(db.url.as_ref(), base);
-                Ok::<_, Box<dyn std::error::Error>>(())
+                Ok::<_, AnyError>(())
             }
             Err(e) => {
                 if e.downcast_ref::<test_util::postgres::PostgresUnavailable>()

@@ -62,10 +62,10 @@ domain operations can be exercised in isolation from their environment.
   is to allow MXD to evolve (or be customized) at the edges – new protocols,
   new storage backends – without rewriting domain code. It also aids testing:
   the core logic can be tested with in-memory or stub adapters. In practice,
-  MXD’s project structure already reflects this: core modules like
-  `login`, `news`, `file` handling, etc., are in the library, and the main
-  binary (and upcoming `mxd-wireframe-server` binary) just binds these to real
-  network and DB
+  MXD’s project structure already reflects this: core modules like `login`,
+  `news`, `file` handling, etc., are in the library, and the main binary (and
+  upcoming `mxd-wireframe-server` binary) just binds these to real network and
+  DB
   instances([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L22-L31)).
 
 **Layering and Responsibilities**:
@@ -362,10 +362,10 @@ CTEs).
 In `Cargo.toml`, two feature sets are defined – `sqlite` (default) and
 `postgres` – each enabling the appropriate Diesel backend support and related
 dependencies([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L146-L154))([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L156-L164)).
- For example, the `postgres` feature includes
-`diesel/postgres`, `diesel_async/postgres`, etc., while `sqlite` brings in
-`diesel/sqlite`, `diesel_async/sqlite`, and also Diesel’s special SQLite
-extensions (like support for the `RETURNING` clause on SQLite
+ For example, the `postgres` feature includes `diesel/postgres`,
+`diesel_async/postgres`, etc., while `sqlite` brings in `diesel/sqlite`,
+`diesel_async/sqlite`, and also Diesel’s special SQLite extensions (like
+support for the `RETURNING` clause on SQLite
 3.35+)([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L152-L160)).
  The MXD code uses `cfg_if!` to enforce that one and only one of these features
 is active, otherwise it fails to
@@ -393,7 +393,7 @@ From the developer perspective:
 
 - The code ensures a compile-time error if neither or both features are
   enabled([8](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/lib.rs#L6-L14)),
-  preventing ambiguity.
+   preventing ambiguity.
 
 This setup allows us to ship a single codebase and even a single binary
 (compiled separately for each backend) that supports two very different
@@ -582,9 +582,9 @@ and chat features) as outlined in the roadmap.
 - `news_bundles`: A *bundle* is a container of news categories, and bundles can
   nest (a bundle may have a parent
   bundle)([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L29-L37))([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L97-L105)).
-   This reflects how Hotline allows grouping of forums. Fields:
-  `id`, `parent_bundle_id` (self-referencing FK), `name` (title of the bundle),
-  a GUID (Hotline often tracks a GUID for bundles/categories), and
+   This reflects how Hotline allows grouping of forums. Fields: `id`,
+  `parent_bundle_id` (self-referencing FK), `name` (title of the bundle), a
+  GUID (Hotline often tracks a GUID for bundles/categories), and
   `created_at`([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L29-L37))([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L97-L105)).
    The nesting allows a tree of bundles.
 
@@ -638,7 +638,7 @@ Additionally, we have **permissions** for news:
 
 - `permissions` and `user_permissions` tables define what actions each user can
   do([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L17-L25))([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L81-L89)),([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L24-L28))([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L90-L98)).
-  Hotline had a fixed set of privilege codes (like code 20 for “News: Read
+   Hotline had a fixed set of privilege codes (like code 20 for “News: Read
   Article”, code 21 for “News: Post Article”, etc., up to 38 distinct flags for
   various
   abilities)([12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L154-L161)).
@@ -796,8 +796,8 @@ CREATE TABLE users (
 Both create the same columns, but use the appropriate auto-increment and
 default value syntax for each
 DB([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L99-L107))([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L111-L120)).
- Diesel’s generated `schema.rs` for this table uses generic types
-(`Integer`, `Text`, `Bool`, `Timestamp`
+ Diesel’s generated `schema.rs` for this table uses generic types (`Integer`,
+`Text`, `Bool`, `Timestamp`
 )([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L131-L140)),
  so the Rust code can call `users::table.filter(users::username.eq(name))` and
 it will work with either backend at runtime. The migrations for each backend
@@ -992,9 +992,9 @@ Dec 12 10:34:45 server mxd[1234]: authenticated peer=192.168.1.5:54321 username=
 
 Where `mxd[1234]` is the process name and PID, and our custom fields are
 appended. If using structured logging via native journald, the underlying data
-might have `PRIORITY=6` (info),
-`SYSLOG_IDENTIFIER=mxd`, `CODE_FILE=src/login.rs`, `peer=192.168.1.5:54321`, `username=alice`,
- etc., all separately queryable.
+might have `PRIORITY=6` (info), `SYSLOG_IDENTIFIER=mxd`,
+`CODE_FILE=src/login.rs`, `peer=192.168.1.5:54321`, `username=alice`, etc., all
+separately queryable.
 
 ### systemd Socket and Shutdown Handling
 
@@ -1219,8 +1219,8 @@ references to participants’ sessions. For implementation, we likely maintain a
 mapping from `chat_room_id` to a list of Session references, so we can quickly
 broadcast messages to all in the room.
 
-**Database Schema**: As described earlier, the key tables are
-`chat_rooms`, `chat_participants`, `chat_messages`, `chat_invites`
+**Database Schema**: As described earlier, the key tables are `chat_rooms`,
+`chat_participants`, `chat_messages`, `chat_invites`
 ([11](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/chat-schema.md#L11-L19))([11](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/chat-schema.md#L40-L48)).
  These provide persistence for chat state:
 
@@ -1231,7 +1231,7 @@ broadcast messages to all in the room.
 
 - `chat_participants`: Links users to rooms, essentially the membership
   list([11](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/chat-schema.md#L25-L33)).
-  We will often query this to get who is in a room to send them messages.
+   We will often query this to get who is in a room to send them messages.
 
 - `chat_messages`: Stores messages. It might not be strictly required to
   persist them (Hotline server could choose not to store history on disk), but
@@ -1515,7 +1515,7 @@ Key Hotline transactions for news include:
 
 - After insert, Diesel’s returning can give us the `id` of the new
   post([13](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/commands.rs#L414-L422)).
-  We return that as a parameter `NewsArticleId` to the
+   We return that as a parameter `NewsArticleId` to the
   client([13](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/commands.rs#L416-L423)),
    so the client knows the new post’s ID (Hotline protocol expects the server
   to respond with the ID of the created post).
@@ -1584,7 +1584,7 @@ Key Hotline transactions for news include:
 
 - If allowed, we insert the row. In SQLite/PG, our function returns the new
   ID([13](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/commands.rs#L416-L423)).
-  We craft a reply with error=0 and a parameter `NewsArticleId = <new_id>` so
+   We craft a reply with error=0 and a parameter `NewsArticleId = <new_id>` so
   the client can, for example, immediately fetch it or display it.
 
 - We also might broadcast a notification to other users in that category:
@@ -1686,7 +1686,7 @@ table([18](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d
 
 - `file_acl` fields: `file_id`, `user_id`, primary key on
   both([18](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/migrations/sqlite/00000000000004_create_files/up.sql#L8-L15)).
-  This grants a user access to a file. The initial approach seems to be a very
+   This grants a user access to a file. The initial approach seems to be a very
   basic ACL where every file explicitly lists which users can see it. This is
   not scalable for a general share (where you’d want group-based or
   public-by-default), but it might have been a starting point or a temporary
@@ -1739,7 +1739,7 @@ how Hotline works:
 
 - Additionally, `User` and `Group` and `UserGroup` tables to manage user
   groups([17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L91-L99))([17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L93-L101)).
-  This way you can assign an entire group access to a folder by one entry in
+   This way you can assign an entire group access to a folder by one entry in
   `Permission`, instead of listing every user.
 
 Our current implementation hasn’t introduced groups or the unified Permission
@@ -1784,7 +1784,7 @@ model:
 
 - Also, `global_access` bitmask in User (in design, user had a global_access
   field([17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L101-L109)))
-  could indicate overall privileges (like admin flag or ratio privileges,
+   could indicate overall privileges (like admin flag or ratio privileges,
   etc.). We might interpret some high-level bits like “may upload anywhere
   despite folder perms”.
 
@@ -2424,8 +2424,8 @@ The fuzz process:
 
 - The fuzzing runs in CI as a nightly job for several
   hours([21](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/fuzzing.md#L54-L61))([21](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/fuzzing.md#L56-L64)).
-  If any new crash is found, the input is saved to `artifacts/main/crashes` and
-  can be analyzed.
+   If any new crash is found, the input is saved to `artifacts/main/crashes`
+  and can be analyzed.
 
 - Over time, this gives us confidence that parsing (and by extension the
   handling of any malicious input) doesn’t have out-of-bound reads or infinite

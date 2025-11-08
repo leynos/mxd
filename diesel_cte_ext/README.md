@@ -2,7 +2,7 @@
 
 `diesel_cte_ext` adds small helpers for building Common Table Expressions
 ([CTEs](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-RECURSIVE))
-with Diesel. The crate exports a connection extension trait providing two
+ with Diesel. The crate exports a connection extension trait providing two
 builders: `with_recursive` for recursive CTEs and `with_cte` for plain `WITH`
 blocks.
 
@@ -159,8 +159,8 @@ classDiagram
 
 ## Next steps
 
-Future improvements could include better integration with Diesel's query builder
-and support for multiple chained CTEs.
+Future improvements could include better integration with Diesel's query
+builder and support for multiple chained CTEs.
 
 ## Caveats
 
