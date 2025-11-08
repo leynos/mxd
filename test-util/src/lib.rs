@@ -163,10 +163,7 @@ impl TestServer {
     ///     // Custom setup logic here
     ///     Ok(())
     /// })?;
-    pub fn start_with_setup<F>(
-        manifest_path: &str,
-        setup: F,
-    ) -> Result<Self, AnyError>
+    pub fn start_with_setup<F>(manifest_path: &str, setup: F) -> Result<Self, AnyError>
     where
         F: FnOnce(&str) -> Result<(), AnyError>,
     {
@@ -373,9 +370,7 @@ use mxd::{
 /// Returns `Ok(())` if the setup function completes successfully; otherwise, returns an error.
 pub fn with_db<F>(db: &str, f: F) -> Result<(), AnyError>
 where
-    F: for<'c> FnOnce(
-        &'c mut DbConnection,
-    ) -> BoxFuture<'c, Result<(), AnyError>>,
+    F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<(), AnyError>>,
 {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {

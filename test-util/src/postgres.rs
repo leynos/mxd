@@ -105,12 +105,14 @@ fn generate_db_name(prefix: &str) -> DatabaseName {
     DatabaseName::new(name).expect("generated database name")
 }
 
-pub(crate) fn start_embedded_postgres<F>(setup: F) -> Result<EmbeddedPg, Box<dyn StdError + Send + Sync>>
+pub(crate) fn start_embedded_postgres<F>(
+    setup: F,
+) -> Result<EmbeddedPg, Box<dyn StdError + Send + Sync>>
 where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
 {
-    let cluster = TestCluster::new()
-        .map_err(|e| format!("bootstrapping embedded PostgreSQL: {e}"))?;
+    let cluster =
+        TestCluster::new().map_err(|e| format!("bootstrapping embedded PostgreSQL: {e}"))?;
     let connection = cluster.connection();
     let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))?;
     let (url, db_name) = create_external_db(&admin_url)?;
