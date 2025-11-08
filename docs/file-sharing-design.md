@@ -1435,8 +1435,8 @@ Finally, we address strategies for ensuring good performance and scalability:
   consider in a real implementation for usability.
 - **Scalability:** The design should handle growth in number of files. The DB
   approach can manage tens or hundreds of thousands of entries with proper
-  indexing. Object storage can handle virtually unlimited objects. One concern
-  on some object stores (like local filesystem via `object_store`) is having
+  indexing. Object storage can handle virtually unlimited objects. A concern
+  with some object stores (like local filesystem via `object_store`) is having
   too many files in one directory. If we use ID as key and put all in one flat
   container, a local FS might slow down if we actually store each file on disk
   in one folder. For cloud stores, it’s fine. If using local for dev/test, we
