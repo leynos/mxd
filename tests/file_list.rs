@@ -134,7 +134,11 @@ fn test_stream(
     Ok(Some((server, stream)))
 }
 
-#[allow(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Keep signature consistent with `SetupFn` so tests can swap in fallible setup \
+              routines."
+)]
 // Keep signature consistent with `SetupFn` so tests can swap in fallible setup routines.
 fn noop_setup(_: &str) -> TestResult<()> { Ok(()) }
 

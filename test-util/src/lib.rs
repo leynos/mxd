@@ -494,8 +494,8 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
 /// fails at any stage.
 pub fn setup_news_categories_with_structure<F>(db: &str, build: F) -> Result<(), AnyError>
 where
-    F: 'static
-        + Send
+    F: Send
+        + 'static
         + for<'c> FnOnce(&'c mut DbConnection, i32) -> BoxFuture<'c, Result<(), AnyError>>,
 {
     with_db(db, |conn| {
