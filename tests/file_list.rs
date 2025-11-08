@@ -15,28 +15,25 @@ use mxd::{
     transaction_type::TransactionType,
 };
 use rstest::{fixture, rstest};
-use test_util::{TestServer, handshake, setup_files_db};
+use test_util::{AnyError, TestServer, handshake, setup_files_db};
 mod common;
 
-type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+type TestResult<T> = Result<T, AnyError>;
 type SetupFn = fn(&str) -> TestResult<()>;
 
 /// Performs the login transaction for a test connection.
 ///
 /// # Examples
 /// ```no_run
-/// # use std::{error::Error, net::TcpStream};
-/// # fn demo() -> Result<(), Box<dyn Error>> {
+/// # use std::net::TcpStream;
+/// # use test_util::AnyError;
+/// # fn demo() -> Result<(), AnyError> {
 /// # let mut stream = TcpStream::connect(("127.0.0.1", 9999))?;
 /// perform_login(&mut stream, b"alice", b"secret")?;
 /// # Ok(())
 /// # }
 /// ```
-fn perform_login(
-    stream: &mut TcpStream,
-    username: &[u8],
-    password: &[u8],
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn perform_login(stream: &mut TcpStream, username: &[u8], password: &[u8]) -> Result<(), AnyError> {
     let params = vec![(FieldId::Login, username), (FieldId::Password, password)];
     let payload = encode_params(&params)?;
     let payload_len =
@@ -69,17 +66,16 @@ fn perform_login(
 ///
 /// # Examples
 /// ```no_run
-/// # use std::{error::Error, net::TcpStream};
-/// # fn demo() -> Result<(), Box<dyn Error>> {
+/// # use std::net::TcpStream;
+/// # use test_util::AnyError;
+/// # fn demo() -> Result<(), AnyError> {
 /// # let mut stream = TcpStream::connect(("127.0.0.1", 9999))?;
 /// let names = get_file_list(&mut stream)?;
 /// # assert!(names.is_empty());
 /// # Ok(())
 /// # }
 /// ```
-fn get_file_list(
-    stream: &mut TcpStream,
-) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+fn get_file_list(stream: &mut TcpStream) -> Result<Vec<String>, AnyError> {
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -114,8 +110,7 @@ fn get_file_list(
     let mut names = Vec::new();
     for (id, data) in params {
         if id == FieldId::FileName {
-            let name = String::from_utf8(data)
-                .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
+            let name = String::from_utf8(data).map_err(|e| -> AnyError { e.into() })?;
             names.push(name);
         }
     }

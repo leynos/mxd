@@ -5,12 +5,12 @@ sharing, and a bulletin-board style news system. Hotline Server v1.8.5
 communicates with Hotline clients using a defined set of protocol transactions.
 This guide describes **every protocol transaction type** in Hotline 1.8.5 and
 explains how each one correlates with server functionality and what end-users
-experience. We group transactions by functionality (User Login & Presence,
-Chat, Private Messaging, File Services, News, Administration) for clarity. For
-each transaction, we provide its **ID and name**, its **purpose**,
-**initiator** (client or server), key **parameters** passed and results
-returned, the **server’s behavior**, and the **user-visible effect**. (Note:
-Tracker and HTTP tunneling-related transactions are omitted as requested.)
+experience. Transactions are grouped by functionality (User Login & Presence,
+Chat, Private Messaging, File Services, News, Administration) for clarity. Each
+transaction lists its **ID and name**, **purpose**, **initiator** (client or
+server), key **parameters** passed and results returned, the **server’s
+behaviour**, and the **user-visible effect**. (Note: Tracker and HTTP
+tunnelling-related transactions are omitted as requested.)
 
 ## Binary Message Formats (Hotline Protocol v 1.8.5)
 

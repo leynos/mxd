@@ -10,7 +10,7 @@ extension to keep users safely stored in SQLite. Passwords are salted and
 hashed with Argon2, whose knobs are adjustable via `--argon2-m-cost`,
 `--argon2-t-cost`, and `--argon2-p-cost`.
 
-Commands arrive line by line through a `BufReader`. At present only a `LOGIN`
+Commands arrive line by line through a `BufReader`. At present, only a `LOGIN`
 command is supported; invalid attempts earn an `ERR` reply. Each session
 remains open so multiple commands can be processed until the client disconnects.
 
@@ -43,7 +43,7 @@ progress.
 ## Running
 
 Build the project and run the daemon. Specify a bind address and database *URL*
-if the defaults don't tickle your fancy. For SQLite use a filesystem path,
+if the defaults don't tickle your fancy. For SQLite, use a filesystem path,
 while PostgreSQL requires a standard `postgres://` URL. Enable the appropriate
 backend feature when compiling:
 

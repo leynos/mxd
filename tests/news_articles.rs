@@ -15,11 +15,11 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{handshake, setup_news_db, with_db};
+use test_util::{AnyError, handshake, setup_news_db, with_db};
 mod common;
 
 #[test]
-fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn list_news_articles_invalid_path() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
@@ -68,7 +68,7 @@ fn list_news_articles_invalid_path() -> Result<(), Box<dyn std::error::Error + S
 }
 
 #[test]
-fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn list_news_articles_valid_path() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(setup_news_db)? else {
         return Ok(());
     };
@@ -119,7 +119,7 @@ fn list_news_articles_valid_path() -> Result<(), Box<dyn std::error::Error + Sen
 }
 
 #[test]
-fn get_news_article_data() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn get_news_article_data() -> Result<(), AnyError> {
     use chrono::{DateTime, Utc};
     use mxd::models::NewArticle;
 
@@ -218,7 +218,7 @@ fn get_news_article_data() -> Result<(), Box<dyn std::error::Error + Send + Sync
 }
 
 #[test]
-fn post_news_article_root() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn post_news_article_root() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
@@ -292,7 +292,7 @@ fn post_news_article_root() -> Result<(), Box<dyn std::error::Error + Send + Syn
             .load::<String>(&mut conn)
             .await?;
         assert_eq!(titles, vec!["Hello"]);
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+        Ok::<(), AnyError>(())
     })?;
     Ok(())
 }

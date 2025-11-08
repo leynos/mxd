@@ -175,7 +175,7 @@ Below is an example SQL DDL that implements this schema:
 CREATE TABLE User (
     id             SERIAL PRIMARY KEY,
     username       VARCHAR(50) UNIQUE NOT NULL,
-    global_access  BIGINT NOT NULL DEFAULT 0,   -- 64-bit access privileges bitmap:contentReference[oaicite:22]{index=22}:contentReference[oaicite:23]{index=23}
+    global_access  BIGINT NOT NULL DEFAULT 0,   -- 64-bit access privileges bitmap
     -- ... other user fields (password hash, etc) ...
 );
 CREATE TABLE "Group" (
@@ -562,7 +562,7 @@ interrupted. The steps:
    while let Some(chunk) = data_stream.next().await {
        writer.write(&chunk?)?;  // write chunk to multipart
    }
-   writer.finish().await?;  // complete the multipart upload atomically:contentReference[oaicite:71]{index=71}
+   writer.finish().await?;  // complete the multipart upload atomically
    ```
 
    The `WriteMultipart` internally buffers to the required part size and

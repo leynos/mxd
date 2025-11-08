@@ -13,7 +13,7 @@ use std::{
 
 use tempfile::TempDir;
 
-type AnyError = Box<dyn std::error::Error + Send + Sync>;
+pub type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(feature = "postgres")]
 pub mod postgres;
@@ -194,41 +194,12 @@ impl TestServer {
     }
 
     #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-    /// Launches the `mxd` server on a random available port with the specified database URL for
-    /// integration testing.
-    ///
-    /// Binds a TCP listener to obtain a free port, starts the server process with the given
-    /// manifest path and database URL, waits for the server to become ready, and returns a
-    /// `TestServer` instance managing the process and optional temporary directory.
-    ///
-    /// # Returns
-    ///
-    /// A `TestServer` instance managing the running server and associated resources.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if binding the port, spawning the server process, or waiting for server
-    /// readiness fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let temp_dir = tempfile::TempDir::new().unwrap();
-    /// let server = TestServer::launch(
-    ///     "path/to/Cargo.toml",
-    ///     "sqlite://test.db".to_string(),
-    ///     Some(temp_dir),
-    /// )
-    /// .unwrap();
-    /// assert!(server.port() > 0);
-    /// ```
     fn launch(
         manifest_path: &str,
         db_url: String,
         temp_dir: Option<TempDir>,
     ) -> Result<Self, AnyError> {
         let (child, port) = launch_server_process(manifest_path, &db_url)?;
-
         Ok(Self {
             child,
             port,
@@ -238,40 +209,15 @@ impl TestServer {
     }
 
     #[cfg(feature = "postgres")]
-    /// Launches a test instance of the `mxd` server using the specified database and configuration.
-    ///
-    /// Binds the server to a random available local port, starts the server process with the
-    /// provided manifest path and database URL, and waits for the server to become ready.
-    /// Optionally manages a temporary directory for SQLite and an embedded PostgreSQL instance if
-    /// used.
-    ///
-    /// # Returns
-    ///
-    /// A `TestServer` instance managing the server process and associated resources.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if binding the port, spawning the server process, or waiting for server
-    /// readiness fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let db = PostgresTestDb::new()?;
-    /// let server = TestServer::launch("Cargo.toml", db)?;
-    /// assert!(server.port() > 0);
-    /// ```
     fn launch(manifest_path: &str, db: PostgresTestDb) -> Result<Self, AnyError> {
         let db_url = db.url.to_string();
-        let temp_dir = None;
         let (child, port) = launch_server_process(manifest_path, &db_url)?;
-
         Ok(Self {
             child,
             port,
             db_url,
             db,
-            temp_dir,
+            temp_dir: None,
         })
     }
 
@@ -541,7 +487,12 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
     })
 }
 
-fn setup_news_categories_with_structure<F>(db: &str, build: F) -> Result<(), AnyError>
+/// Build the common news category tree then invoke a custom builder.
+///
+/// Creates the root bundle shared across tests and runs the provided closure to
+/// add additional bundles or categories. Returns an error if database setup
+/// fails at any stage.
+pub fn setup_news_categories_with_structure<F>(db: &str, build: F) -> Result<(), AnyError>
 where
     F: 'static
         + Send

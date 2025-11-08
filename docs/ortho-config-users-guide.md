@@ -511,8 +511,8 @@ Environment variables are upper‑cased and use underscores. The struct‑level
 prefix (if supplied) is prepended without any separator, and nested fields are
 separated by double underscores. For the `AppConfig` and `DatabaseConfig`
 example above, valid environment variables include `APP_LOG_LEVEL`, `APP_PORT`,
-`APP_DATABASE__URL` and `APP_DATABASE__POOL_SIZE`. If the nested struct has its
-own prefix (`DB`), then the environment variable becomes `APP_DB_URL`.
+`APP_DATABASE__URL` and `APP_DATABASE__POOL_SIZE`. If the nested struct uses
+the prefix `DB`, then the environment variable becomes `APP_DB_URL`.
 
 Comma-separated values such as `DDLINT_RULES=A,B,C` are parsed as lists. The
 loader converts these strings into arrays before merging, so array fields
