@@ -133,6 +133,16 @@ fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command
     cmd
 }
 
+fn launch_server_process(manifest_path: &str, db_url: &str) -> Result<(Child, u16), AnyError> {
+    let socket = TcpListener::bind("127.0.0.1:0")?;
+    let port = socket.local_addr()?.port();
+    drop(socket);
+
+    let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
+    wait_for_server(&mut child)?;
+    Ok((child, port))
+}
+
 impl TestServer {
     /// Start the server using the given Cargo manifest path.
     pub fn start(manifest_path: &str) -> Result<Self, AnyError> {
@@ -217,13 +227,7 @@ impl TestServer {
         db_url: String,
         temp_dir: Option<TempDir>,
     ) -> Result<Self, AnyError> {
-        let socket = TcpListener::bind("127.0.0.1:0")?;
-        let port = socket.local_addr()?.port();
-        drop(socket);
-
-        let mut child = build_server_command(manifest_path, port, &db_url).spawn()?;
-
-        wait_for_server(&mut child)?;
+        let (child, port) = launch_server_process(manifest_path, &db_url)?;
 
         Ok(Self {
             child,
@@ -260,13 +264,7 @@ impl TestServer {
     fn launch(manifest_path: &str, db: PostgresTestDb) -> Result<Self, AnyError> {
         let db_url = db.url.to_string();
         let temp_dir = None;
-        let socket = TcpListener::bind("127.0.0.1:0")?;
-        let port = socket.local_addr()?.port();
-        drop(socket);
-
-        let mut child = build_server_command(manifest_path, port, &db_url).spawn()?;
-
-        wait_for_server(&mut child)?;
+        let (child, port) = launch_server_process(manifest_path, &db_url)?;
 
         Ok(Self {
             child,
@@ -487,13 +485,11 @@ pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
 
 /// Populate the database with a bundle and two categories at the root level.
 pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
-    with_db(db, |conn| {
+    setup_news_categories_with_structure(db, |conn, _| {
         Box::pin(async move {
             use mxd::db::create_category;
 
-            let _ = insert_root_bundle(conn).await?;
-
-            let _ = create_category(
+            create_category(
                 conn,
                 &mxd::models::NewCategory {
                     name: "General",
@@ -501,7 +497,7 @@ pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
                 },
             )
             .await?;
-            let _ = create_category(
+            create_category(
                 conn,
                 &mxd::models::NewCategory {
                     name: "Updates",
@@ -516,14 +512,12 @@ pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
 
 /// Populate the database with a nested bundle containing a single category.
 pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
-    with_db(db, |conn| {
+    setup_news_categories_with_structure(db, |conn, root_id| {
         Box::pin(async move {
             use mxd::{
                 db::{create_bundle, create_category},
                 models::NewBundle,
             };
-
-            let root_id = insert_root_bundle(conn).await?;
 
             let sub_id = create_bundle(
                 conn,
@@ -534,7 +528,7 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
             )
             .await?;
 
-            let _ = create_category(
+            create_category(
                 conn,
                 &mxd::models::NewCategory {
                     name: "Inside",
@@ -543,6 +537,24 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
             )
             .await?;
             Ok(())
+        })
+    })
+}
+
+fn setup_news_categories_with_structure<F>(
+    db: &str,
+    build: F,
+) -> Result<(), AnyError>
+where
+    F: for<'c> FnOnce(
+        &'c mut DbConnection,
+        i32,
+    ) -> BoxFuture<'c, Result<(), AnyError>>,
+{
+    with_db(db, |conn| {
+        Box::pin(async move {
+            let root_id = insert_root_bundle(conn).await?;
+            build(conn, root_id).await
         })
     })
 }
