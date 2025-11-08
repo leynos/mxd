@@ -29,11 +29,11 @@ corpus: ## Generate the fuzzing corpus
 	$(CARGO) run --bin gen_corpus
 
 fmt: ## Format Rust and Markdown sources
-	$(CARGO) fmt
+	$(CARGO) fmt --all
 	mdformat-all
 
 check-fmt: ## Verify formatting for Rust sources
-	$(CARGO) fmt -- --check
+	$(CARGO) fmt --all -- --check
 
 lint: ## Run Clippy with warnings denied
 	$(CARGO) clippy $(CLIPPY_FLAGS)

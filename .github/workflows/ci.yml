@@ -42,7 +42,7 @@ jobs:
         with:
           url: postgres://postgres:password@localhost/test
       - name: Format
-        run: cargo fmt --all -- --check
+        run: make check-fmt
       - name: Lint
         run: cargo clippy --no-default-features --features ${{ matrix.feature }} -- -D warnings
       - name: Test
