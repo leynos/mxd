@@ -223,7 +223,7 @@ async fn setup_database(database: &str) -> Result<DbPool> {
         audit_sqlite_features(&mut conn).await?;
         #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
         if is_postgres_url(database) {
-            audit_postgres_features(&mut *conn).await?;
+        audit_postgres_features(&mut conn).await?;
         }
         apply_migrations(&mut conn, database).await?;
     }
