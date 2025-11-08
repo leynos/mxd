@@ -13,7 +13,7 @@ path = "src/bin/gen_corpus.rs"
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 diesel = { version = "2", default-features = false, features = ["chrono"] }
-diesel-async = { version = "0.5", default-features = false, features = ["bb8", "sync-connection-wrapper"] }
+diesel-async = { version = "0.6", default-features = false, features = ["bb8", "sync-connection-wrapper"] }
 diesel_migrations = { version = "2", default-features = false }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
