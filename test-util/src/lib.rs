@@ -139,7 +139,11 @@ fn launch_server_process(manifest_path: &str, db_url: &str) -> Result<(Child, u1
     drop(socket);
 
     let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
-    wait_for_server(&mut child)?;
+    if let Err(e) = wait_for_server(&mut child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(e);
+    }
     Ok((child, port))
 }
 
