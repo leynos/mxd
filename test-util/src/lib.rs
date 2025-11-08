@@ -545,8 +545,7 @@ fn setup_news_categories_with_structure<F>(db: &str, build: F) -> Result<(), Any
 where
     F: 'static
         + Send
-        + for<'c> FnOnce(&'c mut DbConnection, i32)
-            -> BoxFuture<'c, Result<(), AnyError>>,
+        + for<'c> FnOnce(&'c mut DbConnection, i32) -> BoxFuture<'c, Result<(), AnyError>>,
 {
     with_db(db, |conn| {
         Box::pin(async move {

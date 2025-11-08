@@ -9,13 +9,13 @@ directory listing, file upload/download (with resume support), folder
 creation/deletion, moving/renaming, aliasing, folder upload/download, and file
 metadata updates. We focus exclusively on file sharing, **reusing the existing
 user/ACL architecture** from the broader application. Our implementation is
-backend-agnostic, using Rust’s `object_store` crate for storage so it can target
-AWS S3, Azure Blob, local files, etc. We will address how to map a classic
-hierarchical folder tree onto the flat keyspace of object storage, handle
-resumable transfers via byte ranges and multipart uploads, model **aliases**,
-**dropboxes**, **upload folders**, and **file comments** in the database, and
-enforce **folder-level and per-file ACLs**. We also discuss trade-offs in
-metadata synchronization, consistency, and performance.
+backend-agnostic, using Rust’s `object_store` crate for storage so it can
+target AWS S3, Azure Blob, local files, etc. We will address how to map a
+classic hierarchical folder tree onto the flat keyspace of object storage,
+handle resumable transfers via byte ranges and multipart uploads, model
+**aliases**, **dropboxes**, **upload folders**, and **file comments** in the
+database, and enforce **folder-level and per-file ACLs**. We also discuss
+trade-offs in metadata synchronization, consistency, and performance.
 
 ## Protocol Alignment with Hotline Transactions (200–213)
 
@@ -46,14 +46,14 @@ for robustness and scalability.
 **Core Components:** The file-sharing subsystem consists of a relational
 **database** for metadata & permissions and an **object storage** service for
 file content. The server logic (written in Rust) mediates between client
-requests, the DB, and the object store: for example, a download request triggers
-a DB lookup and an object store read stream. By leveraging the Rust
+requests, the DB, and the object store: for example, a download request
+triggers a DB lookup and an object store read stream. By leveraging the Rust
 **`object_store`** crate, we can easily swap underlying storage (local
 filesystem, S3, Azure, etc.) without code changes. All storage access is
-asynchronous and stream-oriented for efficiency. The **ACL and user management**
-are part of the broader application schema and are reused here – meaning
-file/folder permissions are stored and enforced using the same tables and logic
-that manage chat or news access rights, rather than a separate silo.
+asynchronous and stream-oriented for efficiency. The **ACL and user
+management** are part of the broader application schema and are reused here –
+meaning file/folder permissions are stored and enforced using the same tables
+and logic that manage chat or news access rights, rather than a separate silo.
 
 **Workflow Example:** When a client requests a file (DownloadFile), the server
 will 1) authenticate and check ACLs, 2) find the file’s metadata in the DB
@@ -61,19 +61,19 @@ will 1) authenticate and check ACLs, 2) find the file’s metadata in the DB
 store to the client (possibly in Hotline’s “flattened file” format). Uploads
 follow the reverse: the server receives data and streams it into the object
 store (possibly via multipart upload for large files) and then records metadata
-in the DB. Directory listings read from the DB and return a list of entries with
-attributes. All operations use the DB as the source of truth for directory
+in the DB. Directory listings read from the DB and return a list of entries
+with attributes. All operations use the DB as the source of truth for directory
 structure and metadata, which ensures strong consistency for listings and ACL
-enforcement. The object store holds only file data and is treated as a flat blob
-store.
+enforcement. The object store holds only file data and is treated as a flat
+blob store.
 
 **Storage Abstraction:** We do *not* rely on filesystem semantics or
 cloud-specific APIs directly – instead, we use the abstraction provided by
-`object_store::ObjectStore`. This trait provides methods to put and get objects,
-list with prefixes, and handle multipart uploads in a uniform way. This lets the
-same code run against local disk, S3, Azure, Google Cloud, etc., configured by a
-URL or builder at runtime. All file reads/writes are done through this API,
-keeping our implementation backend-agnostic.
+`object_store::ObjectStore`. This trait provides methods to put and get
+objects, list with prefixes, and handle multipart uploads in a uniform way.
+This lets the same code run against local disk, S3, Azure, Google Cloud, etc.,
+configured by a URL or builder at runtime. All file reads/writes are done
+through this API, keeping our implementation backend-agnostic.
 
 The diagram below shows the core data model (ERD) for the file-sharing
 component, including how it ties into the user/permission system.
@@ -140,31 +140,33 @@ In this model:
 
 - **FileNode** is a unified table for files, folders, and aliases. Each entry
   has a `type` indicating what it is. Every node (except the root) has a
-  `parent_id` linking to a folder. File entries have an `object_key` pointing to
-  data in object storage, a `size`, and perhaps MIME/type info (not shown here).
-  Folder entries have no `object_key` (since they contain no data object) and
-  size may be 0 or used for count. Alias entries have an `alias_target_id`
-  referencing another FileNode (the original file). All nodes can have a
-  `comment` (Hotline allowed user comments on files/folders). `is_dropbox` marks
-  a folder as a **drop box** (a special upload-only folder – explained later).
-  We also record creation timestamps and the user who created/uploaded the file.
+  `parent_id` linking to a folder. File entries have an `object_key` pointing
+  to data in object storage, a `size`, and perhaps MIME/type info (not shown
+  here). Folder entries have no `object_key` (since they contain no data
+  object) and size may be 0 or used for count. Alias entries have an
+  `alias_target_id` referencing another FileNode (the original file). All nodes
+  can have a `comment` (Hotline allowed user comments on files/folders).
+  `is_dropbox` marks a folder as a **drop box** (a special upload-only folder –
+  explained later). We also record creation timestamps and the user who
+  created/uploaded the file.
 - **Permission** is the shared ACL table (simplified for our context). It can
   reference any resource in the system; for file sharing we use it to store
-  folder-level or file-level permissions. Each entry grants certain `privileges`
-  (bitmask flags) to a principal (which can be an individual User or a Group).
-  The privileges bits correspond to actions like download, upload, delete, etc.,
-  as defined by the application (following Hotline’s privilege definitions). For
-  example, bit 2 might be “Download File”, bit 1 “Upload File”, bit 0 “Delete
-  File”, etc., matching Hotline’s Access Privileges. A **folder-type privilege**
-  in Hotline can be applied per folder via such entries. If no specific
-  Permission entry exists for a given file or folder, the user’s global access
-  rights (stored in `User.global_access` bitmask) apply as default.
+  folder-level or file-level permissions. Each entry grants certain
+  `privileges` (bitmask flags) to a principal (which can be an individual User
+  or a Group). The privileges bits correspond to actions like download, upload,
+  delete, etc., as defined by the application (following Hotline’s privilege
+  definitions). For example, bit 2 might be “Download File”, bit 1 “Upload
+  File”, bit 0 “Delete File”, etc., matching Hotline’s Access Privileges. A
+  **folder-type privilege** in Hotline can be applied per folder via such
+  entries. If no specific Permission entry exists for a given file or folder,
+  the user’s global access rights (stored in `User.global_access` bitmask)
+  apply as default.
 - **User, Group, UserGroup** are part of the existing system to manage accounts
   and group membership. They are included here to illustrate that permissions
-  can be granted to groups as well as users. The `Permission.principal_type` and
-  `principal_id` together refer to either a user or a group. For example, you
-  could give a “Guests” group download rights to a particular folder, or assign
-  an individual user upload rights.
+  can be granted to groups as well as users. The `Permission.principal_type`
+  and `principal_id` together refer to either a user or a group. For example,
+  you could give a “Guests” group download rights to a particular folder, or
+  assign an individual user upload rights.
 
 Below is an example SQL DDL that implements this schema:
 
@@ -218,12 +220,12 @@ CREATE TABLE Permission (
 -- (For file sharing, resource_type might be 'file' or 'folder'; both map to FileNode IDs.)
 ```
 
-This schema allows us to represent the complete file system hierarchy and access
-controls:
+This schema allows us to represent the complete file system hierarchy and
+access controls:
 
 - A folder’s contents are FileNode entries with that folder’s ID as their
-  parent_id. We can traverse parent_id links to resolve full paths or to enforce
-  inherited rules.
+  parent_id. We can traverse parent_id links to resolve full paths or to
+  enforce inherited rules.
 - An alias is simply a FileNode of type 'alias' pointing to another FileNode
   (its target). It has its own name and parent (so it appears in a directory),
   but no object_key or size of its own – it uses the target’s data.
@@ -235,9 +237,9 @@ controls:
   initiates a folder upload. The process of handling folder uploads is covered
   in the implementation sections, but no additional static schema is needed.
 - File comments are stored in the `comment` field of FileNode. Both files and
-  folders can have comments (Hotline had a separate privilege for setting folder
-  comments vs file comments, which we can enforce via privileges bits 28 and 29
-  respectively).
+  folders can have comments (Hotline had a separate privilege for setting
+  folder comments vs file comments, which we can enforce via privileges bits 28
+  and 29 respectively).
 
 All critical fields are indexed or constrained for performance and integrity
 (e.g. unique name per folder, foreign keys to cascade deletions of sub-items,
@@ -246,22 +248,23 @@ operation.
 
 ## Hierarchical Structure Mapping to Object Storage
 
-Object storage systems use a **flat key namespace** – there is no true directory
-hierarchy on the backend. Any notion of folders is typically an illusion
-maintained by naming conventions and prefix queries. For example, in an S3-like
-store, an object key `"docs/reports/file.pdf"` might *appear* as if `docs` and
-`reports` are folders, but actually it’s just a single key with slashes in its
-name. Folders have no intrinsic metadata in object stores – their existence is
-implied by object keys. Therefore, we must map our hierarchical Hotline-style
-file system onto a flat keyspace. We do this as follows:
+Object storage systems use a **flat key namespace** – there is no true
+directory hierarchy on the backend. Any notion of folders is typically an
+illusion maintained by naming conventions and prefix queries. For example, in
+an S3-like store, an object key `"docs/reports/file.pdf"` might *appear* as if
+`docs` and `reports` are folders, but actually it’s just a single key with
+slashes in its name. Folders have no intrinsic metadata in object stores –
+their existence is implied by object keys. Therefore, we must map our
+hierarchical Hotline-style file system onto a flat keyspace. We do this as
+follows:
 
 - **Database as Source of Truth:** The **FileNode** hierarchy in the database is
   the authoritative representation of directories, subdirectories, and file
-  names. We do **not** rely on the object store to list or organize directories.
-  This allows us to attach metadata (permissions, comments, etc.) to directories
-  themselves, which object stores cannot do. Folders in our system are logical
-  constructs (entries in the DB) and need not correspond to any physical object
-  in the store.
+  names. We do **not** rely on the object store to list or organize
+  directories. This allows us to attach metadata (permissions, comments, etc.)
+  to directories themselves, which object stores cannot do. Folders in our
+  system are logical constructs (entries in the DB) and need not correspond to
+  any physical object in the store.
 - **Object Key Design:** For actual file content, we generate an **object key**
   for each file stored. A simple strategy is to use a path-like key mirroring
   the file’s path (e.g., combine parent folder names and filename). However,
@@ -272,9 +275,9 @@ file system onto a flat keyspace. We do this as follows:
   key `"files/42.pdf"`, moving it to a different folder in the DB does not
   require moving the object or changing the key. In contrast, if we had used
   `"Docs/Manual.pdf"` as the key, renaming the "Docs" folder would require
-  renaming every object under it. By mapping each file to a **stable flat key**,
-  we keep storage operations simple and atomic (create/delete) and handle
-  renames purely in metadata.
+  renaming every object under it. By mapping each file to a **stable flat
+  key**, we keep storage operations simple and atomic (create/delete) and
+  handle renames purely in metadata.
 - **Folder Listing:** When a client requests a directory listing
   (GetFileNameList), the server queries the DB for FileNodes with `parent_id` =
   that folder’s ID. The object store is not consulted at all for listing; thus,
@@ -282,24 +285,24 @@ file system onto a flat keyspace. We do this as follows:
   additional info (file type, size, comments) directly from the DB. If using
   ID-based object keys, the server might on occasion verify the object exists
   (e.g., using a HEAD request via object_store for sanity), but that’s optional
-  and can be done in background audits. If we used path-based keys, we could use
-  object_store’s `list` with a prefix filter, but we would still need the DB to
-  get comments and permissions, so it's simpler to rely entirely on the DB for
-  structure.
+  and can be done in background audits. If we used path-based keys, we could
+  use object_store’s `list` with a prefix filter, but we would still need the
+  DB to get comments and permissions, so it's simpler to rely entirely on the
+  DB for structure.
 - **Folder Creation and Deletion:** Creating a folder (NewFolder command)
   results in a new FileNode of type 'folder' in the DB. **No object is created
-  in the store** for it (consistent with object stores not needing a placeholder
-  object for directories). Deleting a folder in the DB (if empty or via
-  recursive delete) will involve deleting all descendant FileNode records and
-  all associated objects for files – we can use object_store’s delete
+  in the store** for it (consistent with object stores not needing a
+  placeholder object for directories). Deleting a folder in the DB (if empty or
+  via recursive delete) will involve deleting all descendant FileNode records
+  and all associated objects for files – we can use object_store’s delete
   functionality for each file’s object. Deletion of a folder in object storage
   is thus just deletion of the contained objects (since the folder itself is
   conceptual).
 - **Path Resolution:** Since clients and protocol refer to files by “path”
   (folder names + filename), the server will need to resolve those into a
   FileNode ID. This can be done with recursive DB queries (e.g., find child by
-  name under parent, etc.). To optimize, one could store a full path string or a
-  path hash for quick lookups, but that complicates updates on move/rename.
+  name under parent, etc.). To optimize, one could store a full path string or
+  a path hash for quick lookups, but that complicates updates on move/rename.
   Instead, we can traverse stepwise or use indexed queries on parent+name (the
   unique constraint helps here). For example, to find
   `"/Uploads/2025/Report.pdf"`, we would find the root “Uploads” folder, then
@@ -315,11 +318,11 @@ efficiently.
 
 ## File Operations Implementation
 
-We now detail how each major file-sharing command is implemented in the backend,
-following the schema and architecture above. Each operation is described with
-its permission checks, database actions, and storage interactions. All
-operations use Rust’s async features and the `object_store` interface for I/O,
-enabling high-throughput, non-blocking transfers.
+We now detail how each major file-sharing command is implemented in the
+backend, following the schema and architecture above. Each operation is
+described with its permission checks, database actions, and storage
+interactions. All operations use Rust’s async features and the `object_store`
+interface for I/O, enabling high-throughput, non-blocking transfers.
 
 ### Directory Listing – *GetFileNameList (200)*
 
@@ -331,13 +334,14 @@ server performs:
    root folder (by convention, the root might be a FileNode with parent_id =
    NULL).
 2. **Permission Check:** Ensure the user has rights to list/browse this folder.
-   Hotline did not have a separate “list folder” privilege bit, but effectively,
-   to see files one needed Download permission on that folder or the special
-   *View Drop Boxes (30)* privilege for hidden dropboxes. In our system, we can
-   treat listing as requiring at least read access. If the folder is a dropbox
-   (`is_dropbox=true`) and the user lacks the special view privilege, we will
-   return an empty list (the folder will appear empty to them, even though files
-   might be present) – this mimics Hotline’s behavior of upload-only dropboxes.
+   Hotline did not have a separate “list folder” privilege bit, but
+   effectively, to see files one needed Download permission on that folder or
+   the special *View Drop Boxes (30)* privilege for hidden dropboxes. In our
+   system, we can treat listing as requiring at least read access. If the
+   folder is a dropbox (`is_dropbox=true`) and the user lacks the special view
+   privilege, we will return an empty list (the folder will appear empty to
+   them, even though files might be present) – this mimics Hotline’s behavior
+   of upload-only dropboxes.
 3. **Query DB:** Fetch all FileNodes where parent_id = folder’s ID. This yields
    all files, subfolders, and aliases in that directory. We will retrieve
    attributes needed for the listing: the name, type (to know if it’s a folder
@@ -361,8 +365,8 @@ server performs:
    defined paging – it likely sent all at once). In a modern implementation,
    consider limiting list size for performance, but for parity we can send all.
 
-This operation is primarily DB-bound. It is typically fast since it’s an indexed
-lookup by parent_id. The response assembly is straightforward. Example
+This operation is primarily DB-bound. It is typically fast since it’s an
+indexed lookup by parent_id. The response assembly is straightforward. Example
 pseudo-code using Rust and an async SQL client might look like:
 
 ```rust
@@ -413,8 +417,8 @@ steps:
 
 3. **Retrieve Metadata:** From the FileNode, get the `object_key`, size, and
    other metadata. This also helps with resume: if the client provided a resume
-   offset (Hotline’s *File resume data* field (203) in the request), we will use
-   it to start reading from that byte position.
+   offset (Hotline’s *File resume data* field (203) in the request), we will
+   use it to start reading from that byte position.
 
 4. **Open Object Stream:** Using the `object_store` API, we fetch the object. We
    can either request the entire object or a range. The `ObjectStore` trait
@@ -455,30 +459,30 @@ steps:
    offset. The client will append the incoming bytes to its existing partial
    file. Since our object store read was started at `offset`, this is naturally
    handled. We just need to ensure the “flattened file” header we send still
-   includes the full file metadata (Hotline’s format likely expects the original
-   file length in the info fork even if starting mid-file). We comply with the
-   protocol by providing the resume functionality but not altering the file’s
-   identity.
+   includes the full file metadata (Hotline’s format likely expects the
+   original file length in the info fork even if starting mid-file). We comply
+   with the protocol by providing the resume functionality but not altering the
+   file’s identity.
 
-This operation’s performance considerations: using range requests avoids sending
-data the client already has. The `object_store` abstraction will handle range
-gets in a single HTTP Range request or equivalent, which is efficient. We also
-rely on the fact that object reads are atomic and consistent (once a file is
-uploaded and finalized, we get a consistent byte stream).
+This operation’s performance considerations: using range requests avoids
+sending data the client already has. The `object_store` abstraction will handle
+range gets in a single HTTP Range request or equivalent, which is efficient. We
+also rely on the fact that object reads are atomic and consistent (once a file
+is uploaded and finalized, we get a consistent byte stream).
 
 **Hotline Compatibility Note:** Hotline’s “Download File” was followed by a
 “Download Info (211)” server transaction with a reference number, then the
 actual data on a new connection. We emulate this by our control-plane (main
 connection) sending a response that triggers the data-plane connection. The
 specifics of managing multiple sockets is beyond this guide’s scope, but the
-idea is to separate metadata exchange from bulk data transfer, which matches our
-approach of streaming from object_store once the transfer is negotiated.
+idea is to separate metadata exchange from bulk data transfer, which matches
+our approach of streaming from object_store once the transfer is negotiated.
 
 ### File Upload – *UploadFile (203)*
 
 Uploading a file involves receiving data from the client and storing it to the
-object store, possibly with support for resuming if the transfer is interrupted.
-The steps:
+object store, possibly with support for resuming if the transfer is
+interrupted. The steps:
 
 1. **Prepare Destination:** Identify the target directory and new file name from
    the request fields (Hotline sends *File path* and *File name* in the
@@ -503,20 +507,21 @@ The steps:
    flagged read-only for the user, deny.
 
 3. **Create DB Record:** Insert a new FileNode for the file. We mark its
-   `parent_id`, name, type='file', and set `size=0` initially. We can also store
-   `created_by` = user’s ID and a timestamp. We generate a new `object_key` for
-   it. At this point, depending on strategy, we might not commit the DB
-   transaction until the file content is fully received (to avoid a record for a
-   file that fails to upload). However, not having a DB entry means we have
-   nowhere to attach a partial state. A compromise is to insert it with a status
-   flag “incomplete” (not shown in schema for brevity) and update status when
-   done. For simplicity, assume we will add the entry after a successful upload,
-   or remove it on failure. We must also decide how to handle the scenario of
-   resuming an interrupted upload – the DB entry could remain and we append to
-   it later, or we might require the client to reinitiate and treat it as new
-   (except where resume is explicitly supported). The Hotline protocol does have
-   a resume for uploads, implied by *File transfer options* and *File resume
-   data* fields, so we strive to support it.
+   `parent_id`, name, type='file', and set `size=0` initially. We can also
+   store `created_by` = user’s ID and a timestamp. We generate a new
+   `object_key` for it. At this point, depending on strategy, we might not
+   commit the DB transaction until the file content is fully received (to avoid
+   a record for a file that fails to upload). However, not having a DB entry
+   means we have nowhere to attach a partial state. A compromise is to insert
+   it with a status flag “incomplete” (not shown in schema for brevity) and
+   update status when done. For simplicity, assume we will add the entry after
+   a successful upload, or remove it on failure. We must also decide how to
+   handle the scenario of resuming an interrupted upload – the DB entry could
+   remain and we append to it later, or we might require the client to
+   reinitiate and treat it as new (except where resume is explicitly
+   supported). The Hotline protocol does have a resume for uploads, implied by
+   *File transfer options* and *File resume data* fields, so we strive to
+   support it.
 
 4. **Receive Data:** The client, after sending the upload request, will open a
    data connection (port+1) and send an HTXF header and then the “flattened
@@ -560,9 +565,9 @@ The steps:
    writer.finish().await?;  // complete the multipart upload atomically:contentReference[oaicite:71]{index=71}
    ```
 
-   The `WriteMultipart` internally buffers to the required part size and uploads
-   parts in parallel or sequentially as needed. This ensures the upload is
-   efficient and can handle large files without memory bloat.
+   The `WriteMultipart` internally buffers to the required part size and
+   uploads parts in parallel or sequentially as needed. This ensures the upload
+   is efficient and can handle large files without memory bloat.
 
 5. **Resumable Upload:** If the client indicated a resume (Hotline uses a *File
    resume data* field in the server’s reply to an upload request to tell the
@@ -574,8 +579,8 @@ The steps:
    to resume, it sends an UploadFile request with a flag indicating resume. We
    look up the existing entry and find how many bytes were received (or which
    parts completed). We then respond with *File resume data* = number of bytes
-   already stored (Hotline’s mechanism was to let server tell client how much it
-   got, so client can send the rest). Then the client will send only the
+   already stored (Hotline’s mechanism was to let server tell client how much
+   it got, so client can send the rest). Then the client will send only the
    remaining bytes. In our implementation, we can re-open or continue the
    multipart upload:
 
@@ -620,17 +625,17 @@ The steps:
 
 6. **Finalize and Commit:** Once all bytes are received and the multipart upload
    is finished successfully (which atomically creates the object in the store),
-   we update the database. If we deferred inserting the FileNode, insert it now;
-   if we inserted earlier with size 0, update its `size` to the real size and
-   possibly update `updated_at` and set any status to complete. We also save the
-   comment extracted from the info fork. The file is now available for others to
-   download.
+   we update the database. If we deferred inserting the FileNode, insert it
+   now; if we inserted earlier with size 0, update its `size` to the real size
+   and possibly update `updated_at` and set any status to complete. We also
+   save the comment extracted from the info fork. The file is now available for
+   others to download.
 
 7. **Response:** The server sends a confirmation. In Hotline protocol, the
    client might not get a special “upload succeeded” message except maybe a
-   generic success or an updated file list broadcast. In our case, we can simply
-   return a success status on the control connection. The client might then
-   request a directory refresh.
+   generic success or an updated file list broadcast. In our case, we can
+   simply return a success status on the control connection. The client might
+   then request a directory refresh.
 
 **Hotline notes:** The *UploadFile (203)* in Hotline had an optional field for
 file size (108) if not resuming, which the client provides. We can use that to
@@ -657,13 +662,13 @@ Creating a directory is a simple metadata operation:
 3. **DB Insert:** Create a new FileNode of type 'folder' with the given name and
    parent_id = parent folder’s ID. Initialize its `comment` (empty by default),
    and `created_by` the user’s ID. Set `is_dropbox` to false by default (unless
-   we allow user to create a dropbox specifically – usually dropboxes are set up
-   by admins). The new folder inherits no special permissions automatically,
+   we allow user to create a dropbox specifically – usually dropboxes are set
+   up by admins). The new folder inherits no special permissions automatically,
    meaning it will by default be accessible to those who had access to the
    parent (unless inheritance rules apply via code). We could optionally copy
    the parent’s ACL entries to this new folder to mirror inherited permissions
-   (Hotline likely had per-folder ACL that needed setting separately, but we can
-   ease management by copying parent ACL as initial ACL for child).
+   (Hotline likely had per-folder ACL that needed setting separately, but we
+   can ease management by copying parent ACL as initial ACL for child).
 4. **Object Store:** No object storage action is needed – we don’t create any
    blob for an empty folder.
 5. **Return Result:** Confirm success to client. The client might then issue a
@@ -773,9 +778,9 @@ locking the file during rename. We only update a row in the DB.
 
 ### Create Alias – *MakeFileAlias (209)*
 
-An alias in Hotline is like a shortcut or symbolic link to a file (possibly even
-to a folder, though named “MakeFileAlias”, we assume it’s mainly for files).
-Implementation:
+An alias in Hotline is like a shortcut or symbolic link to a file (possibly
+even to a folder, though named “MakeFileAlias”, we assume it’s mainly for
+files). Implementation:
 
 1. **Identify Target and Destination:** The request provides the existing file’s
    path (source) and a new path for the alias (destination folder and alias
@@ -786,11 +791,11 @@ Implementation:
    Hotline’s “Make Alias (31)” is a folder-level privilege, meaning users might
    be allowed/disallowed to create aliases in a given folder. Our ACL model can
    support that (bit 31 on the folder). Also, the user should have read access
-   to the target file in the first place (no point aliasing something they can’t
-   access). In some cases, an admin might create an alias specifically to grant
-   access in another area – we handle access at use time anyway. So require at
-   least that the user *can* see the target file (download permission there),
-   and can create items in the destination.
+   to the target file in the first place (no point aliasing something they
+   can’t access). In some cases, an admin might create an alias specifically to
+   grant access in another area – we handle access at use time anyway. So
+   require at least that the user *can* see the target file (download
+   permission there), and can create items in the destination.
 3. **DB Insert:** Create a new FileNode entry of type 'alias' in the destination
    folder with the given alias name. Set its `alias_target_id` to the target
    file’s ID. We do *not* create any object_key for it (no actual data for
@@ -803,38 +808,38 @@ Implementation:
    alias could show an outdated size until perhaps an update occurs).
    Alternatively, always resolve at list time: if an entry is type alias, fetch
    target’s size live. That’s simple: join FileNode alias with FileNode target
-   in the listing query. We can do that and keep alias.size just for convenience
-   or not use it. Similarly for comments – Hotline may have allowed an alias to
-   have its own comment separate from the original file’s comment, or it could
-   show the original’s comment. We might let the user set a distinct comment on
-   the alias. For simplicity, we’ll treat alias comment as independent (so one
-   could describe the link). The protocol doesn’t clarify that; our design
-   choice.
+   in the listing query. We can do that and keep alias.size just for
+   convenience or not use it. Similarly for comments – Hotline may have allowed
+   an alias to have its own comment separate from the original file’s comment,
+   or it could show the original’s comment. We might let the user set a
+   distinct comment on the alias. For simplicity, we’ll treat alias comment as
+   independent (so one could describe the link). The protocol doesn’t clarify
+   that; our design choice.
 4. **Object Store:** No action – the alias doesn’t add data or duplicate the
    file. It’s just another DB pointer to the same object data.
 5. **Access semantics:** We need to consider how access control works via an
-   alias. The alias appears in a folder possibly with different permissions than
-   the original file’s folder. Our approach is: treat the alias as a distinct
-   node for permission checks. I.e., when a user tries to download via the
-   alias, we check their permissions to that alias (which typically inherits the
-   destination folder’s permissions). We do **not** require that the user have
-   permission on the original location. This means an alias can be used to
-   **expose a file to users who otherwise wouldn’t have access** to the
-   original’s folder. This matches how aliases are useful. However, to avoid
-   security issues, only privileged users (with Make Alias rights) can create
-   such an alias in a location where others might see it. Once created, the
-   alias itself can have its own ACL entries if needed (inherited from dest
-   folder). So effectively, the alias is its own resource pointing to data. When
-   serving an alias download, the server will resolve the alias to get the
-   object_key, but will enforce ACL on the alias node. If the alias node permits
-   the user to download (e.g. because the dest folder is public), the download
-   proceeds even if the original file’s folder was restricted. This behavior
-   should be documented for admins, as it is a deliberate capability (e.g., an
-   admin can put an alias of a file from a restricted area into a public area to
-   share it without duplicating the file). If instead one wanted alias to obey
-   original’s ACL, one could implement that check, but we assume the intention
-   of alias is to bypass original location restrictions (Hotline likely allowed
-   that usage).
+   alias. The alias appears in a folder possibly with different permissions
+   than the original file’s folder. Our approach is: treat the alias as a
+   distinct node for permission checks. I.e., when a user tries to download via
+   the alias, we check their permissions to that alias (which typically
+   inherits the destination folder’s permissions). We do **not** require that
+   the user have permission on the original location. This means an alias can
+   be used to **expose a file to users who otherwise wouldn’t have access** to
+   the original’s folder. This matches how aliases are useful. However, to
+   avoid security issues, only privileged users (with Make Alias rights) can
+   create such an alias in a location where others might see it. Once created,
+   the alias itself can have its own ACL entries if needed (inherited from dest
+   folder). So effectively, the alias is its own resource pointing to data.
+   When serving an alias download, the server will resolve the alias to get the
+   object_key, but will enforce ACL on the alias node. If the alias node
+   permits the user to download (e.g. because the dest folder is public), the
+   download proceeds even if the original file’s folder was restricted. This
+   behavior should be documented for admins, as it is a deliberate capability
+   (e.g., an admin can put an alias of a file from a restricted area into a
+   public area to share it without duplicating the file). If instead one wanted
+   alias to obey original’s ACL, one could implement that check, but we assume
+   the intention of alias is to bypass original location restrictions (Hotline
+   likely allowed that usage).
 6. **Return Result:** Confirm success. The client will now see the alias in the
    destination directory (perhaps with an alias badge in the UI).
 
@@ -937,15 +942,16 @@ will follow the same general approach:
 
 6. **Performance:** Downloading many files one-by-one can be slower than a
    single archive. As an enhancement, one might offer to compress the folder
-   server-side (e.g., create a zip on the fly). But that deviates from Hotline’s
-   protocol. Following Hotline, we do it sequentially. This approach can have a
-   lot of overhead if thousands of small files (each file’s flattened header has
-   ~128 bytes overhead plus a round-trip handshake). Hotline was designed for
-   dial-up where this was acceptable; on modern broadband the overhead is
-   negligible unless extremely many files. We ensure to stream efficiently and
-   not load multiple files into memory at once. Our server might pipeline a bit
-   by preparing the next file’s metadata while sending current file, but careful
-   with ordering – probably not needed due to handshake.
+   server-side (e.g., create a zip on the fly). But that deviates from
+   Hotline’s protocol. Following Hotline, we do it sequentially. This approach
+   can have a lot of overhead if thousands of small files (each file’s
+   flattened header has ~128 bytes overhead plus a round-trip handshake).
+   Hotline was designed for dial-up where this was acceptable; on modern
+   broadband the overhead is negligible unless extremely many files. We ensure
+   to stream efficiently and not load multiple files into memory at once. Our
+   server might pipeline a bit by preparing the next file’s metadata while
+   sending current file, but careful with ordering – probably not needed due to
+   handshake.
 
 In summary, *DownloadFolder* is implemented as an orchestrated sequence of
 *DownloadFile* operations. We reuse the **download logic** for each file. We
@@ -954,29 +960,30 @@ path info in the headers so the client can replicate the structure.
 
 ### Upload Entire Folder – *UploadFolder (213)*
 
-Uploading a folder (with subfolders and files) is the inverse of DownloadFolder.
-The client will be sending multiple files and directory creations, and the
-server must reconstruct the hierarchy. According to the Hotline protocol, after
-initiating an UploadFolder, the client connects on the data port and then the
-server and client engage in a similar item-by-item exchange. Essentially, for
-each file or subfolder from the client’s local folder, the server will be told
-what it is and where to create it. Our implementation:
+Uploading a folder (with subfolders and files) is the inverse of
+DownloadFolder. The client will be sending multiple files and directory
+creations, and the server must reconstruct the hierarchy. According to the
+Hotline protocol, after initiating an UploadFolder, the client connects on the
+data port and then the server and client engage in a similar item-by-item
+exchange. Essentially, for each file or subfolder from the client’s local
+folder, the server will be told what it is and where to create it. Our
+implementation:
 
 1. **Initiation:** The client sends an UploadFolder request with the name of the
    folder they're uploading and the destination path on server. The server
    responds with a reference number, etc., like a normal upload, and then opens
-   data connection. On the data connection, the client starts sending items. The
-   initial item might be the top-level folder itself. The protocol fields
-   include *Folder item count* and *Transfer size* as well, giving the server an
-   idea of how many items and bytes will come. We can use those for progress or
-   verification but it’s not strictly necessary for functionality.
+   data connection. On the data connection, the client starts sending items.
+   The initial item might be the top-level folder itself. The protocol fields
+   include *Folder item count* and *Transfer size* as well, giving the server
+   an idea of how many items and bytes will come. We can use those for progress
+   or verification but it’s not strictly necessary for functionality.
 
 2. **Permission Check:** Verify the user can upload to the specified destination
    path (the parent into which the new folder will be created). That requires
    Upload rights on that parent (and Create Folder rights since a new folder is
    being made). In Hotline, starting an UploadFolder (213) required Upload File
-   privilege, and the server likely just enforced that on target. We ensure they
-   have rights on the target parent.
+   privilege, and the server likely just enforced that on target. We ensure
+   they have rights on the target parent.
 
 3. **Receive Items:** The data stream from the client will contain a sequence of
    structures. From the protocol snippet:
@@ -1095,8 +1102,8 @@ what it is and where to create it. Our implementation:
    can set specific ACLs afterward.
 
 6. **Finish:** After processing the last item, the server closes out the
-   transfer (perhaps sending a final Next file or simply closing connection). On
-   the control channel, it may send a success notification.
+   transfer (perhaps sending a final Next file or simply closing connection).
+   On the control channel, it may send a success notification.
 
 This process effectively reuses the *UploadFile* logic repeatedly and the
 *NewFolder* logic for subfolders. It's more involved but conceptually
@@ -1115,17 +1122,17 @@ schema to achieve this. Key points of ACL enforcement in our implementation:
   specific permission entries (`Permission` records) that override or refine
   these rights on that resource. Hotline distinguished *general privileges* vs
   *folder privileges*. In our model, global privileges are general; folder
-  privileges can be set per folder via the Permission table. For example, a user
-  might globally have no upload rights, but the admin could specifically allow
-  them to upload to “Uploads” folder by adding a Permission entry for that user
-  on that folder with the Upload bit enabled. Conversely, we can deny access by
-  not granting a right in a context where the global would allow it – e.g., to
-  create a **dropbox**, an admin would give everyone Upload rights (bit 1) on
-  that folder but not give Download (bit 2), effectively making it write-only
-  for them. Additionally, the **View Drop Boxes (30)** bit can be used globally
-  to allow certain users (e.g., moderators) to see the contents of dropboxes;
-  our server will check for that bit to decide if a user can list/download from
-  a dropbox.
+  privileges can be set per folder via the Permission table. For example, a
+  user might globally have no upload rights, but the admin could specifically
+  allow them to upload to “Uploads” folder by adding a Permission entry for
+  that user on that folder with the Upload bit enabled. Conversely, we can deny
+  access by not granting a right in a context where the global would allow it –
+  e.g., to create a **dropbox**, an admin would give everyone Upload rights
+  (bit 1) on that folder but not give Download (bit 2), effectively making it
+  write-only for them. Additionally, the **View Drop Boxes (30)** bit can be
+  used globally to allow certain users (e.g., moderators) to see the contents
+  of dropboxes; our server will check for that bit to decide if a user can
+  list/download from a dropbox.
 
 - **ACL Enforcement Logic:** For each request, we perform checks as described in
   operations above. In general, the logic for a user `U` accessing resource `X`
@@ -1176,20 +1183,20 @@ schema to achieve this. Key points of ACL enforcement in our implementation:
      intended to be write-only for normal users. Implementation: We set such a
      folder’s ACL such that:
 
-  - `Permission(resource_id=dropbox_id, principal_type='group',`
-    `principal_id=<Everyone>, privileges=UploadBit)` – granting upload to all.
-  - No permission granting Download or List to that group. According to our
-    override rule, that means even if users have global download, they can’t
-    download here since the folder has a specific ACL that *only* gave upload.
-    Additionally, to hide contents, our code explicitly checks
-    `if folder.is_dropbox and user lacks VIEW_DROPBOX then don’t list contents`
-    as mentioned. So a normal user can upload (because of the allow entry) but
-    cannot see files (because no allow entry for download and override logic
-    kicks in, plus our listing filter). An admin or privileged user with the
-    global “View Drop Boxes” bit will bypass the hiding and can list/download
-    from it.
+     - `Permission(resource_id=dropbox_id, principal_type='group',`
+       `principal_id=<Everyone>, privileges=UploadBit)` – granting upload to all.
+     - No permission granting Download or List to that group. According to our
+       override rule, that means even if users have global download, they can’t
+       download here since the folder has a specific ACL that *only* gave upload.
+       Additionally, to hide contents, our code explicitly checks
+       `if folder.is_dropbox and user lacks VIEW_DROPBOX then don’t list contents`
+       as mentioned. So a normal user can upload (because of the allow entry) but
+       cannot see files (because no allow entry for download and override logic
+       kicks in, plus our listing filter). An admin or privileged user with the
+       global “View Drop Boxes” bit will bypass the hiding and can list/download
+       from it.
 
-  1. Per-file ACL: If a file itself has an entry (less common unless someone set
+  5. Per-file ACL: If a file itself has an entry (less common unless someone set
      a specific file to only be downloadable by certain users), we check that as
      well. Typically, if a file has a Permission entry, we treat that as
      authoritative for that file – e.g., mark a file as private to a user by
@@ -1199,7 +1206,7 @@ schema to achieve this. Key points of ACL enforcement in our implementation:
      resource_id=\<file_id>. If an entry exists and the requesting user or their
      group is not in it with the needed bit, we deny.
 
-  2. We should also consider the “Any Name (26)” privilege which allowed users
+  6. We should also consider the “Any Name (26)” privilege which allowed users
      to override name restrictions – in our context, that might allow them to
      upload a file that overwrites an existing one or use reserved names. We can
      interpret it loosely: a user with that bit could overwrite files they don’t
@@ -1225,15 +1232,15 @@ Applying these rules ensures that:
   more accessible area. Admins should be cautious, but since only users with
   Make Alias privilege can create them, this is under control.
 - Admin Override: Typically there is an “admin” or “owner” who has all
-  privileges. Hotline’s permission bitmap often had bit 25 *Upload Anywhere* and
-  other bits for broad bypass. We can consider that if a user has a global flag
-  that essentially grants all (or specifically one that says they’re an admin),
-  our checks can short-circuit and allow. For instance, if `User.global_access`
-  has all bits set (e.g., 0xFFFFFFFF), we treat them as full admin. Or if a
-  certain high bit like 32 was reserved for administrator. Implementation-wise,
-  we may just ensure that if they have been granted every relevant bit globally,
-  they won’t be blocked by folder ACL (except maybe dropbox view if that’s not
-  set – but an admin likely has that too).
+  privileges. Hotline’s permission bitmap often had bit 25 *Upload Anywhere*
+  and other bits for broad bypass. We can consider that if a user has a global
+  flag that essentially grants all (or specifically one that says they’re an
+  admin), our checks can short-circuit and allow. For instance, if
+  `User.global_access` has all bits set (e.g., 0xFFFFFFFF), we treat them as
+  full admin. Or if a certain high bit like 32 was reserved for administrator.
+  Implementation-wise, we may just ensure that if they have been granted every
+  relevant bit globally, they won’t be blocked by folder ACL (except maybe
+  dropbox view if that’s not set – but an admin likely has that too).
 - **Auditing and Logging:** We should log permission failures for security
   auditing. E.g., if user tries to download a file without rights, we log it.
 
@@ -1300,16 +1307,16 @@ consistency is critical:
     for simplicity and performance.
 
 - **Transactional Integrity:** The DB operations themselves use transactions to
-  maintain referential integrity. For example, when uploading a folder with many
-  files, we might handle each file in its own small transaction (so one file’s
-  failure doesn’t roll back the entire batch). That could leave half the files
-  uploaded if there’s an error mid-way – which is fine, the user can resume or
-  re-upload the rest. It’s similar to how it would be in a manual process. If we
-  wanted all-or-nothing for an UploadFolder, we could wrap the entire operation
-  in a transaction, but that is impractical if dozens of large files (the
-  transaction would be huge and long-lived). Better to commit as we go and
-  handle partial completion. The protocol’s resume actions allow continuing
-  later.
+  maintain referential integrity. For example, when uploading a folder with
+  many files, we might handle each file in its own small transaction (so one
+  file’s failure doesn’t roll back the entire batch). That could leave half the
+  files uploaded if there’s an error mid-way – which is fine, the user can
+  resume or re-upload the rest. It’s similar to how it would be in a manual
+  process. If we wanted all-or-nothing for an UploadFolder, we could wrap the
+  entire operation in a transaction, but that is impractical if dozens of large
+  files (the transaction would be huge and long-lived). Better to commit as we
+  go and handle partial completion. The protocol’s resume actions allow
+  continuing later.
 
 - **Object Store Consistency:** Modern object stores are typically strongly
   consistent for read-after-write and list-after-write (S3 now guarantees
@@ -1319,11 +1326,11 @@ consistency is critical:
   returns success, the subsequent `get` will see the complete file. Our design
   assumes a single object store and that all server nodes (if multiple) use the
   same bucket and credentials. If multiple server instances handle requests,
-  they all share the DB, so they all know about new files immediately via DB. If
-  one instance uploads a file and adds DB entry, another instance’s subsequent
-  listing will show it (since DB is updated), and a download request to that
-  other instance will find the object (assuming the object store has it by then,
-  which it should because the upload finished and committed).
+  they all share the DB, so they all know about new files immediately via DB.
+  If one instance uploads a file and adds DB entry, another instance’s
+  subsequent listing will show it (since DB is updated), and a download request
+  to that other instance will find the object (assuming the object store has it
+  by then, which it should because the upload finished and committed).
 
 - **Concurrency considerations:** We should guard against race conditions like
   two clients uploading a file with the same name in the same folder
@@ -1331,25 +1338,25 @@ consistency is critical:
   catch that and respond with an error (or rename one automatically if we
   wanted). Similarly, two deletions at same time – one will fail to find the
   file if the other already removed it. These edge cases can be handled by
-  transaction isolation or simple error checking (e.g., if a delete doesn’t find
-  the record, assume it was already deleted).
+  transaction isolation or simple error checking (e.g., if a delete doesn’t
+  find the record, assume it was already deleted).
 
 - **Metadata Sync:** If any direct changes occur in object storage outside our
   app (e.g. an admin manually adds a file to the bucket), our DB won’t know. We
   assume all modifications go through the app. We could have an administrative
   tool to sync – for example, scan the bucket for files with no DB entry and
   optionally import or remove them. But ideally, avoid out-of-band changes. One
-  area to watch is file **size** and **last modified**: we store size in DB when
-  uploading. If the actual object store content somehow differs (maybe someone
-  replaced the object directly), DB would be wrong. Again, we assume no such
-  unsupervised changes. If needed, one could verify content length via `head()`
-  on object store when serving, but that’s extra overhead. Consistency in our
-  controlled environment should be maintained by design.
+  area to watch is file **size** and **last modified**: we store size in DB
+  when uploading. If the actual object store content somehow differs (maybe
+  someone replaced the object directly), DB would be wrong. Again, we assume no
+  such unsupervised changes. If needed, one could verify content length via
+  `head()` on object store when serving, but that’s extra overhead. Consistency
+  in our controlled environment should be maintained by design.
 
 - **Performance vs Consistency Trade-off:** We favor consistency for user-facing
-  metadata. So we do slightly redundant work like storing file size and mod time
-  in DB (though the object store has this metadata too). This is to allow quick
-  queries and avoid dependency on object store for every listing or info
+  metadata. So we do slightly redundant work like storing file size and mod
+  time in DB (though the object store has this metadata too). This is to allow
+  quick queries and avoid dependency on object store for every listing or info
   request. There’s a minor risk of inconsistency (like if someone manually
   changes object, as said). We accept that for the performance benefit. If an
   admin did such changes, they should run a sync job or manually update DB.
@@ -1357,13 +1364,14 @@ consistency is critical:
 - **Locking:** While writing file data, it might be wise to lock the DB entry
   (or its name) so another action (like someone trying to download the file
   midway or list it) doesn’t see an incomplete state. We could mark it
-  incomplete; or at least ensure that if a user tries to download a file that is
-  being uploaded, either they get an error or they wait. This probably rarely
-  happens, but we can implement a simple check: don’t list incomplete files or
-  mark them with a “(uploading)” status. Since Hotline allowed resuming, clients
-  might see a partially uploaded file (0 bytes listed initially, then updated
-  when done maybe). For simplicity, perhaps hide it until done or show size 0
-  until done. The details can be left out as this is an edge detail.
+  incomplete; or at least ensure that if a user tries to download a file that
+  is being uploaded, either they get an error or they wait. This probably
+  rarely happens, but we can implement a simple check: don’t list incomplete
+  files or mark them with a “(uploading)” status. Since Hotline allowed
+  resuming, clients might see a partially uploaded file (0 bytes listed
+  initially, then updated when done maybe). For simplicity, perhaps hide it
+  until done or show size 0 until done. The details can be left out as this is
+  an edge detail.
 
 - **ERD and Schema Sync:** The ER diagram and DDL we provided remain aligned –
   any changes in one should reflect in the other if iterating. In our final
@@ -1374,15 +1382,16 @@ consistency is critical:
 Finally, we address strategies for ensuring good performance and scalability:
 
 - **Asynchronous I/O and Streaming:** Using async Rust and the `object_store`
-  crate means we handle I/O with minimal threads and high throughput. Large file
-  transfers are streamed directly from the object store to the client (or client
-  to store) without buffering entire files in memory. This reduces memory usage
-  and allows parallel transfers. For example, `object_store.get().into_stream()`
-  lets us pipeline data to the network as it arrives. Similarly, `put_multipart`
-  performs parallel uploads of chunks, exploiting network bandwidth. We can tune
-  the multipart chunk size or concurrency via `PutMultipartOpts` if needed. This
-  ensures even multi-gigabyte files can be handled efficiently and clients on
-  fast connections get good throughput.
+  crate means we handle I/O with minimal threads and high throughput. Large
+  file transfers are streamed directly from the object store to the client (or
+  client to store) without buffering entire files in memory. This reduces
+  memory usage and allows parallel transfers. For example,
+  `object_store.get().into_stream()` lets us pipeline data to the network as it
+  arrives. Similarly, `put_multipart` performs parallel uploads of chunks,
+  exploiting network bandwidth. We can tune the multipart chunk size or
+  concurrency via `PutMultipartOpts` if needed. This ensures even
+  multi-gigabyte files can be handled efficiently and clients on fast
+  connections get good throughput.
 - **Batch and Parallel Operations:** In cases like deleting or moving many
   files, we can perform object store deletions in parallel batches to speed up
   cleanup (the `object_store` API could be called concurrently on multiple
@@ -1393,17 +1402,17 @@ Finally, we address strategies for ensuring good performance and scalability:
   listing too many can be slow and often one might need to filter or page.
 - **Caching Metadata:** For extremely high read frequency (say a very popular
   file or folder), consider an in-memory cache or using an object cache (like
-  storing the flattened file info in memory to avoid recomposing it every time).
-  However, since DB access is relatively cheap and we have indexes, the
-  bottleneck is usually network I/O, not reading metadata. Still, if needed, one
-  could cache file attributes in a hash map keyed by file_id, invalidated on
-  updates. Given the scale of a typical BBS, this might be premature
+  storing the flattened file info in memory to avoid recomposing it every
+  time). However, since DB access is relatively cheap and we have indexes, the
+  bottleneck is usually network I/O, not reading metadata. Still, if needed,
+  one could cache file attributes in a hash map keyed by file_id, invalidated
+  on updates. Given the scale of a typical BBS, this might be premature
   optimization.
 - **Content Delivery:** Though not asked, it's worth noting: if files are large
   and many users download them, using a CDN in front of the object store could
-  offload traffic. Our design could integrate with that by generating pre-signed
-  URLs or so, but since Hotline is a direct server model, we keep the server in
-  the loop.
+  offload traffic. Our design could integrate with that by generating
+  pre-signed URLs or so, but since Hotline is a direct server model, we keep
+  the server in the loop.
 - **Multipart Tuning:** The `object_store` crate by default might choose a part
   size (e.g., 10 MiB). For very large files, a smaller part size (e.g. 8 MiB)
   might improve parallelism; too small and overhead increases. We can adjust as
@@ -1413,10 +1422,10 @@ Finally, we address strategies for ensuring good performance and scalability:
   runtime, they’re design artifacts, so skipping.)
 - **Large Folders and Zip Option:** If a user tries to download an entire huge
   folder, sequential transfer could be slow to set up each file. As mentioned,
-  one could implement an optimization: compress the folder server-side. But that
-  diverges from Hotline protocol. Alternatively, allow multiple files to be sent
-  in parallel (Hotline did one at a time). To stick to spec, we won’t do
-  parallel in the same request, but a user could manually start separate
+  one could implement an optimization: compress the folder server-side. But
+  that diverges from Hotline protocol. Alternatively, allow multiple files to
+  be sent in parallel (Hotline did one at a time). To stick to spec, we won’t
+  do parallel in the same request, but a user could manually start separate
   downloads. If we wanted, we could spawn multiple data connections to download
   subfolders in parallel. This would complicate the protocol sequence
   management. So likely not worth it unless in a custom extension.
@@ -1427,37 +1436,37 @@ Finally, we address strategies for ensuring good performance and scalability:
 - **Scalability:** The design should handle growth in number of files. The DB
   approach can manage tens or hundreds of thousands of entries with proper
   indexing. Object storage can handle virtually unlimited objects. One concern
-  on some object stores (like local filesystem via `object_store`) is having too
-  many files in one directory. If we use ID as key and put all in one flat
+  on some object stores (like local filesystem via `object_store`) is having
+  too many files in one directory. If we use ID as key and put all in one flat
   container, a local FS might slow down if we actually store each file on disk
   in one folder. For cloud stores, it’s fine. If using local for dev/test, we
-  might incorporate a sharding of keys (like prefix object_key with a few hex of
-  the ID to distribute into subdirectories). This can be abstracted by the
+  might incorporate a sharding of keys (like prefix object_key with a few hex
+  of the ID to distribute into subdirectories). This can be abstracted by the
   `object_store` using its Path (e.g., storing `42` under `files/42` means file
   “42” in folder “files” – on local filesystem that’s one dir with many files;
   we could do `files/42/42` or some scheme). This is an implementation detail;
   the crate might have a `prefix` or we can manually ensure some structure.
 - **Parallelism vs Memory:** While streaming, we should be careful not to read
-  too far ahead of writing to avoid memory build-up. Using backpressure from the
-  network sink is important. The Rust futures ecosystem typically handles that
-  if we await on writing each chunk. If using frameworks like tokio, one might
-  use `tokio::io::copy_bidirectional` for simplicity. With `object_store`, we
-  likely get a `Stream` of `Bytes` which we can `.try_fold()` into the network
-  sink as shown in their docs.
+  too far ahead of writing to avoid memory build-up. Using backpressure from
+  the network sink is important. The Rust futures ecosystem typically handles
+  that if we await on writing each chunk. If using frameworks like tokio, one
+  might use `tokio::io::copy_bidirectional` for simplicity. With
+  `object_store`, we likely get a `Stream` of `Bytes` which we can
+  `.try_fold()` into the network sink as shown in their docs.
 - **Updating Metadata performance:** If a user bulk-renames or moves many files
   (rare via UI, but maybe script), each triggers a DB update. Doing thousands
   could be slow. One could allow batch updates (not in Hotline UI though). It’s
   fine given typical usage.
 - **Permission checks overhead:** Our permission check typically involves
   looking up entries in the Permission table for a given file or its folder. We
-  can optimize by caching resolved permissions per folder for a user session, or
-  by storing an “effective rights” bitmask in the FileNode that combines parent
-  ACL and global for quick check (updated whenever ACLs change). However,
-  computing that on the fly is usually fine (a DB query for Permission where
-  resource_id = folder or file and principal in {user, any group of user}). We
-  can reduce queries by doing joins in the listing query to fetch an “allowed”
-  flag for each item, but that may be overkill. Simpler: check per operation
-  individually.
+  can optimize by caching resolved permissions per folder for a user session,
+  or by storing an “effective rights” bitmask in the FileNode that combines
+  parent ACL and global for quick check (updated whenever ACLs change).
+  However, computing that on the fly is usually fine (a DB query for Permission
+  where resource_id = folder or file and principal in {user, any group of
+  user}). We can reduce queries by doing joins in the listing query to fetch an
+  “allowed” flag for each item, but that may be overkill. Simpler: check per
+  operation individually.
 - **Dropping stale uploads:** If a user starts an upload and never finishes
   (e.g., connection lost), we will have a multipart upload in object store and
   possibly an incomplete DB entry. We should have a cleanup mechanism: e.g., a
@@ -1470,8 +1479,8 @@ Finally, we address strategies for ensuring good performance and scalability:
   interestingly). But to avoid confusion, better not to show incomplete files
   except maybe to the uploader. A possible enhancement: mark file as “locked”
   during upload – others trying to download it might either be blocked or could
-  even download the portion uploaded so far (Hotline’s resume system might allow
-  one user to resume another’s upload? Unlikely, it was per user).
+  even download the portion uploaded so far (Hotline’s resume system might
+  allow one user to resume another’s upload? Unlikely, it was per user).
 - **High-Level Performance Trade-off:** Our chosen design trades a bit of
   complexity (maintaining a DB) for a lot of performance and feature benefits
   (fast listing, rich metadata, easy moves). The alternative would have been
@@ -1480,10 +1489,10 @@ Finally, we address strategies for ensuring good performance and scalability:
   DB, but then implementing aliases, comments, and fine ACL would be extremely
   hard or impossible because object stores don’t support those things directly.
   Also, object store listing of large buckets is slower and not as flexible as
-  SQL queries (and often limited to 1000 results per call etc.). So our approach
-  is justified for a feature-rich BBS. The slight risk is the DB and object
-  store must be kept in sync, which we addressed with careful ordering and
-  potential background reconciliation.
+  SQL queries (and often limited to 1000 results per call etc.). So our
+  approach is justified for a feature-rich BBS. The slight risk is the DB and
+  object store must be kept in sync, which we addressed with careful ordering
+  and potential background reconciliation.
 
 ## Practical Implementation Notes (Rust Backend)
 
@@ -1515,10 +1524,10 @@ Let’s tie these concepts to actual Rust patterns and code structure:
   pool) and the object_store (from some global state).
 
 - Error handling: we’d have to map errors from DB (e.g., unique constraint
-  violation) or object_store (network errors) into the protocol’s error codes or
-  messages. Hotline had an error transaction with code and text (Field 100 was
-  Error Text). We can send meaningful errors (like “Access Denied” if permission
-  fails, “File Not Found” if not exists, etc.).
+  violation) or object_store (network errors) into the protocol’s error codes
+  or messages. Hotline had an error transaction with code and text (Field 100
+  was Error Text). We can send meaningful errors (like “Access Denied” if
+  permission fails, “File Not Found” if not exists, etc.).
 
 - Logging: Each action can log what user did what (for audit).
 
@@ -1537,10 +1546,10 @@ Let’s tie these concepts to actual Rust patterns and code structure:
   (some crate versions allow setting the threshold for using multipart, etc.).
 
 - MermaidJS ER diagram and the DDL provided help developers understand and set
-  up the database. In practice, one would execute those SQL statements to create
-  tables, and likely have a migration system. The relationships help to define
-  foreign key constraints for data integrity (e.g., can’t have a Permission
-  pointing to a non-existent file, thanks to FK).
+  up the database. In practice, one would execute those SQL statements to
+  create tables, and likely have a migration system. The relationships help to
+  define foreign key constraints for data integrity (e.g., can’t have a
+  Permission pointing to a non-existent file, thanks to FK).
 
 - As a Rust implementation detail, make sure to use proper types (e.g., bitmask
   as i64 or u64 for privileges, date as chrono DateTime, etc.). And ensure
@@ -1555,25 +1564,26 @@ Let’s tie these concepts to actual Rust patterns and code structure:
 
 ## Conclusion
 
-In this implementation guide, we outlined a robust design for a Hotline-inspired
-file-sharing server component. The solution aligns with Hotline protocol
-operations 200–213, providing equivalent functionality using modern tech. We
-leveraged a normalized relational schema to manage the hierarchical namespace,
-user permissions, and file metadata (including comments and aliases), while
-delegating binary storage to an `object_store`-backed cloud/object storage for
-scalability and backend neutrality. We detailed how to handle resumable
-transfers via range requests and multipart uploads, how to enforce ACLs at every
-step, and how to maintain consistency between the database and object store. We
-also discussed performance optimizations to ensure the system can handle large
-files and many operations efficiently.
+In this implementation guide, we outlined a robust design for a
+Hotline-inspired file-sharing server component. The solution aligns with
+Hotline protocol operations 200–213, providing equivalent functionality using
+modern tech. We leveraged a normalized relational schema to manage the
+hierarchical namespace, user permissions, and file metadata (including comments
+and aliases), while delegating binary storage to an `object_store`-backed
+cloud/object storage for scalability and backend neutrality. We detailed how to
+handle resumable transfers via range requests and multipart uploads, how to
+enforce ACLs at every step, and how to maintain consistency between the
+database and object store. We also discussed performance optimizations to
+ensure the system can handle large files and many operations efficiently.
 
 This guide should enable developers to implement the file-sharing module in a
-Rust BBS server that feels like the classic Hotline server in behavior, but with
-the reliability and scalability expected from modern infrastructure. With
-careful attention to the details above, the resulting system will allow users to
-seamlessly upload/download files (even large ones with resume), organize them in
-folders, create aliases and dropboxes for collaboration, all while respecting
-fine-grained access controls and remaining agnostic to the storage backend used.
+Rust BBS server that feels like the classic Hotline server in behavior, but
+with the reliability and scalability expected from modern infrastructure. With
+careful attention to the details above, the resulting system will allow users
+to seamlessly upload/download files (even large ones with resume), organize
+them in folders, create aliases and dropboxes for collaboration, all while
+respecting fine-grained access controls and remaining agnostic to the storage
+backend used.
 
 **Sources:**
 
