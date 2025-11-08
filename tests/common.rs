@@ -12,9 +12,9 @@ use test_util::postgres::PostgresUnavailable;
 /// # Errors
 ///
 /// Returns any error produced by the setup callback or while launching the server.
-pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, Box<dyn Error>>
+pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, Box<dyn Error + Send + Sync>>
 where
-    F: FnOnce(&str) -> Result<(), Box<dyn Error>>,
+    F: FnOnce(&str) -> Result<(), Box<dyn Error + Send + Sync>>,
 {
     match TestServer::start_with_setup("./Cargo.toml", setup) {
         Ok(s) => Ok(Some(s)),

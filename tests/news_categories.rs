@@ -19,7 +19,7 @@ mod common;
 fn list_categories(
     port: u16,
     path: Option<&str>,
-) -> Result<(FrameHeader, Vec<String>), Box<dyn std::error::Error>> {
+) -> Result<(FrameHeader, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(std::time::Duration::from_secs(20)))?;
@@ -75,7 +75,7 @@ fn list_categories(
 ///
 /// Returns an error if the test server setup, TCP communication, or protocol validation fails.
 #[test]
-fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
+fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
         return Ok(());
     };
@@ -105,7 +105,7 @@ fn list_news_categories_root() -> Result<(), Box<dyn std::error::Error>> {
 /// list_news_categories_no_path().unwrap(); 
 /// ```
 #[test]
-fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
+fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
         return Ok(());
     };
@@ -126,7 +126,7 @@ fn list_news_categories_no_path() -> Result<(), Box<dyn std::error::Error>> {
 /// # Returns
 /// Returns `Ok(())` if the test passes; otherwise, returns an error if any step fails.
 #[test]
-fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>> {
+fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(server) = common::start_server_or_skip(|db| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
@@ -168,7 +168,7 @@ fn list_news_categories_invalid_path() -> Result<(), Box<dyn std::error::Error>>
 /// list_news_categories_empty().unwrap(); 
 /// ```
 #[test]
-fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
+fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(server) = common::start_server_or_skip(|db| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
@@ -199,7 +199,7 @@ fn list_news_categories_empty() -> Result<(), Box<dyn std::error::Error>> {
 /// Returns an error if the test server setup, database operations, TCP communication, or protocol
 /// decoding fails.
 #[test]
-fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error>> {
+fn list_news_categories_nested() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
         return Ok(());
     };

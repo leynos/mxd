@@ -3,8 +3,6 @@
 //! The `test-util` crate provides helpers to spin up temporary servers and,
 //! when the `postgres` feature is enabled, manage embedded PostgreSQL
 //! instances. It is used by integration tests in the main crate.
-#[cfg(feature = "postgres")]
-use std::path::{Path, PathBuf};
 use std::{
     ffi::OsString,
     io::{BufRead, BufReader},
@@ -13,48 +11,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(feature = "postgres")]
-use once_cell::sync::Lazy;
 use tempfile::TempDir;
+
+type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(feature = "postgres")]
 pub mod postgres;
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresTestDb, postgres_db};
-
-#[cfg(feature = "postgres")]
-static HELPER_BIN: Lazy<Result<PathBuf, String>> = Lazy::new(|| {
-    let manifest = std::env::var("POSTGRES_SETUP_UNPRIV_MANIFEST").unwrap_or_else(|_| {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../postgres_setup_unpriv/Cargo.toml")
-            .to_string_lossy()
-            .into_owned()
-    });
-
-    let bin = Path::new(&manifest)
-        .parent()
-        .expect("manifest path has parent")
-        .join("target/debug/postgres-setup-unpriv");
-
-    // Rebuild the helper once per test session. Cargo is fast when nothing
-    // changed, so always delegate the up-to-date check to it.
-    let status = std::process::Command::new("cargo")
-        .args([
-            "build",
-            "--bin",
-            "postgres-setup-unpriv",
-            "--manifest-path",
-            &manifest,
-            "--quiet",
-        ])
-        .status()
-        .map_err(|e| format!("building postgres-setup-unpriv: {e}"))?;
-    if !status.success() {
-        return Err("building postgres-setup-unpriv failed".into());
-    }
-
-    Ok(bin)
-});
 
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
@@ -108,16 +72,16 @@ pub struct TestServer {
 /// assert!(db_url.ends_with("mxd.db"));
 /// ```
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<String, Box<dyn std::error::Error>>
+fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<String, AnyError>
 where
-    F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+    F: FnOnce(&str) -> Result<(), AnyError>,
 {
     let path = temp.path().join("mxd.db");
     setup(path.to_str().expect("db path utf8"))?;
     Ok(path.to_str().unwrap().to_owned())
 }
 
-fn wait_for_server(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {
+fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     if let Some(out) = &mut child.stdout {
         let mut reader = BufReader::new(out);
         let mut line = String::new();
@@ -171,7 +135,7 @@ fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command
 
 impl TestServer {
     /// Start the server using the given Cargo manifest path.
-    pub fn start(manifest_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn start(manifest_path: &str) -> Result<Self, AnyError> {
         Self::start_with_setup(manifest_path, |_| Ok(()))
     }
 
@@ -202,9 +166,9 @@ impl TestServer {
     pub fn start_with_setup<F>(
         manifest_path: &str,
         setup: F,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    ) -> Result<Self, AnyError>
     where
-        F: FnOnce(&str) -> Result<(), Box<dyn std::error::Error>>,
+        F: FnOnce(&str) -> Result<(), AnyError>,
     {
         ensure_single_backend();
         #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
@@ -255,7 +219,7 @@ impl TestServer {
         manifest_path: &str,
         db_url: String,
         temp_dir: Option<TempDir>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, AnyError> {
         let socket = TcpListener::bind("127.0.0.1:0")?;
         let port = socket.local_addr()?.port();
         drop(socket);
@@ -296,7 +260,7 @@ impl TestServer {
     /// let server = TestServer::launch("Cargo.toml", db)?;
     /// assert!(server.port() > 0);
     /// ```
-    fn launch(manifest_path: &str, db: PostgresTestDb) -> Result<Self, Box<dyn std::error::Error>> {
+    fn launch(manifest_path: &str, db: PostgresTestDb) -> Result<Self, AnyError> {
         let db_url = db.url.to_string();
         let temp_dir = None;
         let socket = TcpListener::bind("127.0.0.1:0")?;
@@ -407,11 +371,11 @@ use mxd::{
 ///
 /// # Returns
 /// Returns `Ok(())` if the setup function completes successfully; otherwise, returns an error.
-pub fn with_db<F>(db: &str, f: F) -> Result<(), Box<dyn std::error::Error>>
+pub fn with_db<F>(db: &str, f: F) -> Result<(), AnyError>
 where
     F: for<'c> FnOnce(
         &'c mut DbConnection,
-    ) -> BoxFuture<'c, Result<(), Box<dyn std::error::Error>>>,
+    ) -> BoxFuture<'c, Result<(), AnyError>>,
 {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
@@ -422,7 +386,7 @@ where
 }
 
 /// Populate the database with sample files and ACLs for file-related tests.
-pub fn setup_files_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
             let argon2 = argon2::Argon2::default();
@@ -471,7 +435,7 @@ pub fn setup_files_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Populate the database with a "General" category and a couple of articles.
-pub fn setup_news_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
             create_category(
@@ -527,7 +491,7 @@ pub fn setup_news_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Populate the database with a bundle and two categories at the root level.
-pub fn setup_news_categories_root_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
             use mxd::db::create_category;
@@ -556,7 +520,7 @@ pub fn setup_news_categories_root_db(db: &str) -> Result<(), Box<dyn std::error:
 }
 
 /// Populate the database with a nested bundle containing a single category.
-pub fn setup_news_categories_nested_db(db: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
             use mxd::{
@@ -588,7 +552,7 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), Box<dyn std::erro
     })
 }
 
-async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, Box<dyn std::error::Error>> {
+async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, AnyError> {
     use mxd::{db::create_bundle, models::NewBundle};
 
     let id = create_bundle(

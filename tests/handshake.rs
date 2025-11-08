@@ -7,7 +7,7 @@ use std::{
 mod common;
 
 #[test]
-fn handshake() -> Result<(), Box<dyn std::error::Error>> {
+fn handshake() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
         return Ok(());
     };

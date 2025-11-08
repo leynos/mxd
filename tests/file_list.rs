@@ -1,6 +1,6 @@
 //! Integration tests for file list operations.
 //!
-//! Exercises the GetFileNameList transaction with ACL filtering and error
+//! Exercises the `GetFileNameList` transaction with ACL filtering and error
 //! handling scenarios.
 
 use std::{
@@ -18,7 +18,7 @@ use rstest::{fixture, rstest};
 use test_util::{TestServer, handshake, setup_files_db};
 mod common;
 
-type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
+type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 type SetupFn = fn(&str) -> TestResult<()>;
 
 /// Performs the login transaction for a test connection.
@@ -36,7 +36,7 @@ fn perform_login(
     stream: &mut TcpStream,
     username: &[u8],
     password: &[u8],
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let params = vec![(FieldId::Login, username), (FieldId::Password, password)];
     let payload = encode_params(&params)?;
     let payload_len =
@@ -77,7 +77,9 @@ fn perform_login(
 /// # Ok(())
 /// # }
 /// ```
-fn get_file_list(stream: &mut TcpStream) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+fn get_file_list(
+    stream: &mut TcpStream,
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -112,8 +114,8 @@ fn get_file_list(stream: &mut TcpStream) -> Result<Vec<String>, Box<dyn std::err
     let mut names = Vec::new();
     for (id, data) in params {
         if id == FieldId::FileName {
-            let name =
-                String::from_utf8(data).map_err(|err| Box::<dyn std::error::Error>::from(err))?;
+            let name = String::from_utf8(data)
+                .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
             names.push(name);
         }
     }
@@ -137,6 +139,8 @@ fn test_stream(
     Ok(Some((server, stream)))
 }
 
+#[allow(clippy::unnecessary_wraps)]
+// Keep signature consistent with `SetupFn` so tests can swap in fallible setup routines.
 fn noop_setup(_: &str) -> TestResult<()> { Ok(()) }
 
 #[rstest]

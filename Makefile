@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-postgres test-sqlite lint fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release postgres-setup
+.PHONY: help all clean build release test test-postgres test-sqlite lint fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release
 
 APP ?= mxd
 CARGO ?= cargo
@@ -10,10 +10,6 @@ RSTEST_TIMEOUT ?= 20
 SQLITE_FEATURES := --features sqlite
 POSTGRES_FEATURES := --no-default-features --features postgres
 POSTGRES_TARGET_DIR := target/postgres
-POSTGRES_SETUP_BIN ?= postgres-setup-unpriv
-POSTGRES_SETUP_TARGET := target/debug/$(POSTGRES_SETUP_BIN)
-POSTGRES_SETUP_MANIFEST := postgres_setup_unpriv/Cargo.toml
-POSTGRES_SETUP_SRCS := $(wildcard postgres_setup_unpriv/src/*.rs)
 
 all: release ## Build release binaries for sqlite and postgres
 
@@ -50,16 +46,11 @@ nixie: ## Validate Mermaid diagrams
 
 test: test-postgres test-sqlite ## Run sqlite and postgres test suites
 
-test-postgres: $(POSTGRES_SETUP_TARGET) ## Run tests with the postgres backend
+test-postgres: ## Run tests with the postgres backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(POSTGRES_FEATURES) -- --nocapture
 
 test-sqlite: ## Run tests with the sqlite backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(SQLITE_FEATURES)
-
-postgres-setup: $(POSTGRES_SETUP_TARGET) ## Build the unprivileged postgres setup helper
-
-$(POSTGRES_SETUP_TARGET): $(POSTGRES_SETUP_SRCS) $(POSTGRES_SETUP_MANIFEST)
-	$(CARGO) build $(BUILD_JOBS) --bin $(POSTGRES_SETUP_BIN) --manifest-path $(POSTGRES_SETUP_MANIFEST) --target-dir target
 
 sqlite: target/debug/$(APP) ## Build debug sqlite binary
 

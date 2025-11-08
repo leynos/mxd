@@ -32,7 +32,7 @@ fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 }
 
 #[test]
-fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
+fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
         return Ok(());
     };
@@ -67,7 +67,7 @@ fn download_banner_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn user_name_list_reject_payload() -> Result<(), Box<dyn std::error::Error>> {
+fn user_name_list_reject_payload() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
         return Ok(());
     };

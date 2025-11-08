@@ -3,7 +3,7 @@ use test_util::TestServer;
 use which::which;
 
 #[test]
-fn login_validation() -> Result<(), Box<dyn std::error::Error>> {
+fn login_validation() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if which("hx").is_err() {
         eprintln!("hx not installed; skipping test");
         return Ok(());
