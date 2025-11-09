@@ -79,7 +79,7 @@ impl CreateUserWorld {
         };
         let status = outcome
             .as_ref()
-            .copied()
+            .map(|()| ())
             .map_err(std::string::ToString::to_string);
         let text = assert_step_err!(status);
         assert!(
@@ -121,7 +121,7 @@ fn then_success(world: &CreateUserWorld) {
     };
     let status = outcome
         .as_ref()
-        .copied()
+        .map(|()| ())
         .map_err(std::string::ToString::to_string);
     assert_step_ok!(status);
 }
