@@ -237,6 +237,14 @@ Essentially, each route in Wireframe will call an equivalent of
 the Wireframe server is feature-complete, the old loop will be
 removed([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L40-L43)).
 
+To keep that boundary explicit while the migration progresses, the bespoke
+Tokio listener now lives in `mxd::transport::legacy`. The module exposes a
+`LegacyServerConfig` helper that validates the bind address and database string
+up-front and a `run()` entry point that both binaries can call. This change
+means integration smoke tests, the CLI daemon, and the upcoming
+`mxd-wireframe-server` all depend on the same library surface without pulling
+`wireframe::*` into the domain modules.
+
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
 Configuration management in MXD is handled by the **OrthoConfig** library,
@@ -2310,6 +2318,13 @@ expected user stories. We use `rstest` fixtures heavily to avoid repeating
 setup code (like starting a server or creating sample data). For instance, we
 have a fixture for a logged-in session, a fixture for an embedded PG with
 certain data preloaded, etc.
+
+The handshake parser is now covered by `rstest-bdd` scenarios in
+`tests/bdd_handshake.rs`, which drive the shared `mxd::protocol` helpers
+directly. The feature file documents accepted (`TRTP`/version 1) and rejected
+(`WRNG`) handshakes so we exercise both happy and unhappy paths every time
+`cargo test` runs, giving early warning if future refactors alter the protocol
+contract.
 
 ### Expectrl-based Protocol Harness (SynHX Compatibility)
 

@@ -27,4 +27,5 @@ pub mod protocol;
 pub mod schema;
 pub mod transaction;
 pub mod transaction_type;
+pub mod transport;
 pub mod users;

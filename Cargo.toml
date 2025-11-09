@@ -69,6 +69,8 @@ test-util = { path = "test-util", default-features = false }
 postgresql_embedded = { version = "0.20", features = ["tokio"] }
 temp-env = "0.3"
 rstest = "0.26"
+rstest-bdd = "0.1.0"
+rstest-bdd-macros = "0.1.0"
 
 [lints.clippy]
 pedantic = "warn"

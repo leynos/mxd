@@ -16,7 +16,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### Step: Bootstrap the wireframe server
 
-- [ ] Task: Extract protocol and domain logic into reusable library modules.
+- [x] Task: Extract protocol and domain logic into reusable library modules.
   Acceptance: `mxd` builds as a library crate consumed by both binaries,
   existing integration smoke tests pass unchanged, and core modules remain free
   of `wireframe::*` imports as prescribed in `docs/design.md`. Dependencies:
