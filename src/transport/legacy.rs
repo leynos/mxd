@@ -83,7 +83,7 @@ impl LegacyServerConfig {
     #[must_use]
     pub fn database_url(&self) -> &str { &self.database_url }
 
-    /// Returns `true` when the configuration targets PostgreSQL.
+    /// Returns `true` when the configuration targets `PostgreSQL`.
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     fn uses_postgres(&self) -> bool { is_postgres_url(&self.database_url) }
 }
