@@ -135,35 +135,53 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
                 println!("shutdown signal received");
                 break;
             }
-            res = listener.accept() => {
-                match res {
-                    Ok((socket, peer)) => {
-                        let pool = pool.clone();
-                        let mut rx = shutdown_rx.clone();
-                        join_set.spawn(async move {
-                            if let Err(e) = handle_client(socket, peer, pool, &mut rx).await {
-                                eprintln!("connection error from {peer}: {e}");
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        eprintln!("accept error: {e}");
-                    }
-                }
-            }
+            res = listener.accept() => handle_accept_result(res, &pool, &shutdown_rx, &mut join_set),
         }
     }
 
-    // notify all tasks to shut down
-    let _ = shutdown_tx.send(true);
+    graceful_shutdown(shutdown_tx, join_set).await;
+    Ok(())
+}
 
+fn handle_accept_result(
+    res: io::Result<(TcpStream, SocketAddr)>,
+    pool: &DbPool,
+    shutdown_rx: &watch::Receiver<bool>,
+    join_set: &mut JoinSet<()>,
+) {
+    match res {
+        Ok((socket, peer)) => {
+            let pool = pool.clone();
+            let rx = shutdown_rx.clone();
+            spawn_client_handler(socket, peer, pool, rx, join_set);
+        }
+        Err(e) => {
+            eprintln!("accept error: {e}");
+        }
+    }
+}
+
+fn spawn_client_handler(
+    socket: TcpStream,
+    peer: SocketAddr,
+    pool: DbPool,
+    mut shutdown_rx: watch::Receiver<bool>,
+    join_set: &mut JoinSet<()>,
+) {
+    join_set.spawn(async move {
+        if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
+            eprintln!("connection error from {peer}: {e}");
+        }
+    });
+}
+
+async fn graceful_shutdown(shutdown_tx: watch::Sender<bool>, mut join_set: JoinSet<()>) {
+    let _ = shutdown_tx.send(true);
     while let Some(res) = join_set.join_next().await {
         if let Err(e) = res {
             eprintln!("task error: {e}");
         }
     }
-
-    Ok(())
 }
 
 async fn handle_client(
