@@ -68,6 +68,21 @@ domain operations can be exercised in isolation from their environment.
   DB
   instances([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L22-L31)).
 
+### Shared server module
+
+To satisfy the bootstrap milestone in the roadmap we extracted the legacy CLI
+and Tokio listener from `src/main.rs` into the reusable `mxd::server` module.
+`mxd::server::cli` now owns the `Cli`, `AppConfig`, and administrative
+subcommand types so every binary parses the same configuration surface, while
+`mxd::server::legacy` hosts the Tokio accept loop, connection handler, and
+`create-user` workflow. The public `mxd::server::run()` entry point parses
+arguments and dispatches commands, leaving `src/main.rs` as a thin shim. This
+keeps the domain crate free of `wireframe::*` imports and guarantees that
+upcoming binaries (for example, `mxd-wireframe-server`) can embed the same
+domain logic without duplicating setup code. The change is protected by new
+`rstest` fixtures around `AppConfig::load_from_iter` plus `rstest-bdd`
+behaviour tests covering successful and failing `create-user` invocations.
+
 **Layering and Responsibilities**:
 
 - *Domain layer*: Contains entities like `Session` (session state), `Command`
@@ -243,9 +258,9 @@ Configuration management in MXD is handled by the **OrthoConfig** library,
 which provides a unified way to load settings from **command-line arguments,
 environment variables, and configuration files**. The goal is to make running
 and configuring the daemon flexible but with minimal boilerplate in code. MXD’s
-`AppConfig` struct (in `main.rs`) defines all the configurable settings, and
-OrthoConfig’s derive macro automatically wires up CLI flags, env vars, and file
-parsing for those
+`AppConfig` struct (now in `src/server/cli.rs`) defines all the configurable
+settings, and OrthoConfig’s derive macro automatically wires up CLI flags, env
+vars, and file parsing for those
 fields([4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L124-L132))([4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L134-L142)).
 
 Key aspects of configuration:

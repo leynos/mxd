@@ -25,6 +25,7 @@ pub mod models;
 pub(crate) mod news_path;
 pub mod protocol;
 pub mod schema;
+pub mod server;
 pub mod transaction;
 pub mod transaction_type;
 pub mod users;

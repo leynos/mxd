@@ -31,7 +31,6 @@ figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"
 anyhow = "1"
-clap-dispatch = "0.1"
 url = { version = "2", optional = true }
 figment-json5 = { version = "0.1", optional = true }
 serde_yaml = { version = "0.9", optional = true }
@@ -69,6 +68,9 @@ test-util = { path = "test-util", default-features = false }
 postgresql_embedded = { version = "0.20", features = ["tokio"] }
 temp-env = "0.3"
 rstest = "0.26"
+rstest-bdd = "0.1.0"
+rstest-bdd-macros = { version = "0.1.0", features = ["compile-time-validation"] }
+tempfile = "3"
 
 [lints.clippy]
 pedantic = "warn"
