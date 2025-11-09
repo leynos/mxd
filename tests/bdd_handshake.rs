@@ -11,14 +11,15 @@ struct HandshakeWorld {
 }
 
 #[fixture]
-fn handshake_world() -> RefCell<HandshakeWorld> {
-    RefCell::new(HandshakeWorld::default())
-}
+fn handshake_world() -> RefCell<HandshakeWorld> { RefCell::new(HandshakeWorld::default()) }
 
 #[allow(clippy::needless_pass_by_value)]
 #[given("a handshake buffer with protocol {magic} and version {version:u16}")]
 fn configure_handshake(handshake_world: &RefCell<HandshakeWorld>, magic: String, version: u16) {
-    assert!(magic.len() == 4, "protocol magic must contain four characters");
+    assert!(
+        magic.len() == 4,
+        "protocol magic must contain four characters"
+    );
     let mut state = handshake_world.borrow_mut();
     state.buffer = [0u8; protocol::HANDSHAKE_LEN];
     state.buffer[0..4].copy_from_slice(magic.as_bytes());
