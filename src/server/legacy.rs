@@ -67,12 +67,7 @@ async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
         .password
         .ok_or_else(|| anyhow::anyhow!("missing password"))?;
 
-    let params = ParamsBuilder::new()
-        .m_cost(cfg.argon2_m_cost)
-        .t_cost(cfg.argon2_t_cost)
-        .p_cost(cfg.argon2_p_cost)
-        .build()?;
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let argon2 = build_argon2(cfg)?;
     let hashed = hash_password(&argon2, &password)?;
     let new_user = models::NewUser {
         username: &username,
@@ -95,13 +90,12 @@ pub async fn run_daemon(cfg: AppConfig) -> Result<()> {
     let bind = cfg.bind.clone();
     let database = cfg.database.clone();
 
-    let params = ParamsBuilder::new()
-        .m_cost(cfg.argon2_m_cost)
-        .t_cost(cfg.argon2_t_cost)
-        .p_cost(cfg.argon2_p_cost)
-        .build()?;
-    // Placeholder: use customised Argon2 instance when creating accounts
-    let _argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    #[expect(
+        unused_variables,
+        reason = "placeholder until the customised Argon2 instance is threaded into account \
+                  creation"
+    )]
+    let _argon2 = build_argon2(&cfg)?;
 
     let pool = setup_database(&database).await?;
 
@@ -109,6 +103,15 @@ pub async fn run_daemon(cfg: AppConfig) -> Result<()> {
     println!("mxd listening on {bind}");
 
     accept_connections(listener, pool).await
+}
+
+fn build_argon2(cfg: &AppConfig) -> Result<Argon2<'static>> {
+    let params = ParamsBuilder::new()
+        .m_cost(cfg.argon2_m_cost)
+        .t_cost(cfg.argon2_t_cost)
+        .p_cost(cfg.argon2_p_cost)
+        .build()?;
+    Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
