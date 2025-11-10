@@ -284,17 +284,32 @@ async fn shutdown_signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let mut term = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {},
-            _ = term.recv() => {},
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => {
+                tokio::select! {
+                    res = tokio::signal::ctrl_c() => {
+                        if let Err(err) = res {
+                            eprintln!("failed to listen for Ctrl-C: {err}");
+                        }
+                    },
+                    _ = term.recv() => {},
+                }
+            }
+            Err(err) => {
+                eprintln!("failed to install SIGTERM handler: {err}");
+                wait_for_ctrl_c().await;
+            }
         }
     }
     #[cfg(not(unix))]
     {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl-C handler");
+        wait_for_ctrl_c().await;
+    }
+}
+
+async fn wait_for_ctrl_c() {
+    if let Err(err) = tokio::signal::ctrl_c().await {
+        eprintln!("failed to listen for Ctrl-C: {err}");
     }
 }
 
