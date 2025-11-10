@@ -90,12 +90,9 @@ pub async fn run_daemon(cfg: AppConfig) -> Result<()> {
     let bind = cfg.bind.clone();
     let database = cfg.database.clone();
 
-    #[expect(
-        unused_variables,
-        reason = "placeholder until the customised Argon2 instance is threaded into account \
-                  creation"
-    )]
-    let _argon2 = build_argon2(&cfg)?;
+    // Run Argon2 setup now so the parameters are validated even before the
+    // customised instance is threaded into account creation.
+    let _ = build_argon2(&cfg)?;
 
     let pool = setup_database(&database).await?;
 
