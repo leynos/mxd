@@ -224,32 +224,7 @@ async fn handle_client(
 ) -> Result<()> {
     let (mut reader, mut writer) = tokio_io::split(socket);
 
-    // perform protocol handshake with a timeout
-    let mut buf = [0u8; protocol::HANDSHAKE_LEN];
-    match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
-        Ok(Ok(_)) => {}
-        Ok(Err(e)) => {
-            if e.kind() == io::ErrorKind::UnexpectedEof {
-                // Client disconnected before completing the handshake
-                return Ok(());
-            }
-            return Err(e.into());
-        }
-        Err(_) => {
-            protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
-            return Ok(());
-        }
-    }
-    match protocol::parse_handshake(&buf) {
-        Ok(_) => {
-            protocol::write_handshake_reply(&mut writer, protocol::HANDSHAKE_OK).await?;
-        }
-        Err(err) => {
-            let code = protocol::handshake_error_code(&err);
-            protocol::write_handshake_reply(&mut writer, code).await?;
-            return Ok(());
-        }
-    }
+    perform_handshake(&mut reader, &mut writer).await?;
 
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
@@ -276,6 +251,38 @@ async fn handle_client(
             }
         }
     }
+    Ok(())
+}
+
+async fn perform_handshake<R, W>(reader: &mut R, writer: &mut W) -> Result<()>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let mut buf = [0u8; protocol::HANDSHAKE_LEN];
+    match timeout(protocol::HANDSHAKE_TIMEOUT, reader.read_exact(&mut buf)).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => {
+            if e.kind() == io::ErrorKind::UnexpectedEof {
+                return Ok(());
+            }
+            return Err(e.into());
+        }
+        Err(_) => {
+            protocol::write_handshake_reply(writer, protocol::HANDSHAKE_ERR_TIMEOUT).await?;
+            return Ok(());
+        }
+    }
+
+    match protocol::parse_handshake(&buf) {
+        Ok(_) => protocol::write_handshake_reply(writer, protocol::HANDSHAKE_OK).await?,
+        Err(err) => {
+            let code = protocol::handshake_error_code(&err);
+            protocol::write_handshake_reply(writer, code).await?;
+            return Ok(());
+        }
+    }
+
     Ok(())
 }
 
