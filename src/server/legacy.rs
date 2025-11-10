@@ -4,7 +4,7 @@
 //! logic available to alternative front-ends (such as the upcoming wireframe
 //! adapter) without duplicating code.
 
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, sync::Arc};
 
 use anyhow::{Context, Result};
 use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
@@ -90,16 +90,15 @@ pub async fn run_daemon(cfg: AppConfig) -> Result<()> {
     let bind = cfg.bind.clone();
     let database = cfg.database.clone();
 
-    // Run Argon2 setup now so the parameters are validated even before the
-    // customised instance is threaded into account creation.
-    let _ = build_argon2(&cfg)?;
+    // Build the Argon2 instance once so it can be shared by all worker tasks.
+    let argon2 = Arc::new(build_argon2(&cfg)?);
 
     let pool = setup_database(&database).await?;
 
     let listener = TcpListener::bind(&bind).await?;
     println!("mxd listening on {bind}");
 
-    accept_connections(listener, pool).await
+    accept_connections(listener, pool, argon2).await
 }
 
 fn build_argon2(cfg: &AppConfig) -> Result<Argon2<'static>> {
@@ -153,7 +152,11 @@ async fn setup_database(database: &str) -> Result<DbPool> {
     Ok(pool)
 }
 
-async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
+async fn accept_connections(
+    listener: TcpListener,
+    pool: DbPool,
+    argon2: Arc<Argon2<'static>>,
+) -> Result<()> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut join_set = JoinSet::new();
     let shutdown = shutdown_signal();
@@ -166,7 +169,13 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
                 break;
             }
             res = listener.accept() => {
-                handle_accept_result(res, &pool, &shutdown_rx, &mut join_set);
+                handle_accept_result(
+                    res,
+                    pool.clone(),
+                    Arc::clone(&argon2),
+                    &shutdown_rx,
+                    &mut join_set,
+                );
             }
         }
     }
@@ -179,15 +188,15 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
 
 fn handle_accept_result(
     res: io::Result<(TcpStream, SocketAddr)>,
-    pool: &DbPool,
+    pool: DbPool,
+    argon2: Arc<Argon2<'static>>,
     shutdown_rx: &watch::Receiver<bool>,
     join_set: &mut JoinSet<()>,
 ) {
     match res {
         Ok((socket, peer)) => {
-            let pool = pool.clone();
             let rx = shutdown_rx.clone();
-            spawn_client_handler(socket, peer, pool, rx, join_set);
+            spawn_client_handler(socket, peer, pool, argon2, rx, join_set);
         }
         Err(e) => eprintln!("accept error: {e}"),
     }
@@ -197,11 +206,13 @@ fn spawn_client_handler(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
+    argon2: Arc<Argon2<'static>>,
     mut shutdown_rx: watch::Receiver<bool>,
     join_set: &mut JoinSet<()>,
 ) {
+    let ctx = HandlerContext::new(peer, pool, argon2);
     join_set.spawn(async move {
-        if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
+        if let Err(e) = handle_client(socket, ctx, &mut shutdown_rx).await {
             eprintln!("connection error from {peer}: {e}");
         }
     });
@@ -218,8 +229,7 @@ async fn await_spawned_tasks(join_set: &mut JoinSet<()>) {
 /// Handles a single client connection, performing handshake and processing transactions.
 async fn handle_client(
     socket: TcpStream,
-    peer: SocketAddr,
-    pool: DbPool,
+    ctx: HandlerContext,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<()> {
     let (mut reader, mut writer) = tokio_io::split(socket);
@@ -228,7 +238,6 @@ async fn handle_client(
 
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
-    let ctx = HandlerContext::new(peer, pool.clone());
     let mut session = Session::default();
     loop {
         tokio::select! {
@@ -322,11 +331,84 @@ async fn wait_for_ctrl_c() {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use anyhow::Result;
+    use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+        sync::watch,
+        task::JoinSet,
+    };
+
+    use super::*;
+    use crate::{db::DbConnection, protocol};
+
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     #[test]
     fn postgres_url_detection() {
         assert!(super::is_postgres_url("postgres://localhost"));
         assert!(super::is_postgres_url("postgresql://localhost"));
         assert!(!super::is_postgres_url("sqlite://localhost"));
+    }
+
+    fn dummy_pool() -> DbPool {
+        let manager = AsyncDieselConnectionManager::<DbConnection>::new(
+            "postgres://example.invalid/mxd-test",
+        );
+        Pool::builder()
+            .max_size(1)
+            .min_idle(Some(0))
+            .idle_timeout(None::<Duration>)
+            .max_lifetime(None::<Duration>)
+            .test_on_check_out(false)
+            .build_unchecked(manager)
+    }
+
+    fn handshake_frame() -> [u8; protocol::HANDSHAKE_LEN] {
+        let mut buf = [0u8; protocol::HANDSHAKE_LEN];
+        buf[0..4].copy_from_slice(protocol::PROTOCOL_ID);
+        buf[8..10].copy_from_slice(&protocol::VERSION.to_be_bytes());
+        buf
+    }
+
+    #[tokio::test]
+    async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
+        let pool = dummy_pool();
+        let argon2 = Arc::new(Argon2::default());
+        let strong_before = Arc::strong_count(&argon2);
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let mut join_set = JoinSet::new();
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let mut client = TcpStream::connect(addr).await?;
+        let (server_socket, peer) = listener.accept().await?;
+
+        handle_accept_result(
+            Ok((server_socket, peer)),
+            pool,
+            Arc::clone(&argon2),
+            &shutdown_rx,
+            &mut join_set,
+        );
+
+        assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
+
+        client.write_all(&handshake_frame()).await?;
+        let mut reply = [0u8; protocol::REPLY_LEN];
+        client.read_exact(&mut reply).await?;
+        client.shutdown().await?;
+
+        shutdown_tx.send(true).ok();
+
+        while let Some(result) = join_set.join_next().await {
+            result.expect("client handler task");
+        }
+
+        assert_eq!(Arc::strong_count(&argon2), strong_before);
+
+        Ok(())
     }
 }

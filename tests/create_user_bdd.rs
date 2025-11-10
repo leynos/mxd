@@ -1,7 +1,7 @@
 //! BDD-style integration tests for the create-user command.
 //!
 //! These tests exercise the CLI-driven create-user workflow against a temporary
-//! SQLite database, verifying both successful user creation and error handling.
+//! `SQLite` database, verifying both successful user creation and error handling.
 
 #![cfg(feature = "sqlite")]
 
@@ -39,7 +39,6 @@ impl CreateUserWorld {
             argon2_m_cost: Params::DEFAULT_M_COST,
             argon2_t_cost: Params::DEFAULT_T_COST,
             argon2_p_cost: Params::DEFAULT_P_COST,
-            ..AppConfig::default()
         };
         let rt = Runtime::new().expect("runtime");
         Self {
@@ -83,7 +82,7 @@ impl CreateUserWorld {
         let Some(outcome) = outcome_ref.as_ref() else {
             panic!("command not executed");
         };
-        let status = outcome.as_ref().map_err(|e| e.to_string());
+        let status = outcome.as_ref().map_err(ToString::to_string);
         let text = assert_step_err!(status);
         assert!(
             text.contains(message),
@@ -95,6 +94,11 @@ impl CreateUserWorld {
 #[fixture]
 fn world() -> CreateUserWorld {
     let world = CreateUserWorld::new();
+    // Sanity-check fixture invariants so step definitions can rely on the DB path shape.
+    assert!(
+        world.config.borrow().database.ends_with("bdd.mxd.db"),
+        "fixture must create a temporary sqlite database"
+    );
     world
 }
 
@@ -130,18 +134,20 @@ fn then_success(world: &CreateUserWorld) {
     let Some(outcome) = outcome_ref.as_ref() else {
         panic!("command not executed");
     };
-    let status = outcome.as_ref().map_err(|e| e.to_string());
+    let status = outcome.as_ref().map_err(ToString::to_string);
     assert_step_ok!(status);
 }
 
 #[then("the database contains a user named \"{username}\"")]
 fn then_user_exists(world: &CreateUserWorld, username: String) {
     world.assert_user_exists(&username);
+    drop(username); // rstest_bdd provides owned strings, so consume them to silence needless-pass-by-value.
 }
 
 #[then("the command fails with message \"{message}\"")]
 fn then_failure(world: &CreateUserWorld, message: String) {
     world.assert_failure_contains(&message);
+    drop(message); // Consume owned placeholder to avoid needless-pass-by-value false positives.
 }
 
 #[scenario(path = "tests/features/create_user_command.feature", index = 0)]
