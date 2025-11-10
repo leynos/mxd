@@ -83,10 +83,7 @@ impl CreateUserWorld {
         let Some(outcome) = outcome_ref.as_ref() else {
             panic!("command not executed");
         };
-        let status = outcome
-            .as_ref()
-            .map(|()| ())
-            .map_err(std::string::ToString::to_string);
+        let status = outcome.as_ref().map_err(|e| e.to_string());
         let text = assert_step_err!(status);
         assert!(
             text.contains(message),
@@ -109,7 +106,13 @@ fn given_temp_db(world: &CreateUserWorld) {
 }
 
 #[given("server configuration bound to that database")]
-fn given_config_bound(world: &CreateUserWorld) { let _ = world.database_path(); }
+fn given_config_bound(world: &CreateUserWorld) {
+    let db_path = world.database_path();
+    assert!(
+        db_path.ends_with("bdd.mxd.db"),
+        "temporary sqlite database path must end with bdd.mxd.db"
+    );
+}
 
 #[when("the operator runs create-user with username \"{username}\" and password \"{password}\"")]
 fn when_run_with_password(world: &CreateUserWorld, username: String, password: String) {
@@ -127,10 +130,7 @@ fn then_success(world: &CreateUserWorld) {
     let Some(outcome) = outcome_ref.as_ref() else {
         panic!("command not executed");
     };
-    let status = outcome
-        .as_ref()
-        .map(|()| ())
-        .map_err(std::string::ToString::to_string);
+    let status = outcome.as_ref().map_err(|e| e.to_string());
     assert_step_ok!(status);
 }
 
@@ -145,7 +145,7 @@ fn then_failure(world: &CreateUserWorld, message: String) {
 }
 
 #[scenario(path = "tests/features/create_user_command.feature", index = 0)]
-fn create_user_happy(world: CreateUserWorld) { drop(world); }
+fn create_user_happy(_world: CreateUserWorld) {}
 
 #[scenario(path = "tests/features/create_user_command.feature", index = 1)]
-fn create_user_missing_password(world: CreateUserWorld) { drop(world); }
+fn create_user_missing_password(_world: CreateUserWorld) {}
