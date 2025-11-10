@@ -145,7 +145,7 @@ fn then_failure(world: &CreateUserWorld, message: String) {
 }
 
 #[scenario(path = "tests/features/create_user_command.feature", index = 0)]
-fn create_user_happy(_world: CreateUserWorld) {}
+fn create_user_happy(world: CreateUserWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/create_user_command.feature", index = 1)]
-fn create_user_missing_password(_world: CreateUserWorld) {}
+fn create_user_missing_password(world: CreateUserWorld) { let _ = world; }
