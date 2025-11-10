@@ -4,7 +4,7 @@
 //! logic available to alternative front-ends (such as the upcoming wireframe
 //! adapter) without duplicating code.
 
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, sync::Arc};
 
 use anyhow::{Context, Result};
 use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
@@ -90,16 +90,15 @@ pub async fn run_daemon(cfg: AppConfig) -> Result<()> {
     let bind = cfg.bind.clone();
     let database = cfg.database.clone();
 
-    // Run Argon2 setup now so the parameters are validated even before the
-    // customised instance is threaded into account creation.
-    let _ = build_argon2(&cfg)?;
+    // Build the Argon2 instance once so it can be shared by all worker tasks.
+    let argon2 = Arc::new(build_argon2(&cfg)?);
 
     let pool = setup_database(&database).await?;
 
     let listener = TcpListener::bind(&bind).await?;
     println!("mxd listening on {bind}");
 
-    accept_connections(listener, pool).await
+    accept_connections(listener, pool, argon2).await
 }
 
 fn build_argon2(cfg: &AppConfig) -> Result<Argon2<'static>> {
@@ -153,7 +152,11 @@ async fn setup_database(database: &str) -> Result<DbPool> {
     Ok(pool)
 }
 
-async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
+async fn accept_connections(
+    listener: TcpListener,
+    pool: DbPool,
+    argon2: Arc<Argon2<'static>>,
+) -> Result<()> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut join_set = JoinSet::new();
     let shutdown = shutdown_signal();
@@ -166,7 +169,7 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
                 break;
             }
             res = listener.accept() => {
-                handle_accept_result(res, &pool, &shutdown_rx, &mut join_set);
+                handle_accept_result(res, &pool, &argon2, &shutdown_rx, &mut join_set);
             }
         }
     }
@@ -180,6 +183,7 @@ async fn accept_connections(listener: TcpListener, pool: DbPool) -> Result<()> {
 fn handle_accept_result(
     res: io::Result<(TcpStream, SocketAddr)>,
     pool: &DbPool,
+    argon2: &Arc<Argon2<'static>>,
     shutdown_rx: &watch::Receiver<bool>,
     join_set: &mut JoinSet<()>,
 ) {
@@ -187,7 +191,8 @@ fn handle_accept_result(
         Ok((socket, peer)) => {
             let pool = pool.clone();
             let rx = shutdown_rx.clone();
-            spawn_client_handler(socket, peer, pool, rx, join_set);
+            let argon2 = Arc::clone(argon2);
+            spawn_client_handler(socket, peer, pool, argon2, rx, join_set);
         }
         Err(e) => eprintln!("accept error: {e}"),
     }
@@ -197,11 +202,12 @@ fn spawn_client_handler(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
+    argon2: Arc<Argon2<'static>>,
     mut shutdown_rx: watch::Receiver<bool>,
     join_set: &mut JoinSet<()>,
 ) {
     join_set.spawn(async move {
-        if let Err(e) = handle_client(socket, peer, pool, &mut shutdown_rx).await {
+        if let Err(e) = handle_client(socket, peer, pool, argon2, &mut shutdown_rx).await {
             eprintln!("connection error from {peer}: {e}");
         }
     });
@@ -220,6 +226,7 @@ async fn handle_client(
     socket: TcpStream,
     peer: SocketAddr,
     pool: DbPool,
+    argon2: Arc<Argon2<'static>>,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<()> {
     let (mut reader, mut writer) = tokio_io::split(socket);
@@ -228,7 +235,7 @@ async fn handle_client(
 
     let mut tx_reader = TransactionReader::new(reader);
     let mut tx_writer = TransactionWriter::new(writer);
-    let ctx = HandlerContext::new(peer, pool.clone());
+    let ctx = HandlerContext::new(peer, pool.clone(), argon2);
     let mut session = Session::default();
     loop {
         tokio::select! {

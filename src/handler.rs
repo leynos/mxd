@@ -3,7 +3,9 @@
 //! The handler owns per-client [`Session`] state and dispatches incoming
 //! transactions to [`Command`] processors. Each connection runs in its own
 //! asynchronous task.
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
+
+use argon2::Argon2;
 
 use crate::{
     commands::Command,
@@ -15,6 +17,7 @@ use crate::{
 pub struct Context {
     pub peer: SocketAddr,
     pub pool: DbPool,
+    pub argon2: Arc<Argon2<'static>>,
 }
 
 /// Session state for a single connection.
@@ -25,7 +28,9 @@ pub struct Session {
 
 impl Context {
     #[must_use]
-    pub fn new(peer: SocketAddr, pool: DbPool) -> Self { Self { peer, pool } }
+    pub fn new(peer: SocketAddr, pool: DbPool, argon2: Arc<Argon2<'static>>) -> Self {
+        Self { peer, pool, argon2 }
+    }
 }
 
 /// Parse and handle a single request frame without performing network I/O.
