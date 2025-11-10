@@ -70,9 +70,9 @@ domain operations can be exercised in isolation from their environment.
 
 ### Shared server module
 
-To satisfy the bootstrap milestone in the roadmap we extracted the legacy CLI
-and Tokio listener from `src/main.rs` into the reusable `mxd::server` module.
-`mxd::server::cli` now owns the `Cli`, `AppConfig`, and administrative
+To satisfy the bootstrap milestone in the roadmap, the legacy CLI and Tokio
+listener were extracted from `src/main.rs` into the reusable `mxd::server`
+module. `mxd::server::cli` now owns the `Cli`, `AppConfig`, and administrative
 subcommand types so every binary parses the same configuration surface, while
 `mxd::server::legacy` hosts the Tokio accept loop, connection handler, and
 `create-user` workflow. The public `mxd::server::run()` entry point parses

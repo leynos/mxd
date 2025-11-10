@@ -36,7 +36,7 @@ unchanged, so you can rely on the shell exit code in automation scripts.
 
 Integration tests and developer machines can exercise the postgres backend by
 running `pg_embedded_setup_unpriv` before `make test`. The helper stages a
-PostgreSQL distribution with unprivileged ownership so the
+PostgreSQL distribution with unprivileged ownership, so the
 `postgresql_embedded` crate can start temporary clusters without root access.
 After invoking the helper, run `make test` to execute both sqlite and postgres
 suites; the postgres jobs automatically reuse the staged binaries.

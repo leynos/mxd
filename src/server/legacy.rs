@@ -6,7 +6,7 @@
 
 use std::{io, net::SocketAddr};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
 use diesel_async::AsyncConnection;
 use ortho_config::load_and_merge_subcommand_for;
@@ -141,7 +141,7 @@ async fn create_pool(database: &str) -> DbPool {
 async fn setup_database(database: &str) -> Result<DbPool> {
     let pool = create_pool(database).await;
     {
-        let mut conn = pool.get().await.expect("failed to get db connection");
+        let mut conn = pool.get().await.context("failed to get db connection")?;
         #[cfg(feature = "sqlite")]
         crate::db::audit_sqlite_features(&mut conn).await?;
         #[cfg(all(feature = "postgres", not(feature = "sqlite")))]

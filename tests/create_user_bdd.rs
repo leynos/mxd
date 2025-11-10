@@ -1,3 +1,8 @@
+//! BDD-style integration tests for the create-user command.
+//!
+//! These tests exercise the CLI-driven create-user workflow against a temporary
+//! SQLite database, verifying both successful user creation and error handling.
+
 #![cfg(feature = "sqlite")]
 
 use std::cell::RefCell;
@@ -21,6 +26,7 @@ struct CreateUserWorld {
     _temp_dir: TempDir,
     config: RefCell<AppConfig>,
     outcome: RefCell<Option<CommandResult>>,
+    rt: Runtime,
 }
 
 impl CreateUserWorld {
@@ -35,17 +41,18 @@ impl CreateUserWorld {
             argon2_p_cost: Params::DEFAULT_P_COST,
             ..AppConfig::default()
         };
+        let rt = Runtime::new().expect("runtime");
         Self {
             _temp_dir: temp_dir,
             config: RefCell::new(config),
             outcome: RefCell::new(None),
+            rt,
         }
     }
 
     fn database_path(&self) -> String { self.config.borrow().database.clone() }
 
     fn run_command(&self, username: String, password: Option<String>) {
-        let rt = Runtime::new().expect("runtime");
         let args = CreateUserArgs {
             username: Some(username),
             password,
@@ -54,15 +61,14 @@ impl CreateUserWorld {
             config: self.config.borrow().clone(),
             command: Some(Commands::CreateUser(args)),
         };
-        let result = rt.block_on(server::run_with_cli(cli));
+        let result = self.rt.block_on(server::run_with_cli(cli));
         self.outcome.borrow_mut().replace(result);
     }
 
     fn assert_user_exists(&self, username: &str) {
-        let rt = Runtime::new().expect("runtime");
         let db = self.database_path();
         let lookup = username.to_string();
-        let fetched = rt.block_on(async move {
+        let fetched = self.rt.block_on(async move {
             let mut conn = DbConnection::establish(&db).await.expect("db conn");
             db::get_user_by_name(&mut conn, &lookup)
                 .await
@@ -90,8 +96,10 @@ impl CreateUserWorld {
 }
 
 #[fixture]
-#[allow(unused_braces)]
-fn world() -> CreateUserWorld { CreateUserWorld::new() }
+fn world() -> CreateUserWorld {
+    let world = CreateUserWorld::new();
+    world
+}
 
 #[given("a temporary sqlite database")]
 fn given_temp_db(world: &CreateUserWorld) {
@@ -129,13 +137,11 @@ fn then_success(world: &CreateUserWorld) {
 #[then("the database contains a user named \"{username}\"")]
 fn then_user_exists(world: &CreateUserWorld, username: String) {
     world.assert_user_exists(&username);
-    drop(username);
 }
 
 #[then("the command fails with message \"{message}\"")]
 fn then_failure(world: &CreateUserWorld, message: String) {
     world.assert_failure_contains(&message);
-    drop(message);
 }
 
 #[scenario(path = "tests/features/create_user_command.feature", index = 0)]

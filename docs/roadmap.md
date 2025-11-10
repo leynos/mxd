@@ -21,7 +21,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   existing integration smoke tests pass unchanged, and core modules remain free
   of `wireframe::*` imports as prescribed in `docs/design.md`. Status:
   Completed on 9 November 2025 by moving the CLI and Tokio runtime into the
-  shared `mxd::server` module so every binary reuses the same entry points.
+  shared `mxd::server` module, so every binary reuses the same entry points.
   Dependencies: None.
 - [ ] Task: Create the `mxd-wireframe-server` binary that depends on
   `wireframe` and the refactored library. Acceptance: The new binary compiles

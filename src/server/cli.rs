@@ -3,7 +3,10 @@
 //! Keeping these types in the library allows every binary (legacy TCP and the
 //! forthcoming wireframe adapter) to expose an identical configuration surface.
 
-#![allow(non_snake_case)]
+#![expect(
+    non_snake_case,
+    reason = "Clap/OrthoConfig derive macros generate helper modules with uppercase names"
+)]
 
 use argon2::Params;
 use clap::{Args, Parser, Subcommand};
@@ -26,7 +29,6 @@ pub enum Commands {
 }
 
 /// Runtime configuration shared by all binaries.
-#[allow(non_snake_case)]
 #[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 pub struct AppConfig {
