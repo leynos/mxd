@@ -16,11 +16,13 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### Step: Bootstrap the wireframe server
 
-- [ ] Task: Extract protocol and domain logic into reusable library modules.
+- [x] Task: Extract protocol and domain logic into reusable library modules.
   Acceptance: `mxd` builds as a library crate consumed by both binaries,
   existing integration smoke tests pass unchanged, and core modules remain free
-  of `wireframe::*` imports as prescribed in `docs/design.md`. Dependencies:
-  None.
+  of `wireframe::*` imports as prescribed in `docs/design.md`. Status:
+  Completed on 9 November 2025 by moving the CLI and Tokio runtime into the
+  shared `mxd::server` module, so every binary reuses the same entry points.
+  Dependencies: None.
 - [ ] Task: Create the `mxd-wireframe-server` binary that depends on
   `wireframe` and the refactored library. Acceptance: The new binary compiles
   for x86_64 and aarch64 Linux and exposes a minimal listen loop that loads
