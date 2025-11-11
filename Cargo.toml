@@ -12,9 +12,9 @@ path = "src/bin/gen_corpus.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-diesel = { version = "2", default-features = false, features = ["chrono"] }
-diesel-async = { version = "0.5", default-features = false, features = ["bb8", "sync-connection-wrapper"] }
-diesel_migrations = { version = "2", default-features = false }
+diesel = { version = "2.3", default-features = false, features = ["chrono"] }
+diesel-async = { version = "0.7", default-features = false, features = ["bb8", "sync-connection-wrapper"] }
+diesel_migrations = { version = "2.3", default-features = false }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -24,7 +24,7 @@ ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" 
 argon2 = { version = "0.5", features = ["std"] }
 rand = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-diesel_cte_ext = { path = "diesel_cte_ext", default-features = false, features = ["async"] }
+diesel-cte-ext = { version = "0.1.0", default-features = false, features = ["async"] }
 futures-util = "0.3"
 tracing = "0.1"
 figment = { version = "0.10", features = ["env", "test"] }
@@ -42,8 +42,8 @@ postgres = [
     "diesel/postgres",
     "diesel_migrations/postgres",
     "diesel-async/postgres",
-    "diesel_cte_ext/postgres",
-    "diesel_cte_ext/async",
+    "diesel-cte-ext/postgres",
+    "diesel-cte-ext/async",
     "url",
     "toml",
     "test-util/postgres",
@@ -53,8 +53,8 @@ sqlite = [
     "diesel/returning_clauses_for_sqlite_3_35",
     "diesel_migrations/sqlite",
     "diesel-async/sqlite",
-    "diesel_cte_ext/sqlite",
-    "diesel_cte_ext/async",
+    "diesel-cte-ext/sqlite",
+    "diesel-cte-ext/async",
     "test-util/sqlite",
 ]
 returning_clauses_for_sqlite_3_35 = ["diesel/returning_clauses_for_sqlite_3_35"]

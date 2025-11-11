@@ -724,7 +724,10 @@ Common Table Expressions (CTEs) to handle certain queries elegantly:
   extension to chain a recursive CTE (the `step`) with a final selection
   (`body`)([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L444-L453))([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L455-L459)).
    The Diesel crate itself doesn’t yet have first-class CTE query builders, so
-  we wrote a small internal **`diesel_cte_ext`** crate to help. This provides a
+  we now depend on the published **`diesel-cte-ext`** crate (module name
+  `diesel_cte_ext`) to supply the helpers. We previously carried an in-tree
+  fork; on 11 November 2025 we switched to the crates.io release (v0.1.0) to
+  reuse upstream fixes and avoid duplicating maintenance. This provides a
   builder like `.with_recursive(cte_name, query)` that we can attach to
   Diesel’s `sql_query` results, and even a trait to extend Diesel connections
   with `.with_recursive()`
@@ -756,9 +759,10 @@ migrations to adjust for engine differences.
 ### Diesel CTE Extension (Advanced Queries)
 
 Because we require some complex SQL (like recursive CTEs for path resolution
-and potentially tree traversal), we include a custom module `diesel_cte_ext`.
-This is a small Diesel extension that provides helpers for building and
-executing CTEs in a backend-agnostic
+and potentially tree traversal), we now depend on the external `diesel-cte-ext`
+crate (whose Rust module is still named `diesel_cte_ext`). This Diesel
+extension provides helpers for building and executing CTEs in a
+backend-agnostic
 way([14](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/cte-extension-design.md#L3-L6)).
  It defines a struct `WithCte` and trait impls so that a CTE query can
 integrate with Diesel’s query builder as if it were a normal
@@ -778,6 +782,16 @@ there). Using Diesel’s async support, we can `.get_result(conn)` on the result
 of `build_path_cte_with_conn` and it will execute the whole CTE and give us the
 ID we
 need([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L446-L454))([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L455-L459)).
+
+#### 11 November 2025 – Source `diesel-cte-ext` upstream
+
+- Removed the in-repo `diesel_cte_ext` crate in favour of the published
+  `diesel-cte-ext` v0.1.0 release so we inherit upstream bug fixes and test
+  coverage.
+- Upgraded `diesel` to 2.3.x and `diesel-async` to 0.7.x so MXD and the
+  extension agree on backend APIs without patching Diesel twice.
+- Regenerated both `Cargo.lock` files (root and `validator/`) so every binary
+  consumes the same crates.io dependency graph.
 
 ### Dual-Database Migrations Example
 

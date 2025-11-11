@@ -75,6 +75,7 @@ use diesel::{query_builder::QueryFragment, sql_query};
 use diesel_cte_ext::{
     RecursiveCTEExt,
     RecursiveParts,
+    builders,
     cte::{RecursiveBackend, WithRecursive},
 };
 
@@ -94,7 +95,7 @@ where
     Body: QueryFragment<C::Backend>,
 {
     let seed = sql_query(CTE_SEED_SQL);
-    C::with_recursive(
+    builders::with_recursive::<C::Backend, (), _, _, _, _>(
         "tree",
         &["idx", "id"],
         RecursiveParts::new(seed, step, body),

@@ -1,9 +1,12 @@
-# diesel_cte_ext Design
+# diesel-cte-ext (`diesel_cte_ext`) Design
 
 diesel_cte_ext provides small helpers for building Common Table Expressions
 (CTEs) with Diesel. The crate exposes builders for both recursive and
 non-recursive CTE blocks. A connection extension trait makes those builders
-available on synchronous and asynchronous connections.
+available on synchronous and asynchronous connections. As of 11 November 2025
+MXD no longer vendors its own copy; we depend on the crates.io release
+`diesel-cte-ext` v0.1.0 so the upstream project carries the code and tests
+while we simply integrate it.
 
 ## Architecture
 
