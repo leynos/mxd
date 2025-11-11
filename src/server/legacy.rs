@@ -112,6 +112,7 @@ fn build_argon2(cfg: &AppConfig) -> Result<Argon2<'static>> {
 
 /// Determine whether the supplied connection string targets Postgres.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+#[must_use]
 pub fn is_postgres_url(s: &str) -> bool {
     Url::parse(s)
         .map(|u| matches!(u.scheme(), "postgres" | "postgresql"))
