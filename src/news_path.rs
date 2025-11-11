@@ -120,9 +120,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use diesel::debug_query;
     use rstest::{fixture, rstest};
 
     use super::*;
+
+    const STEP_SQL: &str = "SELECT tree.idx + 1 AS idx, tree.id AS id FROM tree";
+    const BODY_SQL: &str = "SELECT id FROM tree";
 
     fn expected_step_sql(join_type: &str) -> String {
         let sql = r"SELECT tree.idx + 1 AS idx, b.id AS id
@@ -178,6 +182,89 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
              \nWHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)"
         };
         assert_eq!(CATEGORY_BODY_SQL, expected);
+    }
+
+    fn normalise_sql(sql: &str) -> String {
+        sql.replace("-- binds: []", "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn expected_recursive_sql(quote: char) -> String {
+        format!(
+            "WITH RECURSIVE {quote}tree{quote} ({quote}idx{quote}, {quote}id{quote}) AS (SELECT 0 \
+             AS idx, NULL AS id UNION ALL SELECT tree.idx + 1 AS idx, tree.id AS id FROM tree) \
+             SELECT id FROM tree"
+        )
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[derive(Default)]
+    struct DummySqliteConn;
+
+    #[cfg(feature = "sqlite")]
+    impl RecursiveCTEExt for DummySqliteConn {
+        type Backend = diesel::sqlite::Sqlite;
+    }
+
+    #[cfg(feature = "postgres")]
+    #[derive(Default)]
+    struct DummyPgConn;
+
+    #[cfg(feature = "postgres")]
+    impl RecursiveCTEExt for DummyPgConn {
+        type Backend = diesel::pg::Pg;
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn build_path_cte_uses_recursive_builder_sqlite() {
+        use diesel::sqlite::Sqlite;
+
+        let query =
+            build_path_cte::<DummySqliteConn, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
+        let sql = debug_query::<Sqlite, _>(&query).to_string();
+        assert_eq!(normalise_sql(&sql), expected_recursive_sql('\u{60}'));
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn build_path_cte_with_conn_matches_builder_sqlite() {
+        use diesel::sqlite::Sqlite;
+
+        let mut conn = DummySqliteConn;
+        let inferred =
+            build_path_cte_with_conn(&mut conn, sql_query(STEP_SQL), sql_query(BODY_SQL));
+        let direct =
+            build_path_cte::<DummySqliteConn, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
+        let inferred_sql = debug_query::<Sqlite, _>(&inferred).to_string();
+        let direct_sql = debug_query::<Sqlite, _>(&direct).to_string();
+        assert_eq!(normalise_sql(&inferred_sql), normalise_sql(&direct_sql));
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn build_path_cte_uses_recursive_builder_postgres() {
+        use diesel::pg::Pg;
+
+        let query = build_path_cte::<DummyPgConn, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
+        let sql = debug_query::<Pg, _>(&query).to_string();
+        assert_eq!(normalise_sql(&sql), expected_recursive_sql('"'));
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn build_path_cte_with_conn_matches_builder_postgres() {
+        use diesel::pg::Pg;
+
+        let mut conn = DummyPgConn;
+        let inferred =
+            build_path_cte_with_conn(&mut conn, sql_query(STEP_SQL), sql_query(BODY_SQL));
+        let direct = build_path_cte::<DummyPgConn, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
+        let inferred_sql = debug_query::<Pg, _>(&inferred).to_string();
+        let direct_sql = debug_query::<Pg, _>(&direct).to_string();
+        assert_eq!(normalise_sql(&inferred_sql), normalise_sql(&direct_sql));
     }
 
     #[test]

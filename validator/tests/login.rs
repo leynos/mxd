@@ -13,9 +13,7 @@ fn login_validation() -> Result<(), AnyError> {
         test_util::with_db(db, |conn| {
             Box::pin(async move {
                 use argon2::Argon2;
-                use mxd::models::NewUser;
-                use mxd::users::hash_password;
-                use mxd::db::create_user;
+                use mxd::{db::create_user, models::NewUser, users::hash_password};
 
                 let argon2 = Argon2::default();
                 let hashed = hash_password(&argon2, "secret")?;

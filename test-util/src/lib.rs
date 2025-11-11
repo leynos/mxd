@@ -186,14 +186,14 @@ impl TestServer {
         {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
-            return Self::launch(manifest_path, db_url, Some(temp));
+            Self::launch(manifest_path, db_url, Some(temp))
         }
 
         #[cfg(feature = "postgres")]
         {
             let db = crate::postgres::PostgresTestDb::new()?;
             setup(db.url.as_ref())?;
-            return Self::launch(manifest_path, db);
+            Self::launch(manifest_path, db)
         }
     }
 

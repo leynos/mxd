@@ -211,3 +211,21 @@ fn list_news_categories_nested() -> Result<(), AnyError> {
     assert_eq!(names, vec!["Inside"]);
     Ok(())
 }
+
+/// Tests that trailing slashes on nested bundle paths are ignored when
+/// resolving categories.
+///
+/// Sets up the nested bundle structure, queries using a path with both
+/// leading and trailing slashes, and asserts that the recursive CTE still
+/// finds the expected category.
+#[test]
+fn list_news_categories_nested_trailing_slash() -> Result<(), AnyError> {
+    let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
+        return Ok(());
+    };
+
+    let port = server.port();
+    let (_, names) = list_categories(port, Some("/Bundle/Sub/"))?;
+    assert_eq!(names, vec!["Inside"]);
+    Ok(())
+}
