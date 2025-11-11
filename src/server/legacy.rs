@@ -18,6 +18,8 @@ use tokio::{
     time::timeout,
 };
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+use tracing::warn;
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use url::Url;
 
 use super::cli::{AppConfig, Cli, Commands, CreateUserArgs};
@@ -110,12 +112,23 @@ fn build_argon2(cfg: &AppConfig) -> Result<Argon2<'static>> {
     Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
+/// Determine whether the supplied connection string targets Postgres.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 fn is_postgres_url(s: &str) -> bool {
-    Url::parse(s)
-        .map(|u| matches!(u.scheme(), "postgres" | "postgresql"))
-        .unwrap_or(false)
+    match Url::parse(s) {
+        Ok(u) => matches!(u.scheme(), "postgres" | "postgresql"),
+        Err(err) => {
+            warn!(
+                target = "server::legacy",
+                "invalid database url '{s}': {err}"
+            );
+            false
+        }
+    }
 }
+
+#[cfg(any(test, feature = "test-support"))]
+mod test_helpers;
 
 async fn create_pool(database: &str) -> DbPool {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
@@ -186,6 +199,7 @@ async fn accept_connections(
     Ok(())
 }
 
+/// Spawn a client handler task for the accepted connection.
 fn handle_accept_result(
     res: io::Result<(TcpStream, SocketAddr)>,
     pool: DbPool,
@@ -329,86 +343,45 @@ async fn wait_for_ctrl_c() {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
+#[cfg(feature = "test-support")]
+pub mod test_support {
+    //! Expose legacy server internals exclusively for integration tests
+    //! compiled with the `test-support` feature.
 
-    use anyhow::Result;
-    use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};
-    use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        net::{TcpListener, TcpStream},
-        sync::watch,
-        task::JoinSet,
-    };
+    use std::{io, net::SocketAddr, sync::Arc};
 
-    use super::*;
-    use crate::{db::DbConnection, protocol};
+    use argon2::Argon2;
+    use tokio::{net::TcpStream, sync::watch, task::JoinSet};
 
+    use crate::{db::DbPool, protocol};
+
+    /// Expose `is_postgres_url` for integration tests guarded by the
+    /// `test-support` feature.
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-    #[test]
-    fn postgres_url_detection() {
-        assert!(super::is_postgres_url("postgres://localhost"));
-        assert!(super::is_postgres_url("postgresql://localhost"));
-        assert!(!super::is_postgres_url("sqlite://localhost"));
+    pub fn is_postgres_url(s: &str) -> bool { super::is_postgres_url(s) }
+
+    /// Provide a lightweight database pool for exercising connection handlers.
+    #[must_use]
+    pub fn dummy_pool() -> DbPool { super::test_helpers::dummy_pool() }
+
+    /// Construct a valid handshake frame for protocol negotiation tests.
+    #[must_use]
+    pub fn handshake_frame() -> [u8; protocol::HANDSHAKE_LEN] {
+        super::test_helpers::handshake_frame()
     }
 
-    fn dummy_pool() -> DbPool {
-        let manager = AsyncDieselConnectionManager::<DbConnection>::new(
-            "postgres://example.invalid/mxd-test",
-        );
-        Pool::builder()
-            .max_size(1)
-            .min_idle(Some(0))
-            .idle_timeout(None::<Duration>)
-            .max_lifetime(None::<Duration>)
-            .test_on_check_out(false)
-            .build_unchecked(manager)
-    }
-
-    fn handshake_frame() -> [u8; protocol::HANDSHAKE_LEN] {
-        let mut buf = [0u8; protocol::HANDSHAKE_LEN];
-        buf[0..4].copy_from_slice(protocol::PROTOCOL_ID);
-        buf[8..10].copy_from_slice(&protocol::VERSION.to_be_bytes());
-        buf
-    }
-
-    #[tokio::test]
-    async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
-        let pool = dummy_pool();
-        let argon2 = Arc::new(Argon2::default());
-        let strong_before = Arc::strong_count(&argon2);
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        let mut join_set = JoinSet::new();
-
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let addr = listener.local_addr()?;
-        let mut client = TcpStream::connect(addr).await?;
-        let (server_socket, peer) = listener.accept().await?;
-
-        handle_accept_result(
-            Ok((server_socket, peer)),
-            pool,
-            Arc::clone(&argon2),
-            &shutdown_rx,
-            &mut join_set,
-        );
-
-        assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
-
-        client.write_all(&handshake_frame()).await?;
-        let mut reply = [0u8; protocol::REPLY_LEN];
-        client.read_exact(&mut reply).await?;
-        client.shutdown().await?;
-
-        shutdown_tx.send(true).ok();
-
-        while let Some(result) = join_set.join_next().await {
-            result.expect("client handler task");
-        }
-
-        assert_eq!(Arc::strong_count(&argon2), strong_before);
-
-        Ok(())
+    /// Expose `handle_accept_result` for integration tests guarded by the
+    /// `test-support` feature.
+    pub fn handle_accept_result(
+        res: io::Result<(TcpStream, SocketAddr)>,
+        pool: DbPool,
+        argon2: Arc<Argon2<'static>>,
+        shutdown_rx: &watch::Receiver<bool>,
+        join_set: &mut JoinSet<()>,
+    ) {
+        super::handle_accept_result(res, pool, argon2, shutdown_rx, join_set);
     }
 }
+
+#[cfg(test)]
+mod unit_tests;
