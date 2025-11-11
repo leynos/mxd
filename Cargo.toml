@@ -62,6 +62,7 @@ json5 = ["figment-json5"]
 yaml = ["figment/yaml", "serde_yaml"]
 toml = ["figment/toml", "dep:toml"]
 lint = []
+test-support = []
 
 [dev-dependencies]
 test-util = { path = "test-util", default-features = false }

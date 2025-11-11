@@ -1,23 +1,15 @@
-//! Integration tests for the legacy Tokio server helpers.
-
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use anyhow::Result;
-use argon2::Argon2;
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};
-#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-use mxd::server::legacy::test_support::is_postgres_url;
-use mxd::{
-    db::{DbConnection, DbPool},
-    protocol,
-    server::legacy::test_support::handle_accept_result,
-};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::watch,
     task::JoinSet,
 };
+
+use super::*;
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[test]
@@ -27,8 +19,6 @@ fn postgres_url_detection() {
     assert!(!is_postgres_url("sqlite://localhost"));
 }
 
-/// Creates a dummy database pool for exercising connection handlers in
-/// integration tests without touching a real backend.
 fn dummy_pool() -> DbPool {
     let manager =
         AsyncDieselConnectionManager::<DbConnection>::new("postgres://example.invalid/mxd-test");
@@ -41,8 +31,6 @@ fn dummy_pool() -> DbPool {
         .build_unchecked(manager)
 }
 
-/// Constructs a valid handshake frame for negotiating with the legacy
-/// protocol during integration tests.
 fn handshake_frame() -> [u8; protocol::HANDSHAKE_LEN] {
     let mut buf = [0u8; protocol::HANDSHAKE_LEN];
     buf[0..4].copy_from_slice(protocol::PROTOCOL_ID);

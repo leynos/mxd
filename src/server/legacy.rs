@@ -18,6 +18,8 @@ use tokio::{
     time::timeout,
 };
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+use tracing::warn;
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use url::Url;
 
 use super::cli::{AppConfig, Cli, Commands, CreateUserArgs};
@@ -112,11 +114,17 @@ fn build_argon2(cfg: &AppConfig) -> Result<Argon2<'static>> {
 
 /// Determine whether the supplied connection string targets Postgres.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-#[must_use]
-pub fn is_postgres_url(s: &str) -> bool {
-    Url::parse(s)
-        .map(|u| matches!(u.scheme(), "postgres" | "postgresql"))
-        .unwrap_or(false)
+fn is_postgres_url(s: &str) -> bool {
+    match Url::parse(s) {
+        Ok(u) => matches!(u.scheme(), "postgres" | "postgresql"),
+        Err(err) => {
+            warn!(
+                target = "server::legacy",
+                "invalid database url '{s}': {err}"
+            );
+            false
+        }
+    }
 }
 
 async fn create_pool(database: &str) -> DbPool {
@@ -189,10 +197,7 @@ async fn accept_connections(
 }
 
 /// Spawn a client handler task for the accepted connection.
-///
-/// This is public to support integration tests that validate connection
-/// handling behaviour.
-pub fn handle_accept_result(
+fn handle_accept_result(
     res: io::Result<(TcpStream, SocketAddr)>,
     pool: DbPool,
     argon2: Arc<Argon2<'static>>,
@@ -334,3 +339,33 @@ async fn wait_for_ctrl_c() {
         eprintln!("failed to listen for Ctrl-C: {err}");
     }
 }
+
+#[cfg(feature = "test-support")]
+pub mod test_support {
+    use std::{io, net::SocketAddr, sync::Arc};
+
+    use argon2::Argon2;
+    use tokio::{net::TcpStream, sync::watch, task::JoinSet};
+
+    use crate::db::DbPool;
+
+    /// Expose `is_postgres_url` for integration tests guarded by the
+    /// `test-support` feature.
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    pub fn is_postgres_url(s: &str) -> bool { super::is_postgres_url(s) }
+
+    /// Expose `handle_accept_result` for integration tests guarded by the
+    /// `test-support` feature.
+    pub fn handle_accept_result(
+        res: io::Result<(TcpStream, SocketAddr)>,
+        pool: DbPool,
+        argon2: Arc<Argon2<'static>>,
+        shutdown_rx: &watch::Receiver<bool>,
+        join_set: &mut JoinSet<()>,
+    ) {
+        super::handle_accept_result(res, pool, argon2, shutdown_rx, join_set);
+    }
+}
+
+#[cfg(test)]
+mod unit_tests;

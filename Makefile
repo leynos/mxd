@@ -9,6 +9,8 @@ NIXIE ?= nixie
 RSTEST_TIMEOUT ?= 20
 SQLITE_FEATURES := --features sqlite
 POSTGRES_FEATURES := --no-default-features --features postgres
+TEST_SQLITE_FEATURES := --features "sqlite test-support"
+TEST_POSTGRES_FEATURES := --no-default-features --features "postgres test-support"
 POSTGRES_TARGET_DIR := target/postgres
 
 all: release ## Build release binaries for sqlite and postgres
@@ -47,10 +49,10 @@ nixie: ## Validate Mermaid diagrams
 test: test-postgres test-sqlite ## Run sqlite and postgres test suites
 
 test-postgres: ## Run tests with the postgres backend
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(POSTGRES_FEATURES) -- --nocapture
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(TEST_POSTGRES_FEATURES) -- --nocapture
 
 test-sqlite: ## Run tests with the sqlite backend
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(SQLITE_FEATURES)
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(TEST_SQLITE_FEATURES)
 
 sqlite: target/debug/$(APP) ## Build debug sqlite binary
 
