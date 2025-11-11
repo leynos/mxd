@@ -1,17 +1,12 @@
-//! Integration tests for the legacy Tokio server helpers.
+//! Unit tests for legacy server helpers, ensuring internal behaviours remain
+//! stable without requiring the external binary.
 
 use std::sync::Arc;
 
 use anyhow::Result;
 use argon2::Argon2;
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-use mxd::server::legacy::test_support::is_postgres_url;
-use mxd::{
-    db::DbPool,
-    protocol,
-    server::legacy::test_support::{dummy_pool, handle_accept_result, handshake_frame},
-};
-use rstest::{fixture, rstest};
+use rstest::rstest;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -19,50 +14,25 @@ use tokio::{
     task::JoinSet,
 };
 
+use super::{handle_accept_result, test_helpers};
+use crate::protocol;
+
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[rstest]
 #[case("postgres://localhost", true)]
 #[case("postgresql://localhost", true)]
 #[case("sqlite://localhost", false)]
 fn postgres_url_detection(#[case] url: &str, #[case] expected: bool) {
-    assert_eq!(is_postgres_url(url), expected);
+    assert_eq!(super::is_postgres_url(url), expected);
 }
 
-#[fixture]
-fn accept_context() -> AcceptContext {
-    let pool = dummy_pool();
-    let argon2 = Arc::new(Argon2::default());
-    let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    AcceptContext {
-        pool,
-        argon2,
-        shutdown_tx,
-        shutdown_rx,
-        join_set: JoinSet::new(),
-    }
-}
-
-struct AcceptContext {
-    pool: DbPool,
-    argon2: Arc<Argon2<'static>>,
-    shutdown_tx: watch::Sender<bool>,
-    shutdown_rx: watch::Receiver<bool>,
-    join_set: JoinSet<()>,
-}
-
-#[rstest]
 #[tokio::test]
-async fn handle_accept_result_shares_argon2_between_clients(
-    accept_context: AcceptContext,
-) -> Result<()> {
-    let AcceptContext {
-        pool,
-        argon2,
-        shutdown_tx,
-        shutdown_rx,
-        mut join_set,
-    } = accept_context;
+async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
+    let pool = test_helpers::dummy_pool();
+    let argon2 = Arc::new(Argon2::default());
     let strong_before = Arc::strong_count(&argon2);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let mut join_set = JoinSet::new();
 
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -79,7 +49,7 @@ async fn handle_accept_result_shares_argon2_between_clients(
 
     assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
 
-    client.write_all(&handshake_frame()).await?;
+    client.write_all(&test_helpers::handshake_frame()).await?;
     let mut reply = [0u8; protocol::REPLY_LEN];
     client.read_exact(&mut reply).await?;
     client.shutdown().await?;

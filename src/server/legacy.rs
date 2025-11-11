@@ -127,6 +127,9 @@ fn is_postgres_url(s: &str) -> bool {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+mod test_helpers;
+
 async fn create_pool(database: &str) -> DbPool {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     if is_postgres_url(database) {
@@ -342,17 +345,30 @@ async fn wait_for_ctrl_c() {
 
 #[cfg(feature = "test-support")]
 pub mod test_support {
+    //! Expose legacy server internals exclusively for integration tests
+    //! compiled with the `test-support` feature.
+
     use std::{io, net::SocketAddr, sync::Arc};
 
     use argon2::Argon2;
     use tokio::{net::TcpStream, sync::watch, task::JoinSet};
 
-    use crate::db::DbPool;
+    use crate::{db::DbPool, protocol};
 
     /// Expose `is_postgres_url` for integration tests guarded by the
     /// `test-support` feature.
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     pub fn is_postgres_url(s: &str) -> bool { super::is_postgres_url(s) }
+
+    /// Provide a lightweight database pool for exercising connection handlers.
+    #[must_use]
+    pub fn dummy_pool() -> DbPool { super::test_helpers::dummy_pool() }
+
+    /// Construct a valid handshake frame for protocol negotiation tests.
+    #[must_use]
+    pub fn handshake_frame() -> [u8; protocol::HANDSHAKE_LEN] {
+        super::test_helpers::handshake_frame()
+    }
 
     /// Expose `handle_accept_result` for integration tests guarded by the
     /// `test-support` feature.
@@ -366,3 +382,6 @@ pub mod test_support {
         super::handle_accept_result(res, pool, argon2, shutdown_rx, join_set);
     }
 }
+
+#[cfg(test)]
+mod unit_tests;
