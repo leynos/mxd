@@ -5,7 +5,7 @@ diesel_cte_ext provides small helpers for building Common Table Expressions
 non-recursive CTE blocks. A connection extension trait makes those builders
 available on synchronous and asynchronous connections. As of 11 November 2025
 MXD no longer vendors its own copy; the repository depends on the crates.io
-release `diesel-cte-ext` v0.1.0 so the upstream project carries the code and
+release `diesel-cte-ext` v0.1.0, so the upstream project carries the code and
 tests while MXD simply integrates it.
 
 ## Architecture
