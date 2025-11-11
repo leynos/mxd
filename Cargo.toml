@@ -22,7 +22,7 @@ clap = { version = "4", features = ["derive"] }
 cfg-if = "1"
 ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" }
 argon2 = { version = "0.5", features = ["std"] }
-rand = "0.8"
+rand = "0.9"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 diesel_cte_ext = { path = "diesel_cte_ext", default-features = false, features = ["async"] }
 futures-util = "0.3"
