@@ -12,6 +12,7 @@ use mxd::{
     protocol,
     server::legacy::test_support::handle_accept_result,
 };
+use rstest::{fixture, rstest};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -20,11 +21,12 @@ use tokio::{
 };
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-#[test]
-fn postgres_url_detection() {
-    assert!(is_postgres_url("postgres://localhost"));
-    assert!(is_postgres_url("postgresql://localhost"));
-    assert!(!is_postgres_url("sqlite://localhost"));
+#[rstest]
+#[case("postgres://localhost", true)]
+#[case("postgresql://localhost", true)]
+#[case("sqlite://localhost", false)]
+fn postgres_url_detection(#[case] url: &str, #[case] expected: bool) {
+    assert_eq!(is_postgres_url(url), expected);
 }
 
 /// Creates a dummy database pool for exercising connection handlers in
@@ -50,13 +52,41 @@ fn handshake_frame() -> [u8; protocol::HANDSHAKE_LEN] {
     buf
 }
 
-#[tokio::test]
-async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
+#[fixture]
+fn accept_context() -> AcceptContext {
     let pool = dummy_pool();
     let argon2 = Arc::new(Argon2::default());
-    let strong_before = Arc::strong_count(&argon2);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let mut join_set = JoinSet::new();
+    AcceptContext {
+        pool,
+        argon2,
+        shutdown_tx,
+        shutdown_rx,
+        join_set: JoinSet::new(),
+    }
+}
+
+struct AcceptContext {
+    pool: DbPool,
+    argon2: Arc<Argon2<'static>>,
+    shutdown_tx: watch::Sender<bool>,
+    shutdown_rx: watch::Receiver<bool>,
+    join_set: JoinSet<()>,
+}
+
+#[rstest]
+#[tokio::test]
+async fn handle_accept_result_shares_argon2_between_clients(
+    accept_context: AcceptContext,
+) -> Result<()> {
+    let AcceptContext {
+        pool,
+        argon2,
+        shutdown_tx,
+        shutdown_rx,
+        mut join_set,
+    } = accept_context;
+    let strong_before = Arc::strong_count(&argon2);
 
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;

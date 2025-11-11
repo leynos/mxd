@@ -366,6 +366,3 @@ pub mod test_support {
         super::handle_accept_result(res, pool, argon2, shutdown_rx, join_set);
     }
 }
-
-#[cfg(test)]
-mod unit_tests;
