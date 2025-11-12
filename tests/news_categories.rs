@@ -66,6 +66,33 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
     Ok((reply_tx.header, names))
 }
 
+/// Helper to test listing news categories with various paths and setup functions.
+fn test_list_categories<F>(
+    setup_fn: F,
+    path: Option<&str>,
+    mut expected: Vec<&str>,
+    sort_results: bool,
+) -> Result<(), AnyError>
+where
+    F: FnOnce(&str) -> Result<(), AnyError>,
+{
+    let Some(server) = common::start_server_or_skip(setup_fn)? else {
+        return Ok(());
+    };
+
+    let port = server.port();
+    let (_, mut names) = list_categories(port, path)?;
+
+    if sort_results {
+        names.sort();
+        expected.sort();
+    }
+
+    let expected: Vec<String> = expected.into_iter().map(String::from).collect();
+    assert_eq!(names, expected);
+    Ok(())
+}
+
 /// Tests that listing news categories at the root path returns all root-level bundles and
 /// categories.
 ///
@@ -78,15 +105,12 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
 /// Returns an error if the test server setup, TCP communication, or protocol validation fails.
 #[test]
 fn list_news_categories_root() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
-        return Ok(());
-    };
-
-    let port = server.port();
-    let (_, mut names) = list_categories(port, Some("/"))?;
-    names.sort();
-    assert_eq!(names, vec!["Bundle", "General", "Updates"]);
-    Ok(())
+    test_list_categories(
+        setup_news_categories_root_db,
+        Some("/"),
+        vec!["Bundle", "General", "Updates"],
+        true,
+    )
 }
 
 /// Tests that listing news categories with no path parameter returns all root-level bundles and
@@ -108,15 +132,12 @@ fn list_news_categories_root() -> Result<(), AnyError> {
 /// ```
 #[test]
 fn list_news_categories_no_path() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
-        return Ok(());
-    };
-
-    let port = server.port();
-    let (_, mut names) = list_categories(port, None)?;
-    names.sort();
-    assert_eq!(names, vec!["Bundle", "General", "Updates"]);
-    Ok(())
+    test_list_categories(
+        setup_news_categories_root_db,
+        None,
+        vec!["Bundle", "General", "Updates"],
+        true,
+    )
 }
 
 /// Tests that requesting news categories with an invalid path returns the expected unsupported path
@@ -202,14 +223,12 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
 /// decoding fails.
 #[test]
 fn list_news_categories_nested() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
-        return Ok(());
-    };
-
-    let port = server.port();
-    let (_, names) = list_categories(port, Some("Bundle/Sub"))?;
-    assert_eq!(names, vec!["Inside"]);
-    Ok(())
+    test_list_categories(
+        setup_news_categories_nested_db,
+        Some("Bundle/Sub"),
+        vec!["Inside"],
+        false,
+    )
 }
 
 /// Tests that trailing slashes on nested bundle paths are ignored when
@@ -220,12 +239,10 @@ fn list_news_categories_nested() -> Result<(), AnyError> {
 /// finds the expected category.
 #[test]
 fn list_news_categories_nested_trailing_slash() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
-        return Ok(());
-    };
-
-    let port = server.port();
-    let (_, names) = list_categories(port, Some("/Bundle/Sub/"))?;
-    assert_eq!(names, vec!["Inside"]);
-    Ok(())
+    test_list_categories(
+        setup_news_categories_nested_db,
+        Some("/Bundle/Sub/"),
+        vec!["Inside"],
+        false,
+    )
 }
