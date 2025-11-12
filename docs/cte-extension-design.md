@@ -58,7 +58,7 @@ executed using Diesel's `RunQueryDsl`.
 
 ## Feature flags
 
-- `async` is always enabled so MXD can compose recursive queries on both the
+- `async` is always enabled, so MXD can compose recursive queries on both the
   synchronous and asynchronous Diesel connection types exposed by
   `diesel_async`.
 - Backend-specific features (`sqlite`, `postgres`) are toggled via the main
@@ -68,5 +68,5 @@ executed using Diesel's `RunQueryDsl`.
   `[workspace.dependencies]`, ensuring every package within the workspace pulls
   identical features (namely `default-features = false` plus `async`).
 
-This consolidation prevents silent divergences between crates and documents at
-the manifest level how `diesel-cte-ext` should be configured.
+This consolidation prevents silent divergences between crates and documents how
+`diesel-cte-ext` should be configured at the manifest level.

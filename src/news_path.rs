@@ -145,11 +145,9 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     }
 
     #[fixture]
-    #[allow(unused_braces)]
     fn expected_bundle_step_sql() -> String { expected_step_sql("JOIN") }
 
     #[fixture]
-    #[allow(unused_braces)]
     fn expected_category_step_sql() -> String { expected_step_sql("LEFT JOIN") }
 
     #[rstest]
