@@ -145,9 +145,19 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     }
 
     #[fixture]
+    #[expect(
+        unused_braces,
+        reason = "rstest fixtures require function bodies even when they return a single \
+                  expression"
+    )]
     fn expected_bundle_step_sql() -> String { expected_step_sql("JOIN") }
 
     #[fixture]
+    #[expect(
+        unused_braces,
+        reason = "rstest fixtures require function bodies even when they return a single \
+                  expression"
+    )]
     fn expected_category_step_sql() -> String { expected_step_sql("LEFT JOIN") }
 
     #[rstest]
@@ -266,20 +276,28 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
 
     #[test]
     fn prepare_path_empty() {
-        assert!(prepare_path("").unwrap().is_none());
-        assert!(prepare_path("/").unwrap().is_none());
+        assert!(prepare_path("").expect("empty path should parse").is_none());
+        assert!(
+            prepare_path("/")
+                .expect("slash-only path should parse")
+                .is_none()
+        );
     }
 
     #[test]
     fn prepare_path_single_segment() {
-        let (json, len) = prepare_path("foo").unwrap().unwrap();
+        let (json, len) = prepare_path("foo")
+            .expect("single segment should parse")
+            .expect("single segment should exist");
         assert_eq!(json, "[\"foo\"]");
         assert_eq!(len, 1);
     }
 
     #[test]
     fn prepare_path_trailing_slash() {
-        let (json, len) = prepare_path("foo/").unwrap().unwrap();
+        let (json, len) = prepare_path("foo/")
+            .expect("trailing slash path should parse")
+            .expect("trailing slash path should exist");
         assert_eq!(json, "[\"foo\"]");
         assert_eq!(len, 1);
     }

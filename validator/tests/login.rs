@@ -1,3 +1,8 @@
+//! Integration test for login validation via the Helix editor.
+//!
+//! Verifies that a test user can be created and authenticated through the `/server`
+//! command with username and password credentials.
+
 use expectrl::{Regex, spawn};
 use test_util::{AnyError, TestServer};
 use which::which;

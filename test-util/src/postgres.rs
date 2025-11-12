@@ -1,3 +1,5 @@
+#![cfg(feature = "postgres")]
+
 //! Helpers for PostgreSQL-backed integration tests.
 use std::{
     error::Error as StdError,
