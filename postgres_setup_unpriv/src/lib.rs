@@ -1,5 +1,8 @@
-// Library for postgres_setup_unpriv
-#![allow(non_snake_case)]
+//! Unprivileged PostgreSQL setup utilities.
+//!
+//! Provides helpers for staging PostgreSQL installations and data directories
+//! using temporary privilege drops so the resulting assets are owned by an
+//! unprivileged user.
 
 use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 
@@ -9,7 +12,10 @@ use ortho_config::OrthoConfig;
 use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
 use serde::{Deserialize, Serialize};
 
-#[allow(non_snake_case)]
+#[expect(
+    non_snake_case,
+    reason = "Environment variables use PG_* identifiers that intentionally break snake_case"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize, OrthoConfig, Default)]
 #[ortho_config(prefix = "PG")]
 pub struct PgEnvCfg {

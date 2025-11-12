@@ -1,3 +1,8 @@
+//! Integration tests for postgres_setup_unpriv configuration and privilege handling.
+//!
+//! Validates configuration round-trips, default values, directory access helpers, and
+//! temporary UID management to ensure the binary operates safely when dropping privileges.
+
 use std::path::PathBuf;
 
 use nix::unistd::geteuid;
