@@ -86,6 +86,7 @@ rstest = "0.26"
 rstest-bdd = "0.1.0"
 rstest-bdd-macros = { version = "0.1.0", features = ["compile-time-validation"] }
 tempfile = "3"
+paste = "1.0"
 
 [lints.clippy]
 pedantic = "warn"

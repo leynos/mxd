@@ -121,6 +121,7 @@ where
 #[cfg(test)]
 mod tests {
     use diesel::debug_query;
+    use paste::paste;
     use rstest::{fixture, rstest};
 
     use super::*;
@@ -217,55 +218,47 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
         type Backend = diesel::pg::Pg;
     }
 
-    #[cfg(feature = "sqlite")]
-    #[test]
-    fn build_path_cte_uses_recursive_builder_sqlite() {
-        use diesel::sqlite::Sqlite;
+    macro_rules! backend_tests {
+        ($backend_name:ident, $backend_ty:ty, $conn_ty:ty, $quote:expr) => {
+            paste! {
+                #[cfg(feature = stringify!($backend_name))]
+                #[test]
+                fn [<build_path_cte_uses_recursive_builder_ $backend_name>]() {
+                    use $backend_ty as Backend;
 
-        let query =
-            build_path_cte::<DummySqliteConn, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
-        let sql = debug_query::<Sqlite, _>(&query).to_string();
-        assert_eq!(normalise_sql(&sql), expected_recursive_sql('\u{60}'));
+                    let query = build_path_cte::<$conn_ty, _, _>(
+                        sql_query(STEP_SQL),
+                        sql_query(BODY_SQL),
+                    );
+                    let sql = debug_query::<Backend, _>(&query).to_string();
+                    assert_eq!(normalise_sql(&sql), expected_recursive_sql($quote));
+                }
+
+                #[cfg(feature = stringify!($backend_name))]
+                #[test]
+                fn [<build_path_cte_with_conn_matches_builder_ $backend_name>]() {
+                    use $backend_ty as Backend;
+
+                    let mut conn = <$conn_ty>::default();
+                    let inferred = build_path_cte_with_conn(
+                        &mut conn,
+                        sql_query(STEP_SQL),
+                        sql_query(BODY_SQL),
+                    );
+                    let direct = build_path_cte::<$conn_ty, _, _>(
+                        sql_query(STEP_SQL),
+                        sql_query(BODY_SQL),
+                    );
+                    let inferred_sql = debug_query::<Backend, _>(&inferred).to_string();
+                    let direct_sql = debug_query::<Backend, _>(&direct).to_string();
+                    assert_eq!(normalise_sql(&inferred_sql), normalise_sql(&direct_sql));
+                }
+            }
+        };
     }
 
-    #[cfg(feature = "sqlite")]
-    #[test]
-    fn build_path_cte_with_conn_matches_builder_sqlite() {
-        use diesel::sqlite::Sqlite;
-
-        let mut conn = DummySqliteConn;
-        let inferred =
-            build_path_cte_with_conn(&mut conn, sql_query(STEP_SQL), sql_query(BODY_SQL));
-        let direct =
-            build_path_cte::<DummySqliteConn, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
-        let inferred_sql = debug_query::<Sqlite, _>(&inferred).to_string();
-        let direct_sql = debug_query::<Sqlite, _>(&direct).to_string();
-        assert_eq!(normalise_sql(&inferred_sql), normalise_sql(&direct_sql));
-    }
-
-    #[cfg(feature = "postgres")]
-    #[test]
-    fn build_path_cte_uses_recursive_builder_postgres() {
-        use diesel::pg::Pg;
-
-        let query = build_path_cte::<DummyPgConn, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
-        let sql = debug_query::<Pg, _>(&query).to_string();
-        assert_eq!(normalise_sql(&sql), expected_recursive_sql('"'));
-    }
-
-    #[cfg(feature = "postgres")]
-    #[test]
-    fn build_path_cte_with_conn_matches_builder_postgres() {
-        use diesel::pg::Pg;
-
-        let mut conn = DummyPgConn;
-        let inferred =
-            build_path_cte_with_conn(&mut conn, sql_query(STEP_SQL), sql_query(BODY_SQL));
-        let direct = build_path_cte::<DummyPgConn, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
-        let inferred_sql = debug_query::<Pg, _>(&inferred).to_string();
-        let direct_sql = debug_query::<Pg, _>(&direct).to_string();
-        assert_eq!(normalise_sql(&inferred_sql), normalise_sql(&direct_sql));
-    }
+    backend_tests!(sqlite, diesel::sqlite::Sqlite, DummySqliteConn, '\u{60}');
+    backend_tests!(postgres, diesel::pg::Pg, DummyPgConn, '"');
 
     #[test]
     fn prepare_path_empty() {
