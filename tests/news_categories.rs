@@ -75,7 +75,6 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
 
 /// Tests that listing news categories at the root path (with or without explicit "/")
 /// returns all root-level bundles and categories.
-#[test]
 #[rstest]
 #[case(Some("/"))]
 #[case(None)]
@@ -171,7 +170,6 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
 /// Sets up a nested bundle structure with a root bundle and a sub-bundle containing a single
 /// category. Sends a transaction requesting categories at the nested path and verifies that only
 /// the expected category is returned.
-#[test]
 #[rstest]
 #[case("Bundle/Sub")]
 #[case("/Bundle/Sub/")]

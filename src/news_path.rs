@@ -217,11 +217,11 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     }
 
     macro_rules! backend_tests {
-        ($backend_name:ident, $backend_ty:ty, $conn_ty:ty, $quote:expr) => {
+        ($feature:literal, $name:ident, $backend_ty:ty, $conn_ty:ty, $quote:expr) => {
             paste! {
-                #[cfg(feature = stringify!($backend_name))]
+                #[cfg(feature = $feature)]
                 #[test]
-                fn [<build_path_cte_uses_recursive_builder_ $backend_name>]() {
+                fn [<build_path_cte_uses_recursive_builder_ $name>]() {
                     use $backend_ty as Backend;
 
                     let query = build_path_cte::<$conn_ty, _, _>(
@@ -232,9 +232,9 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
                     assert_eq!(normalise_sql(&sql), expected_recursive_sql($quote));
                 }
 
-                #[cfg(feature = stringify!($backend_name))]
+                #[cfg(feature = $feature)]
                 #[test]
-                fn [<build_path_cte_with_conn_matches_builder_ $backend_name>]() {
+                fn [<build_path_cte_with_conn_matches_builder_ $name>]() {
                     use $backend_ty as Backend;
 
                     let mut conn = <$conn_ty>::default();
@@ -255,8 +255,14 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
         };
     }
 
-    backend_tests!(sqlite, diesel::sqlite::Sqlite, DummySqliteConn, '\u{60}');
-    backend_tests!(postgres, diesel::pg::Pg, DummyPgConn, '"');
+    backend_tests!(
+        "sqlite",
+        sqlite,
+        diesel::sqlite::Sqlite,
+        DummySqliteConn,
+        '\u{60}'
+    );
+    backend_tests!("postgres", postgres, diesel::pg::Pg, DummyPgConn, '"');
 
     #[test]
     fn prepare_path_empty() {
