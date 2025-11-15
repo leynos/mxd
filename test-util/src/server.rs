@@ -83,10 +83,12 @@ compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
 
 #[inline]
 fn ensure_single_backend() {
-    assert!(
-        !cfg!(all(feature = "sqlite", feature = "postgres")),
-        "Choose either sqlite or postgres, not both",
-    );
+    const {
+        assert!(
+            !cfg!(all(feature = "sqlite", feature = "postgres")),
+            "Choose either sqlite or postgres, not both",
+        );
+    }
 }
 
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]

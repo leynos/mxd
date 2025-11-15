@@ -3,6 +3,8 @@
 //! Centralises repeated setup flows (users, files, news content) so tests can
 //! compose databases with minimal boilerplate.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -18,10 +20,9 @@ use mxd::{
         create_user,
     },
     models::{NewArticle, NewBundle, NewCategory, NewFileAcl, NewFileEntry, NewUser},
+    schema::{files::dsl as files_dsl, users::dsl as users_dsl},
     users::hash_password,
 };
-use mxd::schema::{files::dsl as files_dsl, users::dsl as users_dsl};
-use std::collections::HashMap;
 
 use crate::AnyError;
 
@@ -81,14 +82,7 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
                 let Some(&file_id) = file_ids.get(name) else {
                     return Err(format!("missing file id for {name}").into());
                 };
-                add_file_acl(
-                    conn,
-                    &NewFileAcl {
-                        file_id,
-                        user_id,
-                    },
-                )
-                .await?;
+                add_file_acl(conn, &NewFileAcl { file_id, user_id }).await?;
             }
             Ok(())
         })

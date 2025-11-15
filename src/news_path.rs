@@ -145,20 +145,18 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     }
 
     #[fixture]
-    #[expect(
-        unused_braces,
-        reason = "rstest fixtures require function bodies even when they return a single \
-                  expression"
-    )]
-    fn expected_bundle_step_sql() -> String { expected_step_sql("JOIN") }
+    fn expected_bundle_step_sql() -> String {
+        let sql = expected_step_sql("JOIN");
+        debug_assert!(!sql.is_empty());
+        sql
+    }
 
     #[fixture]
-    #[expect(
-        unused_braces,
-        reason = "rstest fixtures require function bodies even when they return a single \
-                  expression"
-    )]
-    fn expected_category_step_sql() -> String { expected_step_sql("LEFT JOIN") }
+    fn expected_category_step_sql() -> String {
+        let sql = expected_step_sql("LEFT JOIN");
+        debug_assert!(!sql.is_empty());
+        sql
+    }
 
     #[rstest]
     fn bundle_step_sql_matches_expected(expected_bundle_step_sql: String) {

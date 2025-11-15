@@ -1,3 +1,8 @@
+#![expect(
+    non_snake_case,
+    reason = "OrthoConfig derives emit helper modules with CamelCase identifiers"
+)]
+
 //! Unprivileged PostgreSQL setup utilities.
 //!
 //! Provides helpers for staging PostgreSQL installations and data directories
@@ -12,10 +17,6 @@ use ortho_config::OrthoConfig;
 use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
 use serde::{Deserialize, Serialize};
 
-#[expect(
-    non_snake_case,
-    reason = "Environment variables use PG_* identifiers that intentionally break snake_case"
-)]
 #[derive(Debug, Clone, Serialize, Deserialize, OrthoConfig, Default)]
 #[ortho_config(prefix = "PG")]
 pub struct PgEnvCfg {
@@ -88,7 +89,9 @@ impl PgEnvCfg {
             settings.configuration.insert("locale".into(), loc.clone());
         }
         if let Some(ref enc) = self.encoding {
-            settings.configuration.insert("encoding".into(), enc.clone());
+            settings
+                .configuration
+                .insert("encoding".into(), enc.clone());
         }
     }
 }

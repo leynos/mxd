@@ -86,9 +86,9 @@ fn list_news_categories_root(#[case] path: Option<&str>) -> Result<(), AnyError>
     let port = server.port();
     let (_, mut names) = list_categories(port, path)?;
 
-    names.sort();
+    names.sort_unstable();
     let mut expected = vec!["Bundle", "General", "Updates"];
-    expected.sort();
+    expected.sort_unstable();
 
     assert_eq!(names, expected);
     Ok(())
