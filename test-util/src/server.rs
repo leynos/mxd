@@ -5,8 +5,10 @@
 
 use std::{
     ffi::OsString,
+    fmt,
     io::{BufRead, BufReader},
     net::TcpListener,
+    path::Path,
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
@@ -22,6 +24,60 @@ use crate::AnyError;
 #[cfg(feature = "postgres")]
 use crate::postgres::PostgresTestDb;
 
+/// Newtype for a Cargo manifest path.
+#[derive(Debug, Clone)]
+pub struct ManifestPath(String);
+
+impl ManifestPath {
+    pub fn new(path: impl Into<String>) -> Self { Self(path.into()) }
+    pub fn as_str(&self) -> &str { &self.0 }
+}
+
+impl From<&str> for ManifestPath {
+    fn from(value: &str) -> Self { Self(value.to_owned()) }
+}
+
+impl From<String> for ManifestPath {
+    fn from(value: String) -> Self { Self(value) }
+}
+
+impl AsRef<str> for ManifestPath {
+    fn as_ref(&self) -> &str { &self.0 }
+}
+
+impl AsRef<Path> for ManifestPath {
+    fn as_ref(&self) -> &Path { Path::new(&self.0) }
+}
+
+impl fmt::Display for ManifestPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
+}
+
+/// Newtype for a database connection URL.
+#[derive(Debug, Clone)]
+pub struct DbUrl(String);
+
+impl DbUrl {
+    pub fn new(url: impl Into<String>) -> Self { Self(url.into()) }
+    pub fn as_str(&self) -> &str { &self.0 }
+}
+
+impl From<&str> for DbUrl {
+    fn from(value: &str) -> Self { Self(value.to_owned()) }
+}
+
+impl From<String> for DbUrl {
+    fn from(value: String) -> Self { Self(value) }
+}
+
+impl AsRef<str> for DbUrl {
+    fn as_ref(&self) -> &str { &self.0 }
+}
+
+impl fmt::Display for DbUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
+}
+
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
 
@@ -34,13 +90,14 @@ fn ensure_single_backend() {
 }
 
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<String, AnyError>
+fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<DbUrl, AnyError>
 where
-    F: FnOnce(&str) -> Result<(), AnyError>,
+    F: FnOnce(&DbUrl) -> Result<(), AnyError>,
 {
     let path = temp.path().join("mxd.db");
-    setup(path.to_str().expect("db path utf8"))?;
-    Ok(path.to_str().unwrap().to_owned())
+    let url = DbUrl::from(path.to_str().expect("db path utf8"));
+    setup(&url)?;
+    Ok(url)
 }
 
 fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
@@ -67,7 +124,7 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     }
 }
 
-fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command {
+fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
     let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut cmd = Command::new(cargo);
     cmd.arg("run");
@@ -79,20 +136,23 @@ fn build_server_command(manifest_path: &str, port: u16, db_url: &str) -> Command
         "--bin",
         "mxd",
         "--manifest-path",
-        manifest_path,
+        manifest_path.as_str(),
         "--quiet",
         "--",
         "--bind",
         &format!("127.0.0.1:{port}"),
         "--database",
-        db_url,
+        db_url.as_str(),
     ])
     .stdout(Stdio::piped())
     .stderr(Stdio::inherit());
     cmd
 }
 
-fn launch_server_process(manifest_path: &str, db_url: &str) -> Result<(Child, u16), AnyError> {
+fn launch_server_process(
+    manifest_path: &ManifestPath,
+    db_url: &DbUrl,
+) -> Result<(Child, u16), AnyError> {
     let socket = TcpListener::bind("127.0.0.1:0")?;
     let port = socket.local_addr()?.port();
     drop(socket);
@@ -109,41 +169,46 @@ fn launch_server_process(manifest_path: &str, db_url: &str) -> Result<(Child, u1
 pub struct TestServer {
     child: Child,
     port: u16,
-    db_url: String,
+    db_url: DbUrl,
     #[cfg(feature = "postgres")]
     db: PostgresTestDb,
     temp_dir: Option<TempDir>,
 }
 
 impl TestServer {
-    pub fn start(manifest_path: &str) -> Result<Self, AnyError> {
+    pub fn start(manifest_path: impl Into<ManifestPath>) -> Result<Self, AnyError> {
         Self::start_with_setup(manifest_path, |_| Ok(()))
     }
 
-    pub fn start_with_setup<F>(manifest_path: &str, setup: F) -> Result<Self, AnyError>
+    pub fn start_with_setup<F>(
+        manifest_path: impl Into<ManifestPath>,
+        setup: F,
+    ) -> Result<Self, AnyError>
     where
-        F: FnOnce(&str) -> Result<(), AnyError>,
+        F: FnOnce(&DbUrl) -> Result<(), AnyError>,
     {
+        let manifest_path = manifest_path.into();
         ensure_single_backend();
         #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
         {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
-            Self::launch(manifest_path, db_url, Some(temp))
+            Self::launch(&manifest_path, db_url, Some(temp))
         }
 
         #[cfg(feature = "postgres")]
         {
             let db = crate::postgres::PostgresTestDb::new()?;
-            setup(db.url.as_ref())?;
-            Self::launch(manifest_path, db)
+            let db_url = DbUrl::from(db.url.as_ref());
+            setup(&db_url)?;
+            Self::launch(&manifest_path, db, db_url)
         }
     }
 
     #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
     fn launch(
-        manifest_path: &str,
-        db_url: String,
+        manifest_path: &ManifestPath,
+        db_url: DbUrl,
         temp_dir: Option<TempDir>,
     ) -> Result<Self, AnyError> {
         let (child, port) = launch_server_process(manifest_path, &db_url)?;
@@ -156,8 +221,11 @@ impl TestServer {
     }
 
     #[cfg(feature = "postgres")]
-    fn launch(manifest_path: &str, db: PostgresTestDb) -> Result<Self, AnyError> {
-        let db_url = db.url.to_string();
+    fn launch(
+        manifest_path: &ManifestPath,
+        db: PostgresTestDb,
+        db_url: DbUrl,
+    ) -> Result<Self, AnyError> {
         let (child, port) = launch_server_process(manifest_path, &db_url)?;
         Ok(Self {
             child,
@@ -170,7 +238,7 @@ impl TestServer {
 
     pub fn port(&self) -> u16 { self.port }
 
-    pub fn db_url(&self) -> &str { self.db_url.as_str() }
+    pub fn db_url(&self) -> &DbUrl { &self.db_url }
 
     pub fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
