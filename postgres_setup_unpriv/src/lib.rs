@@ -95,7 +95,25 @@ impl PgEnvCfg {
     }
 }
 
-/// Temporary privilege drop helper (process‑wide!)
+/// Temporarily drop privileges to `target` UID for the duration of `body`.
+///
+/// # Safety constraints
+///
+/// This helper uses `setresuid`, which mutates **process-wide** privilege state
+/// and is **not thread-safe**. Concurrent invocations from multiple threads will
+/// race and can leave the process running under the wrong UID. Only call this
+/// function from single-threaded contexts or protect it with external
+/// synchronisation (for example, a process-wide mutex).
+///
+/// # Errors
+///
+/// Returns an error if the process is not running as root, if `setresuid`
+/// fails, or if the provided closure returns an error.
+///
+/// # Implementation note
+///
+/// The guard’s `Drop` implementation cannot propagate errors, so failures while
+/// restoring privileges are logged via a best-effort `setresuid` call.
 pub fn with_temp_euid<F, R>(target: Uid, body: F) -> Result<R>
 where
     F: FnOnce() -> Result<R>,
