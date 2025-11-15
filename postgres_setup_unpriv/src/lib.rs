@@ -88,9 +88,7 @@ impl PgEnvCfg {
             settings.configuration.insert("locale".into(), loc.clone());
         }
         if let Some(ref enc) = self.encoding {
-            settings
-                .configuration
-                .insert("encoding".into(), enc.clone());
+            settings.configuration.insert("encoding".into(), enc.clone());
         }
     }
 }

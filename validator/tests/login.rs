@@ -15,7 +15,7 @@ fn login_validation() -> Result<(), AnyError> {
     }
 
     let server = TestServer::start_with_setup("../Cargo.toml", |db| {
-        test_util::with_db(db, |conn| {
+        test_util::with_db(db.as_str(), |conn| {
             Box::pin(async move {
                 use argon2::Argon2;
                 use mxd::{db::create_user, models::NewUser, users::hash_password};

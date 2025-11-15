@@ -4,6 +4,7 @@
 //! compose databases with minimal boilerplate.
 
 use chrono::{DateTime, Utc};
+use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use mxd::{
@@ -19,6 +20,8 @@ use mxd::{
     models::{NewArticle, NewBundle, NewCategory, NewFileAcl, NewFileEntry, NewUser},
     users::hash_password,
 };
+use mxd::schema::{files::dsl as files_dsl, users::dsl as users_dsl};
+use std::collections::HashMap;
 
 use crate::AnyError;
 
@@ -44,6 +47,11 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
                 password: &hashed,
             };
             create_user(conn, &new_user).await?;
+            let user_id: i32 = users_dsl::users
+                .filter(users_dsl::username.eq("alice"))
+                .select(users_dsl::id)
+                .first(conn)
+                .await?;
             let files = [
                 NewFileEntry {
                     name: "fileA.txt",
@@ -64,18 +72,23 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
             for file in &files {
                 create_file(conn, file).await?;
             }
-            let acls = [
-                NewFileAcl {
-                    file_id: 1,
-                    user_id: 1,
-                },
-                NewFileAcl {
-                    file_id: 3,
-                    user_id: 1,
-                },
-            ];
-            for acl in &acls {
-                add_file_acl(conn, acl).await?;
+            let file_rows = files_dsl::files
+                .select((files_dsl::name, files_dsl::id))
+                .load::<(String, i32)>(conn)
+                .await?;
+            let file_ids: HashMap<_, _> = file_rows.into_iter().collect();
+            for name in ["fileA.txt", "fileC.txt"] {
+                let Some(&file_id) = file_ids.get(name) else {
+                    return Err(format!("missing file id for {name}").into());
+                };
+                add_file_acl(
+                    conn,
+                    &NewFileAcl {
+                        file_id,
+                        user_id,
+                    },
+                )
+                .await?;
             }
             Ok(())
         })

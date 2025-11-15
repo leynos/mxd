@@ -14,7 +14,7 @@ pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, AnyError>
 where
     F: FnOnce(&str) -> Result<(), AnyError>,
 {
-    match TestServer::start_with_setup("./Cargo.toml", setup) {
+    match TestServer::start_with_setup("./Cargo.toml", |db| setup(db.as_str())) {
         Ok(s) => Ok(Some(s)),
         Err(e) => {
             #[cfg(feature = "postgres")]
