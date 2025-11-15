@@ -1,3 +1,8 @@
+//! Test server harness used by integration suites.
+//!
+//! Provides helpers to launch the `mxd` server binary with either the SQLite or
+//! PostgreSQL backend, monitor readiness, and tear it down once tests complete.
+
 use std::{
     ffi::OsString,
     io::{BufRead, BufReader},

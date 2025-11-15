@@ -1,3 +1,8 @@
+//! Database fixtures used by integration tests.
+//!
+//! Centralises repeated setup flows (users, files, news content) so tests can
+//! compose databases with minimal boilerplate.
+
 use chrono::{DateTime, Utc};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;

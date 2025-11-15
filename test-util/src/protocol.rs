@@ -1,3 +1,7 @@
+//! Protocol helpers shared by integration tests.
+//!
+//! Currently provides the client-side handshake used by multiple suites.
+
 use std::{
     convert::TryInto,
     io::{Read, Write},
