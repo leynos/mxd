@@ -127,13 +127,38 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
 }
 
 fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
+    if let Some(bin) = std::env::var_os("CARGO_BIN_EXE_mxd") {
+        return server_binary_command(bin, port, db_url);
+    }
+    cargo_run_command(manifest_path, port, db_url)
+}
+
+fn server_binary_command(bin: OsString, port: u16, db_url: &DbUrl) -> Command {
+    let mut cmd = Command::new(bin);
+    cmd.arg("--bind");
+    cmd.arg(format!("127.0.0.1:{port}"));
+    cmd.arg("--database");
+    cmd.arg(db_url.as_str());
+    cmd.stdout(Stdio::piped()).stderr(Stdio::inherit());
+    cmd
+}
+
+fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
     let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut cmd = Command::new(cargo);
     cmd.arg("run");
     #[cfg(feature = "postgres")]
-    cmd.args(["--no-default-features", "--features", "postgres"]);
+    {
+        cmd.args(["--no-default-features", "--features", "postgres"]);
+    }
     #[cfg(feature = "sqlite")]
-    cmd.args(["--features", "sqlite"]);
+    {
+        cmd.args(["--features", "sqlite"]);
+    }
+    // Ensure the server binary matches the feature set used by tests so Cargo
+    // does not trigger a costly rebuild when the harness falls back to
+    // `cargo run` (for example when `CARGO_BIN_EXE_mxd` is unavailable).
+    cmd.args(["--features", "test-support"]);
     cmd.args([
         "--bin",
         "mxd",
