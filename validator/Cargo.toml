@@ -9,7 +9,12 @@ tempfile = "3"
 which = "4"
 nix = { version = "0.27", optional = false, features = ["signal"] }
 
+[features]
+default = ["sqlite"]
+sqlite = ["test-util/sqlite", "mxd/sqlite"]
+postgres = ["test-util/postgres", "mxd/postgres"]
+
 [dev-dependencies]
-test-util = { path = "../test-util" }
+test-util = { path = "../test-util", default-features = false }
 mxd = { path = "..", default-features = false }
 argon2 = { version = "0.5", features = ["std"] }
