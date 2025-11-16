@@ -3,7 +3,7 @@
 //! Centralises repeated setup flows (users, files, news content) so tests can
 //! compose databases with minimal boilerplate.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, io};
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -92,7 +92,7 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
 pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
-            create_category(
+            let category_id = create_category(
                 conn,
                 &NewCategory {
                     name: "General",
@@ -100,13 +100,19 @@ pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
                 },
             )
             .await?;
-            use mxd::schema::news_articles::dsl as a;
+
             let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-                .expect("valid timestamp")
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "news fixture timestamp out of range",
+                    )
+                })?
                 .naive_utc();
-            diesel::insert_into(a::news_articles)
-                .values(&NewArticle {
-                    category_id: 1,
+            let first_article_id = insert_article(
+                conn,
+                &NewArticle {
+                    category_id,
                     parent_article_id: None,
                     prev_article_id: None,
                     next_article_id: None,
@@ -117,17 +123,24 @@ pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
                     flags: 0,
                     data_flavor: Some("text/plain"),
                     data: Some("a"),
-                })
-                .execute(conn)
-                .await?;
+                },
+            )
+            .await?;
+
             let posted2 = DateTime::<Utc>::from_timestamp(2000, 0)
-                .expect("valid timestamp")
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "news fixture timestamp out of range",
+                    )
+                })?
                 .naive_utc();
-            diesel::insert_into(a::news_articles)
-                .values(&NewArticle {
-                    category_id: 1,
+            insert_article(
+                conn,
+                &NewArticle {
+                    category_id,
                     parent_article_id: None,
-                    prev_article_id: Some(1),
+                    prev_article_id: Some(first_article_id),
                     next_article_id: None,
                     first_child_article_id: None,
                     title: "Second",
@@ -136,9 +149,9 @@ pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
                     flags: 0,
                     data_flavor: Some("text/plain"),
                     data: Some("b"),
-                })
-                .execute(conn)
-                .await?;
+                },
+            )
+            .await?;
             Ok(())
         })
     })
@@ -218,4 +231,32 @@ async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, AnyError> {
     .await?;
 
     Ok(id)
+}
+
+async fn insert_article(
+    conn: &mut DbConnection,
+    article: &NewArticle<'_>,
+) -> Result<i32, AnyError> {
+    use mxd::schema::news_articles::dsl as a;
+
+    #[cfg(feature = "postgres")]
+    let inserted_id: i32 = diesel::insert_into(a::news_articles)
+        .values(article)
+        .returning(a::id)
+        .get_result(conn)
+        .await?;
+
+    #[cfg(not(feature = "postgres"))]
+    let inserted_id: i32 = {
+        use diesel::sql_types::Integer;
+        diesel::insert_into(a::news_articles)
+            .values(article)
+            .execute(conn)
+            .await?;
+        diesel::select(diesel::dsl::sql::<Integer>("last_insert_rowid()"))
+            .get_result(conn)
+            .await?
+    };
+
+    Ok(inserted_id)
 }

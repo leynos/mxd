@@ -4,7 +4,7 @@
 
 use std::{
     convert::TryInto,
-    io::{Read, Write},
+    io::{self, Read, Write},
     net::TcpStream,
 };
 
@@ -23,7 +23,10 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
         b"TRTP",
         "protocol mismatch in handshake reply"
     );
-    let code = u32::from_be_bytes(reply[4..8].try_into().unwrap());
+    let code_bytes: [u8; 4] = reply[4..8]
+        .try_into()
+        .map_err(|_| io::Error::new(io::ErrorKind::UnexpectedEof, "handshake reply too short"))?;
+    let code = u32::from_be_bytes(code_bytes);
     assert_eq!(code, 0, "handshake returned error code {}", code);
     Ok(())
 }

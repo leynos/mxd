@@ -9,7 +9,9 @@
 //! using temporary privilege drops so the resulting assets are owned by an
 //! unprivileged user.
 
-use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::{fs, path::Path};
 
 use color_eyre::eyre::{Context, Result, bail};
 use nix::unistd::{Uid, chown, geteuid, getresuid, setresuid};
@@ -114,7 +116,8 @@ impl PgEnvCfg {
 /// # Implementation note
 ///
 /// The guard’s `Drop` implementation cannot propagate errors, so failures while
-/// restoring privileges are logged via a best-effort `setresuid` call.
+/// restoring privileges are silently discarded during the best-effort `setresuid`
+/// call.
 pub fn with_temp_euid<F, R>(target: Uid, body: F) -> Result<R>
 where
     F: FnOnce() -> Result<R>,

@@ -10,6 +10,7 @@ use std::{
     net::TcpListener,
     path::Path,
     process::{Child, Command, Stdio},
+    sync::{Mutex, Once},
     time::{Duration, Instant},
 };
 
@@ -78,6 +79,24 @@ impl fmt::Display for DbUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
 }
 
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+static BIN_PATH_INIT: Once = Once::new();
+
+/// Ensure `CARGO_BIN_EXE_mxd` is populated from the provided compile-time path.
+///
+/// Acquires a global mutex before mutating the process environment so concurrent
+/// tests do not race when observing or updating the variable.
+pub fn ensure_server_binary_env(bin_path: &str) {
+    BIN_PATH_INIT.call_once(|| {
+        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
+        if std::env::var_os("CARGO_BIN_EXE_mxd").is_none() {
+            // SAFETY: Environment mutation is guarded by `ENV_LOCK`, ensuring no
+            // concurrent readers/writers observe a partially updated state.
+            unsafe { std::env::set_var("CARGO_BIN_EXE_mxd", bin_path) };
+        }
+    });
+}
+
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
 
@@ -97,7 +116,10 @@ where
     F: FnOnce(&DbUrl) -> Result<(), AnyError>,
 {
     let path = temp.path().join("mxd.db");
-    let url = DbUrl::from(path.to_str().expect("db path utf8"));
+    let path_str = path
+        .to_str()
+        .ok_or_else(|| "database path is not valid UTF-8".to_string())?;
+    let url = DbUrl::from(path_str);
     setup(&url)?;
     Ok(url)
 }
@@ -111,7 +133,7 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
         loop {
             line.clear();
             if reader.read_line(&mut line)? == 0 {
-                return Err("server exited before signaling readiness".into());
+                return Err("server exited before signalling readiness".into());
             }
             if line.contains("listening on") {
                 break;

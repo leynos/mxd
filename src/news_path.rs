@@ -193,6 +193,7 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
 
     fn normalise_sql(sql: &str) -> String {
         sql.replace("-- binds: []", "")
+            .replace('`', "\"")
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
@@ -268,7 +269,7 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
         sqlite,
         diesel::sqlite::Sqlite,
         DummySqliteConn,
-        '\u{60}'
+        '"'
     );
     backend_tests!("postgres", postgres, diesel::pg::Pg, DummyPgConn, '"');
 

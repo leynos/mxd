@@ -24,4 +24,4 @@ pub use fixtures::{
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresTestDb, postgres_db};
 pub use protocol::handshake;
-pub use server::TestServer;
+pub use server::{TestServer, ensure_server_binary_env};

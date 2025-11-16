@@ -360,12 +360,29 @@ pub async fn list_names_at_path(
 pub async fn create_category(
     conn: &mut DbConnection,
     cat: &crate::models::NewCategory<'_>,
-) -> QueryResult<usize> {
-    use crate::schema::news_categories::dsl::news_categories;
-    diesel::insert_into(news_categories)
+) -> QueryResult<i32> {
+    use crate::schema::news_categories::dsl as c;
+
+    #[cfg(feature = "returning_clauses_for_sqlite_3_35")]
+    let inserted_id: i32 = diesel::insert_into(c::news_categories)
         .values(cat)
-        .execute(conn)
-        .await
+        .returning(c::id)
+        .get_result(conn)
+        .await?;
+
+    #[cfg(not(feature = "returning_clauses_for_sqlite_3_35"))]
+    let inserted_id: i32 = {
+        use diesel::sql_types::Integer;
+        diesel::insert_into(c::news_categories)
+            .values(cat)
+            .execute(conn)
+            .await?;
+        diesel::select(diesel::dsl::sql::<Integer>("last_insert_rowid()"))
+            .get_result(conn)
+            .await?
+    };
+
+    Ok(inserted_id)
 }
 
 /// Insert a new news bundle.
