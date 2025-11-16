@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use nix::unistd::geteuid;
 use postgres_setup_unpriv::{PgEnvCfg, make_dir_accessible, nobody_uid, with_temp_euid};
 use postgresql_embedded::VersionReq;
-use rstest::{fixture, rstest};
+use rstest::rstest;
 
 /// Tests that a `PgEnvCfg` with specific settings is correctly converted to a `settings` object,
 /// and that all relevant fields and configuration values are preserved.
@@ -57,20 +57,16 @@ fn to_settings_default_config() {
     assert!(cfg.to_settings().is_ok());
 }
 
-#[fixture]
-fn require_root() -> color_eyre::Result<()> {
-    if !geteuid().is_root() {
-        eprintln!("skipping root-dependent test");
-        return Err(color_eyre::eyre::eyre!("test requires root"));
-    }
-    Ok(())
-}
+fn is_root() -> bool { geteuid().is_root() }
 
 #[cfg(unix)]
 #[rstest]
 /// Verify that the effective uid is changed within the passed block
-fn with_temp_euid_changes_uid(require_root: color_eyre::Result<()>) -> color_eyre::Result<()> {
-    require_root?;
+fn with_temp_euid_changes_uid() -> color_eyre::Result<()> {
+    if !is_root() {
+        eprintln!("skipping root-dependent test");
+        return Ok(());
+    }
 
     let original = geteuid();
 
@@ -92,10 +88,11 @@ mod dir_accessible_tests {
     use super::*;
 
     #[rstest]
-    fn make_dir_accessible_allows_nobody(
-        require_root: color_eyre::Result<()>,
-    ) -> color_eyre::Result<()> {
-        require_root?;
+    fn make_dir_accessible_allows_nobody() -> color_eyre::Result<()> {
+        if !is_root() {
+            eprintln!("skipping root-dependent test");
+            return Ok(());
+        }
 
         let tmp = tempdir()?;
         let dir = tmp.path().join("foo");
@@ -109,8 +106,11 @@ mod dir_accessible_tests {
 
 #[cfg(unix)]
 #[rstest]
-fn run_requires_root(require_root: color_eyre::Result<()>) -> color_eyre::Result<()> {
-    require_root?;
+fn run_requires_root() -> color_eyre::Result<()> {
+    if !is_root() {
+        eprintln!("skipping root-dependent test");
+        return Ok(());
+    }
 
     let err = with_temp_euid(nobody_uid(), postgres_setup_unpriv::run)
         .expect_err("run should fail for non-root user");
