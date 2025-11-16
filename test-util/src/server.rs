@@ -235,6 +235,9 @@ fn launch_server_process(
     Ok((child, port))
 }
 
+/// Integration test server wrapper that spawns the `mxd` process with the
+/// selected backend, waits for readiness, and tears it down automatically on
+/// drop.
 pub struct TestServer {
     child: Child,
     port: u16,
@@ -245,10 +248,16 @@ pub struct TestServer {
 }
 
 impl TestServer {
+    /// Launches a server with the default (empty) setup, returning an error if
+    /// the database or server cannot be initialised or readiness times out (ten
+    /// seconds).
     pub fn start(manifest_path: impl Into<ManifestPath>) -> Result<Self, AnyError> {
         Self::start_with_setup(manifest_path, |_| Ok(()))
     }
 
+    /// Launches a server and runs the setup callback with the database URL
+    /// before starting, useful for seeding data or running migrations; returns
+    /// an error if setup, database initialisation, or launch fails.
     pub fn start_with_setup<F>(
         manifest_path: impl Into<ManifestPath>,
         setup: F,
@@ -305,13 +314,19 @@ impl TestServer {
         })
     }
 
+    /// Returns the ephemeral port on which the server is listening.
     pub fn port(&self) -> u16 { self.port }
 
+    /// Returns the database URL used by the server.
     pub fn db_url(&self) -> &DbUrl { &self.db_url }
 
+    /// Returns the temporary directory holding the SQLite database, if
+    /// applicable. Returns `None` when using PostgreSQL.
     pub fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
     #[cfg(feature = "postgres")]
+    /// Returns `true` when the server is using an embedded PostgreSQL instance
+    /// rather than an external server.
     pub fn uses_embedded_postgres(&self) -> bool { self.db.uses_embedded() }
 }
 
