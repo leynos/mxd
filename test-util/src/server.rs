@@ -117,6 +117,10 @@ fn ensure_single_backend() {
 }
 
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+/// Creates a temporary SQLite database at `temp/mxd.db`, runs the provided
+/// setup callback with its URL, and returns that URL on success. The callback
+/// must implement `FnOnce(&DbUrl) -> Result<(), AnyError>`. Returns an error if
+/// the path is not valid UTF-8 or if the callback fails.
 fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<DbUrl, AnyError>
 where
     F: FnOnce(&DbUrl) -> Result<(), AnyError>,
