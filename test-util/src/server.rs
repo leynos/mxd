@@ -124,6 +124,8 @@ where
     Ok(url)
 }
 
+/// Waits up to ten seconds for the child `mxd` process to announce readiness
+/// on stdout, returning an error if it exits early or never signals.
 fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     if let Some(out) = &mut child.stdout {
         let mut reader = BufReader::new(out);
@@ -148,6 +150,8 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     }
 }
 
+/// Constructs the base `cargo run` command for launching the server with the
+/// requested manifest, bind port, and database URL, enabling the active backend.
 fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
     if let Some(bin) = std::env::var_os("CARGO_BIN_EXE_mxd") {
         return server_binary_command(bin, port, db_url);
@@ -155,6 +159,8 @@ fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl)
     cargo_run_command(manifest_path, port, db_url)
 }
 
+/// Builds a command that executes an already-built `mxd` binary bound to the
+/// requested port and database URL, bypassing `cargo run` entirely.
 fn server_binary_command(bin: OsString, port: u16, db_url: &DbUrl) -> Command {
     let mut cmd = Command::new(bin);
     cmd.arg("--bind");
@@ -165,6 +171,8 @@ fn server_binary_command(bin: OsString, port: u16, db_url: &DbUrl) -> Command {
     cmd
 }
 
+/// Produces a `cargo run` invocation tailored to the active backend, falling
+/// back to this path when no prebuilt binary is available.
 fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
     let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut cmd = Command::new(cargo);
@@ -198,6 +206,8 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
     cmd
 }
 
+/// Spawns the configured server process on an ephemeral port and waits for the
+/// readiness banner before returning the child handle and chosen port.
 fn launch_server_process(
     manifest_path: &ManifestPath,
     db_url: &DbUrl,

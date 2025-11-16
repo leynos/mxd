@@ -109,10 +109,6 @@ cfg_if! {
 ///
 /// # Errors
 /// Returns any error produced by Diesel while running migrations.
-/// Apply embedded migrations for the current backend.
-///
-/// # Errors
-/// Returns any error produced by Diesel while running migrations.
 #[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
 pub async fn apply_migrations(conn: &mut DbConnection, url: &str) -> QueryResult<()> {
@@ -597,14 +593,14 @@ pub async fn create_root_article(
                 data: Some(data),
             };
 
-            #[cfg(feature = "returning_clauses_for_sqlite_3_35")]
+            #[cfg(any(feature = "postgres", feature = "returning_clauses_for_sqlite_3_35"))]
             let inserted_id: i32 = diesel::insert_into(a::news_articles)
                 .values(&article)
                 .returning(a::id)
                 .get_result(conn)
                 .await?;
 
-            #[cfg(not(feature = "returning_clauses_for_sqlite_3_35"))]
+            #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
             let inserted_id: i32 = {
                 use diesel::sql_types::Integer;
 
@@ -691,14 +687,23 @@ mod tests {
     #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_create_and_get_user() {
-        let mut conn = DbConnection::establish(":memory:").await.unwrap();
-        apply_migrations(&mut conn, "").await.unwrap();
+        let mut conn = DbConnection::establish(":memory:")
+            .await
+            .expect("failed to create in-memory connection");
+        apply_migrations(&mut conn, "")
+            .await
+            .expect("failed to apply migrations");
         let new_user = NewUser {
             username: "alice",
             password: "hash",
         };
-        create_user(&mut conn, &new_user).await.unwrap();
-        let fetched = get_user_by_name(&mut conn, "alice").await.unwrap().unwrap();
+        create_user(&mut conn, &new_user)
+            .await
+            .expect("failed to create user");
+        let fetched = get_user_by_name(&mut conn, "alice")
+            .await
+            .expect("lookup failed")
+            .expect("user not found");
         assert_eq!(fetched.username, "alice");
         assert_eq!(fetched.password, "hash");
     }
@@ -707,26 +712,40 @@ mod tests {
     #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_create_bundle_and_category() {
-        let mut conn = DbConnection::establish(":memory:").await.unwrap();
-        apply_migrations(&mut conn, "").await.unwrap();
+        let mut conn = DbConnection::establish(":memory:")
+            .await
+            .expect("failed to create in-memory connection");
+        apply_migrations(&mut conn, "")
+            .await
+            .expect("failed to apply migrations");
         let bun = NewBundle {
             parent_bundle_id: None,
             name: "Bundle",
         };
-        let _ = create_bundle(&mut conn, &bun).await.unwrap();
+        let _ = create_bundle(&mut conn, &bun)
+            .await
+            .expect("failed to create bundle");
         let cat = NewCategory {
             name: "General",
             bundle_id: None,
         };
-        create_category(&mut conn, &cat).await.unwrap();
-        let _names = list_names_at_path(&mut conn, None).await.unwrap();
+        create_category(&mut conn, &cat)
+            .await
+            .expect("failed to create category");
+        let _names = list_names_at_path(&mut conn, None)
+            .await
+            .expect("failed to list names");
     }
 
     #[cfg(feature = "sqlite")]
     #[tokio::test]
     async fn test_audit_features() {
-        let mut conn = DbConnection::establish(":memory:").await.unwrap();
-        audit_sqlite_features(&mut conn).await.unwrap();
+        let mut conn = DbConnection::establish(":memory:")
+            .await
+            .expect("failed to create in-memory connection");
+        audit_sqlite_features(&mut conn)
+            .await
+            .expect("sqlite feature audit failed");
     }
 
     #[cfg(feature = "postgres")]
@@ -736,14 +755,18 @@ mod tests {
         use postgresql_embedded::PostgreSQL;
 
         let mut pg = PostgreSQL::default();
-        pg.setup().await.unwrap();
-        pg.start().await.unwrap();
-        pg.create_database("test").await.unwrap();
+        pg.setup().await.expect("failed to set up postgres");
+        pg.start().await.expect("failed to start postgres");
+        pg.create_database("test")
+            .await
+            .expect("failed to create db");
         let url = pg.settings().url("test");
         let mut conn = diesel_async::AsyncPgConnection::establish(&url)
             .await
-            .unwrap();
-        audit_postgres_features(&mut conn).await.unwrap();
-        pg.stop().await.unwrap();
+            .expect("failed to connect to postgres");
+        audit_postgres_features(&mut conn)
+            .await
+            .expect("postgres feature audit failed");
+        pg.stop().await.expect("failed to stop postgres");
     }
 }
