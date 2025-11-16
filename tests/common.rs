@@ -1,6 +1,6 @@
 #[cfg(feature = "postgres")]
 use test_util::postgres::PostgresUnavailable;
-use test_util::{AnyError, TestServer};
+use test_util::{AnyError, TestServer, ensure_server_binary_env};
 
 /// Start the server for a test or skip if prerequisites are unavailable.
 ///
@@ -14,7 +14,8 @@ pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, AnyError>
 where
     F: FnOnce(&str) -> Result<(), AnyError>,
 {
-    match TestServer::start_with_setup("./Cargo.toml", setup) {
+    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd"))?;
+    match TestServer::start_with_setup("./Cargo.toml", |db| setup(db.as_str())) {
         Ok(s) => Ok(Some(s)),
         Err(e) => {
             #[cfg(feature = "postgres")]

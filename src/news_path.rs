@@ -75,6 +75,7 @@ use diesel::{query_builder::QueryFragment, sql_query};
 use diesel_cte_ext::{
     RecursiveCTEExt,
     RecursiveParts,
+    builders,
     cte::{RecursiveBackend, WithRecursive},
 };
 
@@ -94,7 +95,7 @@ where
     Body: QueryFragment<C::Backend>,
 {
     let seed = sql_query(CTE_SEED_SQL);
-    C::with_recursive(
+    builders::with_recursive::<C::Backend, (), _, _, _, _>(
         "tree",
         &["idx", "id"],
         RecursiveParts::new(seed, step, body),
@@ -119,9 +120,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use diesel::debug_query;
+    use paste::paste;
     use rstest::{fixture, rstest};
 
     use super::*;
+
+    const STEP_SQL: &str = "SELECT tree.idx + 1 AS idx, tree.id AS id FROM tree";
+    const BODY_SQL: &str = "SELECT id FROM tree";
 
     fn expected_step_sql(join_type: &str) -> String {
         let sql = r"SELECT tree.idx + 1 AS idx, b.id AS id
@@ -139,12 +145,18 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     }
 
     #[fixture]
-    #[allow(unused_braces)]
-    fn expected_bundle_step_sql() -> String { expected_step_sql("JOIN") }
+    fn expected_bundle_step_sql() -> String {
+        let sql = expected_step_sql("JOIN");
+        debug_assert!(!sql.is_empty());
+        sql
+    }
 
     #[fixture]
-    #[allow(unused_braces)]
-    fn expected_category_step_sql() -> String { expected_step_sql("LEFT JOIN") }
+    fn expected_category_step_sql() -> String {
+        let sql = expected_step_sql("LEFT JOIN");
+        debug_assert!(!sql.is_empty());
+        sql
+    }
 
     #[rstest]
     fn bundle_step_sql_matches_expected(expected_bundle_step_sql: String) {
@@ -179,22 +191,112 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
         assert_eq!(CATEGORY_BODY_SQL, expected);
     }
 
+    fn normalise_sql(sql: &str) -> String {
+        sql.replace("-- binds: []", "")
+            .replace('`', "\"")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn expected_recursive_sql(quote: char) -> String {
+        format!(
+            "WITH RECURSIVE {quote}tree{quote} ({quote}idx{quote}, {quote}id{quote}) AS (SELECT 0 \
+             AS idx, NULL AS id UNION ALL SELECT tree.idx + 1 AS idx, tree.id AS id FROM tree) \
+             SELECT id FROM tree"
+        )
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[derive(Default)]
+    struct DummySqliteConn;
+
+    #[cfg(feature = "sqlite")]
+    impl RecursiveCTEExt for DummySqliteConn {
+        type Backend = diesel::sqlite::Sqlite;
+    }
+
+    #[cfg(feature = "postgres")]
+    #[derive(Default)]
+    struct DummyPgConn;
+
+    #[cfg(feature = "postgres")]
+    impl RecursiveCTEExt for DummyPgConn {
+        type Backend = diesel::pg::Pg;
+    }
+
+    macro_rules! backend_tests {
+        ($feature:literal, $name:ident, $backend_ty:ty, $conn_ty:ty, $quote:expr) => {
+            paste! {
+                #[cfg(feature = $feature)]
+                #[test]
+                fn [<build_path_cte_uses_recursive_builder_ $name>]() {
+                    use $backend_ty as Backend;
+
+                    let query = build_path_cte::<$conn_ty, _, _>(
+                        sql_query(STEP_SQL),
+                        sql_query(BODY_SQL),
+                    );
+                    let sql = debug_query::<Backend, _>(&query).to_string();
+                    assert_eq!(normalise_sql(&sql), expected_recursive_sql($quote));
+                }
+
+                #[cfg(feature = $feature)]
+                #[test]
+                fn [<build_path_cte_with_conn_matches_builder_ $name>]() {
+                    use $backend_ty as Backend;
+
+                    let mut conn = <$conn_ty>::default();
+                    let inferred = build_path_cte_with_conn(
+                        &mut conn,
+                        sql_query(STEP_SQL),
+                        sql_query(BODY_SQL),
+                    );
+                    let direct = build_path_cte::<$conn_ty, _, _>(
+                        sql_query(STEP_SQL),
+                        sql_query(BODY_SQL),
+                    );
+                    let inferred_sql = debug_query::<Backend, _>(&inferred).to_string();
+                    let direct_sql = debug_query::<Backend, _>(&direct).to_string();
+                    assert_eq!(normalise_sql(&inferred_sql), normalise_sql(&direct_sql));
+                }
+            }
+        };
+    }
+
+    backend_tests!(
+        "sqlite",
+        sqlite,
+        diesel::sqlite::Sqlite,
+        DummySqliteConn,
+        '"'
+    );
+    backend_tests!("postgres", postgres, diesel::pg::Pg, DummyPgConn, '"');
+
     #[test]
     fn prepare_path_empty() {
-        assert!(prepare_path("").unwrap().is_none());
-        assert!(prepare_path("/").unwrap().is_none());
+        assert!(prepare_path("").expect("empty path should parse").is_none());
+        assert!(
+            prepare_path("/")
+                .expect("slash-only path should parse")
+                .is_none()
+        );
     }
 
     #[test]
     fn prepare_path_single_segment() {
-        let (json, len) = prepare_path("foo").unwrap().unwrap();
+        let (json, len) = prepare_path("foo")
+            .expect("single segment should parse")
+            .expect("single segment should exist");
         assert_eq!(json, "[\"foo\"]");
         assert_eq!(len, 1);
     }
 
     #[test]
     fn prepare_path_trailing_slash() {
-        let (json, len) = prepare_path("foo/").unwrap().unwrap();
+        let (json, len) = prepare_path("foo/")
+            .expect("trailing slash path should parse")
+            .expect("trailing slash path should exist");
         assert_eq!(json, "[\"foo\"]");
         assert_eq!(len, 1);
     }

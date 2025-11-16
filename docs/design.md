@@ -724,10 +724,13 @@ Common Table Expressions (CTEs) to handle certain queries elegantly:
   extension to chain a recursive CTE (the `step`) with a final selection
   (`body`)([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L444-L453))([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L455-L459)).
    The Diesel crate itself doesn’t yet have first-class CTE query builders, so
-  we wrote a small internal **`diesel_cte_ext`** crate to help. This provides a
-  builder like `.with_recursive(cte_name, query)` that we can attach to
-  Diesel’s `sql_query` results, and even a trait to extend Diesel connections
-  with `.with_recursive()`
+  the project now depends on the published **`diesel-cte-ext`** crate (module
+  name `diesel_cte_ext`) to supply the helpers. Earlier revisions carried an
+  in-tree fork; on 11 November 2025 the dependency switched to the crates.io
+  release (v0.1.0) to reuse upstream fixes and avoid duplicating maintenance.
+  This provides a builder like `.with_recursive(cte_name, query)` that we can
+  attach to Diesel’s `sql_query` results, and even a trait to extend Diesel
+  connections with `.with_recursive()`
   methods([14](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/cte-extension-design.md#L3-L6))([14](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/cte-extension-design.md#L24-L32)).
    Using this, `category_id_from_path` constructs a CTE that recursively finds
   the nested bundle and then the category, returning the category’s ID if the
@@ -741,9 +744,9 @@ Common Table Expressions (CTEs) to handle certain queries elegantly:
 
 - For threaded articles, one possible use of recursive CTE is retrieving an
   entire thread (all descendants of a root post). Currently, we store links so
-  traversal can also be done client-side or with iterative queries. But we
-  could use a recursive CTE to get all `news_articles` under a given parent
-  recursively (common in hierarchical comment systems). Our `diesel_cte_ext`
+  traversal can also be done client-side or with iterative queries. But the
+  same recursive CTE tooling could fetch all `news_articles` under a given
+  parent (common in hierarchical comment systems). The `diesel_cte_ext` helper
   would facilitate writing such a query in Rust for both SQLite and PG. This
   might be a future improvement for, say, implementing a “delete thread” (which
   needs to find all replies).
@@ -755,29 +758,39 @@ migrations to adjust for engine differences.
 
 ### Diesel CTE Extension (Advanced Queries)
 
-Because we require some complex SQL (like recursive CTEs for path resolution
-and potentially tree traversal), we include a custom module `diesel_cte_ext`.
-This is a small Diesel extension that provides helpers for building and
-executing CTEs in a backend-agnostic
+Because MXD requires complex SQL (like recursive CTEs for path resolution and
+potentially tree traversal), the implementation now depends on the external
+`diesel-cte-ext` crate (whose Rust module is still named `diesel_cte_ext`).
+This Diesel extension provides helpers for building and executing CTEs in a
+backend-agnostic
 way([14](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/cte-extension-design.md#L3-L6)).
  It defines a struct `WithCte` and trait impls so that a CTE query can
 integrate with Diesel’s query builder as if it were a normal
 query([14](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/cte-extension-design.md#L10-L18))([14](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/cte-extension-design.md#L20-L28)).
- We also extend the connection types via a trait (`RecursiveCTEExt`) so you can
-call, for example, `conn.with_recursive(cte_name, sql_query1, sql_query2)` to
-chain two `sql_query` fragments for the recursive part and the final
+ The connection types are also extended via a trait (`RecursiveCTEExt`) so code
+can call, for example, `conn.with_recursive(cte_name, sql_query1, sql_query2)`
+to chain two `sql_query` fragments for the recursive part and the final
 select([14](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/cte-extension-design.md#L24-L32))([14](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/cte-extension-design.md#L44-L50)).
- This extension is used in functions like `build_path_cte_with_conn` (called in
-our path lookup) to glue raw SQL fragments into one query. The outcome is that
-our Rust code remains database-neutral – we don’t embed raw Postgres-specific
-queries in one place and SQLite in another; we use this extension to run
-semantically equivalent CTEs on both backends. For instance,
-`CATEGORY_STEP_SQL` and `CATEGORY_BODY_SQL` (not shown above) are written in
-standard SQL that works on both (thanks to SQLite’s JSON1 making it possible
-there). Using Diesel’s async support, we can `.get_result(conn)` on the result
-of `build_path_cte_with_conn` and it will execute the whole CTE and give us the
-ID we
+ Functions like `build_path_cte_with_conn` (used in the path lookup) glue raw
+SQL fragments into one query. The outcome is that the Rust code remains
+database-neutral – it avoids embedding raw Postgres-specific queries in one
+place and SQLite in another; the extension runs semantically equivalent CTEs on
+both backends. For instance, `CATEGORY_STEP_SQL` and `CATEGORY_BODY_SQL` (not
+shown above) are written in standard SQL that works on both (thanks to SQLite’s
+JSON1 making it possible there). Using Diesel’s async support, we can
+`.get_result(conn)` on the result of `build_path_cte_with_conn` and it will
+execute the whole CTE and give us the ID we
 need([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L446-L454))([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L455-L459)).
+
+#### 11 November 2025 – Source `diesel-cte-ext` upstream
+
+- Removed the in-repo `diesel_cte_ext` crate in favour of the published
+  `diesel-cte-ext` v0.1.0 release so we inherit upstream bug fixes and test
+  coverage.
+- Upgraded `diesel` to 2.3.x and `diesel-async` to 0.7.x so MXD and the
+  extension agree on backend APIs without patching Diesel twice.
+- Regenerated both `Cargo.lock` files (root and `validator/`) so every binary
+  consumes the same crates.io dependency graph.
 
 ### Dual-Database Migrations Example
 

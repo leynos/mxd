@@ -1,6 +1,4 @@
 //! Helpers for PostgreSQL-backed integration tests.
-#![cfg(feature = "postgres")]
-
 use std::{
     error::Error as StdError,
     net::{TcpStream, ToSocketAddrs},
@@ -181,7 +179,7 @@ impl PostgresTestDb {
             });
         }
 
-        let embedded = match start_embedded_postgres(|url| reset_postgres_db(url)) {
+        let embedded = match start_embedded_postgres(reset_postgres_db) {
             Ok(pg) => pg,
             Err(_) => return Err(Box::new(PostgresUnavailable)),
         };

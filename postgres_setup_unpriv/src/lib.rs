@@ -1,16 +1,24 @@
-// Library for postgres_setup_unpriv
-#![allow(non_snake_case)]
+#![expect(
+    non_snake_case,
+    reason = "OrthoConfig derives emit helper modules with CamelCase identifiers"
+)]
 
-use color_eyre::eyre::{bail, Context, Result};
-use nix::unistd::{chown, getresuid, geteuid, setresuid, Uid};
+//! Unprivileged PostgreSQL setup utilities.
+//!
+//! Provides helpers for staging PostgreSQL installations and data directories
+//! using temporary privilege drops so the resulting assets are owned by an
+//! unprivileged user.
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::{fs, path::Path};
+
+use color_eyre::eyre::{Context, Result, bail};
+use nix::unistd::{Uid, chown, geteuid, getresuid, setresuid};
 use ortho_config::OrthoConfig;
 use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 
-#[allow(non_snake_case)]
 #[derive(Debug, Clone, Serialize, Deserialize, OrthoConfig, Default)]
 #[ortho_config(prefix = "PG")]
 pub struct PgEnvCfg {
@@ -83,13 +91,33 @@ impl PgEnvCfg {
             settings.configuration.insert("locale".into(), loc.clone());
         }
         if let Some(ref enc) = self.encoding {
-            settings.configuration.insert("encoding".into(), enc.clone());
+            settings
+                .configuration
+                .insert("encoding".into(), enc.clone());
         }
     }
-
 }
 
-/// Temporary privilege drop helper (process‑wide!)
+/// Temporarily drop privileges to `target` UID for the duration of `body`.
+///
+/// # Safety constraints
+///
+/// This helper uses `setresuid`, which mutates **process-wide** privilege state
+/// and is **not thread-safe**. Concurrent invocations from multiple threads will
+/// race and can leave the process running under the wrong UID. Only call this
+/// function from single-threaded contexts or protect it with external
+/// synchronisation (for example, a process-wide mutex).
+///
+/// # Errors
+///
+/// Returns an error if the process is not running as root, if `setresuid`
+/// fails, or if the provided closure returns an error.
+///
+/// # Implementation note
+///
+/// The guard’s `Drop` implementation cannot propagate errors, so failures while
+/// restoring privileges are silently discarded during the best-effort `setresuid`
+/// call.
 pub fn with_temp_euid<F, R>(target: Uid, body: F) -> Result<R>
 where
     F: FnOnce() -> Result<R>,
@@ -105,9 +133,7 @@ where
         saved: Uid,
     }
     impl Drop for Guard {
-        fn drop(&mut self) {
-            let _ = setresuid(self.real, Uid::from_raw(0), self.saved);
-        }
+        fn drop(&mut self) { let _ = setresuid(self.real, Uid::from_raw(0), self.saved); }
     }
 
     let _guard = Guard {
@@ -126,10 +152,8 @@ where
 #[cfg(unix)]
 pub fn make_dir_accessible<P: AsRef<Path>>(dir: P, uid: Uid) -> Result<()> {
     let dir = dir.as_ref();
-    fs::create_dir_all(dir)
-        .with_context(|| format!("create {}", dir.display()))?;
-    chown(dir, Some(uid), None)
-        .with_context(|| format!("chown {}", dir.display()))?;
+    fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    chown(dir, Some(uid), None).with_context(|| format!("chown {}", dir.display()))?;
     fs::set_permissions(dir, fs::Permissions::from_mode(0o755))
         .with_context(|| format!("chmod {}", dir.display()))?;
     Ok(())
@@ -188,4 +212,3 @@ pub fn run() -> Result<()> {
 
     Ok(())
 }
-

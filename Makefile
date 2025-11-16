@@ -49,10 +49,10 @@ nixie: ## Validate Mermaid diagrams
 test: test-postgres test-sqlite ## Run sqlite and postgres test suites
 
 test-postgres: ## Run tests with the postgres backend
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(TEST_POSTGRES_FEATURES) -- --nocapture
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_POSTGRES_FEATURES)
 
 test-sqlite: ## Run tests with the sqlite backend
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) test $(TEST_SQLITE_FEATURES)
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_SQLITE_FEATURES)
 
 sqlite: target/debug/$(APP) ## Build debug sqlite binary
 
