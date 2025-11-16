@@ -6,11 +6,11 @@
 use std::{
     ffi::OsString,
     fmt,
-    io::{BufRead, BufReader},
+    io::{self, BufRead, BufReader},
     net::TcpListener,
     path::Path,
     process::{Child, Command, Stdio},
-    sync::{Mutex, Once},
+    sync::Mutex,
     time::{Duration, Instant},
 };
 
@@ -80,21 +80,21 @@ impl fmt::Display for DbUrl {
 }
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
-static BIN_PATH_INIT: Once = Once::new();
 
 /// Ensure `CARGO_BIN_EXE_mxd` is populated from the provided compile-time path.
 ///
-/// Acquires a global mutex before mutating the process environment so concurrent
-/// tests do not race when observing or updating the variable.
-pub fn ensure_server_binary_env(bin_path: &str) {
-    BIN_PATH_INIT.call_once(|| {
-        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
-        if std::env::var_os("CARGO_BIN_EXE_mxd").is_none() {
-            // SAFETY: Environment mutation is guarded by `ENV_LOCK`, ensuring no
-            // concurrent readers/writers observe a partially updated state.
-            unsafe { std::env::set_var("CARGO_BIN_EXE_mxd", bin_path) };
-        }
-    });
+/// The mutation is guarded by a global mutex and the result is propagated so
+/// callers can handle synchronisation failures instead of panicking.
+pub fn ensure_server_binary_env(bin_path: &str) -> Result<(), AnyError> {
+    let _guard = ENV_LOCK
+        .lock()
+        .map_err(|_| io::Error::other("environment mutex poisoned"))?;
+    if std::env::var_os("CARGO_BIN_EXE_mxd").is_none() {
+        // SAFETY: Environment mutation is serialized by `ENV_LOCK`, ensuring no
+        // concurrent readers/writers observe a partially updated state.
+        unsafe { std::env::set_var("CARGO_BIN_EXE_mxd", bin_path) };
+    }
+    Ok(())
 }
 
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
