@@ -14,11 +14,14 @@ clap = { version = "4", features = ["derive"] }
 figment = { version = "0.10", features = ["env"] }
 xdg = "3"
 uncased = "0.9"
+figment-json5 = { version = "0.1", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+toml = { version = "0.8", optional = true }
 
 [features]
-toml = []
-json5 = []
-yaml = []
+toml = ["figment/toml", "dep:toml"]
+json5 = ["dep:figment-json5"]
+yaml = ["figment/yaml", "dep:serde_yaml"]
 
 [dev-dependencies]
 rstest = "0.18"

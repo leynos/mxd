@@ -7,14 +7,16 @@ unsafe extern "C" {
 }
 use std::io::{self, Read};
 
-use mxd::transaction::{parse_transaction, HEADER_LEN, MAX_PAYLOAD_SIZE};
+use mxd::transaction::{HEADER_LEN, MAX_PAYLOAD_SIZE, parse_transaction};
 
 fn main() {
     // Allocate a buffer up to the maximum frame size so we don't grow
     // indefinitely in persistent mode.
     let mut data = Vec::with_capacity(HEADER_LEN + MAX_PAYLOAD_SIZE);
     loop {
-        if unsafe { __AFL_LOOP(1000) } == 0 { break; }
+        if unsafe { __AFL_LOOP(1000) } == 0 {
+            break;
+        }
         data.clear();
         // Limit the amount of data read from each testcase to avoid
         // unbounded allocations. `take` will stop after the specified limit.

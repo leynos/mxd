@@ -1,3 +1,9 @@
+//! Integration tests for news category listing operations.
+//!
+//! Validates that the server correctly returns category hierarchies at various
+//! paths (root, nested bundles, trailing slashes) and handles edge cases such
+//! as invalid paths and empty databases.
+
 use std::{
     convert::TryFrom,
     io::{Read, Write},
@@ -13,6 +19,7 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
+use rstest::rstest;
 use test_util::{
     AnyError,
     handshake,
@@ -66,56 +73,24 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
     Ok((reply_tx.header, names))
 }
 
-/// Tests that listing news categories at the root path returns all root-level bundles and
-/// categories.
-///
-/// Sets up a test server with one bundle ("Bundle") and two categories ("General", "Updates") at
-/// the root level. Sends a transaction requesting news categories at the root path ("/") and
-/// verifies that the response contains all expected category names.
-///
-/// # Errors
-///
-/// Returns an error if the test server setup, TCP communication, or protocol validation fails.
-#[test]
-fn list_news_categories_root() -> Result<(), AnyError> {
+/// Tests that listing news categories at the root path (with or without explicit "/")
+/// returns all root-level bundles and categories.
+#[rstest]
+#[case(Some("/"))]
+#[case(None)]
+fn list_news_categories_root(#[case] path: Option<&str>) -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
         return Ok(());
     };
 
     let port = server.port();
-    let (_, mut names) = list_categories(port, Some("/"))?;
-    names.sort();
-    assert_eq!(names, vec!["Bundle", "General", "Updates"]);
-    Ok(())
-}
+    let (_, mut names) = list_categories(port, path)?;
 
-/// Tests that listing news categories with no path parameter returns all root-level bundles and
-/// categories.
-///
-/// Sets up a database with one bundle ("Bundle") and two categories ("General", "Updates") not
-/// associated with any bundle. Sends a transaction request without a path parameter and verifies
-/// that the response contains all three names.
-///
-/// # Errors
-///
-/// Returns an error if the test server setup, database operations, TCP communication, or protocol
-/// decoding fails.
-///
-/// # Examples
-///
-/// ```
-/// list_news_categories_no_path().unwrap(); 
-/// ```
-#[test]
-fn list_news_categories_no_path() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
-        return Ok(());
-    };
+    names.sort_unstable();
+    let mut expected = vec!["Bundle", "General", "Updates"];
+    expected.sort_unstable();
 
-    let port = server.port();
-    let (_, mut names) = list_categories(port, None)?;
-    names.sort();
-    assert_eq!(names, vec!["Bundle", "General", "Updates"]);
+    assert_eq!(names, expected);
     Ok(())
 }
 
@@ -190,24 +165,22 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
 }
 
 /// Tests that requesting news categories at a nested bundle path returns only the categories within
-/// that sub-bundle.
+/// that sub-bundle, ignoring leading and trailing slashes.
 ///
 /// Sets up a nested bundle structure with a root bundle and a sub-bundle containing a single
 /// category. Sends a transaction requesting categories at the nested path and verifies that only
 /// the expected category is returned.
-///
-/// # Errors
-///
-/// Returns an error if the test server setup, database operations, TCP communication, or protocol
-/// decoding fails.
-#[test]
-fn list_news_categories_nested() -> Result<(), AnyError> {
+#[rstest]
+#[case("Bundle/Sub")]
+#[case("/Bundle/Sub/")]
+fn list_news_categories_nested(#[case] path: &str) -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
         return Ok(());
     };
 
     let port = server.port();
-    let (_, names) = list_categories(port, Some("Bundle/Sub"))?;
+    let (_, names) = list_categories(port, Some(path))?;
+
     assert_eq!(names, vec!["Inside"]);
     Ok(())
 }

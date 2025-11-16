@@ -1,3 +1,8 @@
+//! Integration test for login validation via the Helix editor.
+//!
+//! Verifies that a test user can be created and authenticated through the `/server`
+//! command with username and password credentials.
+
 use expectrl::{Regex, spawn};
 use test_util::{AnyError, TestServer};
 use which::which;
@@ -10,12 +15,10 @@ fn login_validation() -> Result<(), AnyError> {
     }
 
     let server = TestServer::start_with_setup("../Cargo.toml", |db| {
-        test_util::with_db(db, |conn| {
+        test_util::with_db(db.as_str(), |conn| {
             Box::pin(async move {
                 use argon2::Argon2;
-                use mxd::models::NewUser;
-                use mxd::users::hash_password;
-                use mxd::db::create_user;
+                use mxd::{db::create_user, models::NewUser, users::hash_password};
 
                 let argon2 = Argon2::default();
                 let hashed = hash_password(&argon2, "secret")?;

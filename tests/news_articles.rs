@@ -286,7 +286,7 @@ fn post_news_article_root() -> Result<(), AnyError> {
     rt.block_on(async {
         use mxd::schema::news_articles::dsl as a;
 
-        let mut conn = DbConnection::establish(server.db_url()).await?;
+        let mut conn = DbConnection::establish(server.db_url().as_str()).await?;
         let titles = a::news_articles
             .select(a::title)
             .load::<String>(&mut conn)

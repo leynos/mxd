@@ -1,0 +1,819 @@
+========== code review ==========
+Summary:
+postgres_setup_unpriv/src/lib.rs: 5 comments
+src/news_path.rs: 3 comments
+tests/news_categories.rs: 2 comments
+docs/cte-extension-design.md: 1 comment
+postgres_setup_unpriv/tests/settings.rs: 1 comment
+
+📝  [1mcoderabbitai[0m CHANGES_REQUESTED:
+[1mActionable comments posted: 3[0m
+
+[38;5;244m[1m▐[0m [!CAUTION]
+[38;5;244m[1m▐[0m Some comments are outside the diff and can’t be 
+[38;5;244m[1m▐[0m posted inline due to platform limitations.
+[38;5;244m[1m▐[0m 
+[38;5;244m[1m▐[0m 
+[38;5;244m[1m▐[0m 
+[38;5;244m[1m▐[0m ▶ ⚠️ Outside diff range comments (1)
+
+
+▶ 📜 Review details
+
+
+
+📝  [1msourcery-ai[0m COMMENTED:
+Hey there - I've reviewed your changes and found 
+some issues that need to be addressed.
+
+- Introduce a temporary re-export or deprecation 
+shim for the old vendored API paths to prevent 
+breaking downstream code that still references 
+[48;5;235m[38;5;249mdiesel_cte_ext[49m[39m until fully migrated.
+- Ensure any CI/build scripts or workflows that 
+refer to the vendored path are updated to point to
+[48;5;235m[38;5;249mdiesel-cte-ext[49m[39m, verifying that no residual path 
+references remain.
+- Consolidate and document the feature flags for 
+[48;5;235m[38;5;249mdiesel-cte-ext[49m[39m (e.g. [48;5;235m[38;5;249masync[49m[39m) across all Cargo.toml 
+files to maintain consistency and avoid 
+mismatches.
+
+▶ Prompt for AI Agents
+
+
+[1m*[0m
+
+▶ Sourcery is free for open source - if you like 
+our reviews please consider sharing them ✨
+
+
+
+Help me be more useful! Please click 👍 or 👎 on 
+each comment and I'll use the feedback to improve 
+your reviews.
+
+📝  [1mcodescene-delta-analysis[0m APPROVED:
+[//]: # (cs-code-health)
+
+
+
+[1mGates Passed[0m
+[![](https://codescene.io/imgs/svg/pass1.svg)](#) 
+6 Quality Gates Passed
+
+
+[See analysis details in 
+CodeScene](https://codescene.io/projects/68298/del
+ta/results/5008269)
+
+
+
+
+[4m             [0m
+[1mQuality[0m[1m [0m[1mGate[0m[1m [0m[1mProfile:[0m [Pay Down Tech 
+Debt](https://codescene.io/projects/68298/config/d
+elta-analysis)
+Want more control? [Customize Code Health 
+rules](https://codescene.io/docs/guides/technical/
+code-health.html#adapt-code-health-to-your-coding-
+standards) or catch issues early with our [IDE 
+extension](https://codescene.com/developer-hub) 
+and [CLI 
+tool](https://codescene.io/docs/cli/index.html).
+
+========== review comments ==========
+   55| The `WithCte` type stores the CTE name, columns, and query fragments for the
+   56| common table expression. The builders produce a `WithCte` instance that can be
+   57| executed using Diesel's `RunQueryDsl`.
+   58|+
+   59|+## Feature flags
+   60|+
+   61|+- `async` is always enabled so MXD can compose recursive queries on both the
+   62|+  synchronous and asynchronous Diesel connection types exposed by
+   63|+  `diesel_async`.
+   64|+- Backend-specific features (`sqlite`, `postgres`) are toggled via the main
+   65|+  crate’s feature flags and forwarded to `diesel-cte-ext` through the
+   66|+  `diesel-cte-ext/{backend}` feature gates.
+   67|+- The dependency is declared once in the root `Cargo.toml` under
+   68|+  `[workspace.dependencies]`, ensuring every package within the workspace pulls
+   69|+  identical features (namely `default-features = false` plus `async`).
+   70|+
+   71|+This consolidation prevents silent divergences between crates and documents at
+   72|+the manifest level how `diesel-cte-ext` should be configured.
+💬  [1mcoderabbitai[0m wrote:
+_⚠️ Potential issue_ | _🟡 Minor_
+
+[1mAdd[0m[1m [0m[1mmissing[0m[1m [0m[1mcommas[0m[1m [0m[1mbefore[0m[1m [0m[1m"so"[0m[1m [0m[1min[0m[1m [0m[1mcompound[0m[1m [0m
+[1msentences[0m[1m [0m[1mand[0m[1m [0m[1mimprove[0m[1m [0m[1mclarity.[0m
+
+Lines 61–62 and line 72 require punctuation 
+adjustments per en-GB compound sentence rules:
+- Line 61: "async is always enabled so MXD can" 
+needs a comma before "so".
+- Line 72: "documents at the manifest level how 
+[48;5;235m[38;5;249mdiesel-cte-ext[49m[39m" is awkwardly phrased; reorder for 
+clarity.
+
+Apply this diff:
+
+[9m~diff[0m
+  ## Feature flags
+
+  - [48;5;235m[38;5;249masync[49m[39m is always enabled so MXD can compose 
+recursive queries on both the
++   
+[48;5;235m[38;5;249msynchronous[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mand[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249masynchronous[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mDiesel[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mconnection[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                [49m[39m
+[48;5;235m[38;5;249mtypes[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mexposed[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mby[49m[39m[48;5;235m[38;5;249m                                               [49m[39m
+[48;5;235m[38;5;249m`diesel_async`.[49m[39m[48;5;235m[38;5;249m                                                [49m[39m
+  - Backend-specific features ([48;5;235m[38;5;249msqlite[49m[39m, [48;5;235m[38;5;249mpostgres[49m[39m) 
+are toggled via the main
+[48;5;235m[38;5;249mcrate's[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mfeature[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mflags[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mand[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mforwarded[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mto[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                            [49m[39m
+[48;5;235m[38;5;249m`diesel-cte-ext`[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mthrough[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mthe[49m[39m[48;5;235m[38;5;249m                                       [49m[39m
+[48;5;235m[38;5;249m`diesel-cte-ext/{backend}` feature gates.[49m[39m[48;5;235m[38;5;249m                          [49m[39m
+  - The dependency is declared once in the root 
+[48;5;235m[38;5;249mCargo.toml[49m[39m under
+[48;5;235m[38;5;249m`[workspace.dependencies]`,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mensuring[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mevery[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mpackage[49m[39m[48;5;235m[38;5;249m                           [49m[39m
+[48;5;235m[38;5;249mwithin[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mthe[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mworkspace[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mpulls[49m[39m[48;5;235m[38;5;249m                                                   [49m[39m
+[48;5;235m[38;5;249midentical[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mfeatures[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m(namely[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m`default-features[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                              [49m[39m
+[48;5;235m[38;5;249mfalse`[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mplus[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m`async`).[49m[39m[48;5;235m[38;5;249m                                                        [49m[39m
+
+  This consolidation prevents silent divergences 
+between crates and documents at
+  the manifest level how [48;5;235m[38;5;249mdiesel-cte-ext[49m[39m should be 
+configured.
+
+
+Specifically:
+
+[9m~diff[0m
+- - [48;5;235m[38;5;249masync[49m[39m is always enabled so MXD can compose 
+recursive queries on both the
++ - [48;5;235m[38;5;249masync[49m[39m is always enabled, so MXD can compose 
+recursive queries on both the
+
+
+[9m~diff[0m
+- This consolidation prevents silent divergences 
+between crates and documents at
+- the manifest level how [48;5;235m[38;5;249mdiesel-cte-ext[49m[39m should be 
+configured.
++ This consolidation prevents silent divergences 
+between crates and documents
++ how [48;5;235m[38;5;249mdiesel-cte-ext[49m[39m should be configured at the 
+manifest level.
+
+
+▶ 🧰 Tools
+
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2515925647
+    1| // Library for postgres_setup_unpriv
+💬  [1mcoderabbitai[0m wrote:
+_⚠️ Potential issue_ | _🟠 Major_
+
+[1mAdd a proper [0m[48;5;235m[38;5;249m[1m//![0m[1m module doc comment.[0m
+
+Every module must begin with a [48;5;235m[38;5;249m//![49m[39m doc comment 
+that explains the module's purpose and utility. 
+The current comment is not a doc comment.
+
+
+
+Apply this diff to add a proper module doc 
+comment:
+
+[9m~diff[0m
+-// Library for postgres_setup_unpriv
++//! Unprivileged PostgreSQL setup utilities.
++//!
++//! Provides helpers for setting up PostgreSQL 
+with temporary privilege drops,
++//! allowing installation and data directories to
+be owned by an unprivileged user.
+
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2515925650
+    1| // Library for postgres_setup_unpriv
+    2| #![allow(non_snake_case)]
+💬  [1mcoderabbitai[0m wrote:
+_⚠️ Potential issue_ | _🔴 Critical_
+
+[1mReplace[0m[1m [0m[1mfile-wide[0m[1m [0m[48;5;235m[38;5;249m[1m#![allow][0m[1m [0m[1mwith[0m[1m [0m[1mnarrowly[0m[1m [0m[1mscoped[0m[1m [0m
+[48;5;235m[38;5;249m[1m#[expect][0m[1m [0m[1mattributes.[0m
+
+The coding guidelines explicitly forbid [48;5;235m[38;5;249m#[allow][49m[39m. 
+Replace this file-wide suppression with narrowly 
+scoped [48;5;235m[38;5;249m#[expect(non_snake_case, reason = "...")][49m[39m 
+attributes on each item that requires it (e.g., 
+struct [48;5;235m[38;5;249mPgEnvCfg[49m[39m at line 13).
+
+
+
+Apply this diff to remove the forbidden file-wide 
+suppression:
+
+[9m~diff[0m
+ // Library for postgres_setup_unpriv
+-#![allow(non_snake_case)]
+ 
+
+
+Then add narrowly scoped expectations where 
+needed. For example, on the struct:
+
+[9m~diff[0m
+-#[allow(non_snake_case)]
++#[expect(non_snake_case, reason = "PG environment
+variable prefix convention requires non-snake-case
+field names")]
+ #[derive(Debug, Clone, Serialize, Deserialize, 
+OrthoConfig, Default)]
+
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2515925654
+    1| // Library for postgres_setup_unpriv
+    2| #![allow(non_snake_case)]
+    3| 
+    4|-use color_eyre::eyre::{bail, Context, Result};
+    5|-use nix::unistd::{chown, getresuid, geteuid, setresuid, Uid};
+    4|+use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+    5|+
+    6|+use color_eyre::eyre::{Context, Result, bail};
+    7|+use nix::unistd::{Uid, chown, geteuid, getresuid, setresuid};
+    8| use ortho_config::OrthoConfig;
+    9| use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
+   10| use serde::{Deserialize, Serialize};
+    9|-use std::fs;
+   10|-use std::os::unix::fs::PermissionsExt;
+   11|-use std::path::Path;
+   11| 
+   12| #[allow(non_snake_case)]
+💬  [1mcoderabbitai[0m wrote:
+_⚠️ Potential issue_ | _🔴 Critical_
+
+[1mReplace[0m[1m [0m[48;5;235m[38;5;249m[1m#[allow][0m[1m [0m[1mwith[0m[1m [0m[1mnarrowly[0m[1m [0m[1mscoped[0m[1m [0m[48;5;235m[38;5;249m[1m#[expect][0m[1m [0m
+[1mwith[0m[1m [0m[1mreason.[0m
+
+This [48;5;235m[38;5;249m#[allow][49m[39m attribute is forbidden by the coding
+guidelines. Replace it with 
+[48;5;235m[38;5;249m#[expect(non_snake_case, reason = "...")][49m[39m to 
+document why the lint is suppressed.
+
+
+
+Apply this diff:
+
+[9m~diff[0m
+-#[allow(non_snake_case)]
++#[expect(non_snake_case, reason = "PG environment
+variable prefix convention requires non-snake-case
+field names")]
+ #[derive(Debug, Clone, Serialize, Deserialize, 
+OrthoConfig, Default)]
+
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2515925655
+   82|             settings.configuration.insert("locale".into(), loc.clone());
+   83|         }
+   84|         if let Some(ref enc) = self.encoding {
+   86|-            settings.configuration.insert("encoding".into(), enc.clone());
+   85|+            settings
+   86|+                .configuration
+   87|+                .insert("encoding".into(), enc.clone());
+💬  [1mcoderabbitai[0m wrote:
+_🧹 Nitpick_ | _🔵 Trivial_
+
+[1mMaintain[0m[1m [0m[1mconsistent[0m[1m [0m[1mformatting[0m[1m [0m[1mwith[0m[1m [0m[1mthe[0m[1m [0m[1mlocale[0m[1m [0m
+[1minsertion[0m[1m [0m[1mabove.[0m
+
+The encoding insertion is wrapped across three 
+lines whilst the locale insertion (line 82) 
+remains on a single line. Maintain consistency by 
+using the same formatting pattern.
+
+
+
+Apply this diff to match the locale insertion 
+style:
+
+[9m~diff[0m
+[48;5;235m[38;5;249m     if let Some(ref enc) = self.encoding {[49m[39m
+-            settings
+-                .configuration
+-                .insert("encoding".into(), 
+enc.clone());
++            
+settings.configuration.insert("encoding".into(), 
+enc.clone());
+[48;5;235m[38;5;249m     }[49m[39m
+
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2515925659
+  105|         saved: Uid,
+  106|     }
+  107|     impl Drop for Guard {
+  108|-        fn drop(&mut self) {
+  109|-            let _ = setresuid(self.real, Uid::from_raw(0), self.saved);
+  110|-        }
+  108|+        fn drop(&mut self) { let _ = setresuid(self.real, Uid::from_raw(0), self.saved); }
+💬  [1mcoderabbitai[0m wrote:
+_🧹 Nitpick_ | _🔵 Trivial_
+
+[1mFormat[0m[1m [0m[1mthe[0m[1m [0m[1mDrop[0m[1m [0m[1mimplementation[0m[1m [0m[1macross[0m[1m [0m[1mmultiple[0m[1m [0m
+[1mlines[0m[1m [0m[1mfor[0m[1m [0m[1mimproved[0m[1m [0m[1mreadability.[0m
+
+Whilst single-line function bodies are 
+permissible, this Drop implementation contains 
+complex privilege-restoration logic that would be 
+clearer if formatted across multiple lines.
+
+
+
+Apply this diff:
+
+[9m~diff[0m
+[48;5;235m[38;5;249m impl Drop for Guard {[49m[39m
+-        fn drop(&mut self) { let _ = 
+setresuid(self.real, Uid::from_raw(0), 
+self.saved); }
++        fn drop(&mut self) {
++            let _ = setresuid(self.real, 
+Uid::from_raw(0), self.saved);
++        }
+[48;5;235m[38;5;249m }[49m[39m
+
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2515925664
+    1| use std::path::PathBuf;
+    2| 
+    3|-use postgres_setup_unpriv::{make_dir_accessible, nobody_uid, with_temp_euid, PgEnvCfg};
+    4|-use postgresql_embedded::VersionReq;
+    3| use nix::unistd::geteuid;
+    4|+use postgres_setup_unpriv::{PgEnvCfg, make_dir_accessible, nobody_uid, with_temp_euid};
+    5|+use postgresql_embedded::VersionReq;
+    6| use rstest::rstest;
+💬  [1mcoderabbitai[0m wrote:
+_⚠️ Potential issue_ | _🔴 Critical_
+
+[1mAdd mandatory module-level documentation.[0m
+
+The file lacks a [48;5;235m[38;5;249m//![49m[39m doc comment explaining the 
+module's purpose. Every module must begin with a 
+[48;5;235m[38;5;249m//![49m[39m doc comment per the coding guidelines.
+
+
+
+Add a module doc comment at the top of the file:
+
+[9m~diff[0m
++//! Integration tests for postgres_setup_unpriv 
+configuration and privilege management.
++//!
++//! Validates configuration roundtrips, default 
+settings, temporary UID changes,
++//! directory accessibility setup, and root 
+privilege requirements for the [48;5;235m[38;5;249mrun[49m[39m function.
++
+ use std::path::PathBuf;
+
+
+Based on coding guidelines.
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2515925670
+  211|     assert_eq!(names, vec!["Inside"]);
+  212|     Ok(())
+  213| }
+  214|+
+  215|+/// Tests that trailing slashes on nested bundle paths are ignored when
+  216|+/// resolving categories.
+  217|+///
+  218|+/// Sets up the nested bundle structure, queries using a path with both
+  219|+/// leading and trailing slashes, and asserts that the recursive CTE still
+  220|+/// finds the expected category.
+  221|+#[test]
+  222|+fn list_news_categories_nested_trailing_slash() -> Result<(), AnyError> {
+  223|+    let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
+  224|+        return Ok(());
+  225|+    };
+  226|+
+  227|+    let port = server.port();
+  228|+    let (_, names) = list_categories(port, Some("/Bundle/Sub/"))?;
+  229|+    assert_eq!(names, vec!["Inside"]);
+  230|+    Ok(())
+💬  [1mcoderabbitai[0m wrote:
+_🛠️ Refactor suggestion_ | _🟠 Major_
+
+[1mEliminate[0m[1m [0m[1mtest[0m[1m [0m[1mduplication[0m[1m [0m[1musing[0m[1m [0m[1mrstest[0m[1m [0m
+[1mparameterisation.[0m
+
+This test duplicates the structure of 
+[48;5;235m[38;5;249mlist_news_categories_nested[49m[39m (lines 204–213), 
+differing only in the path parameter. Refactor 
+both tests into a single parameterised test using 
+[48;5;235m[38;5;249m#[rstest][49m[39m.
+
+
+
+Apply this approach:
+
+[9m~rust[0m
+use rstest::rstest;
+
+/// Tests that nested bundle paths resolve 
+correctly regardless of leading/trailing slashes.
+#[rstest]
+#[case("Bundle/Sub", "Inside")]
+#[case("/Bundle/Sub/", "Inside")]
+fn list_news_categories_nested(#[case] path: &str,
+#[case] expected: &str) -> Result<(), AnyError> {
+[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mSome(server)[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                     [49m[39m
+[48;5;235m[38;5;249mcommon::start_server_or_skip(setup_news_categories[49m[39m[48;5;235m[38;5;249m                                      [49m[39m
+[48;5;235m[38;5;249m_nested_db)?[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249melse[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m{[49m[39m[48;5;235m[38;5;249m                                                                     [49m[39m
+[48;5;235m[38;5;249m    return Ok(());[49m[39m[48;5;235m[38;5;249m                                                                      [49m[39m
+[48;5;235m[38;5;249m};[49m[39m[48;5;235m[38;5;249m                                                                                      [49m[39m
+
+[48;5;235m[38;5;249mlet port = server.port();[49m[39m[48;5;235m[38;5;249m                           [49m[39m
+[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m(_,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mnames)[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mlist_categories(port,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m             [49m[39m
+[48;5;235m[38;5;249mSome(path))?;[49m[39m[48;5;235m[38;5;249m                                       [49m[39m
+[48;5;235m[38;5;249massert_eq!(names, vec![expected]);[49m[39m[48;5;235m[38;5;249m                  [49m[39m
+[48;5;235m[38;5;249mOk(())[49m[39m[48;5;235m[38;5;249m                                              [49m[39m
+}
+
+
+As per coding guidelines.
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2515925675
+   66|     Ok((reply_tx.header, names))
+   67| }
+   68| 
+   69|+/// Helper to test listing news categories with various paths and setup functions.
+   70|+fn test_list_categories<F>(
+   71|+    setup_fn: F,
+   72|+    path: Option<&str>,
+   73|+    mut expected: Vec<&str>,
+   74|+    sort_results: bool,
+   75|+) -> Result<(), AnyError>
+   76|+where
+   77|+    F: FnOnce(&str) -> Result<(), AnyError>,
+   78|+{
+   79|+    let Some(server) = common::start_server_or_skip(setup_fn)? else {
+   80|+        return Ok(());
+   81|+    };
+   82|+
+   83|+    let port = server.port();
+   84|+    let (_, mut names) = list_categories(port, path)?;
+   85|+
+💬  [1mcoderabbitai[0m wrote:
+_⚠️ Potential issue_ | _🟠 Major_
+
+[1mReplace[0m[1m [0m[1mhelper[0m[1m [0m[1mfunction[0m[1m [0m[1mwith[0m[1m [0m[1mrstest[0m[1m [0m
+[1mparameterisation[0m[1m [0m[1mto[0m[1m [0m[1mcomply[0m[1m [0m[1mwith[0m[1m [0m[1mguidelines.[0m
+
+Whilst this helper reduces duplication, the coding
+guidelines explicitly mandate: "Use rstest 
+fixtures for shared setup and to avoid repetition 
+between tests" and "Replace duplicated tests with 
+#[rstest(...)] parameterised cases." The tests 
+calling this helper should be refactored into 
+parameterised rstest cases instead.
+
+Refactor the tests into rstest parameterised 
+cases. For tests sharing the same setup function, 
+use [48;5;235m[38;5;249m#[rstest][49m[39m with [48;5;235m[38;5;249m#[case][49m[39m attributes:
+
+[48;5;235m[38;5;249m+use rstest::rstest;[49m[39m[48;5;235m[38;5;249m                                                               [49m[39m
+[48;5;235m[38;5;249m+[49m[39m[48;5;235m[38;5;249m                                                                                  [49m[39m
+[48;5;235m[38;5;249m-///[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mHelper[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mto[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mtest[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mlisting[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mnews[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mcategories[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mwith[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                  [49m[39m
+[48;5;235m[38;5;249mvarious[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mpaths[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mand[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249msetup[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mfunctions.[49m[39m[48;5;235m[38;5;249m                                                 [49m[39m
+[48;5;235m[38;5;249m-fn test_list_categories([49m[39m[48;5;235m[38;5;249m                                                          [49m[39m
+[48;5;235m[38;5;249m-    setup_fn: F,[49m[39m[48;5;235m[38;5;249m                                                                  [49m[39m
+[48;5;235m[38;5;249m-    path: Option<&str>,[49m[39m[48;5;235m[38;5;249m                                                           [49m[39m
+[48;5;235m[38;5;249m-    mut expected: Vec<&str>,[49m[39m[48;5;235m[38;5;249m                                                      [49m[39m
+[48;5;235m[38;5;249m-    sort_results: bool,[49m[39m[48;5;235m[38;5;249m                                                           [49m[39m
+[48;5;235m[38;5;249m-) -> Result<(), AnyError>[49m[39m[48;5;235m[38;5;249m                                                         [49m[39m
+[48;5;235m[38;5;249m-where[49m[39m[48;5;235m[38;5;249m                                                                             [49m[39m
+[48;5;235m[38;5;249m-    F: FnOnce(&str) -> Result<(), AnyError>,[49m[39m[48;5;235m[38;5;249m                                      [49m[39m
+[48;5;235m[38;5;249m-{[49m[39m[48;5;235m[38;5;249m                                                                                 [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m    [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mSome(server)[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                           [49m[39m
+[48;5;235m[38;5;249mcommon::start_server_or_skip(setup_fn)?[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249melse[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m{[49m[39m[48;5;235m[38;5;249m                                     [49m[39m
+[48;5;235m[38;5;249m-        return Ok(());[49m[39m[48;5;235m[38;5;249m                                                            [49m[39m
+[48;5;235m[38;5;249m-    };[49m[39m[48;5;235m[38;5;249m                                                                            [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m                                                                                  [49m[39m
+[48;5;235m[38;5;249m-    let port = server.port();[49m[39m[48;5;235m[38;5;249m                                                     [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m    [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m(_,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mmut[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mnames)[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mlist_categories(port,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                   [49m[39m
+[48;5;235m[38;5;249mpath)?;[49m[39m[48;5;235m[38;5;249m                                                                            [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m                                                                                  [49m[39m
+[48;5;235m[38;5;249m-    if sort_results {[49m[39m[48;5;235m[38;5;249m                                                             [49m[39m
+[48;5;235m[38;5;249m-        names.sort();[49m[39m[48;5;235m[38;5;249m                                                             [49m[39m
+[48;5;235m[38;5;249m-        expected.sort();[49m[39m[48;5;235m[38;5;249m                                                          [49m[39m
+[48;5;235m[38;5;249m-    }[49m[39m[48;5;235m[38;5;249m                                                                             [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m                                                                                  [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m    [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mexpected:[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mVec[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                          [49m[39m
+[48;5;235m[38;5;249mexpected.into_iter().map(String::from).collect();[49m[39m[48;5;235m[38;5;249m                                  [49m[39m
+[48;5;235m[38;5;249m-    assert_eq!(names, expected);[49m[39m[48;5;235m[38;5;249m                                                  [49m[39m
+[48;5;235m[38;5;249m-    Ok(())[49m[39m[48;5;235m[38;5;249m                                                                        [49m[39m
+[48;5;235m[38;5;249m-}[49m[39m[48;5;235m[38;5;249m                                                                                 [49m[39m
+
+Then refactor the root-level tests (lines 107-141)
+into a single parameterised test and the nested 
+tests (lines 225-248) into another. See examples 
+in the next review comments.
+
+As per coding guidelines.
+
+
+[38;5;244m[1m▐[0m Committable suggestion skipped: line range 
+[38;5;244m[1m▐[0m outside the PR's diff.
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2516284671
+  185|         assert_eq!(CATEGORY_BODY_SQL, expected);
+  186|     }
+  187| 
+  188|+    fn normalise_sql(sql: &str) -> String {
+  189|+        sql.replace("-- binds: []", "")
+  190|+            .split_whitespace()
+  191|+            .collect::<Vec<_>>()
+  192|+            .join(" ")
+  193|+    }
+  194|+
+  195|+    fn expected_recursive_sql(quote: char) -> String {
+  196|+        format!(
+  197|+            "WITH RECURSIVE {quote}tree{quote} ({quote}idx{quote}, {quote}id{quote}) AS (SELECT 0 \
+  198|+             AS idx, NULL AS id UNION ALL SELECT tree.idx + 1 AS idx, tree.id AS id FROM tree) \
+  199|+             SELECT id FROM tree"
+  200|+        )
+  201|+    }
+  202|+
+  203|+    #[cfg(feature = "sqlite")]
+  204|+    #[derive(Default)]
+💬  [1mcoderabbitai[0m wrote:
+_🧹 Nitpick_ | _🔵 Trivial_
+
+[1mReconcile[0m[1m [0m[1mthe[0m[1m [0m[1mmacro[0m[1m [0m[1mapproach[0m[1m [0m[1mwith[0m[1m [0m[1mcoding[0m[1m [0m
+[1mguidelines[0m[1m [0m[1mfavouring[0m[1m [0m[1mrstest[0m[1m [0m[1mparameterisation.[0m
+
+The coding guidelines explicitly state: "Use 
+rstest fixtures for shared setup and to avoid 
+repetition between tests" and "Replace duplicated 
+tests with [48;5;235m[38;5;249m#[rstest(...)][49m[39m parameterised cases." 
+The macro-based approach here diverges from this 
+guideline.
+
+
+
+
+Whilst the PR comments request a macro-based 
+solution, consider whether an rstest-based 
+parameterisation would better align with the 
+project's coding standards:
+
+[48;5;235m[38;5;249m#[cfg(any(feature[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m"sqlite",[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mfeature[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                           [49m[39m
+[48;5;235m[38;5;249m"postgres"))][49m[39m[48;5;235m[38;5;249m                                                                                      [49m[39m
+[48;5;235m[38;5;249m#[rstest][49m[39m[48;5;235m[38;5;249m                                                                                          [49m[39m
+[48;5;235m[38;5;249m#[cfg_attr(feature[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m"sqlite",[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                    [49m[39m
+[48;5;235m[38;5;249mcase(diesel::sqlite::Sqlite,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                      [49m[39m
+[48;5;235m[38;5;249mDummySqliteConn::default(),[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m'\u{60}'))][49m[39m[48;5;235m[38;5;249m                                                            [49m[39m
+[48;5;235m[38;5;249m#[cfg_attr(feature[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m"postgres",[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                  [49m[39m
+[48;5;235m[38;5;249mcase(diesel::pg::Pg,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mDummyPgConn::default(),[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                      [49m[39m
+[48;5;235m[38;5;249m'"'))][49m[39m[48;5;235m[38;5;249m                                                                                             [49m[39m
+[48;5;235m[38;5;249mfn build_path_cte_uses_recursive_builder([49m[39m[48;5;235m[38;5;249m                                                          [49m[39m
+[48;5;235m[38;5;249m    _backend: Backend,[49m[39m[48;5;235m[38;5;249m                                                                             [49m[39m
+[48;5;235m[38;5;249m    conn: C,[49m[39m[48;5;235m[38;5;249m                                                                                       [49m[39m
+[48;5;235m[38;5;249m    quote: char,[49m[39m[48;5;235m[38;5;249m                                                                                   [49m[39m
+[48;5;235m[38;5;249m) where[49m[39m[48;5;235m[38;5;249m                                                                                            [49m[39m
+[48;5;235m[38;5;249m    C: RecursiveCTEExt + Default,[49m[39m[48;5;235m[38;5;249m                                                                  [49m[39m
+[48;5;235m[38;5;249m    [49m[39m[48;5;235m[38;5;249mBackend:[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mRecursiveBackend[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m+[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                   [49m[39m
+[48;5;235m[38;5;249mdiesel::backend::DieselReserveSpecialization,[49m[39m[48;5;235m[38;5;249m                                                      [49m[39m
+[48;5;235m[38;5;249m{[49m[39m[48;5;235m[38;5;249m                                                                                                  [49m[39m
+[48;5;235m[38;5;249m    // test implementation[49m[39m[48;5;235m[38;5;249m                                                                         [49m[39m
+[48;5;235m[38;5;249m}[49m[39m[48;5;235m[38;5;249m                                                                                                  [49m[39m
+
+Confirm whether the macro approach was chosen for 
+technical reasons that preclude rstest 
+parameterisation, or whether alignment with the 
+coding guidelines is preferred.
+
+As per coding guidelines.
+
+▶ 🧰 Tools
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2516291840
+  185|         assert_eq!(CATEGORY_BODY_SQL, expected);
+  186|     }
+  187| 
+  188|+    fn normalise_sql(sql: &str) -> String {
+  189|+        sql.replace("-- binds: []", "")
+  190|+            .split_whitespace()
+  191|+            .collect::<Vec<_>>()
+  192|+            .join(" ")
+  193|+    }
+  194|+
+  195|+    fn expected_recursive_sql(quote: char) -> String {
+  196|+        format!(
+  197|+            "WITH RECURSIVE {quote}tree{quote} ({quote}idx{quote}, {quote}id{quote}) AS (SELECT 0 \
+  198|+             AS idx, NULL AS id UNION ALL SELECT tree.idx + 1 AS idx, tree.id AS id FROM tree) \
+  199|+             SELECT id FROM tree"
+  200|+        )
+  201|+    }
+  202|+
+  203|+    #[cfg(feature = "sqlite")]
+  204|+    #[derive(Default)]
+💬  [1mcoderabbitai[0m wrote:
+_⚠️ Potential issue_ | _🔴 Critical_
+
+[1mFix[0m[1m [0m[1mcritical[0m[1m [0m[1mmacro[0m[1m [0m[1msyntax[0m[1m [0m[1merrors[0m[1m [0m[1mcausing[0m[1m [0m[1mpipeline[0m[1m [0m
+[1mfailures.[0m
+
+The macro uses 
+[48;5;235m[38;5;249m#[cfg(feature = stringify!($backend_name))][49m[39m on 
+lines 224 and 237, which is invalid Rust syntax. 
+The [48;5;235m[38;5;249mcfg[49m[39m attribute requires a string literal, not a
+macro call.
+
+
+
+Apply this diff to move the feature gates outside 
+the macro and pass the feature as a string 
+parameter:
+
+[48;5;235m[38;5;249m     macro_rules! backend_tests {[49m[39m[48;5;235m[38;5;249m                                                              [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m        [49m[39m[48;5;235m[38;5;249m($backend_name:ident,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m$backend_ty:ty,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                [49m[39m
+[48;5;235m[38;5;249m$conn_ty:ty,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m$quote:expr)[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=>[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m{[49m[39m[48;5;235m[38;5;249m                                                                 [49m[39m
+[48;5;235m[38;5;249m+[49m[39m[48;5;235m[38;5;249m        [49m[39m[48;5;235m[38;5;249m($feature:literal,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m$backend_name:ident,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                              [49m[39m
+[48;5;235m[38;5;249m$backend_ty:ty,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m$conn_ty:ty,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m$quote:expr)[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=>[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m{[49m[39m[48;5;235m[38;5;249m                                                 [49m[39m
+[48;5;235m[38;5;249m             paste! {[49m[39m[48;5;235m[38;5;249m                                                                          [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m                [49m[39m[48;5;235m[38;5;249m#[cfg(feature[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                              [49m[39m
+[48;5;235m[38;5;249mstringify!($backend_name))][49m[39m[48;5;235m[38;5;249m                                                                    [49m[39m
+[48;5;235m[38;5;249m+                #[cfg(feature = $feature)][49m[39m[48;5;235m[38;5;249m                                                    [49m[39m
+[48;5;235m[38;5;249m                 #[test][49m[39m[48;5;235m[38;5;249m                                                                       [49m[39m
+[48;5;235m[38;5;249m                 fn []() {[49m[39m[48;5;235m[38;5;249m                                                                     [49m[39m
+[48;5;235m[38;5;249m                     use $backend_ty as Backend;[49m[39m[48;5;235m[38;5;249m                                               [49m[39m
+[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                                              [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mquery[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                              [49m[39m
+[48;5;235m[38;5;249mbuild_path_cte::<$conn_ty,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m_,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m_>([49m[39m[48;5;235m[38;5;249m                                                              [49m[39m
+[48;5;235m[38;5;249m                         sql_query(STEP_SQL),[49m[39m[48;5;235m[38;5;249m                                                  [49m[39m
+[48;5;235m[38;5;249m                         sql_query(BODY_SQL),[49m[39m[48;5;235m[38;5;249m                                                  [49m[39m
+[48;5;235m[38;5;249m                     );[49m[39m[48;5;235m[38;5;249m                                                                        [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249msql[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                [49m[39m
+[48;5;235m[38;5;249mdebug_query::(&query).to_string();[49m[39m[48;5;235m[38;5;249m                                                             [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249m                                                                          [49m[39m
+[48;5;235m[38;5;249massert_eq!(normalise_sql(&sql),[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                               [49m[39m
+[48;5;235m[38;5;249mexpected_recursive_sql($quote));[49m[39m[48;5;235m[38;5;249m                                                               [49m[39m
+[48;5;235m[38;5;249m                 }[49m[39m[48;5;235m[38;5;249m                                                                             [49m[39m
+[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                                              [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m                [49m[39m[48;5;235m[38;5;249m#[cfg(feature[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                              [49m[39m
+[48;5;235m[38;5;249mstringify!($backend_name))][49m[39m[48;5;235m[38;5;249m                                                                    [49m[39m
+[48;5;235m[38;5;249m+                #[cfg(feature = $feature)][49m[39m[48;5;235m[38;5;249m                                                    [49m[39m
+[48;5;235m[38;5;249m                 #[test][49m[39m[48;5;235m[38;5;249m                                                                       [49m[39m
+[48;5;235m[38;5;249m                 fn []() {[49m[39m[48;5;235m[38;5;249m                                                                     [49m[39m
+[48;5;235m[38;5;249m                     use $backend_ty as Backend;[49m[39m[48;5;235m[38;5;249m                                               [49m[39m
+[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                                                              [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mmut[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mconn[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                           [49m[39m
+[48;5;235m[38;5;249m<$conn_ty>::default();[49m[39m[48;5;235m[38;5;249m                                                                         [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249minferred[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                           [49m[39m
+[48;5;235m[38;5;249mbuild_path_cte_with_conn([49m[39m[48;5;235m[38;5;249m                                                                      [49m[39m
+[48;5;235m[38;5;249m                         &mut conn,[49m[39m[48;5;235m[38;5;249m                                                            [49m[39m
+[48;5;235m[38;5;249m                         sql_query(STEP_SQL),[49m[39m[48;5;235m[38;5;249m                                                  [49m[39m
+[48;5;235m[38;5;249m                         sql_query(BODY_SQL),[49m[39m[48;5;235m[38;5;249m                                                  [49m[39m
+[48;5;235m[38;5;249m                     );[49m[39m[48;5;235m[38;5;249m                                                                        [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mdirect[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                             [49m[39m
+[48;5;235m[38;5;249mbuild_path_cte::<$conn_ty,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m_,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m_>([49m[39m[48;5;235m[38;5;249m                                                              [49m[39m
+[48;5;235m[38;5;249m                         sql_query(STEP_SQL),[49m[39m[48;5;235m[38;5;249m                                                  [49m[39m
+[48;5;235m[38;5;249m                         sql_query(BODY_SQL),[49m[39m[48;5;235m[38;5;249m                                                  [49m[39m
+[48;5;235m[38;5;249m                     );[49m[39m[48;5;235m[38;5;249m                                                                        [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249minferred_sql[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                       [49m[39m
+[48;5;235m[38;5;249mdebug_query::(&inferred).to_string();[49m[39m[48;5;235m[38;5;249m                                                          [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249mlet[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mdirect_sql[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m=[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                         [49m[39m
+[48;5;235m[38;5;249mdebug_query::(&direct).to_string();[49m[39m[48;5;235m[38;5;249m                                                            [49m[39m
+[48;5;235m[38;5;249m                     [49m[39m[48;5;235m[38;5;249m                                                                          [49m[39m
+[48;5;235m[38;5;249massert_eq!(normalise_sql(&inferred_sql),[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                      [49m[39m
+[48;5;235m[38;5;249mnormalise_sql(&direct_sql));[49m[39m[48;5;235m[38;5;249m                                                                   [49m[39m
+[48;5;235m[38;5;249m                 }[49m[39m[48;5;235m[38;5;249m                                                                             [49m[39m
+[48;5;235m[38;5;249m             }[49m[39m[48;5;235m[38;5;249m                                                                                 [49m[39m
+[48;5;235m[38;5;249m         };[49m[39m[48;5;235m[38;5;249m                                                                                    [49m[39m
+[48;5;235m[38;5;249m     }[49m[39m[48;5;235m[38;5;249m                                                                                         [49m[39m
+
+Then update the macro invocations on lines 260-261
+accordingly.
+
+
+[38;5;244m[1m▐[0m Committable suggestion skipped: line range 
+[38;5;244m[1m▐[0m outside the PR's diff.
+
+▶ 🧰 Tools
+
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2516291844
+  185|         assert_eq!(CATEGORY_BODY_SQL, expected);
+  186|     }
+  187| 
+  188|+    fn normalise_sql(sql: &str) -> String {
+  189|+        sql.replace("-- binds: []", "")
+  190|+            .split_whitespace()
+  191|+            .collect::<Vec<_>>()
+  192|+            .join(" ")
+  193|+    }
+  194|+
+  195|+    fn expected_recursive_sql(quote: char) -> String {
+  196|+        format!(
+  197|+            "WITH RECURSIVE {quote}tree{quote} ({quote}idx{quote}, {quote}id{quote}) AS (SELECT 0 \
+  198|+             AS idx, NULL AS id UNION ALL SELECT tree.idx + 1 AS idx, tree.id AS id FROM tree) \
+  199|+             SELECT id FROM tree"
+  200|+        )
+  201|+    }
+  202|+
+  203|+    #[cfg(feature = "sqlite")]
+  204|+    #[derive(Default)]
+💬  [1mcoderabbitai[0m wrote:
+_⚠️ Potential issue_ | _🔴 Critical_
+
+[1mFeature-gate[0m[1m [0m[1mmacro[0m[1m [0m[1minvocations[0m[1m [0m[1mto[0m[1m [0m[1mfix[0m[1m [0m[1mtype[0m[1m [0m
+[1mresolution[0m[1m [0m[1merrors.[0m
+
+The macro invocations reference [48;5;235m[38;5;249mDummySqliteConn[49m[39m 
+and [48;5;235m[38;5;249mDummyPgConn[49m[39m unconditionally, but these types 
+only exist when their respective features are 
+enabled. This causes the "cannot find type" errors
+reported by static analysis.
+
+
+
+Apply this diff to feature-gate the invocations 
+and update them for the fixed macro signature:
+
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m    [49m[39m[48;5;235m[38;5;249mbackend_tests!(sqlite,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                             [49m[39m
+[48;5;235m[38;5;249mdiesel::sqlite::Sqlite,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mDummySqliteConn,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                [49m[39m
+[48;5;235m[38;5;249m'\u{60}');[49m[39m[48;5;235m[38;5;249m                                                                               [49m[39m
+[48;5;235m[38;5;249m-[49m[39m[48;5;235m[38;5;249m    [49m[39m[48;5;235m[38;5;249mbackend_tests!(postgres,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mdiesel::pg::Pg,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                           [49m[39m
+[48;5;235m[38;5;249mDummyPgConn,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m'"');[49m[39m[48;5;235m[38;5;249m                                                                       [49m[39m
+[48;5;235m[38;5;249m+    #[cfg(feature = "sqlite")][49m[39m[48;5;235m[38;5;249m                                                          [49m[39m
+[48;5;235m[38;5;249m+[49m[39m[48;5;235m[38;5;249m    [49m[39m[48;5;235m[38;5;249mbackend_tests!("sqlite",[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249msqlite,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                   [49m[39m
+[48;5;235m[38;5;249mdiesel::sqlite::Sqlite,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mDummySqliteConn,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                                [49m[39m
+[48;5;235m[38;5;249m'\u{60}');[49m[39m[48;5;235m[38;5;249m                                                                               [49m[39m
+[48;5;235m[38;5;249m+    [49m[39m[48;5;235m[38;5;249m                                                                                    [49m[39m
+[48;5;235m[38;5;249m+    #[cfg(feature = "postgres")][49m[39m[48;5;235m[38;5;249m                                                        [49m[39m
+[48;5;235m[38;5;249m+[49m[39m[48;5;235m[38;5;249m    [49m[39m[48;5;235m[38;5;249mbackend_tests!("postgres",[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mpostgres,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m                                               [49m[39m
+[48;5;235m[38;5;249mdiesel::pg::Pg,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249mDummyPgConn,[49m[39m[48;5;235m[38;5;249m [49m[39m[48;5;235m[38;5;249m'"');[49m[39m[48;5;235m[38;5;249m                                                       [49m[39m
+
+This coordinates with the macro signature fix 
+suggested in the previous comment.
+
+
+
+▶ 📝 Committable suggestion
+
+
+
+
+▶ 🧰 Tools
+
+
+▶ 🤖 Prompt for AI Agents
+
+
+
+https://github.com/leynos/mxd/pull/226#discussion_r2516291847
+========== end of code review ==========
