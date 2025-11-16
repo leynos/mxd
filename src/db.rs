@@ -348,125 +348,95 @@ pub async fn list_names_at_path(
     Ok(names)
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "postgres")] {
-        /// Insert a new news category.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_category(
-            conn: &mut DbConnection,
-            cat: &crate::models::NewCategory<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::news_categories::dsl as c;
-            diesel::insert_into(c::news_categories)
-                .values(cat)
-                .returning(c::id)
-                .get_result(conn)
-                .await
+macro_rules! define_insert_fn {
+    (
+        $(#[$meta:meta])* fn $fn_name:ident (
+            $conn_arg:ident : &mut DbConnection,
+            $record_arg:ident : &$record_ty:ty,
+            $schema:path,
+            $table:ident,
+            $id:ident
+        );
+    ) => {
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "postgres")] {
+                $(#[$meta])*
+                pub async fn $fn_name(
+                    $conn_arg: &mut DbConnection,
+                    $record_arg: &$record_ty,
+                ) -> QueryResult<i32> {
+                    use $schema as schema_mod;
+                    diesel::insert_into(schema_mod::$table)
+                        .values($record_arg)
+                        .returning(schema_mod::$id)
+                        .get_result($conn_arg)
+                        .await
+                }
+            } else if #[cfg(all(feature = "sqlite", feature = "returning_clauses_for_sqlite_3_35"))] {
+                $(#[$meta])*
+                pub async fn $fn_name(
+                    $conn_arg: &mut DbConnection,
+                    $record_arg: &$record_ty,
+                ) -> QueryResult<i32> {
+                    use $schema as schema_mod;
+                    diesel::insert_into(schema_mod::$table)
+                        .values($record_arg)
+                        .returning(schema_mod::$id)
+                        .get_result($conn_arg)
+                        .await
+                }
+            } else if #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))] {
+                $(#[$meta])*
+                pub async fn $fn_name(
+                    $conn_arg: &mut DbConnection,
+                    $record_arg: &$record_ty,
+                ) -> QueryResult<i32> {
+                    use $schema as schema_mod;
+                    use diesel::sql_types::Integer;
+                    diesel::insert_into(schema_mod::$table)
+                        .values($record_arg)
+                        .execute($conn_arg)
+                        .await?;
+                    diesel::select(diesel::dsl::sql::<Integer>("last_insert_rowid()"))
+                        .get_result($conn_arg)
+                        .await
+                }
+            } else {
+                compile_error!("Either 'sqlite' or 'postgres' feature must be enabled");
+            }
         }
-    } else if #[cfg(all(feature = "sqlite", feature = "returning_clauses_for_sqlite_3_35"))] {
-        /// Insert a new news category.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_category(
-            conn: &mut DbConnection,
-            cat: &crate::models::NewCategory<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::news_categories::dsl as c;
-            diesel::insert_into(c::news_categories)
-                .values(cat)
-                .returning(c::id)
-                .get_result(conn)
-                .await
-        }
-    } else if #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))] {
-        /// Insert a new news category.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_category(
-            conn: &mut DbConnection,
-            cat: &crate::models::NewCategory<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::news_categories::dsl as c;
-            use diesel::sql_types::Integer;
-            diesel::insert_into(c::news_categories)
-                .values(cat)
-                .execute(conn)
-                .await?;
-            diesel::select(diesel::dsl::sql::<Integer>("last_insert_rowid()"))
-                .get_result(conn)
-                .await
-        }
-    } else {
-        compile_error!("Either 'sqlite' or 'postgres' feature must be enabled");
-    }
+    };
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "postgres")] {
-        /// Insert a new news bundle.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_bundle(
-            conn: &mut DbConnection,
-            bun: &crate::models::NewBundle<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::news_bundles::dsl as b;
-            diesel::insert_into(b::news_bundles)
-                .values(bun)
-                .returning(b::id)
-                .get_result(conn)
-                .await
-        }
-    } else if #[cfg(all(feature = "sqlite", feature = "returning_clauses_for_sqlite_3_35"))] {
-        /// Insert a new news bundle.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_bundle(
-            conn: &mut DbConnection,
-            bun: &crate::models::NewBundle<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::news_bundles::dsl as b;
-            diesel::insert_into(b::news_bundles)
-                .values(bun)
-                .returning(b::id)
-                .get_result(conn)
-                .await
-        }
-    } else if #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))] {
-        /// Insert a new news bundle.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_bundle(
-            conn: &mut DbConnection,
-            bun: &crate::models::NewBundle<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::news_bundles::dsl as b;
-            use diesel::sql_types::Integer;
-            diesel::insert_into(b::news_bundles)
-                .values(bun)
-                .execute(conn)
-                .await?;
-            diesel::select(diesel::dsl::sql::<Integer>("last_insert_rowid()"))
-                .get_result(conn)
-                .await
-        }
-    } else {
-        compile_error!("Either 'sqlite' or 'postgres' feature must be enabled");
-    }
-}
+define_insert_fn!(
+    /// Insert a new news category.
+    ///
+    /// # Errors
+    /// Returns any error produced by the database.
+    #[must_use = "handle the result"]
+    fn create_category(
+        conn: &mut DbConnection,
+        cat: &crate::models::NewCategory<'_>,
+        crate::schema::news_categories::dsl,
+        news_categories,
+        id
+    );
+);
+
+define_insert_fn!(
+    /// Insert a new news bundle.
+    ///
+    /// # Errors
+    /// Returns any error produced by the database.
+    #[must_use = "handle the result"]
+    fn create_bundle(
+        conn: &mut DbConnection,
+        bun: &crate::models::NewBundle<'_>,
+        crate::schema::news_bundles::dsl,
+        news_bundles,
+        id
+    );
+);
 
 /// Retrieve a single article by path and identifier.
 ///
@@ -679,20 +649,30 @@ pub async fn list_files_for_user(
 #[cfg(test)]
 mod tests {
     use diesel_async::AsyncConnection;
+    #[cfg(feature = "sqlite")]
+    use rstest::{fixture, rstest};
 
     use super::*;
     #[cfg(feature = "sqlite")]
     use crate::models::{NewBundle, NewCategory, NewUser};
 
     #[cfg(feature = "sqlite")]
-    #[tokio::test]
-    async fn test_create_and_get_user() {
+    #[fixture]
+    async fn migrated_conn() -> DbConnection {
         let mut conn = DbConnection::establish(":memory:")
             .await
             .expect("failed to create in-memory connection");
         apply_migrations(&mut conn, "")
             .await
             .expect("failed to apply migrations");
+        conn
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_and_get_user(#[future] migrated_conn: DbConnection) {
+        let mut conn = migrated_conn.await;
         let new_user = NewUser {
             username: "alice",
             password: "hash",
@@ -710,14 +690,10 @@ mod tests {
 
     // basic smoke test for migrations and insertion
     #[cfg(feature = "sqlite")]
+    #[rstest]
     #[tokio::test]
-    async fn test_create_bundle_and_category() {
-        let mut conn = DbConnection::establish(":memory:")
-            .await
-            .expect("failed to create in-memory connection");
-        apply_migrations(&mut conn, "")
-            .await
-            .expect("failed to apply migrations");
+    async fn test_create_bundle_and_category(#[future] migrated_conn: DbConnection) {
+        let mut conn = migrated_conn.await;
         let bun = NewBundle {
             parent_bundle_id: None,
             name: "Bundle",
@@ -738,11 +714,10 @@ mod tests {
     }
 
     #[cfg(feature = "sqlite")]
+    #[rstest]
     #[tokio::test]
-    async fn test_audit_features() {
-        let mut conn = DbConnection::establish(":memory:")
-            .await
-            .expect("failed to create in-memory connection");
+    async fn test_audit_features(#[future] migrated_conn: DbConnection) {
+        let mut conn = migrated_conn.await;
         audit_sqlite_features(&mut conn)
             .await
             .expect("sqlite feature audit failed");
