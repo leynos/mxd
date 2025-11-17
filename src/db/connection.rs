@@ -1,7 +1,7 @@
 //! Connection and pool helpers for database access.
 
 use cfg_if::cfg_if;
-use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};
+use diesel_async::pooled_connection::{AsyncDieselConnectionManager, PoolError, bb8::Pool};
 #[cfg(feature = "sqlite")]
 use diesel_async::sync_connection_wrapper::SyncConnectionWrapper;
 use diesel_migrations::{EmbeddedMigrations, embed_migrations};
@@ -30,22 +30,22 @@ cfg_if! {
 /// Create a pooled connection to the configured database.
 ///
 /// Asynchronously establishes a database connection pool for the configured
-/// backend.
-///
-/// # Panics
-/// Panics if the connection pool cannot be created.
+/// backend, returning any pool initialisation failure to the caller.
 ///
 /// # Examples
 ///
 /// ```no_run
 /// use mxd::db::establish_pool;
-/// async fn example() { let pool = establish_pool("sqlite::memory:").await; }
+/// async fn example() {
+///     let pool = establish_pool("sqlite::memory:")
+///         .await
+///         .expect("failed to build pool");
+/// }
 /// ```
-#[must_use = "handle the pool"]
-pub async fn establish_pool(database_url: &str) -> DbPool {
+///
+/// # Errors
+/// Returns any error reported by the underlying connection pool builder.
+pub async fn establish_pool(database_url: &str) -> Result<DbPool, PoolError> {
     let config = AsyncDieselConnectionManager::<DbConnection>::new(database_url);
-    Pool::builder()
-        .build(config)
-        .await
-        .expect("Failed to create pool")
+    Pool::builder().build(config).await
 }

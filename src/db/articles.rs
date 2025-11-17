@@ -4,11 +4,9 @@ use chrono::Utc;
 use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 
-use super::{
-    bundles::PathLookupError,
-    categories::category_id_from_path,
-    connection::DbConnection,
-};
+#[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
+use super::insert::fetch_last_insert_rowid;
+use super::{categories::category_id_from_path, connection::DbConnection, paths::PathLookupError};
 
 /// Retrieve a single article by path and identifier.
 ///
@@ -110,16 +108,11 @@ pub async fn create_root_article(
 
             #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
             let inserted_id: i32 = {
-                use diesel::sql_types::Integer;
-
                 diesel::insert_into(a::news_articles)
                     .values(&article)
                     .execute(conn)
                     .await?;
-
-                diesel::select(diesel::dsl::sql::<Integer>("last_insert_rowid()"))
-                    .get_result(conn)
-                    .await?
+                fetch_last_insert_rowid(conn).await?
             };
 
             if let Some(prev) = last_id {

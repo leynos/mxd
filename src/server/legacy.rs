@@ -8,7 +8,7 @@ use std::{io, net::SocketAddr, sync::Arc};
 
 use anyhow::{Context, Result};
 use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
-use diesel_async::AsyncConnection;
+use diesel_async::{AsyncConnection, pooled_connection::PoolError};
 use ortho_config::load_and_merge_subcommand_for;
 use tokio::{
     io::{self as tokio_io, AsyncReadExt},
@@ -130,7 +130,7 @@ fn is_postgres_url(s: &str) -> bool {
 #[cfg(any(test, feature = "test-support"))]
 mod test_helpers;
 
-async fn create_pool(database: &str) -> DbPool {
+async fn create_pool(database: &str) -> Result<DbPool, PoolError> {
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     if is_postgres_url(database) {
         return establish_pool(database).await;
@@ -151,7 +151,7 @@ async fn create_pool(database: &str) -> DbPool {
 ///
 /// A result containing the initialised database connection pool, or an error if setup fails.
 async fn setup_database(database: &str) -> Result<DbPool> {
-    let pool = create_pool(database).await;
+    let pool: DbPool = create_pool(database).await?;
     {
         let mut conn = pool.get().await.context("failed to get db connection")?;
         #[cfg(feature = "sqlite")]

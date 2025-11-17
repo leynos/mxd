@@ -63,8 +63,7 @@ cfg_if! {
 /// Returns any error produced by Diesel while running migrations.
 #[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
-pub async fn apply_migrations(conn: &mut DbConnection, url: &str) -> QueryResult<()> {
-    let _ = url;
+pub async fn apply_migrations(conn: &mut DbConnection, _database_url: &str) -> QueryResult<()> {
     run_migrations(conn).await
 }
 
