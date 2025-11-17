@@ -69,60 +69,91 @@ pub async fn create_root_article(
     path: &str,
     params: CreateRootArticleParams<'_>,
 ) -> Result<i32, PathLookupError> {
-    use crate::schema::news_articles::dsl as a;
-
     conn.transaction::<_, PathLookupError, _>(|conn| {
         Box::pin(async move {
             let cat_id = category_id_from_path(conn, path).await?;
-
-            let last_id: Option<i32> = a::news_articles
-                .filter(a::category_id.eq(cat_id))
-                .filter(a::parent_article_id.is_null())
-                .order(a::id.desc())
-                .select(a::id)
-                .first::<i32>(conn)
-                .await
-                .optional()?;
-
-            let now = Utc::now().naive_utc();
-            let article = crate::models::NewArticle {
-                category_id: cat_id,
-                parent_article_id: None,
-                prev_article_id: last_id,
-                next_article_id: None,
-                first_child_article_id: None,
-                title: params.title,
-                poster: None,
-                posted_at: now,
-                flags: params.flags,
-                data_flavor: Some(params.data_flavor),
-                data: Some(params.data),
-            };
-
-            #[cfg(any(feature = "postgres", feature = "returning_clauses_for_sqlite_3_35"))]
-            let inserted_id: i32 = diesel::insert_into(a::news_articles)
-                .values(&article)
-                .returning(a::id)
-                .get_result(conn)
-                .await?;
-
-            #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
-            let inserted_id: i32 = {
-                diesel::insert_into(a::news_articles)
-                    .values(&article)
-                    .execute(conn)
-                    .await?;
-                fetch_last_insert_rowid(conn).await?
-            };
-
-            if let Some(prev) = last_id {
-                diesel::update(a::news_articles.filter(a::id.eq(prev)))
-                    .set(a::next_article_id.eq(inserted_id))
-                    .execute(conn)
-                    .await?;
+            let last = get_last_root_article_id(conn, cat_id).await?;
+            let inserted = insert_new_article(conn, cat_id, last, &params).await?;
+            if let Some(prev) = last {
+                link_prev_to_new(conn, prev, inserted).await?;
             }
-            Ok(inserted_id)
+            Ok(inserted)
         })
     })
     .await
+}
+
+async fn get_last_root_article_id(
+    conn: &mut DbConnection,
+    cat_id: i32,
+) -> Result<Option<i32>, PathLookupError> {
+    use crate::schema::news_articles::dsl as a;
+    a::news_articles
+        .filter(a::category_id.eq(cat_id))
+        .filter(a::parent_article_id.is_null())
+        .order(a::id.desc())
+        .select(a::id)
+        .first::<i32>(conn)
+        .await
+        .optional()
+        .map_err(PathLookupError::Diesel)
+}
+
+async fn insert_new_article(
+    conn: &mut DbConnection,
+    cat_id: i32,
+    prev: Option<i32>,
+    params: &CreateRootArticleParams<'_>,
+) -> Result<i32, PathLookupError> {
+    use crate::schema::news_articles::dsl as a;
+    let now = Utc::now().naive_utc();
+    let article = crate::models::NewArticle {
+        category_id: cat_id,
+        parent_article_id: None,
+        prev_article_id: prev,
+        next_article_id: None,
+        first_child_article_id: None,
+        title: params.title,
+        poster: None,
+        posted_at: now,
+        flags: params.flags,
+        data_flavor: Some(params.data_flavor),
+        data: Some(params.data),
+    };
+
+    #[cfg(any(feature = "postgres", feature = "returning_clauses_for_sqlite_3_35"))]
+    {
+        diesel::insert_into(a::news_articles)
+            .values(&article)
+            .returning(a::id)
+            .get_result(conn)
+            .await
+            .map_err(PathLookupError::Diesel)
+    }
+
+    #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
+    {
+        diesel::insert_into(a::news_articles)
+            .values(&article)
+            .execute(conn)
+            .await
+            .map_err(PathLookupError::Diesel)?;
+        fetch_last_insert_rowid(conn)
+            .await
+            .map_err(PathLookupError::Diesel)
+    }
+}
+
+async fn link_prev_to_new(
+    conn: &mut DbConnection,
+    prev: i32,
+    new_id: i32,
+) -> Result<(), PathLookupError> {
+    use crate::schema::news_articles::dsl as a;
+    diesel::update(a::news_articles.filter(a::id.eq(prev)))
+        .set(a::next_article_id.eq(new_id))
+        .execute(conn)
+        .await
+        .map(|_| ())
+        .map_err(PathLookupError::Diesel)
 }
