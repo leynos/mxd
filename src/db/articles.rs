@@ -53,6 +53,14 @@ pub async fn list_article_titles(
     Ok(titles)
 }
 
+/// Parameters required to create a new root article.
+pub struct CreateRootArticleParams<'a> {
+    pub title: &'a str,
+    pub flags: i32,
+    pub data_flavor: &'a str,
+    pub data: &'a str,
+}
+
 /// Create a new root article in the specified category path.
 ///
 /// # Errors
@@ -61,10 +69,7 @@ pub async fn list_article_titles(
 pub async fn create_root_article(
     conn: &mut DbConnection,
     path: &str,
-    title: &str,
-    flags: i32,
-    data_flavor: &str,
-    data: &str,
+    params: CreateRootArticleParams<'_>,
 ) -> Result<i32, PathLookupError> {
     use crate::schema::news_articles::dsl as a;
 
@@ -88,12 +93,12 @@ pub async fn create_root_article(
                 prev_article_id: last_id,
                 next_article_id: None,
                 first_child_article_id: None,
-                title,
+                title: params.title,
                 poster: None,
                 posted_at: now,
-                flags,
-                data_flavor: Some(data_flavor),
-                data: Some(data),
+                flags: params.flags,
+                data_flavor: Some(params.data_flavor),
+                data: Some(params.data),
             };
 
             #[cfg(any(feature = "postgres", feature = "returning_clauses_for_sqlite_3_35"))]

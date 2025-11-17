@@ -21,7 +21,7 @@ pub use self::audit::audit_postgres_features;
 #[cfg(feature = "sqlite")]
 pub use self::audit::audit_sqlite_features;
 pub use self::{
-    articles::{create_root_article, get_article, list_article_titles},
+    articles::{CreateRootArticleParams, create_root_article, get_article, list_article_titles},
     bundles::{PathLookupError, create_bundle, list_names_at_path},
     categories::create_category,
     connection::{Backend, DbConnection, DbPool, MIGRATIONS, establish_pool},
