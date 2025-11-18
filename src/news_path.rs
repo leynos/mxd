@@ -29,8 +29,7 @@ cfg_if::cfg_if! {
         pub(crate) const CATEGORY_BODY_SQL: &str = concat!(
             "SELECT c.id AS id \n",
             "FROM news_categories c \n",
-            "JOIN json_each($1) seg ON seg.key = $2 \n",
-            "WHERE c.name = seg.value AND c.bundle_id IS NOT DISTINCT FROM (SELECT id FROM tree WHERE idx = $3)"
+            "WHERE c.name = $1 AND c.bundle_id IS NOT DISTINCT FROM (SELECT id FROM tree WHERE idx = $2)"
         );
     } else {
         macro_rules! step_sql {
@@ -50,8 +49,7 @@ cfg_if::cfg_if! {
         pub(crate) const CATEGORY_BODY_SQL: &str = concat!(
             "SELECT c.id AS id \n",
             "FROM news_categories c \n",
-            "JOIN json_each(?) seg ON seg.key = ? \n",
-            "WHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)"
+            "WHERE c.name = ? AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)"
         );
     }
 }
@@ -181,12 +179,11 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     #[test]
     fn category_body_sql_matches_expected() {
         let expected = if cfg!(feature = "postgres") {
-            "SELECT c.id AS id \nFROM news_categories c \nJOIN json_each($1) seg ON seg.key = $2 \
-             \nWHERE c.name = seg.value AND c.bundle_id IS NOT DISTINCT FROM (SELECT id FROM tree \
-             WHERE idx = $3)"
+            "SELECT c.id AS id \nFROM news_categories c \nWHERE c.name = $1 AND c.bundle_id IS NOT \
+             DISTINCT FROM (SELECT id FROM tree WHERE idx = $2)"
         } else {
-            "SELECT c.id AS id \nFROM news_categories c \nJOIN json_each(?) seg ON seg.key = ? \
-             \nWHERE c.name = seg.value AND c.bundle_id IS (SELECT id FROM tree WHERE idx = ?)"
+            "SELECT c.id AS id \nFROM news_categories c \nWHERE c.name = ? AND c.bundle_id IS \
+             (SELECT id FROM tree WHERE idx = ?)"
         };
         assert_eq!(CATEGORY_BODY_SQL, expected);
     }

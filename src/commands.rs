@@ -10,7 +10,15 @@ use futures_util::future::BoxFuture;
 use tracing::error;
 
 use crate::{
-    db::{DbConnection, DbPool, PathLookupError, list_article_titles, list_names_at_path},
+    db::{
+        CreateRootArticleParams,
+        DbConnection,
+        DbPool,
+        PathLookupError,
+        create_root_article,
+        list_article_titles,
+        list_names_at_path,
+    },
     field_id::FieldId,
     header_util::reply_header,
     login::handle_login,
@@ -411,10 +419,19 @@ async fn handle_post_article(
     data_flavor: String,
     data: String,
 ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
-    use crate::db::create_root_article;
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
-            let id = create_root_article(conn, &path, &title, flags, &data_flavor, &data).await?;
+            let id = create_root_article(
+                conn,
+                &path,
+                CreateRootArticleParams {
+                    title: &title,
+                    flags,
+                    data_flavor: &data_flavor,
+                    data: &data,
+                },
+            )
+            .await?;
             let bytes = id.to_be_bytes();
             Ok(vec![(FieldId::NewsArticleId, bytes.to_vec())])
         })
