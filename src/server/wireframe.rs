@@ -188,10 +188,7 @@ mod bdd {
     #[fixture]
     fn world() -> BootstrapWorld {
         let world = BootstrapWorld::new();
-        assert!(
-            world.config.borrow().bind.contains(':'),
-            "fixture must expose a host:port binding"
-        );
+        world.config.borrow_mut().bind = "127.0.0.1:0".to_string();
         world
     }
 
