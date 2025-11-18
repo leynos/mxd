@@ -154,6 +154,6 @@ async fn link_prev_to_new(
         .set(a::next_article_id.eq(new_id))
         .execute(conn)
         .await
-        .map(|_| ())
-        .map_err(PathLookupError::Diesel)
+        .map_err(PathLookupError::Diesel)?;
+    Ok(())
 }

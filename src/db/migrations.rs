@@ -1,10 +1,59 @@
 //! Embedded migration utilities.
 
+use std::{error::Error as StdError, fmt};
+
 use cfg_if::cfg_if;
-use diesel::result::QueryResult;
+use diesel::result::{Error as DieselError, QueryResult};
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+use diesel::{Connection, result::ConnectionError};
 use diesel_migrations::MigrationHarness;
 
 use super::connection::{DbConnection, MIGRATIONS};
+
+#[derive(Debug)]
+struct MigrationHarnessError(Box<dyn StdError + Send + Sync>);
+
+impl fmt::Display for MigrationHarnessError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "migration harness error: {}", self.0)
+    }
+}
+
+impl StdError for MigrationHarnessError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> { Some(&*self.0) }
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+#[derive(Debug)]
+struct MigrationExecutorError(tokio::task::JoinError);
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+impl fmt::Display for MigrationExecutorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "migration executor error: {}", self.0)
+    }
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+impl StdError for MigrationExecutorError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> { Some(&self.0) }
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+#[derive(Debug)]
+struct MigrationConnectionError(ConnectionError);
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+impl fmt::Display for MigrationConnectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "migration connection error: {}", self.0)
+    }
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+impl StdError for MigrationConnectionError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> { Some(&self.0) }
+}
 
 cfg_if! {
     if #[cfg(feature = "sqlite")] {
@@ -14,14 +63,11 @@ cfg_if! {
         /// Returns any error produced by Diesel while running migrations.
         #[must_use = "handle the result"]
         pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
-            use diesel::result::Error as DieselError;
             conn.spawn_blocking(|c| {
                 c.run_pending_migrations(MIGRATIONS)
                     .map(|_| ())
-                    .map_err(|e: Box<dyn std::error::Error + Send + Sync>| {
-                        DieselError::QueryBuilderError(Box::new(std::io::Error::other(
-                            e.to_string(),
-                        )))
+                    .map_err(|e: Box<dyn StdError + Send + Sync>| {
+                        DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
                     })
             })
             .await?;
@@ -35,23 +81,21 @@ cfg_if! {
         #[must_use = "handle the result"]
         pub async fn run_migrations(database_url: &str) -> QueryResult<()> {
             use diesel::pg::PgConnection;
-            use diesel::Connection;
-            use diesel::result::Error as DieselError;
+            use tokio::task;
             let url = database_url.to_owned();
-            tokio::task::spawn_blocking(move || -> QueryResult<()> {
-                let mut conn = PgConnection::establish(&url)
-                    .map_err(|e| DieselError::QueryBuilderError(Box::new(e)))?;
+            task::spawn_blocking(move || -> QueryResult<()> {
+                let mut conn = PgConnection::establish(&url).map_err(|e| {
+                    DieselError::SerializationError(Box::new(MigrationConnectionError(e)))
+                })?;
                 conn.run_pending_migrations(MIGRATIONS)
                     .map(|_| ())
-                    .map_err(|e: Box<dyn std::error::Error + Send + Sync>| {
-                        DieselError::QueryBuilderError(Box::new(std::io::Error::other(
-                            e.to_string(),
-                        )))
+                    .map_err(|e: Box<dyn StdError + Send + Sync>| {
+                        DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
                     })
             })
             .await
             .map_err(|e| {
-                DieselError::QueryBuilderError(Box::new(std::io::Error::other(e.to_string())))
+                DieselError::SerializationError(Box::new(MigrationExecutorError(e)))
             })?
         }
     }

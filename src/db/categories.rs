@@ -1,6 +1,5 @@
 //! Category helpers including path resolution.
 
-use cfg_if::cfg_if;
 use diesel::{
     OptionalExtension,
     QueryableByName,
@@ -18,44 +17,42 @@ use super::{
 };
 use crate::news_path::{CATEGORY_BODY_SQL, CATEGORY_STEP_SQL, build_path_cte_with_conn};
 
-cfg_if! {
-    if #[cfg(any(feature = "postgres", feature = "returning_clauses_for_sqlite_3_35"))] {
-        /// Insert a new news category.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_category(
-            conn: &mut DbConnection,
-            cat: &crate::models::NewCategory<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::news_categories::dsl::{id, news_categories};
-            diesel::insert_into(news_categories)
-                .values(cat)
-                .returning(id)
-                .get_result(conn)
-                .await
-        }
-    } else if #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))] {
-        /// Insert a new news category.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_category(
-            conn: &mut DbConnection,
-            cat: &crate::models::NewCategory<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::news_categories::dsl::news_categories;
-            diesel::insert_into(news_categories)
-                .values(cat)
-                .execute(conn)
-                .await?;
-            fetch_last_insert_rowid(conn).await
-        }
-    } else {
-        compile_error!("Either 'sqlite' or 'postgres' feature must be enabled");
-    }
+#[cfg(any(feature = "postgres", feature = "returning_clauses_for_sqlite_3_35"))]
+async fn create_category_inner(
+    conn: &mut DbConnection,
+    cat: &crate::models::NewCategory<'_>,
+) -> QueryResult<i32> {
+    use crate::schema::news_categories::dsl::{id, news_categories};
+    diesel::insert_into(news_categories)
+        .values(cat)
+        .returning(id)
+        .get_result(conn)
+        .await
+}
+
+#[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
+async fn create_category_inner(
+    conn: &mut DbConnection,
+    cat: &crate::models::NewCategory<'_>,
+) -> QueryResult<i32> {
+    use crate::schema::news_categories::dsl::news_categories;
+    diesel::insert_into(news_categories)
+        .values(cat)
+        .execute(conn)
+        .await?;
+    fetch_last_insert_rowid(conn).await
+}
+
+/// Insert a new news category.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn create_category(
+    conn: &mut DbConnection,
+    cat: &crate::models::NewCategory<'_>,
+) -> QueryResult<i32> {
+    create_category_inner(conn, cat).await
 }
 
 pub(super) async fn category_id_from_path(
@@ -75,14 +72,24 @@ pub(super) async fn category_id_from_path(
     if len == 0 {
         return Err(PathLookupError::InvalidPath);
     }
-    let step = sql_query(CATEGORY_STEP_SQL).bind::<Text, _>(json.clone());
+    let step = sql_query(CATEGORY_STEP_SQL).bind::<Text, _>(json);
     let len_minus_one: i32 = i32::try_from(len - 1).map_err(|_| PathLookupError::InvalidPath)?;
+    let trimmed = path.trim_matches('/');
+    let final_segment = trimmed
+        .rsplit('/')
+        .next()
+        .ok_or(PathLookupError::InvalidPath)?
+        .to_owned();
     let body = sql_query(CATEGORY_BODY_SQL)
-        .bind::<Text, _>(json)
-        .bind::<Integer, _>(len_minus_one)
+        .bind::<Text, _>(final_segment)
         .bind::<Integer, _>(len_minus_one);
 
     let query = build_path_cte_with_conn(conn, step, body);
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
-    normalize_lookup_result(res.map(|c| c.id), true)?.ok_or(PathLookupError::InvalidPath)
+    let maybe_id = normalize_lookup_result(res.map(|c| c.id), true)?;
+    if let Some(id) = maybe_id {
+        Ok(id)
+    } else {
+        Err(PathLookupError::InvalidPath)
+    }
 }
