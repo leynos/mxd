@@ -6,6 +6,7 @@
 
 pub mod cli;
 pub mod legacy;
+pub mod wireframe;
 
 use anyhow::Result;
 use clap::Parser;
