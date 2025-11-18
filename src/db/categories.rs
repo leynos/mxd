@@ -72,6 +72,9 @@ pub(super) async fn category_id_from_path(
         return Err(PathLookupError::InvalidPath);
     };
 
+    if len == 0 {
+        return Err(PathLookupError::InvalidPath);
+    }
     let step = sql_query(CATEGORY_STEP_SQL).bind::<Text, _>(json.clone());
     let len_minus_one: i32 = i32::try_from(len - 1).map_err(|_| PathLookupError::InvalidPath)?;
     let body = sql_query(CATEGORY_BODY_SQL)
