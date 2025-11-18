@@ -72,6 +72,8 @@ impl WireframeBootstrap {
             state,
             backoff,
         } = self;
+        println!("mxd-wireframe-server using database {}", state.database());
+        println!("mxd-wireframe-server binding to {}", state.bind());
         let server = WireframeServer::new(app_factory(state)).accept_backoff(backoff);
         let server = server
             .bind(bind_addr)
@@ -98,8 +100,9 @@ impl WireframeState {
         }
     }
 
-    #[cfg(test)]
     fn bind(&self) -> &str { &self.config.bind }
+
+    fn database(&self) -> &str { &self.config.database }
 }
 
 fn app_factory(state: WireframeState) -> impl Fn() -> WireframeApp + Send + Sync + Clone + 'static {
@@ -183,7 +186,14 @@ mod bdd {
     }
 
     #[fixture]
-    fn world() -> BootstrapWorld { BootstrapWorld::new() }
+    fn world() -> BootstrapWorld {
+        let world = BootstrapWorld::new();
+        assert!(
+            world.config.borrow().bind.contains(':'),
+            "fixture must expose a host:port binding"
+        );
+        world
+    }
 
     #[given("a wireframe configuration binding to \"{bind}\"")]
     fn given_bind(world: &BootstrapWorld, bind: String) { world.set_bind(bind); }
@@ -197,7 +207,7 @@ mod bdd {
         let Some(outcome) = outcome_ref.as_ref() else {
             panic!("bootstrap not executed");
         };
-        assert_step_ok!(outcome.as_ref().map(|_| ()).map_err(|err| err.to_string()));
+        assert_step_ok!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
     }
 
     #[then("the resolved bind address is \"{bind}\"")]
@@ -206,8 +216,9 @@ mod bdd {
         let Some(outcome) = outcome_ref.as_ref() else {
             panic!("bootstrap not executed");
         };
-        let bootstrap = assert_step_ok!(outcome.as_ref().map_err(|err| err.to_string()));
+        let bootstrap = assert_step_ok!(outcome.as_ref().map_err(ToString::to_string));
         assert_eq!(bootstrap.bind_addr.to_string(), bind);
+        drop(bind);
     }
 
     #[then("bootstrap fails with message \"{message}\"")]
@@ -216,11 +227,12 @@ mod bdd {
         let Some(outcome) = outcome_ref.as_ref() else {
             panic!("bootstrap not executed");
         };
-        let text = assert_step_err!(outcome.as_ref().map(|_| ()).map_err(|err| err.to_string()));
+        let text = assert_step_err!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
         assert!(
             text.contains(&message),
             "expected '{text}' to contain '{message}'"
         );
+        drop(message);
     }
 
     #[scenario(path = "tests/features/wireframe_server.feature", index = 0)]
