@@ -7,9 +7,12 @@
 //! [`WireframeServer`]. Future work will register the Hotline handshake,
 //! serializer, and protocol routes described in the roadmap.
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::{SocketAddr, ToSocketAddrs},
+    sync::Arc,
+};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use wireframe::{
     app::WireframeApp,
@@ -52,7 +55,7 @@ async fn run_daemon(config: AppConfig) -> Result<()> {
 #[derive(Clone, Debug)]
 struct WireframeBootstrap {
     bind_addr: SocketAddr,
-    state: WireframeState,
+    config: Arc<AppConfig>,
     backoff: BackoffConfig,
 }
 
@@ -61,7 +64,7 @@ impl WireframeBootstrap {
         let bind_addr = parse_bind_addr(&config.bind)?;
         Ok(Self {
             bind_addr,
-            state: WireframeState::new(config),
+            config: Arc::new(config),
             backoff: BackoffConfig::default(),
         })
     }
@@ -69,12 +72,17 @@ impl WireframeBootstrap {
     async fn run(self) -> Result<()> {
         let WireframeBootstrap {
             bind_addr,
-            state,
+            config,
             backoff,
         } = self;
-        println!("mxd-wireframe-server using database {}", state.database());
-        println!("mxd-wireframe-server binding to {}", state.bind());
-        let server = WireframeServer::new(app_factory(state)).accept_backoff(backoff);
+        println!("mxd-wireframe-server using database {}", config.database);
+        println!("mxd-wireframe-server binding to {}", config.bind);
+        let config_for_app = Arc::clone(&config);
+        let server = WireframeServer::new(move || {
+            let shared = Arc::clone(&config_for_app);
+            WireframeApp::default().app_data(shared)
+        })
+        .accept_backoff(backoff);
         let server = server
             .bind(bind_addr)
             .context("failed to bind Wireframe listener")?;
@@ -88,42 +96,32 @@ impl WireframeBootstrap {
     }
 }
 
-#[derive(Clone, Debug)]
-struct WireframeState {
-    config: Arc<AppConfig>,
-}
-
-impl WireframeState {
-    fn new(config: AppConfig) -> Self {
-        Self {
-            config: Arc::new(config),
-        }
-    }
-
-    fn bind(&self) -> &str { &self.config.bind }
-
-    fn database(&self) -> &str { &self.config.database }
-}
-
-fn app_factory(state: WireframeState) -> impl Fn() -> WireframeApp + Send + Sync + Clone + 'static {
-    move || WireframeApp::default().app_data(state.clone())
-}
-
 fn parse_bind_addr(target: &str) -> Result<SocketAddr> {
     target
         .parse()
+        .or_else(|_| resolve_hostname(target))
         .with_context(|| format!("invalid bind address '{target}'"))
+}
+
+fn resolve_hostname(target: &str) -> Result<SocketAddr> {
+    let mut addrs = target
+        .to_socket_addrs()
+        .with_context(|| format!("failed to resolve '{target}'"))?;
+    addrs
+        .next()
+        .ok_or_else(|| anyhow!("failed to resolve '{target}'"))
 }
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
 
     use super::*;
 
-    fn config_with_bind(bind: &str) -> AppConfig {
+    #[fixture]
+    fn bound_config() -> AppConfig {
         AppConfig {
-            bind: bind.to_string(),
+            bind: "127.0.0.1:7777".to_string(),
             ..AppConfig::default()
         }
     }
@@ -145,11 +143,17 @@ mod tests {
     }
 
     #[rstest]
-    fn bootstrap_captures_bind() {
-        let cfg = config_with_bind("127.0.0.1:7777");
-        let bootstrap = WireframeBootstrap::prepare(cfg).expect("bootstrap");
+    fn resolves_hostnames() {
+        let addr = parse_bind_addr("localhost:6010").expect("bind");
+        assert!(addr.ip().is_loopback());
+        assert_eq!(addr.port(), 6010);
+    }
+
+    #[rstest]
+    fn bootstrap_captures_bind(bound_config: AppConfig) {
+        let bootstrap = WireframeBootstrap::prepare(bound_config).expect("bootstrap");
         assert_eq!(bootstrap.bind_addr, "127.0.0.1:7777".parse().unwrap());
-        assert_eq!(bootstrap.state.bind(), "127.0.0.1:7777");
+        assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
     }
 }
 

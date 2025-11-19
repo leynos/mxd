@@ -3,7 +3,15 @@
 //! The runtime logic lives in `mxd::server::wireframe`, so this binary only
 //! delegates to the shared library code.
 
-use anyhow::Result;
+use std::process::ExitCode;
 
 #[tokio::main]
-async fn main() -> Result<()> { mxd::server::wireframe::run().await }
+async fn main() -> ExitCode {
+    match mxd::server::wireframe::run().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("mxd-wireframe-server failed: {err:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
