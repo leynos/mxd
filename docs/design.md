@@ -252,6 +252,70 @@ Essentially, each route in Wireframe will call an equivalent of
 the Wireframe server is feature-complete, the old loop will be
 removed([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L40-L43)).
 
+#### Wireframe bootstrap implementation (November 2025)
+
+The `mxd-wireframe-server` binary now delegates to `mxd::server::wireframe`,
+which wraps `wireframe::server::WireframeServer` instead of the bespoke Tokio
+loop. The runtime funnels every invocation through the shared `Cli`/`AppConfig`
+types so the legacy daemon and the new binary expose identical configuration
+surfaces (flags, environment overrides, and `ortho-config` defaults).
+Configuration loading lives inside `WireframeBootstrap`, a small struct that
+resolves the textual `bind` argument into a `SocketAddr`, records the parsed
+state, and applies the Wireframe accept-loop back-off defaults.
+
+Each worker receives a `WireframeApp` via a closure that captures an
+`Arc<AppConfig>` and registers it as shared application data. This keeps the
+merged configuration accessible to future Wireframe extractors (for example,
+handshake handlers or push queues) without inventing an extra wrapper type. The
+adapter therefore still conforms to the ports-and-adapters plan: the Wireframe
+runtime owns transport-level concerns (listener binding, accept-loop back-off,
+lifecycle logging) while the domain code remains unaware of the new binary.
+Future tasks will extend the bootstrapper to register the Hotline handshake,
+serializer, and transaction routes, but those components now have a concrete
+entry point rather than a design-only placeholder.
+
+Figure 1 illustrates how the bootstrapper ties together CLI parsing,
+configuration state, and the Wireframe runtime components.
+
+```mermaid
+classDiagram
+    class WireframeBootstrap {
+        +SocketAddr bind_addr
+        +Arc<AppConfig> config
+        +BackoffConfig backoff
+        +prepare(config: AppConfig) Result<WireframeBootstrap>
+        +run() Result<()>
+    }
+    class AppConfig {
+        +String bind
+        +String database
+        +default()
+    }
+    class Cli {
+        +AppConfig config
+        +Option<Command> command
+        +parse() Cli
+    }
+    class WireframeServer {
+        +new(app_factory) WireframeServer
+        +accept_backoff(backoff: BackoffConfig) WireframeServer
+        +bind(addr: SocketAddr) WireframeServer
+        +local_addr() Option<SocketAddr>
+        +run() Result<()>
+    }
+    class WireframeApp {
+        +default() WireframeApp
+        +app_data(config: Arc<AppConfig>) WireframeApp
+    }
+    WireframeBootstrap --> BackoffConfig
+    WireframeBootstrap --> AppConfig : prepare(config)
+    WireframeBootstrap --> WireframeServer : run()
+    WireframeServer --> WireframeApp : new(app_factory)
+    WireframeApp --> AppConfig : app_data(config)
+    Cli --> AppConfig
+    Cli --> Command
+```
+
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
 Configuration management in MXD is handled by the **OrthoConfig** library,

@@ -24,6 +24,10 @@ path = "src/lib.rs"
 name = "gen_corpus"
 path = "src/bin/gen_corpus.rs"
 
+[[bin]]
+name = "mxd-wireframe-server"
+path = "src/bin/mxd_wireframe_server.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 diesel = { version = "2.3", default-features = false, features = ["chrono"] }
@@ -41,6 +45,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 diesel-cte-ext = { workspace = true }
 futures-util = "0.3"
 tracing = "0.1"
+wireframe = "0.1.0-alpha1"
 figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"

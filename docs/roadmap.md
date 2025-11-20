@@ -23,10 +23,13 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Completed on 9 November 2025 by moving the CLI and Tokio runtime into the
   shared `mxd::server` module, so every binary reuses the same entry points.
   Dependencies: None.
-- [ ] Task: Create the `mxd-wireframe-server` binary that depends on
+- [x] Task: Create the `mxd-wireframe-server` binary that depends on
   `wireframe` and the refactored library. Acceptance: The new binary compiles
   for x86_64 and aarch64 Linux and exposes a minimal listen loop that loads
-  configuration. Dependencies: Step “Bootstrap the wireframe server”.
+  configuration. Status: Completed on 18 November 2025 by adding
+  `WireframeBootstrap` (`src/server/wireframe.rs`) and a new binary entry point
+  so the listener binds after parsing `AppConfig`. Dependencies: Step
+  “Bootstrap the wireframe server”.
 - [ ] Task: Retire the bespoke networking loop once the wireframe pipeline is
   feature-complete. Acceptance: The legacy frame handler is gated behind a
   feature flag or removed without reducing existing automated test coverage,
