@@ -2177,6 +2177,7 @@ dependencies = [
  "futures-util",
  "ortho_config 0.3.0",
  "paste",
+ "pg-embed-setup-unpriv",
  "postgresql_embedded 0.20.0",
  "rand 0.8.5",
  "rstest 0.26.1",
@@ -2626,6 +2627,7 @@ dependencies = [
  "cap-std",
  "clap",
  "color-eyre",
+ "diesel",
  "figment",
  "figment-json5",
  "libc",
@@ -2633,6 +2635,7 @@ dependencies = [
  "openssl-sys",
  "ortho_config 0.5.0",
  "postgresql_embedded 0.20.0",
+ "pq-sys",
  "rstest 0.18.2",
  "serde",
  "serde_json",
@@ -2896,6 +2899,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pq-src"
+version = "0.3.10+libpq-18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56ef39ce621f4993d6084fdcd4cbf1e01c84bdba53109cfad095d2cf441b85b9"
+dependencies = [
+ "cc",
+ "openssl-sys",
+]
+
+[[package]]
 name = "pq-sys"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2903,6 +2916,7 @@ checksum = "574ddd6a267294433f140b02a726b0640c43cf7c6f717084684aaa3b285aba61"
 dependencies = [
  "libc",
  "pkg-config",
+ "pq-src",
  "vcpkg",
 ]
 
