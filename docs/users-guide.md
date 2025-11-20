@@ -1,15 +1,15 @@
 # User guide
 
-This guide explains how to run the legacy Hotline server binary and how to use
-its administrative subcommands. The CLI definitions live in the shared
-`mxd::server::cli` module, so both the existing TCP binary and the upcoming
-wireframe binary expose the same configuration surface.
+This guide explains how to run either server binary and how to use their shared
+administrative subcommands. The CLI definitions live in `mxd::server::cli`,
+while the active networking runtime is selected by the `legacy-networking`
+Cargo feature.
 
 ## Launching the legacy server
 
 - Build the sqlite variant with `make sqlite` or the postgres variant with
-  `make postgres`. The binaries use the same CLI flags because they both call
-  `mxd::server::run()`.
+  `make postgres`. The `legacy-networking` feature is enabled by default so the
+  `mxd` binary is available.
 - Start the daemon with `cargo run --bin mxd -- --bind 0.0.0.0:5500 --database
   mxd.db`.
 - Override `MXD_`-prefixed environment variables or drop-in `.mxd.toml` files
@@ -28,12 +28,20 @@ wireframe binary expose the same configuration surface.
   0.0.0.0:6600 --database mxd.db`. The binary prints `mxd-wireframe-server
   listening on …` after the Wireframe listener binds.
 - Administrative subcommands such as `create-user` remain available because
-  the wireframe bootstrap delegates to `mxd::server::legacy::run_command` when
-  a subcommand is supplied.
+  the bootstrap calls `mxd::server::run_command` before starting the listener.
 - This binary currently exposes an empty Wireframe listen loop; upcoming work
   will register the Hotline handshake, codecs, and routes. Use it today to
   validate configuration plumbing and to exercise the integration tests that
   target the new adapter.
+
+## Selecting a runtime
+
+- Keep the legacy loop enabled (default) to run the classic `mxd` daemon.
+- Disable it with `--no-default-features --features "sqlite toml"` when you
+  want a Wireframe-only build; the `mxd` binary is skipped via
+  `required-features` and `server::run()` invokes the Wireframe runtime.
+- `make test-wireframe-only` exercises the Wireframe-first configuration and
+  runs the behaviour scenarios that assert the feature gate.
 
 ## Creating users
 
@@ -55,19 +63,19 @@ Integration tests and developer machines can exercise the postgres backend by
 running `pg_embedded_setup_unpriv` before `make test`. The helper stages a
 PostgreSQL distribution with unprivileged ownership, so the
 `postgresql_embedded` crate can start temporary clusters without root access.
-After invoking the helper, run `make test` to execute both sqlite and postgres
-suites; the postgres jobs automatically reuse the staged binaries. Both server
-binaries honour the same `MXD_DATABASE` and `--database` values, so you can
-re-run the helper once and then switch between `cargo run --bin mxd` and
-`cargo run --bin mxd-wireframe-server` without additional setup. Refer to
-`docs/pg-embedded-setup-unpriv-users-guide.md` if you need to customize the
-cluster paths or troubleshoot privilege issues.
+After invoking the helper, run `make test` to execute sqlite, postgres, and
+wireframe-only suites; the postgres jobs automatically reuse the staged
+binaries. Both server binaries honour the same `MXD_DATABASE` and `--database`
+values, so you can re-run the helper once and then switch between
+`cargo run --bin mxd` and `cargo run --bin mxd-wireframe-server` without
+additional setup. Refer to `docs/pg-embedded-setup-unpriv-users-guide.md` if
+you need to customize the cluster paths or troubleshoot privilege issues.
 
 ## Behaviour coverage
 
 Unit tests for the CLI live next to `src/server/cli.rs` and rely on `rstest`
 fixtures to validate configuration loading across env, dotfile, and CLI layers.
 High-level behaviour tests are defined in `tests/features/create_user_command`
-and bound via `rstest-bdd`. They cover successful account creation and the
-error path when credentials are omitted, ensuring the extracted command logic
-remains observable to end users.
+and `tests/features/runtime_selection.feature`, bound via `rstest-bdd`. They
+cover successful account creation, missing-credential errors, and runtime
+selection so the adapter strategy remains observable to end users.

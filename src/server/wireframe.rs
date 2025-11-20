@@ -20,7 +20,7 @@ use wireframe::{
 };
 
 use super::{AppConfig, Cli};
-use crate::server::legacy;
+use crate::server::admin;
 
 /// Parse CLI arguments and start the Wireframe runtime.
 ///
@@ -41,7 +41,7 @@ pub async fn run() -> Result<()> {
 pub async fn run_with_cli(cli: Cli) -> Result<()> {
     let Cli { config, command } = cli;
     if let Some(command) = command {
-        legacy::run_command(command, &config).await
+        admin::run_command(command, &config).await
     } else {
         run_daemon(config).await
     }

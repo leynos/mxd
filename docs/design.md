@@ -83,6 +83,23 @@ domain logic without duplicating setup code. The change is protected by new
 `rstest` fixtures around `AppConfig::load_from_iter` plus `rstest-bdd`
 behaviour tests covering successful and failing `create-user` invocations.
 
+### Runtime selection via feature flags
+
+The bespoke Tokio loop is now gated behind a `legacy-networking` Cargo feature.
+When the feature is enabled (the default for compatibility) the `mxd` binary
+continues to call `legacy::dispatch()` and exposes the classic accept loop.
+Disabling the feature with `--no-default-features` removes the legacy frame
+handler from the build: `server::run()` delegates to the Wireframe runtime and
+the `mxd` binary is omitted via `required-features`.
+
+Administrative commands (`create-user`) live in `server::admin::run_command` so
+both runtimes share identical behaviour without depending on the legacy
+adapter. Unit- and behaviour-level tests assert the feature gate:
+`active_runtime()` reports `Legacy` when the feature is present and `Wireframe`
+when it is not, ensuring the adapter strategy in
+`docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md` can be
+enforced without leaking transport details into domain code.
+
 **Layering and Responsibilities**:
 
 - *Domain layer*: Contains entities like `Session` (session state), `Command`
