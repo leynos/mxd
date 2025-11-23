@@ -5,7 +5,7 @@
 //! dependencies so both the legacy Tokio loop and the Wireframe runtime can
 //! reuse them.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
 use diesel_async::AsyncConnection;
 use ortho_config::load_and_merge_subcommand_for;

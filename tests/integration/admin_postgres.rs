@@ -27,7 +27,10 @@ async fn create_user_against_embedded_postgres() -> Result<()> {
     let connection = cluster.connection();
     let database_url = connection.database_url("mxd_admin_test");
 
-    let cfg = AppConfig { database: database_url, ..AppConfig::default() };
+    let cfg = AppConfig {
+        database: database_url,
+        ..AppConfig::default()
+    };
 
     let username = format!("user_{}", rand::random::<u64>());
     let args = CreateUserArgs {

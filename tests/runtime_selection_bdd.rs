@@ -21,9 +21,7 @@ impl RuntimeWorld {
 }
 
 #[fixture]
-fn world() -> RuntimeWorld {
-    RuntimeWorld::new()
-}
+fn world() -> RuntimeWorld { RuntimeWorld::new() }
 
 #[given("the runtime selection is computed")]
 fn given_runtime(world: &RuntimeWorld) { world.compute(); }
