@@ -31,11 +31,9 @@ fn given_runtime(world: &RuntimeWorld) { world.compute(); }
 #[allow(clippy::needless_pass_by_value)]
 #[then("the active runtime is \"{runtime}\"")]
 fn then_runtime(world: &RuntimeWorld, runtime: String) {
-    let expected = match runtime.as_str() {
-        "legacy" => NetworkRuntime::Legacy,
-        "wireframe" => NetworkRuntime::Wireframe,
-        other => panic!("unexpected runtime '{other}'"),
-    };
+    let expected = runtime
+        .parse::<NetworkRuntime>()
+        .unwrap_or_else(|err| panic!("{err}"));
 
     assert_eq!(world.runtime(), expected);
 }

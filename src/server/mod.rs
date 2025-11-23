@@ -12,6 +12,8 @@ pub mod cli;
 pub mod legacy;
 pub mod wireframe;
 
+use std::str::FromStr;
+
 pub use admin::run_command;
 use anyhow::Result;
 use clap::Parser;
@@ -33,6 +35,18 @@ pub const fn active_runtime() -> NetworkRuntime {
         NetworkRuntime::Legacy
     } else {
         NetworkRuntime::Wireframe
+    }
+}
+
+impl FromStr for NetworkRuntime {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            _ if s.eq_ignore_ascii_case("legacy") => Ok(NetworkRuntime::Legacy),
+            _ if s.eq_ignore_ascii_case("wireframe") => Ok(NetworkRuntime::Wireframe),
+            other => Err(format!("unknown runtime '{other}'")),
+        }
     }
 }
 

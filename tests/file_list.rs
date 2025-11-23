@@ -1,4 +1,6 @@
 #![cfg(feature = "legacy-networking")]
+// File list routing is exposed only via the legacy adapter until wireframe
+// transaction mapping lands.
 
 //! Integration tests for file list operations.
 //!

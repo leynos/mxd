@@ -1,5 +1,7 @@
 //! Integration tests for admin commands backed by embedded `PostgreSQL`.
 
+use std::error::Error;
+
 use anyhow::Result;
 use diesel_async::AsyncConnection;
 use mxd::{
@@ -15,9 +17,8 @@ async fn create_user_against_embedded_postgres() -> Result<()> {
     let cluster = match TestCluster::new() {
         Ok(cluster) => cluster,
         Err(err) => {
-            let message = err.to_string();
-            if message.contains("SKIP-TEST-CLUSTER") || message.contains("PG_EMBEDDED_WORKER") {
-                eprintln!("{message}");
+            if let Some(reason) = cluster_skip_reason(&err) {
+                eprintln!("{reason}");
                 return Ok(());
             }
             return Err(err.into());
@@ -47,4 +48,17 @@ async fn create_user_against_embedded_postgres() -> Result<()> {
     assert_eq!(user.username, username);
 
     Ok(())
+}
+
+fn cluster_skip_reason(err: &dyn Error) -> Option<String> {
+    for cause in std::iter::successors(Some(err), |e| e.source()) {
+        let msg = cause.to_string();
+        if msg.starts_with("SKIP-TEST-CLUSTER") {
+            return Some(msg);
+        }
+        if msg.contains("PG_EMBEDDED_WORKER") {
+            return Some(format!("SKIP-TEST-CLUSTER: {msg}"));
+        }
+    }
+    None
 }

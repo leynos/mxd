@@ -1,9 +1,9 @@
 # User guide
 
-This guide explains how to run either server binary and how to use their shared
-administrative subcommands. The CLI definitions live in `mxd::server::cli`,
-while the active networking runtime is selected by the `legacy-networking`
-Cargo feature.
+This guide explains how to run both server binaries and how to use their shared
+administrative subcommands. The command-line interface (CLI) definitions live
+in `mxd::server::cli`, while the active networking runtime is selected by the
+`legacy-networking` Cargo feature.
 
 ## Launching the legacy server
 
@@ -37,9 +37,9 @@ Cargo feature.
 ## Selecting a runtime
 
 - Keep the legacy loop enabled (default) to run the classic `mxd` daemon.
-- Disable it with `--no-default-features --features "sqlite toml"` when you
-  want a Wireframe-only build; the `mxd` binary is skipped via
-  `required-features` and `server::run()` invokes the Wireframe runtime.
+- Disable it with `--no-default-features --features "sqlite toml"` to obtain a
+  Wireframe-only build; the `mxd` binary is skipped via `required-features` and
+  `server::run()` invokes the Wireframe runtime.
 - `make test-wireframe-only` exercises the Wireframe-first configuration and
   runs the behaviour scenarios that assert the feature gate.
 
@@ -66,7 +66,7 @@ PostgreSQL distribution with unprivileged ownership, so the
 After invoking the helper, run `make test` to execute sqlite, postgres, and
 wireframe-only suites; the postgres jobs automatically reuse the staged
 binaries. Both server binaries honour the same `MXD_DATABASE` and `--database`
-values, so you can re-run the helper once and then switch between
+values, allowing the helper to be re-run once and then switching between
 `cargo run --bin mxd` and `cargo run --bin mxd-wireframe-server` without
 additional setup. Refer to `docs/pg-embedded-setup-unpriv-users-guide.md` if
 you need to customize the cluster paths or troubleshoot privilege issues.

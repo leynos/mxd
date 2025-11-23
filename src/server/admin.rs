@@ -41,7 +41,13 @@ pub fn argon2_from_config(cfg: &AppConfig) -> Result<Argon2<'static>> {
         .m_cost(cfg.argon2_m_cost)
         .t_cost(cfg.argon2_t_cost)
         .p_cost(cfg.argon2_p_cost)
-        .build()?;
+        .build()
+        .with_context(|| {
+            format!(
+                "invalid Argon2 params derived from config: m_cost={}, t_cost={}, p_cost={}",
+                cfg.argon2_m_cost, cfg.argon2_t_cost, cfg.argon2_p_cost
+            )
+        })?;
     Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
