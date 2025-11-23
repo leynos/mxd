@@ -143,7 +143,6 @@ fn test_stream(
     reason = "Keep signature consistent with `SetupFn` so tests can swap in fallible setup \
               routines."
 )]
-// Keep signature consistent with `SetupFn` so tests can swap in fallible setup routines.
 fn noop_setup(_: &str) -> TestResult<()> { Ok(()) }
 
 #[rstest]
