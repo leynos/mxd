@@ -1,3 +1,5 @@
+#![cfg(feature = "legacy-networking")]
+
 //! Integration tests for file list operations.
 //!
 //! Exercises the `GetFileNameList` transaction with ACL filtering and error
