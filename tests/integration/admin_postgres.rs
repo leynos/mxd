@@ -19,44 +19,49 @@ use mxd::{
 };
 use pg_embedded_setup_unpriv::TestCluster;
 use rstest::rstest;
+use tokio::runtime::Builder;
 
 #[rstest]
-#[tokio::test]
-async fn create_user_against_embedded_postgres() -> Result<()> {
-    let cluster = match TestCluster::new() {
-        Ok(cluster) => cluster,
-        Err(err) => {
-            if let Some(reason) = cluster_skip_reason(&err) {
-                eprintln!("{reason}");
-                return Ok(());
+#[test]
+fn create_user_against_embedded_postgres() -> Result<()> {
+    let rt = Builder::new_current_thread().enable_all().build()?;
+
+    rt.block_on(async {
+        let cluster = match TestCluster::new() {
+            Ok(cluster) => cluster,
+            Err(err) => {
+                if let Some(reason) = cluster_skip_reason(&err) {
+                    eprintln!("{reason}");
+                    return Ok(());
+                }
+                return Err(err.into());
             }
-            return Err(err.into());
-        }
-    };
+        };
 
-    let connection = cluster.connection();
-    let database_url = connection.database_url("mxd_admin_test");
+        let connection = cluster.connection();
+        let database_url = connection.database_url("mxd_admin_test");
 
-    let cfg = AppConfig {
-        database: database_url,
-        ..AppConfig::default()
-    };
+        let cfg = AppConfig {
+            database: database_url,
+            ..AppConfig::default()
+        };
 
-    let username = format!("user_{}", rand::random::<u64>());
-    let args = CreateUserArgs {
-        username: Some(username.clone()),
-        password: Some("passw0rd!".to_string()),
-    };
+        let username = format!("user_{}", rand::random::<u64>());
+        let args = CreateUserArgs {
+            username: Some(username.clone()),
+            password: Some("passw0rd!".to_string()),
+        };
 
-    run_command(Commands::CreateUser(args), &cfg).await?;
+        run_command(Commands::CreateUser(args), &cfg).await?;
 
-    let mut conn = DbConnection::establish(&cfg.database).await?;
-    let user = get_user_by_name(&mut conn, &username)
-        .await?
-        .expect("user should be persisted");
-    assert_eq!(user.username, username);
+        let mut conn = DbConnection::establish(&cfg.database).await?;
+        let user = get_user_by_name(&mut conn, &username)
+            .await?
+            .expect("user should be persisted");
+        assert_eq!(user.username, username);
 
-    Ok(())
+        Ok(())
+    })
 }
 
 fn cluster_skip_reason(err: &dyn Error) -> Option<String> {
