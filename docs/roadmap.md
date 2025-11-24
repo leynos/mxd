@@ -43,10 +43,12 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### Step: Implement the wireframe handshake
 
-- [ ] Task: Implement the 12-byte Hotline handshake preamble as a
+- [x] Task: Implement the 12-byte Hotline handshake preamble as a
   `wireframe::preamble::Preamble`. Acceptance: Unit tests accept the “TRTP”
   protocol ID and reject malformed inputs outlined in `docs/protocol.md`.
-  Dependencies: Step “Bootstrap the wireframe server”.
+  Status: Completed on 24 November 2025 by introducing `HotlinePreamble` as the
+  Wireframe decoder and adding unit plus behaviour tests for valid and invalid
+  greetings. Dependencies: Step “Bootstrap the wireframe server”.
 - [ ] Task: Register success and failure hooks that emit the 8-byte reply and
   enforce a five-second timeout. Acceptance: Handshake errors surface correct
   Hotline error codes and time out idle sockets, matching behaviour documented
