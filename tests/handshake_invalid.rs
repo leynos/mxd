@@ -1,3 +1,7 @@
+#![cfg(feature = "legacy-networking")]
+// Exercises the legacy TCP handshake with an invalid protocol preamble; skip
+// when the legacy adapter is not compiled.
+
 use std::{
     io::{Read, Write},
     net::TcpStream,
