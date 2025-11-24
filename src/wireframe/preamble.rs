@@ -53,10 +53,7 @@ impl<'de> BorrowDecode<'de, ()> for HotlinePreamble {
 }
 
 fn decode_error_for_handshake(err: &HandshakeError) -> DecodeError {
-    match err {
-        HandshakeError::InvalidProtocol => DecodeError::Other("invalid protocol id"),
-        HandshakeError::UnsupportedVersion(_) => DecodeError::Other("unsupported version"),
-    }
+    DecodeError::OtherString(err.to_string())
 }
 
 #[cfg(test)]
@@ -114,7 +111,10 @@ mod tests {
             .await
             .expect_err("decode must fail");
 
-        assert!(matches!(err, DecodeError::Other(msg) if msg == "invalid protocol id"));
+        assert!(
+            err.to_string().contains("invalid protocol id"),
+            "expected detailed message, got {err:?}"
+        );
     }
 
     #[rstest]
@@ -127,7 +127,10 @@ mod tests {
             .await
             .expect_err("decode must fail");
 
-        assert!(matches!(err, DecodeError::Other(msg) if msg == "unsupported version"));
+        assert!(
+            err.to_string().contains("unsupported version"),
+            "expected detailed message, got {err:?}"
+        );
     }
 
     #[rstest]
@@ -189,20 +192,28 @@ mod bdd {
         world
     }
 
+    fn preamble_for_kind(kind: &str) -> [u8; HANDSHAKE_LEN] {
+        match kind {
+            "wrong-protocol" => preamble_bytes(*b"WRNG", *b"CHAT", VERSION, 1),
+            "unsupported-ver" => preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION + 1, 0),
+            "truncated" => preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 0),
+            other => panic!("unknown malformed preamble kind '{other}'"),
+        }
+    }
+
     #[given("a valid wireframe handshake preamble")]
     fn given_valid(world: &HandshakeWorld) {
         world.set_bytes(&preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 7));
     }
 
     #[given("a malformed wireframe preamble with kind \"{kind}\"")]
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "rstest-bdd step parameters must be owned; keep String until macro supports &str \
+                  captures"
+    )]
     fn given_malformed(world: &HandshakeWorld, kind: String) {
-        let bytes = match kind.as_str() {
-            "wrong-protocol" => preamble_bytes(*b"WRNG", *b"CHAT", VERSION, 1),
-            "unsupported-ver" => preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION + 1, 0),
-            "truncated" => preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 0),
-            other => panic!("unknown malformed preamble kind '{other}'"),
-        };
+        let bytes = preamble_for_kind(&kind);
         if kind == "truncated" {
             world.set_bytes(&bytes[..6]);
         } else {

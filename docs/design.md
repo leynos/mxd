@@ -229,15 +229,15 @@ In this design, the **WireframeApp** is configured with a custom
 `HotlineHandshake` preamble and a `HotlineFrameSerializer`. The handshake
 ensures that when a new client connects, the first 12-byte greeting (`"TRTP"`
 magic and version info) is read and validated before proceeding. Wireframe
-invokes our handshake handler, which checks the protocol ID and version and
+invokes the handshake handler, which checks the protocol ID and version and
 sends the appropriate 8-byte reply (error code 0 for success, or an error code
-for mismatches). This logic mirrors the custom handshake we previously
-implemented with raw Tokio (reading from the socket and writing `HANDSHAKE_OK`
-or an error), but now it’s encapsulated as a formal **Preamble** in the
-adapter. The implemented `HotlinePreamble` (`src/wireframe/preamble.rs`)
-performs this validation during bincode decoding so Wireframe halts malformed
-connections before any routing occurs. Success/failure reply hooks remain
-separate work in the handshake step.
+for mismatches). This logic mirrors the custom handshake previously implemented
+with raw Tokio (reading from the socket and writing `HANDSHAKE_OK` or an
+error), but now it is encapsulated as a formal **Preamble** in the adapter. The
+implemented `HotlinePreamble` (`src/wireframe/preamble.rs`) performs this
+validation during bincode decoding so Wireframe halts malformed connections
+before any routing occurs. Success/failure reply hooks remain separate work in
+the handshake step.
 
 After a successful handshake, Wireframe switches to framed message mode. We
 implement a **Serializer** that knows how to read and write Hotline
