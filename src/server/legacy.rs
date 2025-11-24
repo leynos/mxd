@@ -7,9 +7,8 @@
 use std::{io, net::SocketAddr, sync::Arc};
 
 use anyhow::{Context, Result};
-use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
-use diesel_async::{AsyncConnection, pooled_connection::PoolError};
-use ortho_config::load_and_merge_subcommand_for;
+use argon2::Argon2;
+use diesel_async::pooled_connection::PoolError;
 use tokio::{
     io::{self as tokio_io, AsyncReadExt},
     net::{TcpListener, TcpStream},
@@ -22,14 +21,15 @@ use tracing::warn;
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use url::Url;
 
-use super::cli::{AppConfig, Cli, Commands, CreateUserArgs};
+use super::{
+    admin,
+    cli::{AppConfig, Cli},
+};
 use crate::{
-    db::{DbConnection, DbPool, apply_migrations, create_user, establish_pool},
+    db::{DbPool, apply_migrations, establish_pool},
     handler::{Context as HandlerContext, Session, handle_request},
-    models,
     protocol,
     transaction::{TransactionError, TransactionReader, TransactionWriter},
-    users::hash_password,
 };
 
 /// Parse CLI arguments and execute the requested action.
@@ -41,7 +41,7 @@ use crate::{
 pub async fn dispatch(cli: Cli) -> Result<()> {
     let Cli { config, command } = cli;
     if let Some(command) = command {
-        run_command(command, &config).await
+        admin::run_command(command, &config).await
     } else {
         run_daemon(config).await
     }
@@ -52,36 +52,6 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
 /// # Errors
 ///
 /// Propagates failures from configuration merging or database operations.
-pub async fn run_command(command: Commands, cfg: &AppConfig) -> Result<()> {
-    match command {
-        Commands::CreateUser(args) => {
-            let args = load_and_merge_subcommand_for::<CreateUserArgs>(&args)?;
-            run_create_user(args, cfg).await
-        }
-    }
-}
-
-async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
-    let username = args
-        .username
-        .ok_or_else(|| anyhow::anyhow!("missing username"))?;
-    let password = args
-        .password
-        .ok_or_else(|| anyhow::anyhow!("missing password"))?;
-
-    let argon2 = build_argon2(cfg)?;
-    let hashed = hash_password(&argon2, &password)?;
-    let new_user = models::NewUser {
-        username: &username,
-        password: &hashed,
-    };
-    let mut conn = DbConnection::establish(&cfg.database).await?;
-    apply_migrations(&mut conn, &cfg.database).await?;
-    create_user(&mut conn, &new_user).await?;
-    println!("User {username} created");
-    Ok(())
-}
-
 /// Run the legacy TCP server using the supplied configuration.
 ///
 /// # Errors
@@ -93,7 +63,7 @@ pub async fn run_daemon(cfg: AppConfig) -> Result<()> {
     let database = cfg.database.clone();
 
     // Build the Argon2 instance once so it can be shared by all worker tasks.
-    let argon2 = Arc::new(build_argon2(&cfg)?);
+    let argon2 = Arc::new(admin::argon2_from_config(&cfg)?);
 
     let pool = setup_database(&database).await?;
 
@@ -101,15 +71,6 @@ pub async fn run_daemon(cfg: AppConfig) -> Result<()> {
     println!("mxd listening on {bind}");
 
     accept_connections(listener, pool, argon2).await
-}
-
-fn build_argon2(cfg: &AppConfig) -> Result<Argon2<'static>> {
-    let params = ParamsBuilder::new()
-        .m_cost(cfg.argon2_m_cost)
-        .t_cost(cfg.argon2_t_cost)
-        .p_cost(cfg.argon2_p_cost)
-        .build()?;
-    Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
 /// Determine whether the supplied connection string targets Postgres.

@@ -4,6 +4,8 @@
 //! paths (root, nested bundles, trailing slashes) and handles edge cases such
 //! as invalid paths and empty databases.
 
+#![cfg(feature = "legacy-networking")]
+
 use std::{
     convert::TryFrom,
     io::{Read, Write},
@@ -64,7 +66,7 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
         .into_iter()
         .filter_map(|(id, d)| {
             if id == FieldId::NewsCategory {
-                Some(String::from_utf8(d).unwrap())
+                Some(String::from_utf8(d).expect("category name must be valid UTF-8"))
             } else {
                 None
             }

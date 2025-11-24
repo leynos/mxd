@@ -1,12 +1,14 @@
 //! Embedded migration utilities.
 
-use std::{error::Error as StdError, fmt};
+use std::{error::Error as StdError, fmt, time::Duration};
 
 use cfg_if::cfg_if;
 use diesel::result::{Error as DieselError, QueryResult};
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use diesel::{Connection, result::ConnectionError};
 use diesel_migrations::MigrationHarness;
+use tokio::time::timeout;
+use tracing::info;
 
 use super::connection::{DbConnection, MIGRATIONS};
 
@@ -55,6 +57,19 @@ impl StdError for MigrationConnectionError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> { Some(&self.0) }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct MigrationTimeoutError(Duration);
+
+impl fmt::Display for MigrationTimeoutError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "migration execution exceeded {:?}", self.0)
+    }
+}
+
+impl StdError for MigrationTimeoutError {}
+
+const MIGRATION_TIMEOUT: Duration = Duration::from_secs(5);
+
 cfg_if! {
     if #[cfg(feature = "sqlite")] {
         /// Run embedded database migrations.
@@ -63,14 +78,25 @@ cfg_if! {
         /// Returns any error produced by Diesel while running migrations.
         #[must_use = "handle the result"]
         pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
-            conn.spawn_blocking(|c| {
-                c.run_pending_migrations(MIGRATIONS)
-                    .map(|_| ())
-                    .map_err(|e: Box<dyn StdError + Send + Sync>| {
-                        DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
-                    })
-            })
-            .await?;
+            timeout(
+                MIGRATION_TIMEOUT,
+                conn.spawn_blocking(|c| {
+                    if let Ok(false) = c.has_pending_migration(MIGRATIONS) {
+                        info!("no pending migrations; skipping apply");
+                        return Ok(());
+                    }
+                    info!("applying pending migrations");
+                    c.run_pending_migrations(MIGRATIONS)
+                        .map(|_| ())
+                        .map_err(|e: Box<dyn StdError + Send + Sync>| {
+                            DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
+                        })
+                }),
+            )
+            .await
+            .map_err(|_| {
+                DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
+            })??;
             Ok(())
         }
     } else if #[cfg(all(feature = "postgres", not(feature = "sqlite")))] {
@@ -83,20 +109,30 @@ cfg_if! {
             use diesel::pg::PgConnection;
             use tokio::task;
             let url = database_url.to_owned();
-            task::spawn_blocking(move || -> QueryResult<()> {
-                let mut conn = PgConnection::establish(&url).map_err(|e| {
-                    DieselError::SerializationError(Box::new(MigrationConnectionError(e)))
-                })?;
-                conn.run_pending_migrations(MIGRATIONS)
-                    .map(|_| ())
-                    .map_err(|e: Box<dyn StdError + Send + Sync>| {
-                        DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
-                    })
-            })
+            timeout(
+                MIGRATION_TIMEOUT,
+                task::spawn_blocking(move || -> QueryResult<()> {
+                    let mut conn = PgConnection::establish(&url).map_err(|e| {
+                        DieselError::SerializationError(Box::new(MigrationConnectionError(e)))
+                    })?;
+                    if let Ok(false) = conn.has_pending_migration(MIGRATIONS) {
+                        info!("no pending migrations; skipping apply");
+                        return Ok(());
+                    }
+                    info!("applying pending migrations");
+                    conn.run_pending_migrations(MIGRATIONS)
+                        .map(|_| ())
+                        .map_err(|e: Box<dyn StdError + Send + Sync>| {
+                            DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
+                        })
+                }),
+            )
             .await
-            .map_err(|e| {
-                DieselError::SerializationError(Box::new(MigrationExecutorError(e)))
+            .map_err(|_| {
+                DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
             })?
+            .map_err(|e| DieselError::SerializationError(Box::new(MigrationExecutorError(e))))??;
+            Ok(())
         }
     }
 }

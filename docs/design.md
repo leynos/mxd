@@ -83,6 +83,71 @@ domain logic without duplicating setup code. The change is protected by new
 `rstest` fixtures around `AppConfig::load_from_iter` plus `rstest-bdd`
 behaviour tests covering successful and failing `create-user` invocations.
 
+### Runtime selection via feature flags
+
+The bespoke Tokio loop is now gated behind a `legacy-networking` Cargo feature.
+When the feature is enabled (the default for compatibility) the `mxd` binary
+continues to call `legacy::dispatch()` and exposes the classic accept loop.
+Disabling the feature with `--no-default-features` removes the legacy frame
+handler from the build: `server::run()` delegates to the Wireframe runtime and
+the `mxd` binary is omitted via `required-features`.
+
+Administrative commands (`create-user`) live in `server::admin::run_command` so
+both runtimes share identical behaviour without depending on the legacy
+adapter. Unit- and behaviour-level tests assert the feature gate:
+`active_runtime()` reports `Legacy` when the feature is present and `Wireframe`
+when it is not, ensuring the adapter strategy in
+`docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md` can be
+enforced without leaking transport details into domain code.
+
+The runtime boundary is illustrated below:
+
+```mermaid
+classDiagram
+    class NetworkRuntime {
+        +Legacy
+        +Wireframe
+    }
+    class AppConfig {
+        +argon2_m_cost: u32
+        +argon2_t_cost: u32
+        +argon2_p_cost: u32
+        +database: String
+        +default()
+    }
+    class Commands {
+        +CreateUser(args: CreateUserArgs)
+    }
+    class CreateUserArgs {
+        +username: Option<String>
+        +password: Option<String>
+    }
+    class Admin {
+        +run_command(command: Commands, cfg: AppConfig): Result
+        +argon2_from_config(cfg: AppConfig): Argon2
+    }
+    class Legacy {
+        +dispatch(cli: Cli): Result
+        +run_daemon(cfg: AppConfig): Result
+    }
+    class Wireframe {
+        +run_with_cli(cli: Cli): Result
+    }
+    class Server {
+        +run(): Result
+        +run_with_cli(cli: Cli): Result
+        +active_runtime(): NetworkRuntime
+    }
+    Server --> "1" Admin : uses
+    Legacy --> "1" Admin : uses
+    Wireframe --> "1" Admin : uses
+    Server --> "1" Legacy : dispatches (if legacy-networking)
+    Server --> "1" Wireframe : dispatches (if not legacy-networking)
+    Admin --> "1" AppConfig : config
+    Admin --> "1" Commands : command
+    Commands --> "1" CreateUserArgs : args
+```
+
 **Layering and Responsibilities**:
 
 - *Domain layer*: Contains entities like `Session` (session state), `Command`

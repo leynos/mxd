@@ -1,3 +1,6 @@
+//! Legacy handshake integration covering unsupported protocol versions.
+#![cfg(feature = "legacy-networking")]
+
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,

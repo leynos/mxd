@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-postgres test-sqlite lint fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release
+.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only lint fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release
 
 APP ?= mxd
 CARGO ?= cargo
@@ -8,9 +8,10 @@ MDLINT ?= markdownlint-cli2
 NIXIE ?= nixie
 RSTEST_TIMEOUT ?= 20
 SQLITE_FEATURES := --features sqlite
-POSTGRES_FEATURES := --no-default-features --features postgres
+POSTGRES_FEATURES := --no-default-features --features "postgres legacy-networking"
 TEST_SQLITE_FEATURES := --features "sqlite test-support"
-TEST_POSTGRES_FEATURES := --no-default-features --features "postgres test-support"
+TEST_POSTGRES_FEATURES := --no-default-features --features "postgres test-support legacy-networking"
+WIREFRAME_ONLY_FEATURES := --no-default-features --features "sqlite toml test-support"
 POSTGRES_TARGET_DIR := target/postgres
 
 all: release ## Build release binaries for sqlite and postgres
@@ -46,13 +47,16 @@ markdownlint: ## Lint Markdown files
 nixie: ## Validate Mermaid diagrams
 	$(NIXIE) --no-sandbox
 
-test: test-postgres test-sqlite ## Run sqlite and postgres test suites
+test: test-postgres test-sqlite test-wireframe-only ## Run sqlite, postgres, and wireframe-only suites
 
 test-postgres: ## Run tests with the postgres backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_POSTGRES_FEATURES)
 
 test-sqlite: ## Run tests with the sqlite backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_SQLITE_FEATURES)
+
+test-wireframe-only: ## Run tests with legacy networking disabled
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(WIREFRAME_ONLY_FEATURES)
 
 sqlite: target/debug/$(APP) ## Build debug sqlite binary
 

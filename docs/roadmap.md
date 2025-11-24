@@ -30,12 +30,16 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `WireframeBootstrap` (`src/server/wireframe.rs`) and a new binary entry point
   so the listener binds after parsing `AppConfig`. Dependencies: Step
   “Bootstrap the wireframe server”.
-- [ ] Task: Retire the bespoke networking loop once the wireframe pipeline is
+- [x] Task: Retire the bespoke networking loop once the wireframe pipeline is
   feature-complete. Acceptance: The legacy frame handler is gated behind a
   feature flag or removed without reducing existing automated test coverage,
   aligning with the adapter strategy in
   `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`.
-  Dependencies: Step “Route transactions through wireframe”.
+  Status: Completed on 20 November 2025 by gating the legacy runtime behind the
+  `legacy-networking` feature, defaulting `server::run()` to Wireframe when
+  that feature is disabled, and preserving test coverage via added unit,
+  behaviour, and Postgres-backed admin tests. Dependencies: Step “Route
+  transactions through wireframe”.
 
 ### Step: Implement the wireframe handshake
 

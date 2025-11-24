@@ -1,3 +1,8 @@
+//! Legacy TCP integration tests that reject malformed payloads for banner and
+//! user list transactions. Skipped when the `legacy-networking` feature is not
+//! compiled.
+#![cfg(feature = "legacy-networking")]
+
 use std::{
     convert::TryFrom,
     io::{Read, Write},
@@ -27,7 +32,11 @@ fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
         b"TRTP",
         "protocol mismatch in handshake reply"
     );
-    let code = u32::from_be_bytes(reply[4..8].try_into().unwrap());
+    let code = u32::from_be_bytes(
+        reply[4..8]
+            .try_into()
+            .expect("handshake reply contains a 4-byte status field"),
+    );
     assert_eq!(code, 0, "handshake returned error code {code}");
     Ok(())
 }

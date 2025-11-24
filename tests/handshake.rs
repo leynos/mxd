@@ -1,3 +1,7 @@
+//! Handshake integration tests for the legacy TCP adapter.
+//! Skips when the build omits the `legacy-networking` runtime.
+#![cfg(feature = "legacy-networking")]
+
 use std::{
     io::{Read, Write},
     net::{Shutdown, TcpStream},
@@ -28,7 +32,14 @@ fn handshake() -> Result<(), AnyError> {
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
     assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 0);
+    assert_eq!(
+        u32::from_be_bytes(
+            reply[4..8]
+                .try_into()
+                .expect("failed to decode reply length bytes"),
+        ),
+        0
+    );
 
     // Close the write side to signal that no further data will be sent.
     // This allows the server to terminate the connection immediately

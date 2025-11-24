@@ -1,3 +1,7 @@
+#![cfg(feature = "legacy-networking")]
+// File list routing is exposed only via the legacy adapter until wireframe
+// transaction mapping lands.
+
 //! Integration tests for file list operations.
 //!
 //! Exercises the `GetFileNameList` transaction with ACL filtering and error
@@ -139,7 +143,6 @@ fn test_stream(
     reason = "Keep signature consistent with `SetupFn` so tests can swap in fallible setup \
               routines."
 )]
-// Keep signature consistent with `SetupFn` so tests can swap in fallible setup routines.
 fn noop_setup(_: &str) -> TestResult<()> { Ok(()) }
 
 #[rstest]
