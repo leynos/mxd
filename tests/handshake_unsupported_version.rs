@@ -1,3 +1,7 @@
+#![cfg(feature = "legacy-networking")]
+// Exercises the legacy TCP handshake error path; skipped when the legacy
+// adapter is not compiled.
+
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
