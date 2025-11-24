@@ -97,4 +97,25 @@ mod tests {
     fn reports_wireframe_runtime() {
         assert_eq!(active_runtime(), NetworkRuntime::Wireframe);
     }
+
+    #[test]
+    fn parses_mixed_case_legacy() {
+        assert_eq!(
+            "LeGaCy".parse::<NetworkRuntime>().ok(),
+            Some(NetworkRuntime::Legacy)
+        );
+    }
+
+    #[test]
+    fn parses_mixed_case_wireframe() {
+        assert_eq!(
+            "wireFRAME".parse::<NetworkRuntime>().ok(),
+            Some(NetworkRuntime::Wireframe)
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_runtime() {
+        assert!("unknown".parse::<NetworkRuntime>().is_err());
+    }
 }

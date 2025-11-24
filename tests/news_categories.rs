@@ -4,6 +4,10 @@
 //! paths (root, nested bundles, trailing slashes) and handles edge cases such
 //! as invalid paths and empty databases.
 
+#![cfg(feature = "legacy-networking")]
+// News category integration tests exercise the legacy TCP adapter; skip when
+// the legacy runtime is not compiled.
+
 use std::{
     convert::TryFrom,
     io::{Read, Write},

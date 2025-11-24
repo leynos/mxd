@@ -1,6 +1,8 @@
+//! Legacy TCP integration tests covering news article flows. Exercises
+//! listing, posting, and fetching news articles through the legacy adapter.
+//! Skips when the `legacy-networking` feature is disabled because wireframe
+//! routing is not yet wired for these transactions.
 #![cfg(feature = "legacy-networking")]
-// News article integration flows exercise the legacy TCP adapter; skip when
-// the legacy runtime is not compiled.
 
 use std::{
     convert::TryFrom,
@@ -112,7 +114,7 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
         .into_iter()
         .filter_map(|(id, d)| {
             if id == FieldId::NewsArticle {
-                Some(String::from_utf8(d).unwrap())
+                Some(String::from_utf8(d).expect("reply contains valid UTF-8 for article name"))
             } else {
                 None
             }
@@ -207,11 +209,17 @@ fn get_news_article_data() -> Result<(), AnyError> {
     for (id, d) in params {
         match id {
             FieldId::NewsTitle => {
-                assert_eq!(String::from_utf8(d).unwrap(), "First");
+                assert_eq!(
+                    String::from_utf8(d).expect("reply contains valid UTF-8 for article title"),
+                    "First",
+                );
                 found_title = true;
             }
             FieldId::NewsArticleData => {
-                assert_eq!(String::from_utf8(d).unwrap(), "hello");
+                assert_eq!(
+                    String::from_utf8(d).expect("reply contains valid UTF-8 for article data"),
+                    "hello",
+                );
                 found_data = true;
             }
             _ => {}
@@ -279,7 +287,9 @@ fn post_news_article_root() -> Result<(), AnyError> {
     let mut id_found = false;
     for (id, data) in params {
         if id == FieldId::NewsArticleId {
-            let arr: [u8; 4] = data.try_into().unwrap();
+            let arr: [u8; 4] = data
+                .try_into()
+                .expect("news-article id field contains exactly 4 bytes");
             assert_eq!(i32::from_be_bytes(arr), 1);
             id_found = true;
         }

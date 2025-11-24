@@ -17,13 +17,28 @@ use mxd::{
     db::{DbConnection, get_user_by_name},
     server::{AppConfig, Commands, CreateUserArgs, run_command},
 };
-use pg_embedded_setup_unpriv::{BootstrapErrorKind, PgEmbeddedError, TestCluster};
+use pg_embedded_setup_unpriv::{
+    BootstrapError,
+    BootstrapErrorKind,
+    ExecutionPrivileges,
+    PgEmbeddedError,
+    TestCluster,
+    detect_execution_privileges,
+};
 use rstest::rstest;
 use tokio::runtime::Builder;
 
 #[rstest]
 #[test]
 fn create_user_against_embedded_postgres() -> Result<()> {
+    if detect_execution_privileges() == ExecutionPrivileges::Root
+        && std::env::var_os("PG_EMBEDDED_WORKER").is_none()
+    {
+        eprintln!(
+            "SKIP-TEST-CLUSTER: PG_EMBEDDED_WORKER must be set when running with root privileges"
+        );
+        return Ok(());
+    }
     let rt = Builder::new_current_thread().enable_all().build()?;
 
     rt.block_on(async {
@@ -67,17 +82,23 @@ fn create_user_against_embedded_postgres() -> Result<()> {
 fn cluster_skip_reason(err: &(dyn Error + 'static)) -> Option<String> {
     let mut cause: Option<&dyn Error> = Some(err);
     while let Some(current) = cause {
-        if let Some(PgEmbeddedError::Bootstrap(inner)) = current.downcast_ref::<PgEmbeddedError>()
-            && inner.kind() == BootstrapErrorKind::WorkerBinaryMissing
+        if let Some(bootstrap) = current.downcast_ref::<BootstrapError>()
+            && bootstrap.kind() == BootstrapErrorKind::WorkerBinaryMissing
         {
             return Some("SKIP-TEST-CLUSTER: embedded worker binary missing".to_string());
         }
-        let msg = current.to_string();
-        if msg.starts_with("SKIP-TEST-CLUSTER") {
-            return Some(msg);
-        }
-        if msg.contains("PG_EMBEDDED_WORKER") {
-            return Some(format!("SKIP-TEST-CLUSTER: {msg}"));
+        if let Some(pg) = current.downcast_ref::<PgEmbeddedError>() {
+            match pg {
+                PgEmbeddedError::Bootstrap(inner)
+                    if inner.kind() == BootstrapErrorKind::WorkerBinaryMissing =>
+                {
+                    return Some("SKIP-TEST-CLUSTER: embedded worker binary missing".to_string());
+                }
+                PgEmbeddedError::Privilege(_) => {
+                    return Some(format!("SKIP-TEST-CLUSTER: {pg}"));
+                }
+                _ => {}
+            }
         }
         cause = current.source();
     }

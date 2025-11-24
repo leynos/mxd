@@ -78,7 +78,7 @@ cfg_if! {
         /// Returns any error produced by Diesel while running migrations.
         #[must_use = "handle the result"]
         pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
-            let outcome = timeout(
+            timeout(
                 MIGRATION_TIMEOUT,
                 conn.spawn_blocking(|c| {
                     if let Ok(false) = c.has_pending_migration(MIGRATIONS) {
@@ -96,8 +96,7 @@ cfg_if! {
             .await
             .map_err(|_| {
                 DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
-            })?;
-            outcome?;
+            })??;
             Ok(())
         }
     } else if #[cfg(all(feature = "postgres", not(feature = "sqlite")))] {
@@ -110,7 +109,7 @@ cfg_if! {
             use diesel::pg::PgConnection;
             use tokio::task;
             let url = database_url.to_owned();
-            let outcome = timeout(
+            timeout(
                 MIGRATION_TIMEOUT,
                 task::spawn_blocking(move || -> QueryResult<()> {
                     let mut conn = PgConnection::establish(&url).map_err(|e| {
@@ -132,10 +131,8 @@ cfg_if! {
             .map_err(|_| {
                 DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
             })?
-            .map_err(|e| {
-                DieselError::SerializationError(Box::new(MigrationExecutorError(e)))
-            })?;
-            outcome
+            .map_err(|e| DieselError::SerializationError(Box::new(MigrationExecutorError(e))))??;
+            Ok(())
         }
     }
 }

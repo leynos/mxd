@@ -1,6 +1,6 @@
+//! Exercises the legacy TCP handshake with an invalid protocol preamble.
+//! Skipped when the `legacy-networking` feature is not compiled.
 #![cfg(feature = "legacy-networking")]
-// Exercises the legacy TCP handshake with an invalid protocol preamble; skip
-// when the legacy adapter is not compiled.
 
 use std::{
     io::{Read, Write},

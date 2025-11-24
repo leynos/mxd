@@ -54,8 +54,8 @@ new `rstest-bdd` scenarios cover. Example:
 cargo run --bin mxd -- create-user --username alice --password secret
 ```
 
-The command runs pending migrations before inserting the user. Errors bubble up
-unchanged, so you can rely on the shell exit code in automation scripts.
+ The command runs pending migrations before inserting the user. Errors bubble
+ up unchanged, so the shell exit code remains reliable in automation scripts.
 
 ## Testing against PostgreSQL
 
@@ -68,8 +68,8 @@ wireframe-only suites; the postgres jobs automatically reuse the staged
 binaries. Both server binaries honour the same `MXD_DATABASE` and `--database`
 values, allowing the helper to be re-run once and then switching between
 `cargo run --bin mxd` and `cargo run --bin mxd-wireframe-server` without
-additional setup. Refer to `docs/pg-embedded-setup-unpriv-users-guide.md` if
-you need to customize the cluster paths or troubleshoot privilege issues.
+additional setup. Refer to `docs/pg-embedded-setup-unpriv-users-guide.md` for
+cluster path customisation and privilege troubleshooting details.
 
 ## Behaviour coverage
 
