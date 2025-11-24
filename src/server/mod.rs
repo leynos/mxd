@@ -24,7 +24,11 @@ pub use legacy::run_daemon;
 /// Track which networking runtime the crate is compiled to use.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkRuntime {
+    /// Active when the `legacy-networking` feature is enabled (uses the legacy
+    /// networking implementation).
     Legacy,
+    /// Active when the `legacy-networking` feature is not enabled (uses the
+    /// wireframe networking implementation).
     Wireframe,
 }
 
@@ -42,10 +46,11 @@ impl FromStr for NetworkRuntime {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            _ if s.eq_ignore_ascii_case("legacy") => Ok(NetworkRuntime::Legacy),
-            _ if s.eq_ignore_ascii_case("wireframe") => Ok(NetworkRuntime::Wireframe),
-            other => Err(format!("unknown runtime '{other}'")),
+        let lower = s.to_ascii_lowercase();
+        match lower.as_str() {
+            "legacy" => Ok(NetworkRuntime::Legacy),
+            "wireframe" => Ok(NetworkRuntime::Wireframe),
+            _ => Err(format!("unknown runtime '{s}'")),
         }
     }
 }
@@ -67,12 +72,7 @@ pub async fn run() -> Result<()> {
 ///
 /// Propagates any failure reported by the selected runtime.
 #[cfg(feature = "legacy-networking")]
-pub async fn run_with_cli(cli: Cli) -> Result<()> {
-    match active_runtime() {
-        NetworkRuntime::Legacy => legacy::dispatch(cli).await,
-        NetworkRuntime::Wireframe => wireframe::run_with_cli(cli).await,
-    }
-}
+pub async fn run_with_cli(cli: Cli) -> Result<()> { legacy::dispatch(cli).await }
 
 /// Execute the server logic using an already parsed [`Cli`].
 ///
@@ -84,18 +84,16 @@ pub async fn run_with_cli(cli: Cli) -> Result<()> { wireframe::run_with_cli(cli)
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
-
     use super::*;
 
     #[cfg(feature = "legacy-networking")]
-    #[rstest]
+    #[test]
     fn reports_legacy_runtime() {
         assert_eq!(active_runtime(), NetworkRuntime::Legacy);
     }
 
     #[cfg(not(feature = "legacy-networking"))]
-    #[rstest]
+    #[test]
     fn reports_wireframe_runtime() {
         assert_eq!(active_runtime(), NetworkRuntime::Wireframe);
     }

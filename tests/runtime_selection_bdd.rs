@@ -1,3 +1,9 @@
+//! Behaviour-driven tests for runtime selection.
+//!
+//! Verifies `active_runtime()` and `NetworkRuntime` parsing against the
+//! `runtime_selection.feature` scenarios for both legacy-enabled and
+//! legacy-disabled builds.
+
 use std::cell::RefCell;
 
 use mxd::server::{NetworkRuntime, active_runtime};
@@ -21,21 +27,14 @@ impl RuntimeWorld {
 }
 
 #[fixture]
-#[allow(unfulfilled_lint_expectations)]
-#[expect(unused_braces, reason = "Rust lint false positive")]
 fn world() -> RuntimeWorld { RuntimeWorld::new() }
 
 #[given("the runtime selection is computed")]
 fn given_runtime(world: &RuntimeWorld) { world.compute(); }
 
-#[allow(clippy::needless_pass_by_value)]
 #[then("the active runtime is \"{runtime}\"")]
-fn then_runtime(world: &RuntimeWorld, runtime: String) {
-    let expected = runtime
-        .parse::<NetworkRuntime>()
-        .unwrap_or_else(|err| panic!("{err}"));
-
-    assert_eq!(world.runtime(), expected);
+fn then_runtime(world: &RuntimeWorld, runtime: NetworkRuntime) {
+    assert_eq!(world.runtime(), runtime);
 }
 
 #[cfg(feature = "legacy-networking")]

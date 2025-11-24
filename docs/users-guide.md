@@ -8,8 +8,8 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
 ## Launching the legacy server
 
 - Build the sqlite variant with `make sqlite` or the postgres variant with
-  `make postgres`. The `legacy-networking` feature is enabled by default so the
-  `mxd` binary is available.
+  `make postgres`. The `legacy-networking` feature is enabled by default, so
+  the `mxd` binary is available.
 - Start the daemon with `cargo run --bin mxd -- --bind 0.0.0.0:5500 --database
   mxd.db`.
 - Override `MXD_`-prefixed environment variables or drop-in `.mxd.toml` files

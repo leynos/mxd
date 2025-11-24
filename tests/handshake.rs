@@ -1,3 +1,7 @@
+#![cfg(feature = "legacy-networking")]
+// Handshake integration exercises the legacy TCP adapter; skip when the
+// wireframe-only build is compiled without the legacy runtime.
+
 use std::{
     io::{Read, Write},
     net::{Shutdown, TcpStream},
