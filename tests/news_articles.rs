@@ -1,3 +1,7 @@
+#![cfg(feature = "legacy-networking")]
+// News article integration flows exercise the legacy TCP adapter; skip when
+// the legacy runtime is not compiled.
+
 use std::{
     convert::TryFrom,
     io::{Read, Write},
