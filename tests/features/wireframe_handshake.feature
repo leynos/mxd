@@ -10,13 +10,17 @@ Feature: Wireframe handshake preamble
     And the handshake version is 1
     And the handshake sub-version is 7
 
-  Scenario Outline: Rejects malformed Hotline handshakes
-    Given a malformed wireframe preamble with kind "<kind>"
+  Scenario: Rejects handshake with wrong protocol ID
+    Given a malformed wireframe preamble with kind "wrong-protocol"
     When I decode the wireframe preamble
-    Then decoding fails with "<message>"
+    Then decoding fails with "invalid protocol id"
 
-    Examples:
-      | kind            | message              |
-      | wrong-protocol  | invalid protocol id  |
-      | unsupported-ver | unsupported version  |
-      | truncated       | UnexpectedEnd        |
+  Scenario: Rejects handshake with unsupported version
+    Given a malformed wireframe preamble with kind "unsupported-ver"
+    When I decode the wireframe preamble
+    Then decoding fails with "unsupported version"
+
+  Scenario: Rejects truncated handshake
+    Given a malformed wireframe preamble with kind "truncated"
+    When I decode the wireframe preamble
+    Then decoding fails with "UnexpectedEnd"

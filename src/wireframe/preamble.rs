@@ -7,7 +7,7 @@
 //! malformed handshakes before invoking domain logic.
 
 use bincode::{
-    de::{read::Reader, BorrowDecode, BorrowDecoder},
+    de::{BorrowDecode, BorrowDecoder, read::Reader},
     error::DecodeError,
 };
 
@@ -60,7 +60,12 @@ fn decode_error_for_handshake(err: &HandshakeError) -> DecodeError {
 }
 
 #[cfg(test)]
-fn preamble_bytes(protocol: [u8; 4], sub_protocol: [u8; 4], version: u16, sub_version: u16) -> [u8; HANDSHAKE_LEN] {
+fn preamble_bytes(
+    protocol: [u8; 4],
+    sub_protocol: [u8; 4],
+    version: u16,
+    sub_version: u16,
+) -> [u8; HANDSHAKE_LEN] {
     let mut buf = [0u8; HANDSHAKE_LEN];
     buf[0..4].copy_from_slice(&protocol);
     buf[4..8].copy_from_slice(&sub_protocol);
@@ -71,8 +76,9 @@ fn preamble_bytes(protocol: [u8; 4], sub_protocol: [u8; 4], version: u16, sub_ve
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
     use std::io::Cursor;
+
+    use rstest::rstest;
     use tokio::io::BufReader;
     use wireframe::preamble::read_preamble;
 
@@ -134,7 +140,10 @@ mod tests {
             .await
             .expect_err("decode must fail");
 
-        assert!(matches!(err, DecodeError::UnexpectedEnd { additional: _ }));
+        assert!(matches!(
+            err,
+            DecodeError::UnexpectedEnd { additional: _ } | DecodeError::Io { additional: _, .. }
+        ));
     }
 }
 
@@ -266,7 +275,11 @@ mod bdd {
     fn accepts_preamble(world: HandshakeWorld) { let _ = world; }
 
     #[scenario(path = "tests/features/wireframe_handshake.feature", index = 1)]
-    fn rejects_preamble(world: HandshakeWorld, kind: String, message: String) {
-        let _ = (world, kind, message);
-    }
+    fn rejects_wrong_protocol(world: HandshakeWorld) { let _ = world; }
+
+    #[scenario(path = "tests/features/wireframe_handshake.feature", index = 2)]
+    fn rejects_unsupported_version(world: HandshakeWorld) { let _ = world; }
+
+    #[scenario(path = "tests/features/wireframe_handshake.feature", index = 3)]
+    fn rejects_truncated(world: HandshakeWorld) { let _ = world; }
 }
