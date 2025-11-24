@@ -54,8 +54,8 @@ new `rstest-bdd` scenarios cover. Example:
 cargo run --bin mxd -- create-user --username alice --password secret
 ```
 
- The command runs pending migrations before inserting the user. Errors bubble
- up unchanged, so the shell exit code remains reliable in automation scripts.
+The command runs pending migrations before inserting the user. Errors bubble up
+unchanged, so the shell exit code remains reliable in automation scripts.
 
 ## Testing against PostgreSQL
 

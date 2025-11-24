@@ -27,7 +27,11 @@ impl RuntimeWorld {
 }
 
 #[fixture]
-fn world() -> RuntimeWorld { return RuntimeWorld::new(); }
+fn world() -> RuntimeWorld {
+    let world = RuntimeWorld::new();
+    debug_assert!(world.runtime.borrow().is_none(), "world starts empty");
+    world
+}
 
 #[given("the runtime selection is computed")]
 fn given_runtime(world: &RuntimeWorld) { world.compute(); }

@@ -32,6 +32,13 @@ fn handshake_invalid_protocol() -> Result<(), AnyError> {
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
     assert_eq!(&reply[0..4], b"TRTP");
-    assert_eq!(u32::from_be_bytes(reply[4..8].try_into().unwrap()), 1);
+    assert_eq!(
+        u32::from_be_bytes(
+            reply[4..8]
+                .try_into()
+                .expect("reply slice must convert to 4-byte array")
+        ),
+        1
+    );
     Ok(())
 }

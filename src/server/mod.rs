@@ -84,6 +84,8 @@ pub async fn run_with_cli(cli: Cli) -> Result<()> { wireframe::run_with_cli(cli)
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[cfg(feature = "legacy-networking")]
@@ -98,20 +100,14 @@ mod tests {
         assert_eq!(active_runtime(), NetworkRuntime::Wireframe);
     }
 
-    #[test]
-    fn parses_mixed_case_legacy() {
-        assert_eq!(
-            "LeGaCy".parse::<NetworkRuntime>().ok(),
-            Some(NetworkRuntime::Legacy)
-        );
-    }
-
-    #[test]
-    fn parses_mixed_case_wireframe() {
-        assert_eq!(
-            "wireFRAME".parse::<NetworkRuntime>().ok(),
-            Some(NetworkRuntime::Wireframe)
-        );
+    #[rstest]
+    #[case("LeGaCy", NetworkRuntime::Legacy)]
+    #[case("wireFRAME", NetworkRuntime::Wireframe)]
+    fn parses_known_runtimes(#[case] input: &str, #[case] expected: NetworkRuntime) {
+        let parsed = input
+            .parse::<NetworkRuntime>()
+            .expect("runtime string should parse");
+        assert_eq!(parsed, expected);
     }
 
     #[test]
