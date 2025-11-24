@@ -7,7 +7,7 @@
 //! malformed handshakes before invoking domain logic.
 
 use bincode::{
-    de::{BorrowDecode, BorrowDecoder, Decoder},
+    de::{read::Reader, BorrowDecode, BorrowDecoder},
     error::DecodeError,
 };
 
@@ -48,11 +48,11 @@ impl<'de> BorrowDecode<'de, ()> for HotlinePreamble {
         decoder.reader().read(&mut buf)?;
         parse_handshake(&buf)
             .map(|handshake| Self { handshake })
-            .map_err(decode_error_for_handshake)
+            .map_err(|err| decode_error_for_handshake(&err))
     }
 }
 
-fn decode_error_for_handshake(err: HandshakeError) -> DecodeError {
+fn decode_error_for_handshake(err: &HandshakeError) -> DecodeError {
     match err {
         HandshakeError::InvalidProtocol => DecodeError::Other("invalid protocol id"),
         HandshakeError::UnsupportedVersion(_) => DecodeError::Other("unsupported version"),
@@ -60,15 +60,10 @@ fn decode_error_for_handshake(err: HandshakeError) -> DecodeError {
 }
 
 #[cfg(test)]
-fn preamble_bytes(
-    protocol: &[u8; 4],
-    sub_protocol: &[u8; 4],
-    version: u16,
-    sub_version: u16,
-) -> [u8; HANDSHAKE_LEN] {
+fn preamble_bytes(protocol: [u8; 4], sub_protocol: [u8; 4], version: u16, sub_version: u16) -> [u8; HANDSHAKE_LEN] {
     let mut buf = [0u8; HANDSHAKE_LEN];
-    buf[0..4].copy_from_slice(protocol);
-    buf[4..8].copy_from_slice(sub_protocol);
+    buf[0..4].copy_from_slice(&protocol);
+    buf[4..8].copy_from_slice(&sub_protocol);
     buf[8..10].copy_from_slice(&version.to_be_bytes());
     buf[10..12].copy_from_slice(&sub_version.to_be_bytes());
     buf
@@ -77,7 +72,8 @@ fn preamble_bytes(
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-    use tokio::io::{BufReader, Cursor};
+    use std::io::Cursor;
+    use tokio::io::BufReader;
     use wireframe::preamble::read_preamble;
 
     use super::*;
@@ -86,7 +82,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn decodes_valid_preamble() {
-        let bytes = preamble_bytes(PROTOCOL_ID, b"CHAT", VERSION, 7);
+        let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 7);
         let mut reader = BufReader::new(Cursor::new(bytes));
 
         let (preamble, leftover) = read_preamble::<_, HotlinePreamble>(&mut reader)
@@ -105,7 +101,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn rejects_invalid_protocol() {
-        let bytes = preamble_bytes(b"WRNG", b"CHAT", VERSION, 1);
+        let bytes = preamble_bytes(*b"WRNG", *b"CHAT", VERSION, 1);
         let mut reader = BufReader::new(Cursor::new(bytes));
 
         let err = read_preamble::<_, HotlinePreamble>(&mut reader)
@@ -118,7 +114,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn rejects_unsupported_version() {
-        let bytes = preamble_bytes(PROTOCOL_ID, b"CHAT", VERSION + 1, 0);
+        let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION + 1, 0);
         let mut reader = BufReader::new(Cursor::new(bytes));
 
         let err = read_preamble::<_, HotlinePreamble>(&mut reader)
@@ -131,7 +127,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn propagates_truncated_input() {
-        let bytes = &preamble_bytes(PROTOCOL_ID, b"CHAT", VERSION, 0)[..6];
+        let bytes = &preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 0)[..6];
         let mut reader = BufReader::new(Cursor::new(bytes));
 
         let err = read_preamble::<_, HotlinePreamble>(&mut reader)
@@ -161,7 +157,11 @@ mod bdd {
     }
 
     impl HandshakeWorld {
-        fn set_bytes(&self, bytes: Vec<u8>) { self.bytes.borrow_mut().clone_from(&bytes); }
+        fn set_bytes(&self, bytes: &[u8]) {
+            let mut target = self.bytes.borrow_mut();
+            target.clear();
+            target.extend_from_slice(bytes);
+        }
 
         fn decode(&self) {
             let cfg = config::standard()
@@ -176,24 +176,29 @@ mod bdd {
     #[fixture]
     fn world() -> HandshakeWorld {
         let world = HandshakeWorld::default();
-        world.set_bytes(preamble_bytes(PROTOCOL_ID, b"CHAT", VERSION, 7).to_vec());
+        world.set_bytes(&preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 7));
         world
     }
 
     #[given("a valid wireframe handshake preamble")]
     fn given_valid(world: &HandshakeWorld) {
-        world.set_bytes(preamble_bytes(PROTOCOL_ID, b"CHAT", VERSION, 7).to_vec());
+        world.set_bytes(&preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 7));
     }
 
     #[given("a malformed wireframe preamble with kind \"{kind}\"")]
+    #[allow(clippy::needless_pass_by_value)]
     fn given_malformed(world: &HandshakeWorld, kind: String) {
         let bytes = match kind.as_str() {
-            "wrong-protocol" => preamble_bytes(b"WRNG", b"CHAT", VERSION, 1).to_vec(),
-            "unsupported-ver" => preamble_bytes(PROTOCOL_ID, b"CHAT", VERSION + 1, 0).to_vec(),
-            "truncated" => preamble_bytes(PROTOCOL_ID, b"CHAT", VERSION, 0)[..6].to_vec(),
+            "wrong-protocol" => preamble_bytes(*b"WRNG", *b"CHAT", VERSION, 1),
+            "unsupported-ver" => preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION + 1, 0),
+            "truncated" => preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 0),
             other => panic!("unknown malformed preamble kind '{other}'"),
         };
-        world.set_bytes(bytes);
+        if kind == "truncated" {
+            world.set_bytes(&bytes[..6]);
+        } else {
+            world.set_bytes(&bytes);
+        }
     }
 
     #[when("I decode the wireframe preamble")]
@@ -208,6 +213,7 @@ mod bdd {
         assert_step_ok!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     #[then("the sub-protocol is \"{tag}\"")]
     fn then_sub_protocol(world: &HandshakeWorld, tag: String) {
         let outcome_ref = world.outcome.borrow();
@@ -242,6 +248,7 @@ mod bdd {
         assert_eq!(preamble.handshake.sub_version, sub_version);
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     #[then("decoding fails with \"{message}\"")]
     fn then_failure(world: &HandshakeWorld, message: String) {
         let outcome_ref = world.outcome.borrow();
@@ -259,5 +266,7 @@ mod bdd {
     fn accepts_preamble(world: HandshakeWorld) { let _ = world; }
 
     #[scenario(path = "tests/features/wireframe_handshake.feature", index = 1)]
-    fn rejects_preamble(world: HandshakeWorld) { let _ = world; }
+    fn rejects_preamble(world: HandshakeWorld, kind: String, message: String) {
+        let _ = (world, kind, message);
+    }
 }
