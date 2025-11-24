@@ -60,14 +60,16 @@ async fn create_user_against_embedded_postgres() -> Result<()> {
 }
 
 fn cluster_skip_reason(err: &dyn Error) -> Option<String> {
-    for cause in std::iter::successors(Some(err), |e| e.source()) {
-        let msg = cause.to_string();
+    let mut cause: Option<&dyn Error> = Some(err);
+    while let Some(current) = cause {
+        let msg = current.to_string();
         if msg.starts_with("SKIP-TEST-CLUSTER") {
             return Some(msg);
         }
         if msg.contains("PG_EMBEDDED_WORKER") {
             return Some(format!("SKIP-TEST-CLUSTER: {msg}"));
         }
+        cause = current.source();
     }
     None
 }
