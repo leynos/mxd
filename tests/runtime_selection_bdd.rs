@@ -27,6 +27,8 @@ impl RuntimeWorld {
 }
 
 #[fixture]
+#[allow(unfulfilled_lint_expectations)]
+#[expect(unused_braces, reason = "Rustc false positive")]
 fn world() -> RuntimeWorld { RuntimeWorld::new() }
 
 #[given("the runtime selection is computed")]
