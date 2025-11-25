@@ -9,7 +9,7 @@
 use std::{io, time::Duration};
 
 use bincode::error::DecodeError;
-use futures::FutureExt;
+use futures_util::{FutureExt, future::BoxFuture};
 use tokio::net::TcpStream;
 use wireframe::{
     app::WireframeApp,
@@ -46,19 +46,15 @@ where
         .preamble_timeout(timeout)
 }
 
-fn success_handler() -> impl for<'a> Fn(
-    &'a HotlinePreamble,
-    &'a mut TcpStream,
-) -> futures::future::BoxFuture<'a, io::Result<()>>
-+ Send
-+ Sync {
+fn success_handler()
+-> impl for<'a> Fn(&'a HotlinePreamble, &'a mut TcpStream) -> BoxFuture<'a, io::Result<()>> + Send + Sync
+{
     move |_, stream| write_handshake_reply(stream, HANDSHAKE_OK).boxed()
 }
 
 fn failure_handler()
--> impl for<'a> Fn(&'a DecodeError, &'a mut TcpStream) -> futures::future::BoxFuture<'a, io::Result<()>>
-+ Send
-+ Sync {
+-> impl for<'a> Fn(&'a DecodeError, &'a mut TcpStream) -> BoxFuture<'a, io::Result<()>> + Send + Sync
+{
     move |err, stream| {
         async move {
             if let Some(code) = error_code_for_decode(err) {
@@ -72,15 +68,8 @@ fn failure_handler()
 
 fn error_code_for_decode(err: &DecodeError) -> Option<u32> {
     match err {
-        DecodeError::OtherString(text) | DecodeError::Other(text) => {
-            if text.contains("invalid protocol id") {
-                Some(HANDSHAKE_ERR_INVALID)
-            } else if text.contains("unsupported version") {
-                Some(HANDSHAKE_ERR_UNSUPPORTED_VERSION)
-            } else {
-                None
-            }
-        }
+        DecodeError::OtherString(text) => error_code_from_str(text),
+        DecodeError::Other(text) => error_code_from_str(text),
         DecodeError::Io { inner, .. } if inner.kind() == io::ErrorKind::TimedOut => {
             Some(HANDSHAKE_ERR_TIMEOUT)
         }
@@ -88,11 +77,21 @@ fn error_code_for_decode(err: &DecodeError) -> Option<u32> {
     }
 }
 
+fn error_code_from_str(text: &str) -> Option<u32> {
+    if text.contains("invalid protocol id") {
+        Some(HANDSHAKE_ERR_INVALID)
+    } else if text.contains("unsupported version") {
+        Some(HANDSHAKE_ERR_UNSUPPORTED_VERSION)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use futures::FutureExt;
+    use futures_util::FutureExt;
     use rstest::rstest;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
