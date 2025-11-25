@@ -29,3 +29,4 @@ pub mod server;
 pub mod transaction;
 pub mod transaction_type;
 pub mod users;
+pub mod wireframe;

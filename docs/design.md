@@ -228,16 +228,43 @@ WireframeServer::new(|| {
 In this design, the **WireframeApp** is configured with a custom
 `HotlineHandshake` preamble and a `HotlineFrameSerializer`. The handshake
 ensures that when a new client connects, the first 12-byte greeting (`"TRTP"`
-magic and version info) is read and validated before
-proceeding([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L54-L63))([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L70-L79)).
- Wireframe invokes our handshake handler, which checks the protocol ID and
-version and sends the appropriate 8-byte reply (error code 0 for success, or an
-error code for
-mismatches)([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L70-L78)).
- This logic mirrors the custom handshake we previously implemented with raw
-Tokio (reading from the socket and writing `HANDSHAKE_OK` or an
-error)([4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L314-L323))([4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L326-L334)),
- but now it’s encapsulated as a formal **Preamble** in the adapter.
+magic and version info) is read and validated before proceeding. Wireframe
+invokes the handshake handler, which checks the protocol ID and version and
+sends the appropriate 8-byte reply (error code 0 for success, or an error code
+for mismatches). This logic mirrors the custom handshake previously implemented
+with raw Tokio (reading from the socket and writing `HANDSHAKE_OK` or an
+error), but now it is encapsulated as a formal **Preamble** in the adapter. The
+implemented `HotlinePreamble` (`src/wireframe/preamble.rs`) performs this
+validation during bincode decoding so Wireframe halts malformed connections
+before any routing occurs. Success/failure reply hooks remain separate work in
+the handshake step.
+
+#### Handshake sequence
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant WireframeListener
+    participant WireframeApp
+    participant HotlinePreamble
+    participant ProtocolModule
+
+    Client->>WireframeListener: open_tcp_connection()
+    WireframeListener->>Client: read_12_byte_preamble()
+    WireframeListener->>HotlinePreamble: BorrowDecode.borrow_decode(reader)
+    HotlinePreamble->>ProtocolModule: parse_handshake(preamble_bytes)
+
+    alt valid_preamble
+        ProtocolModule-->>HotlinePreamble: Handshake
+        HotlinePreamble-->>WireframeListener: HotlinePreamble
+        WireframeListener->>WireframeApp: start_routing_messages(Handshake)
+        WireframeApp-->>Client: process_hotline_requests()
+    else invalid_preamble
+        ProtocolModule-->>HotlinePreamble: HandshakeError
+        HotlinePreamble-->>WireframeListener: DecodeError
+        WireframeListener--X Client: close_connection()
+    end
+```
 
 After a successful handshake, Wireframe switches to framed message mode. We
 implement a **Serializer** that knows how to read and write Hotline

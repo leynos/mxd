@@ -20,7 +20,7 @@ use wireframe::{
 };
 
 use super::{AppConfig, Cli};
-use crate::server::admin;
+use crate::{server::admin, wireframe::preamble::HotlinePreamble};
 
 /// Parse CLI arguments and start the Wireframe runtime.
 ///
@@ -82,6 +82,7 @@ impl WireframeBootstrap {
             let shared = Arc::clone(&config_for_app);
             WireframeApp::default().app_data(shared)
         })
+        .with_preamble::<HotlinePreamble>()
         .accept_backoff(backoff);
         let server = server
             .bind(bind_addr)

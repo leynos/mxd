@@ -29,10 +29,11 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   listening on …` after the Wireframe listener binds.
 - Administrative subcommands such as `create-user` remain available because
   the bootstrap calls `mxd::server::run_command` before starting the listener.
-- This binary currently exposes an empty Wireframe listen loop; upcoming work
-  will register the Hotline handshake, codecs, and routes. Use it today to
-  validate configuration plumbing and to exercise the integration tests that
-  target the new adapter.
+- The Wireframe listener now decodes the Hotline 12-byte handshake preamble and
+  rejects invalid protocol IDs or versions before routing. Handshake reply
+  hooks, codecs, and routes remain pending, so behaviour beyond handshake is
+  unchanged. Use it today to validate configuration plumbing and to exercise
+  the integration tests that target the new adapter.
 
 ## Selecting a runtime
 

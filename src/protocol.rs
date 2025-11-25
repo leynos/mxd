@@ -32,7 +32,7 @@ pub const HANDSHAKE_ERR_TIMEOUT: u32 = 3;
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Parsed handshake information.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Handshake {
     /// Application-specific sub-protocol identifier.
     pub sub_protocol: u32,
