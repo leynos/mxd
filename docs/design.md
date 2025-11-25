@@ -239,6 +239,33 @@ validation during bincode decoding so Wireframe halts malformed connections
 before any routing occurs. Success/failure reply hooks remain separate work in
 the handshake step.
 
+#### Handshake sequence
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant WireframeListener
+    participant WireframeApp
+    participant HotlinePreamble
+    participant ProtocolModule
+
+    Client->>WireframeListener: open_tcp_connection()
+    WireframeListener->>Client: read_12_byte_preamble()
+    WireframeListener->>HotlinePreamble: BorrowDecode.borrow_decode(reader)
+    HotlinePreamble->>ProtocolModule: parse_handshake(preamble_bytes)
+
+    alt valid_preamble
+        ProtocolModule-->>HotlinePreamble: Handshake
+        HotlinePreamble-->>WireframeListener: HotlinePreamble
+        WireframeListener->>WireframeApp: start_routing_messages(Handshake)
+        WireframeApp-->>Client: process_hotline_requests()
+    else invalid_preamble
+        ProtocolModule-->>HotlinePreamble: HandshakeError
+        HotlinePreamble-->>WireframeListener: DecodeError
+        WireframeListener--X Client: close_connection()
+    end
+```
+
 After a successful handshake, Wireframe switches to framed message mode. We
 implement a **Serializer** that knows how to read and write Hotline
 **transaction frames**: it reads the 20-byte header (which includes flags,
