@@ -172,6 +172,13 @@ classDiagram
   fragmentation, etc., while ensuring each domain action is triggered by the
   correct protocol event.
 
+The Wireframe bootstrap now uses preamble callbacks to mirror the legacy
+handshake semantics: successful decodes write the 8-byte Hotline reply,
+validation failures map to Hotline error codes, and idle sockets are dropped
+after the five-second `HANDSHAKE_TIMEOUT` before any routing occurs. This keeps
+the domain free of transport-specific error handling while preserving Hotline’s
+observable behaviour.
+
 - *Storage layer*: Implements **outbound ports** (database operations) using
   Diesel. For instance, the domain core may call
   `db::get_user_by_name(username)` which is implemented with a Diesel query
