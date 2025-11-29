@@ -9,9 +9,6 @@ members = [
 default-members = ["."]
 resolver = "2"
 
-[patch.crates-io]
-wireframe = { path = "vendor/wireframe" }
-
 [workspace.dependencies]
 diesel-cte-ext = { version = "0.1.0", default-features = false, features = ["async"] }
 
@@ -53,7 +50,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 diesel-cte-ext = { workspace = true }
 futures-util = "0.3"
 tracing = "0.1"
-wireframe = "0.1.0-alpha1"
+wireframe = "0.1.0"
 figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"
