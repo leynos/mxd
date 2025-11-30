@@ -91,7 +91,6 @@ fn error_code_from_str(text: &str) -> Option<u32> {
 mod tests {
     use std::time::Duration;
 
-    use futures_util::FutureExt;
     use rstest::rstest;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
@@ -118,10 +117,10 @@ mod tests {
         buf
     }
 
-    pub(super) async fn start_server(
+    pub(super) fn start_server(
         timeout: Duration,
     ) -> (std::net::SocketAddr, oneshot::Sender<()>) {
-        let server = WireframeServer::new(|| WireframeApp::default())
+        let server = WireframeServer::new(WireframeApp::default)
             .workers(1)
             .with_preamble::<HotlinePreamble>();
         let server = install(server, timeout);
@@ -147,7 +146,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn replies_success() {
-        let (addr, shutdown) = start_server(HANDSHAKE_TIMEOUT).await;
+        let (addr, shutdown) = start_server(HANDSHAKE_TIMEOUT);
         let mut stream = TcpStream::connect(addr).await.expect("connect");
         let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 7);
         stream.write_all(&bytes).await.expect("write handshake");
@@ -166,7 +165,7 @@ mod tests {
     #[case(*PROTOCOL_ID, HANDSHAKE_ERR_UNSUPPORTED_VERSION)]
     #[tokio::test]
     async fn replies_handshake_errors(#[case] protocol: [u8; 4], #[case] expected: u32) {
-        let (addr, shutdown) = start_server(HANDSHAKE_TIMEOUT).await;
+        let (addr, shutdown) = start_server(HANDSHAKE_TIMEOUT);
         let mut stream = TcpStream::connect(addr).await.expect("connect");
         let version = if expected == HANDSHAKE_ERR_UNSUPPORTED_VERSION {
             VERSION + 1
@@ -187,7 +186,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn replies_timeout_for_idle_socket() {
-        let (addr, shutdown) = start_server(Duration::from_millis(100)).await;
+        let (addr, shutdown) = start_server(Duration::from_millis(100));
         let mut stream = TcpStream::connect(addr).await.expect("connect");
 
         let reply = timeout(Duration::from_secs(1), recv_reply(&mut stream))
@@ -216,7 +215,6 @@ mod bdd {
         time::timeout,
     };
 
-    use super::*;
     use crate::protocol::{HANDSHAKE_LEN, PROTOCOL_ID, REPLY_LEN, VERSION};
 
     fn preamble_bytes(
@@ -253,7 +251,7 @@ mod bdd {
         fn start_server(&self) {
             let (addr, shutdown) = self
                 .rt
-                .block_on(async { super::tests::start_server(Duration::from_millis(100)).await });
+                .block_on(async { super::tests::start_server(Duration::from_millis(100)) });
             self.addr.borrow_mut().replace(addr);
             self.shutdown.borrow_mut().replace(shutdown);
         }
@@ -272,7 +270,7 @@ mod bdd {
                         res.expect("read reply");
                         buf
                     })
-                    .map_err(ToString::to_string)
+                    .map_err(|err| err.to_string())
             });
             self.reply.borrow_mut().replace(reply);
         }
@@ -297,6 +295,9 @@ mod bdd {
         }
     }
 
+    // `rstest` reports this function as a fixture; rustc flags the required block
+    // as `unused_braces`, so suppress the false positive locally.
+    #[allow(unused_braces)]
     #[fixture]
     fn world() -> HandshakeWorld { HandshakeWorld::new() }
 
