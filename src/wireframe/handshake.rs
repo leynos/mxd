@@ -117,9 +117,7 @@ mod tests {
         buf
     }
 
-    pub(super) fn start_server(
-        timeout: Duration,
-    ) -> (std::net::SocketAddr, oneshot::Sender<()>) {
+    pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
         let server = WireframeServer::new(WireframeApp::default)
             .workers(1)
             .with_preamble::<HotlinePreamble>();
