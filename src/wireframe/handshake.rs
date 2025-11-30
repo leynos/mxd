@@ -46,6 +46,33 @@ where
         .preamble_timeout(timeout)
 }
 
+#[cfg(test)]
+mod test_support {
+    use tokio::io::AsyncReadExt;
+
+    use crate::protocol::{HANDSHAKE_LEN, REPLY_LEN};
+
+    pub fn preamble_bytes(
+        protocol: [u8; 4],
+        sub_protocol: [u8; 4],
+        version: u16,
+        sub_version: u16,
+    ) -> [u8; HANDSHAKE_LEN] {
+        let mut buf = [0u8; HANDSHAKE_LEN];
+        buf[0..4].copy_from_slice(&protocol);
+        buf[4..8].copy_from_slice(&sub_protocol);
+        buf[8..10].copy_from_slice(&version.to_be_bytes());
+        buf[10..12].copy_from_slice(&sub_version.to_be_bytes());
+        buf
+    }
+
+    pub async fn recv_reply(stream: &mut tokio::net::TcpStream) -> [u8; REPLY_LEN] {
+        let mut buf = [0u8; REPLY_LEN];
+        stream.read_exact(&mut buf).await.expect("handshake reply");
+        buf
+    }
+}
+
 fn success_handler()
 -> impl for<'a> Fn(&'a HotlinePreamble, &'a mut TcpStream) -> BoxFuture<'a, io::Result<()>> + Send + Sync
 {
@@ -77,10 +104,14 @@ fn error_code_for_decode(err: &DecodeError) -> Option<u32> {
     }
 }
 
+fn is_invalid_protocol(text: &str) -> bool { text == "handshake:invalid-protocol-id" }
+
+fn is_unsupported_version(text: &str) -> bool { text == "handshake:unsupported-version" }
+
 fn error_code_from_str(text: &str) -> Option<u32> {
-    if text.contains("invalid protocol id") {
+    if is_invalid_protocol(text) {
         Some(HANDSHAKE_ERR_INVALID)
-    } else if text.contains("unsupported version") {
+    } else if is_unsupported_version(text) {
         Some(HANDSHAKE_ERR_UNSUPPORTED_VERSION)
     } else {
         None
@@ -92,37 +123,31 @@ mod tests {
     use std::time::Duration;
 
     use rstest::rstest;
-    use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        net::TcpStream,
-        sync::oneshot,
-        time::timeout,
-    };
+    use tokio::{io::AsyncWriteExt, net::TcpStream, sync::oneshot, time::timeout};
     use wireframe::{app::WireframeApp, server::WireframeServer};
 
-    use super::*;
-    use crate::protocol::{HANDSHAKE_LEN, HANDSHAKE_TIMEOUT, PROTOCOL_ID, REPLY_LEN, VERSION};
-
-    fn preamble_bytes(
-        protocol: [u8; 4],
-        sub_protocol: [u8; 4],
-        version: u16,
-        sub_version: u16,
-    ) -> [u8; HANDSHAKE_LEN] {
-        let mut buf = [0u8; HANDSHAKE_LEN];
-        buf[0..4].copy_from_slice(&protocol);
-        buf[4..8].copy_from_slice(&sub_protocol);
-        buf[8..10].copy_from_slice(&version.to_be_bytes());
-        buf[10..12].copy_from_slice(&sub_version.to_be_bytes());
-        buf
-    }
+    use super::{
+        HotlinePreamble,
+        test_support::{preamble_bytes, recv_reply},
+    };
+    use crate::protocol::{
+        HANDSHAKE_ERR_INVALID,
+        HANDSHAKE_ERR_TIMEOUT,
+        HANDSHAKE_ERR_UNSUPPORTED_VERSION,
+        HANDSHAKE_OK,
+        HANDSHAKE_TIMEOUT,
+        PROTOCOL_ID,
+        VERSION,
+    };
 
     pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
         let server = WireframeServer::new(WireframeApp::default)
             .workers(1)
             .with_preamble::<HotlinePreamble>();
-        let server = install(server, timeout);
-        let server = server.bind("127.0.0.1:0".parse().unwrap()).expect("bind");
+        let server = super::install(server, timeout);
+        let server = server
+            .bind("127.0.0.1:0".parse().expect("parse socket addr"))
+            .expect("bind");
         let addr = server.local_addr().expect("addr");
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
@@ -133,12 +158,6 @@ mod tests {
                 .await;
         });
         (addr, shutdown_tx)
-    }
-
-    async fn recv_reply(stream: &mut TcpStream) -> [u8; REPLY_LEN] {
-        let mut buf = [0u8; REPLY_LEN];
-        stream.read_exact(&mut buf).await.expect("handshake reply");
-        buf
     }
 
     #[rstest]
@@ -152,7 +171,11 @@ mod tests {
         let reply = recv_reply(&mut stream).await;
         assert_eq!(&reply[0..4], PROTOCOL_ID);
         assert_eq!(
-            u32::from_be_bytes(reply[4..8].try_into().unwrap()),
+            u32::from_be_bytes(
+                reply[4..8]
+                    .try_into()
+                    .expect("convert reply slice to array (ok)")
+            ),
             HANDSHAKE_OK
         );
         let _ = shutdown.send(());
@@ -175,7 +198,11 @@ mod tests {
 
         let reply = recv_reply(&mut stream).await;
         assert_eq!(
-            u32::from_be_bytes(reply[4..8].try_into().unwrap()),
+            u32::from_be_bytes(
+                reply[4..8]
+                    .try_into()
+                    .expect("convert reply slice to array (error path)")
+            ),
             expected
         );
         let _ = shutdown.send(());
@@ -191,7 +218,11 @@ mod tests {
             .await
             .expect("reply timed out in test");
         assert_eq!(
-            u32::from_be_bytes(reply[4..8].try_into().unwrap()),
+            u32::from_be_bytes(
+                reply[4..8]
+                    .try_into()
+                    .expect("convert reply slice to array (timeout)")
+            ),
             HANDSHAKE_ERR_TIMEOUT
         );
         let _ = shutdown.send(());
@@ -213,21 +244,8 @@ mod bdd {
         time::timeout,
     };
 
-    use crate::protocol::{HANDSHAKE_LEN, PROTOCOL_ID, REPLY_LEN, VERSION};
-
-    fn preamble_bytes(
-        protocol: [u8; 4],
-        sub_protocol: [u8; 4],
-        version: u16,
-        sub_version: u16,
-    ) -> [u8; HANDSHAKE_LEN] {
-        let mut buf = [0u8; HANDSHAKE_LEN];
-        buf[0..4].copy_from_slice(&protocol);
-        buf[4..8].copy_from_slice(&sub_protocol);
-        buf[8..10].copy_from_slice(&version.to_be_bytes());
-        buf[10..12].copy_from_slice(&sub_version.to_be_bytes());
-        buf
-    }
+    use super::test_support::preamble_bytes;
+    use crate::protocol::{PROTOCOL_ID, REPLY_LEN, VERSION};
 
     struct HandshakeWorld {
         rt: Runtime,
@@ -280,7 +298,13 @@ mod bdd {
             };
             reply
                 .as_ref()
-                .map(|buf| u32::from_be_bytes(buf[4..8].try_into().unwrap()))
+                .map(|buf| {
+                    u32::from_be_bytes(
+                        buf[4..8]
+                            .try_into()
+                            .expect("convert reply slice to array (bdd reply)"),
+                    )
+                })
                 .map_err(ToString::to_string)
         }
     }

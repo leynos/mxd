@@ -35,7 +35,7 @@ fn build_app() -> wireframe::Result<WireframeApp> {
 ```
 
 The snippet below wires the builder into a Tokio runtime, decodes inbound
-payloads, and emits a serialised response. It showcases the typical `main`
+payloads, and emits a serialized response. It showcases the typical `main`
 function for a microservice that listens on localhost and responds to a `Ping`
 message with a `Pong` payload.[^2][^10][^15]
 
@@ -99,20 +99,20 @@ async fn main() -> Result<(), ServerError> {
 ```
 
 Route identifiers must be unique; the builder returns
-`WireframeError::DuplicateRoute` when you try to register a handler twice,
-keeping the dispatch table unambiguous.[^2][^5] New applications default to the
-bundled bincode serializer, a 1024-byte frame buffer, and a 100 ms read
-timeout. Clamp these limits with `buffer_capacity` and `read_timeout_ms`, or
-swap the serializer with `with_serializer` when you need a different encoding
-strategy.[^3][^4]
+`WireframeError::DuplicateRoute` when a handler is registered twice for the
+same route, keeping the dispatch table unambiguous.[^2][^5] New applications
+default to the bundled bincode serializer, a 1024-byte frame buffer, and a 100
+ms read timeout. Clamp these limits with `buffer_capacity` and
+`read_timeout_ms`, or swap the serializer with `with_serializer` when a
+different encoding strategy is required.[^3][^4]
 
 Once a stream is accepted—either from a manual accept loop or via
 `WireframeServer`—`handle_connection(stream)` builds (or reuses) the middleware
 chain, wraps the transport in a length-delimited codec, enforces per-frame read
 timeouts, and writes responses. Serialization helpers `send_response` and
-`send_response_framed` return typed `SendError` variants when encoding or I/O
-fails, and the connection closes after ten consecutive deserialization
-errors.[^6][^7]
+`send_response_framed` return typed `SendError` variants when encoding or
+input/output (I/O) fails, and the connection closes after ten consecutive
+deserialization errors.[^6][^7]
 
 ## Packets, payloads, and serialization
 
@@ -357,11 +357,11 @@ or emit errors.[^14]
 ## Running servers
 
 `WireframeServer::new` clones the application factory per worker, defaults the
-worker count to the host CPU total (never below one), supports a readiness
-signal, and normalizes accept-loop backoff settings through
-`accept_backoff`.[^15][^16] Servers start in an unbound state; call `bind` or
-`bind_existing_listener` to transition into the `Bound` typestate, inspect the
-bound address, or rebind later.[^17]
+worker count to the host central processing unit (CPU) total (never below one),
+supports a readiness signal, and normalizes accept-loop backoff settings
+through `accept_backoff`.[^15][^16] Servers start in an unbound state; call
+`bind` or `bind_existing_listener` to transition into the `Bound` typestate,
+inspect the bound address, or rebind later.[^17]
 
 `run` awaits Ctrl+C, while `run_with_shutdown` cancels all worker tasks when
 the supplied future resolves.[^18] Each worker runs `accept_loop`, which clones
@@ -451,9 +451,9 @@ the receiving half of a `tokio::sync::mpsc` channel to the connection actor,
 retain the sender, and push frames whenever back-pressure allows. The
 `Response::with_channel` helper constructs the pair and returns the sender
 alongside a `Response::MultiPacket`, making the ergonomic tuple pattern
-documented in ADR 0001 trivial to adopt. The library awaits channel capacity
-before accepting each frame, so producers can rely on the `send().await` future
-to coordinate flow control with the peer.
+documented in Architecture Decision Record (ADR) 0001 trivial to adopt. The
+library awaits channel capacity before accepting each frame, so producers can
+rely on the `send().await` future to coordinate flow control with the peer.
 
 ```rust
 use tokio::spawn;
@@ -573,7 +573,7 @@ call these helpers to maintain consistent telemetry.[^6][^7][^31][^20]
 
 ## Additional utilities
 
-- `read_preamble` decodes up to 1 KiB using bincode, returning the decoded
+- `read_preamble` decodes up to 1 kibibyte (KiB) using bincode, returning the
   value plus any leftover bytes that must be replayed before normal frame
   processing.[^37]
 - `RewindStream` replays leftover bytes before delegating reads and writes to
