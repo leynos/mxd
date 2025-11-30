@@ -20,7 +20,11 @@ use wireframe::{
 };
 
 use super::{AppConfig, Cli};
-use crate::{server::admin, wireframe::preamble::HotlinePreamble};
+use crate::{
+    protocol,
+    server::admin,
+    wireframe::{handshake, preamble::HotlinePreamble},
+};
 
 /// Parse CLI arguments and start the Wireframe runtime.
 ///
@@ -82,8 +86,9 @@ impl WireframeBootstrap {
             let shared = Arc::clone(&config_for_app);
             WireframeApp::default().app_data(shared)
         })
-        .with_preamble::<HotlinePreamble>()
-        .accept_backoff(backoff);
+        .with_preamble::<HotlinePreamble>();
+        let server =
+            handshake::install(server, protocol::HANDSHAKE_TIMEOUT).accept_backoff(backoff);
         let server = server
             .bind(bind_addr)
             .context("failed to bind Wireframe listener")?;

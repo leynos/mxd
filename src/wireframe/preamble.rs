@@ -53,7 +53,14 @@ impl<'de> BorrowDecode<'de, ()> for HotlinePreamble {
 }
 
 fn decode_error_for_handshake(err: &HandshakeError) -> DecodeError {
-    DecodeError::OtherString(err.to_string())
+    match err {
+        HandshakeError::InvalidProtocol => {
+            DecodeError::OtherString("handshake:invalid-protocol-id".into())
+        }
+        HandshakeError::UnsupportedVersion(_) => {
+            DecodeError::OtherString("handshake:unsupported-version".into())
+        }
+    }
 }
 
 #[cfg(test)]

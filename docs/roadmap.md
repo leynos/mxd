@@ -49,11 +49,14 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Status: Completed on 24 November 2025 by introducing `HotlinePreamble` as the
   Wireframe decoder and adding unit and behaviour tests for valid and invalid
   greetings. Dependencies: Step “Bootstrap the wireframe server”.
-- [ ] Task: Register success and failure hooks that emit the 8-byte reply and
+- [x] Task: Register success and failure hooks that emit the 8-byte reply and
   enforce a five-second timeout. Acceptance: Handshake errors surface correct
   Hotline error codes and time out idle sockets, matching behaviour documented
-  in the migration plan. Dependencies: Task “Implement the 12-byte Hotline
-  handshake preamble as a `wireframe::preamble::Preamble`.”
+  in the migration plan. Status: Completed on 29 November 2025 by switching to
+  `wireframe` v0.1.0’s preamble hooks, sending Hotline reply codes for success
+  and validation errors, enforcing the five-second timeout, and covering the
+  paths with `rstest` and `rstest-bdd` suites. Dependencies: Task “Implement
+  the 12-byte Hotline handshake preamble as a `wireframe::preamble::Preamble`.”
 - [ ] Task: Persist handshake metadata (sub-protocol ID, sub-version) into
   per-connection state for later routing decisions. Acceptance: Subsequent
   handlers can branch on the stored metadata to decide compatibility shims.
