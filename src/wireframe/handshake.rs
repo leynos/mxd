@@ -16,12 +16,14 @@ use wireframe::{
     server::{ServerState, WireframeServer},
 };
 
-use super::preamble::HotlinePreamble;
+use super::{preamble::HotlinePreamble, test_helpers};
 use crate::protocol::{
     HANDSHAKE_ERR_INVALID,
     HANDSHAKE_ERR_TIMEOUT,
     HANDSHAKE_ERR_UNSUPPORTED_VERSION,
+    HANDSHAKE_INVALID_PROTOCOL_TOKEN,
     HANDSHAKE_OK,
+    HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
     write_handshake_reply,
 };
 
@@ -44,33 +46,6 @@ where
         .on_preamble_decode_success(success_handler())
         .on_preamble_decode_failure(failure_handler())
         .preamble_timeout(timeout)
-}
-
-#[cfg(test)]
-mod test_support {
-    use tokio::io::AsyncReadExt;
-
-    use crate::protocol::{HANDSHAKE_LEN, REPLY_LEN};
-
-    pub fn preamble_bytes(
-        protocol: [u8; 4],
-        sub_protocol: [u8; 4],
-        version: u16,
-        sub_version: u16,
-    ) -> [u8; HANDSHAKE_LEN] {
-        let mut buf = [0u8; HANDSHAKE_LEN];
-        buf[0..4].copy_from_slice(&protocol);
-        buf[4..8].copy_from_slice(&sub_protocol);
-        buf[8..10].copy_from_slice(&version.to_be_bytes());
-        buf[10..12].copy_from_slice(&sub_version.to_be_bytes());
-        buf
-    }
-
-    pub async fn recv_reply(stream: &mut tokio::net::TcpStream) -> [u8; REPLY_LEN] {
-        let mut buf = [0u8; REPLY_LEN];
-        stream.read_exact(&mut buf).await.expect("handshake reply");
-        buf
-    }
 }
 
 fn success_handler()
@@ -104,9 +79,11 @@ fn error_code_for_decode(err: &DecodeError) -> Option<u32> {
     }
 }
 
-fn is_invalid_protocol(text: &str) -> bool { text.starts_with("handshake:invalid-protocol-id") }
+fn is_invalid_protocol(text: &str) -> bool { text.starts_with(HANDSHAKE_INVALID_PROTOCOL_TOKEN) }
 
-fn is_unsupported_version(text: &str) -> bool { text.starts_with("handshake:unsupported-version") }
+fn is_unsupported_version(text: &str) -> bool {
+    text.starts_with(HANDSHAKE_UNSUPPORTED_VERSION_TOKEN)
+}
 
 fn error_code_from_str(text: &str) -> Option<u32> {
     if is_invalid_protocol(text) {
@@ -126,18 +103,18 @@ mod tests {
     use tokio::{io::AsyncWriteExt, net::TcpStream, sync::oneshot, time::timeout};
     use wireframe::{app::WireframeApp, server::WireframeServer};
 
-    use super::{
-        HotlinePreamble,
-        test_support::{preamble_bytes, recv_reply},
-    };
-    use crate::protocol::{
-        HANDSHAKE_ERR_INVALID,
-        HANDSHAKE_ERR_TIMEOUT,
-        HANDSHAKE_ERR_UNSUPPORTED_VERSION,
-        HANDSHAKE_OK,
-        HANDSHAKE_TIMEOUT,
-        PROTOCOL_ID,
-        VERSION,
+    use super::HotlinePreamble;
+    use crate::{
+        protocol::{
+            HANDSHAKE_ERR_INVALID,
+            HANDSHAKE_ERR_TIMEOUT,
+            HANDSHAKE_ERR_UNSUPPORTED_VERSION,
+            HANDSHAKE_OK,
+            HANDSHAKE_TIMEOUT,
+            PROTOCOL_ID,
+            VERSION,
+        },
+        wireframe::test_helpers::{preamble_bytes, recv_reply},
     };
 
     pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
@@ -244,8 +221,10 @@ mod bdd {
         time::timeout,
     };
 
-    use super::test_support::preamble_bytes;
-    use crate::protocol::{PROTOCOL_ID, REPLY_LEN, VERSION};
+    use crate::{
+        protocol::{PROTOCOL_ID, REPLY_LEN, VERSION},
+        wireframe::test_helpers::preamble_bytes,
+    };
 
     struct HandshakeWorld {
         rt: Runtime,

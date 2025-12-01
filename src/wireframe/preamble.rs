@@ -11,7 +11,14 @@ use bincode::{
     error::DecodeError,
 };
 
-use crate::protocol::{HANDSHAKE_LEN, Handshake, HandshakeError, parse_handshake};
+use crate::protocol::{
+    HANDSHAKE_INVALID_PROTOCOL_TOKEN,
+    HANDSHAKE_LEN,
+    HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
+    Handshake,
+    HandshakeError,
+    parse_handshake,
+};
 
 /// Validated Hotline preamble decoded by the Wireframe server.
 ///
@@ -54,11 +61,11 @@ impl<'de> BorrowDecode<'de, ()> for HotlinePreamble {
 
 fn decode_error_for_handshake(err: &HandshakeError) -> DecodeError {
     match err {
-        HandshakeError::InvalidProtocol => {
-            DecodeError::OtherString("handshake:invalid-protocol-id: invalid protocol id".into())
-        }
+        HandshakeError::InvalidProtocol => DecodeError::OtherString(format!(
+            "{HANDSHAKE_INVALID_PROTOCOL_TOKEN}: invalid protocol id"
+        )),
         HandshakeError::UnsupportedVersion(ver) => DecodeError::OtherString(format!(
-            "handshake:unsupported-version: unsupported version {ver}"
+            "{HANDSHAKE_UNSUPPORTED_VERSION_TOKEN}: unsupported version {ver}"
         )),
     }
 }

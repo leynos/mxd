@@ -31,6 +31,11 @@ pub const HANDSHAKE_ERR_TIMEOUT: u32 = 3;
 /// Timeout for reading the client handshake.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Sentinel used when reporting an invalid protocol decode error.
+pub const HANDSHAKE_INVALID_PROTOCOL_TOKEN: &str = "handshake:invalid-protocol-id";
+/// Sentinel used when reporting an unsupported version decode error.
+pub const HANDSHAKE_UNSUPPORTED_VERSION_TOKEN: &str = "handshake:unsupported-version";
+
 /// Parsed handshake information.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Handshake {
