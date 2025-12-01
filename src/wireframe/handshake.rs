@@ -104,9 +104,9 @@ fn error_code_for_decode(err: &DecodeError) -> Option<u32> {
     }
 }
 
-fn is_invalid_protocol(text: &str) -> bool { text == "handshake:invalid-protocol-id" }
+fn is_invalid_protocol(text: &str) -> bool { text.starts_with("handshake:invalid-protocol-id") }
 
-fn is_unsupported_version(text: &str) -> bool { text == "handshake:unsupported-version" }
+fn is_unsupported_version(text: &str) -> bool { text.starts_with("handshake:unsupported-version") }
 
 fn error_code_from_str(text: &str) -> Option<u32> {
     if is_invalid_protocol(text) {
