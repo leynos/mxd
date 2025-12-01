@@ -376,7 +376,7 @@ the failure callback path.[^20]
 `spawn_connection_task` wraps each accepted stream in `read_preamble` and
 `RewindStream`, records connection panics, and logs failures without crashing
 worker tasks.[^20][^37][^38] `ServerError` surfaces bind and accept failures as
-typed errors so callers can react appropriately.[^21]
+typed errors, so callers can react appropriately.[^21]
 
 ## Push queues and connection actors
 
@@ -420,7 +420,7 @@ to enumerate active sessions.[^40]
 The `Response` enum models several reply styles: a single frame, a vector of
 frames, a streamed response, a channel-backed multi-packet response, or an
 empty reply. `into_stream` converts any variant into a boxed `FrameStream`,
-ready to install on a connection actor with `set_response` so streaming output
+ready to install on a connection actor with `set_response`, so streaming output
 can be interleaved with push traffic. `WireframeError` distinguishes transport
 failures from protocol-level errors emitted by streaming
 responses.[^34][^35][^31]
@@ -487,7 +487,7 @@ Multi-packet responders rely on the protocol hook `stream_end_frame` to emit a
 terminator when the producer side of the channel closes naturally. The
 connection actor records why the channel ended (`drained`, `disconnected`, or
 `shutdown`), stamps the stored `correlation_id` on the terminator frame, and
-routes it through the standard `before_send` instrumentation so telemetry and
+routes it through the standard `before_send` instrumentation, so telemetry and
 higher-level lifecycle hooks observe a consistent end-of-stream signal.
 Dropping all senders closes the channel; the actor logs the termination reason
 and forwards the terminator through the same hooks used for regular frames so
@@ -499,7 +499,7 @@ Phase out older message versions without breaking clients:
 
 - Accept versions N and N-1 on ingress; rewrite legacy payloads in middleware so
   downstream handlers see the current schema.[^10][^12]
-- Emit version N on egress so clients observe a single schema.
+- Emit version N on egress, so clients observe a single schema.
 - Publish metrics and logs describing legacy usage to support operator
   dashboards.[^33][^8]
 - Remove adapters once the sunset window ends.
@@ -567,7 +567,7 @@ fn build_app() -> Result<WireframeApp> {
 When the optional `metrics` feature is enabled, Wireframe updates the
 `wireframe_connections_active` gauge, frame counters tagged by direction, error
 counters tagged by kind, and a counter for panicking connection tasks. All
-helpers become no-ops when the feature is disabled so instrumentation can stay
+helpers become no-ops when the feature is disabled, so instrumentation can stay
 in place.[^33] `handle_connection`, the connection actor, and the panic wrapper
 call these helpers to maintain consistent telemetry.[^6][^7][^31][^20]
 

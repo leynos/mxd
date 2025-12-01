@@ -174,11 +174,13 @@ classDiagram
 
 The Wireframe bootstrap now uses preamble callbacks to mirror the legacy
 handshake semantics: successful decodes write the 8-byte Hotline reply,
-validation failures map to Hotline error codes, and idle sockets are dropped
-after the five-second `HANDSHAKE_TIMEOUT` before any routing occurs. This keeps
-the domain free of transport-specific error handling while preserving Hotline’s
-observable behaviour. Upgrading to `wireframe` v0.1.0 removed the temporary
-vendored fork; the runtime now leans on `on_preamble_decode_success`,
+validation failures map to Hotline error codes, and idle sockets trigger
+`preamble_timeout`, which invokes `on_preamble_decode_failure` to emit the
+8-byte Hotline timeout reply before the connection is closed after the
+five-second `HANDSHAKE_TIMEOUT`. This keeps the domain free of
+transport-specific error handling while preserving Hotline’s observable
+behaviour. Upgrading to `wireframe` v0.1.0 removed the temporary vendored fork;
+the runtime now leans on `on_preamble_decode_success`,
 `on_preamble_decode_failure`, and `preamble_timeout` to emit Hotline reply
 codes and apply the five-second idle cap without local patches.
 
