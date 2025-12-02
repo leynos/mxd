@@ -32,10 +32,12 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
 - The Wireframe listener now decodes the Hotline 12-byte handshake preamble,
   uses the upstream preamble hooks to send the 8-byte reply (0 on success, 1
   for invalid protocol, 2 for unsupported version, 3 for handshake timeout),
-  and drops idle sockets after the five-second handshake timeout before
-  routing. Codecs and routes remain pending, so behaviour beyond handshake is
-  unchanged. Use it today to validate configuration plumbing and to exercise
-  the integration tests that target the new adapter.
+  drops idle sockets after the five-second handshake timeout before routing,
+  and records the negotiated sub-protocol ID and sub-version in per-connection
+  state. The metadata stays available for the lifetime of the connection so
+  compatibility shims can branch on client quirks, and it is cleared during
+  teardown to avoid leaking between sessions. Codecs and routes remain pending,
+  so behaviour beyond handshake is unchanged.
 
 ## Selecting a runtime
 

@@ -4,6 +4,7 @@
 //! `wireframe` transport layer while keeping the domain crate free of
 //! transport-specific dependencies.
 
+pub mod connection;
 pub mod handshake;
 pub mod preamble;
 #[cfg(test)]

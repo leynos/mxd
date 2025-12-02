@@ -14,6 +14,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
+use tracing::warn;
 use wireframe::{
     app::WireframeApp,
     server::{BackoffConfig, WireframeServer},
@@ -23,7 +24,11 @@ use super::{AppConfig, Cli};
 use crate::{
     protocol,
     server::admin,
-    wireframe::{handshake, preamble::HotlinePreamble},
+    wireframe::{
+        connection::{HandshakeMetadata, clear_current_handshake, current_handshake},
+        handshake,
+        preamble::HotlinePreamble,
+    },
 };
 
 /// Parse CLI arguments and start the Wireframe runtime.
@@ -56,6 +61,16 @@ async fn run_daemon(config: AppConfig) -> Result<()> {
     bootstrap.run().await
 }
 
+fn build_app(config: Arc<AppConfig>) -> WireframeApp {
+    let handshake = current_handshake().unwrap_or_else(|| {
+        warn!("handshake metadata missing; defaulting to zeroed values");
+        HandshakeMetadata::default()
+    });
+    let app = WireframeApp::default().app_data(config).app_data(handshake);
+    clear_current_handshake();
+    app
+}
+
 #[derive(Clone, Debug)]
 struct WireframeBootstrap {
     bind_addr: SocketAddr,
@@ -82,11 +97,8 @@ impl WireframeBootstrap {
         println!("mxd-wireframe-server using database {}", config.database);
         println!("mxd-wireframe-server binding to {}", config.bind);
         let config_for_app = Arc::clone(&config);
-        let server = WireframeServer::new(move || {
-            let shared = Arc::clone(&config_for_app);
-            WireframeApp::default().app_data(shared)
-        })
-        .with_preamble::<HotlinePreamble>();
+        let server = WireframeServer::new(move || build_app(Arc::clone(&config_for_app)))
+            .with_preamble::<HotlinePreamble>();
         let server =
             handshake::install(server, protocol::HANDSHAKE_TIMEOUT).accept_backoff(backoff);
         let server = server

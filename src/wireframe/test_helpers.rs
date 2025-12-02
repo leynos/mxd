@@ -3,8 +3,6 @@
 //! These helpers keep handshake-related test plumbing in one place so unit and
 //! behaviour suites reuse the same encoding logic.
 
-#![cfg(test)]
-
 use tokio::io::AsyncReadExt;
 
 use crate::protocol::{HANDSHAKE_LEN, REPLY_LEN};
@@ -26,6 +24,10 @@ pub fn preamble_bytes(
 }
 
 /// Receive a single Hotline handshake reply from the stream.
+///
+/// # Panics
+///
+/// Panics if the stream cannot supply the full reply buffer.
 pub async fn recv_reply(stream: &mut tokio::net::TcpStream) -> [u8; REPLY_LEN] {
     let mut buf = [0u8; REPLY_LEN];
     stream.read_exact(&mut buf).await.expect("handshake reply");
