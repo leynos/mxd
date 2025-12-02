@@ -10,5 +10,12 @@
     },
     "MD029": { "style": "ordered" }
   },
-  "ignores": ["**/.git/**", "**/.venv/**", ".node_modules/**", "**/node_modules/**", "**/target/**"]
+  "ignores": [
+    "**/.git/**",
+    "**/.venv/**",
+    ".node_modules/**",
+    "**/node_modules/**",
+    "**/target/**",
+    "vendor/wireframe/**"
+  ]
 }

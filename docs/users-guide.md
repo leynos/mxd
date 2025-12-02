@@ -29,9 +29,11 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   listening on …` after the Wireframe listener binds.
 - Administrative subcommands such as `create-user` remain available because
   the bootstrap calls `mxd::server::run_command` before starting the listener.
-- The Wireframe listener now decodes the Hotline 12-byte handshake preamble and
-  rejects invalid protocol IDs or versions before routing. Handshake reply
-  hooks, codecs, and routes remain pending, so behaviour beyond handshake is
+- The Wireframe listener now decodes the Hotline 12-byte handshake preamble,
+  uses the upstream preamble hooks to send the 8-byte reply (0 on success, 1
+  for invalid protocol, 2 for unsupported version, 3 for handshake timeout),
+  and drops idle sockets after the five-second handshake timeout before
+  routing. Codecs and routes remain pending, so behaviour beyond handshake is
   unchanged. Use it today to validate configuration plumbing and to exercise
   the integration tests that target the new adapter.
 

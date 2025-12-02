@@ -11,7 +11,14 @@ use bincode::{
     error::DecodeError,
 };
 
-use crate::protocol::{HANDSHAKE_LEN, Handshake, HandshakeError, parse_handshake};
+use crate::protocol::{
+    HANDSHAKE_INVALID_PROTOCOL_TOKEN,
+    HANDSHAKE_LEN,
+    HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
+    Handshake,
+    HandshakeError,
+    parse_handshake,
+};
 
 /// Validated Hotline preamble decoded by the Wireframe server.
 ///
@@ -53,22 +60,14 @@ impl<'de> BorrowDecode<'de, ()> for HotlinePreamble {
 }
 
 fn decode_error_for_handshake(err: &HandshakeError) -> DecodeError {
-    DecodeError::OtherString(err.to_string())
-}
-
-#[cfg(test)]
-fn preamble_bytes(
-    protocol: [u8; 4],
-    sub_protocol: [u8; 4],
-    version: u16,
-    sub_version: u16,
-) -> [u8; HANDSHAKE_LEN] {
-    let mut buf = [0u8; HANDSHAKE_LEN];
-    buf[0..4].copy_from_slice(&protocol);
-    buf[4..8].copy_from_slice(&sub_protocol);
-    buf[8..10].copy_from_slice(&version.to_be_bytes());
-    buf[10..12].copy_from_slice(&sub_version.to_be_bytes());
-    buf
+    match err {
+        HandshakeError::InvalidProtocol => DecodeError::OtherString(format!(
+            "{HANDSHAKE_INVALID_PROTOCOL_TOKEN}: invalid protocol id"
+        )),
+        HandshakeError::UnsupportedVersion(ver) => DecodeError::OtherString(format!(
+            "{HANDSHAKE_UNSUPPORTED_VERSION_TOKEN}: unsupported version {ver}"
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -80,7 +79,10 @@ mod tests {
     use wireframe::preamble::read_preamble;
 
     use super::*;
-    use crate::protocol::{PROTOCOL_ID, VERSION};
+    use crate::{
+        protocol::{PROTOCOL_ID, VERSION},
+        wireframe::test_helpers::preamble_bytes,
+    };
 
     #[rstest]
     #[tokio::test]
@@ -160,7 +162,10 @@ mod bdd {
     use rstest_bdd_macros::{given, scenario, then, when};
 
     use super::*;
-    use crate::protocol::{PROTOCOL_ID, VERSION};
+    use crate::{
+        protocol::{PROTOCOL_ID, VERSION},
+        wireframe::test_helpers::preamble_bytes,
+    };
 
     #[derive(Default)]
     struct HandshakeWorld {
@@ -233,7 +238,11 @@ mod bdd {
         assert_step_ok!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
     }
 
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "rstest-bdd step parameters must be owned; keep String until macro supports &str \
+                  captures"
+    )]
     #[then("the sub-protocol is \"{tag}\"")]
     fn then_sub_protocol(world: &HandshakeWorld, tag: String) {
         let outcome_ref = world.outcome.borrow();
@@ -268,7 +277,11 @@ mod bdd {
         assert_eq!(preamble.handshake.sub_version, sub_version);
     }
 
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "rstest-bdd step parameters must be owned; keep String until macro supports &str \
+                  captures"
+    )]
     #[then("decoding fails with \"{message}\"")]
     fn then_failure(world: &HandshakeWorld, message: String) {
         let outcome_ref = world.outcome.borrow();
