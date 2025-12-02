@@ -16,7 +16,9 @@ use wireframe::{
     server::{ServerState, WireframeServer},
 };
 
-use super::{preamble::HotlinePreamble, test_helpers};
+use super::preamble::HotlinePreamble;
+#[cfg(test)]
+use super::test_helpers;
 use crate::protocol::{
     HANDSHAKE_ERR_INVALID,
     HANDSHAKE_ERR_TIMEOUT,
@@ -296,9 +298,10 @@ mod bdd {
         }
     }
 
-    // `rstest` reports this function as a fixture; rustc flags the required block
-    // as `unused_braces`, so suppress the false positive locally.
-    #[allow(unused_braces)]
+    #[expect(
+        unused_braces,
+        reason = "rstest fixture macro expansion triggers unused_braces false positive"
+    )]
     #[fixture]
     fn world() -> HandshakeWorld { HandshakeWorld::new() }
 
@@ -311,7 +314,11 @@ mod bdd {
         world.connect_and_maybe_send(Some(bytes.to_vec()));
     }
 
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "rstest-bdd step parameters must be owned; keep String until macro supports &str \
+                  captures"
+    )]
     #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
     fn when_custom(world: &HandshakeWorld, tag: String, version: u16) {
         let mut protocol = [0u8; 4];

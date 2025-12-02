@@ -71,21 +71,6 @@ fn decode_error_for_handshake(err: &HandshakeError) -> DecodeError {
 }
 
 #[cfg(test)]
-fn preamble_bytes(
-    protocol: [u8; 4],
-    sub_protocol: [u8; 4],
-    version: u16,
-    sub_version: u16,
-) -> [u8; HANDSHAKE_LEN] {
-    let mut buf = [0u8; HANDSHAKE_LEN];
-    buf[0..4].copy_from_slice(&protocol);
-    buf[4..8].copy_from_slice(&sub_protocol);
-    buf[8..10].copy_from_slice(&version.to_be_bytes());
-    buf[10..12].copy_from_slice(&sub_version.to_be_bytes());
-    buf
-}
-
-#[cfg(test)]
 mod tests {
     use std::io::Cursor;
 
@@ -94,7 +79,10 @@ mod tests {
     use wireframe::preamble::read_preamble;
 
     use super::*;
-    use crate::protocol::{PROTOCOL_ID, VERSION};
+    use crate::{
+        protocol::{PROTOCOL_ID, VERSION},
+        wireframe::test_helpers::preamble_bytes,
+    };
 
     #[rstest]
     #[tokio::test]
@@ -174,7 +162,10 @@ mod bdd {
     use rstest_bdd_macros::{given, scenario, then, when};
 
     use super::*;
-    use crate::protocol::{PROTOCOL_ID, VERSION};
+    use crate::{
+        protocol::{PROTOCOL_ID, VERSION},
+        wireframe::test_helpers::preamble_bytes,
+    };
 
     #[derive(Default)]
     struct HandshakeWorld {
