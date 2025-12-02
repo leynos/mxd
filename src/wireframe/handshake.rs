@@ -17,8 +17,6 @@ use wireframe::{
 };
 
 use super::preamble::HotlinePreamble;
-#[cfg(test)]
-use super::test_helpers;
 use crate::protocol::{
     HANDSHAKE_ERR_INVALID,
     HANDSHAKE_ERR_TIMEOUT,
@@ -298,10 +296,6 @@ mod bdd {
         }
     }
 
-    #[expect(
-        unused_braces,
-        reason = "rstest fixture macro expansion triggers unused_braces false positive"
-    )]
     #[fixture]
     fn world() -> HandshakeWorld { HandshakeWorld::new() }
 
