@@ -6,6 +6,14 @@
 //! The hooks are reusable so tests can inject shorter timeouts without
 //! altering production defaults.
 
+#![cfg_attr(
+    test,
+    allow(
+        unfulfilled_lint_expectations,
+        reason = "rstest unused_braces expectation is not triggered under coverage cfg"
+    )
+)]
+
 use std::{io, time::Duration};
 
 use bincode::error::DecodeError;

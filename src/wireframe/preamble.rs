@@ -238,7 +238,11 @@ mod bdd {
         assert_step_ok!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
     }
 
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "rstest-bdd step parameters must be owned; keep String until macro supports &str \
+                  captures"
+    )]
     #[then("the sub-protocol is \"{tag}\"")]
     fn then_sub_protocol(world: &HandshakeWorld, tag: String) {
         let outcome_ref = world.outcome.borrow();
@@ -273,7 +277,11 @@ mod bdd {
         assert_eq!(preamble.handshake.sub_version, sub_version);
     }
 
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "rstest-bdd step parameters must be owned; keep String until macro supports &str \
+                  captures"
+    )]
     #[then("decoding fails with \"{message}\"")]
     fn then_failure(world: &HandshakeWorld, message: String) {
         let outcome_ref = world.outcome.borrow();
