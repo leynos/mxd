@@ -188,9 +188,10 @@ The handshake handler now also captures the negotiated sub-protocol ID and
 sub-version in a task-scoped registry keyed by the Tokio task running the
 connection. The Wireframe app builder copies that metadata into per-connection
 state and app data so downstream routing can gate compatibility shims (for
-example, SynHX vs Hotline 1.9 quirks) without reparsing the preamble. Entries
-are cleared on connection teardown to prevent leakage between sessions while
-keeping the data available for the full lifetime of each connection.
+example, Synapse Hotline X (SynHX) vs Hotline 1.9 quirks) without reparsing the
+preamble. Entries are cleared on connection teardown to prevent leakage between
+sessions while keeping the data available for the full lifetime of each
+connection.
 
 - *Storage layer*: Implements **outbound ports** (database operations) using
   Diesel. For instance, the domain core may call

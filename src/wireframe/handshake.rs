@@ -63,7 +63,7 @@ fn success_handler()
 -> impl for<'a> Fn(&'a HotlinePreamble, &'a mut TcpStream) -> BoxFuture<'a, io::Result<()>> + Send + Sync
 {
     move |preamble, stream| {
-        store_current_handshake(HandshakeMetadata::from(preamble.handshake().clone()));
+        store_current_handshake(HandshakeMetadata::from(preamble.handshake()));
         write_handshake_reply(stream, HANDSHAKE_OK).boxed()
     }
 }

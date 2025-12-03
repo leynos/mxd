@@ -4,16 +4,8 @@
 //! Tokio task. During the Hotline handshake we need to retain the negotiated
 //! metadata (sub-protocol ID and sub-version) so later routing and
 //! compatibility shims can branch on the client’s capabilities. This module
-//! keeps a small registry of handshake metadata keyed by the current task ID
-//! and exposes helpers to store, read, and clear that data.
-
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    sync::{OnceLock, RwLock},
-};
-
-use tokio::task;
+//! keeps a per-task/thread store of handshake metadata and exposes helpers to
+//! store, read, and clear that data.
 
 use crate::protocol::{Handshake, VERSION};
 
@@ -54,73 +46,66 @@ impl From<Handshake> for HandshakeMetadata {
     }
 }
 
-fn registry() -> &'static RwLock<HashMap<task::Id, HandshakeMetadata>> {
-    static REGISTRY: OnceLock<RwLock<HashMap<task::Id, HandshakeMetadata>>> = OnceLock::new();
-    REGISTRY.get_or_init(|| RwLock::new(HashMap::new()))
+impl From<&Handshake> for HandshakeMetadata {
+    fn from(value: &Handshake) -> Self {
+        Self {
+            sub_protocol: value.sub_protocol,
+            version: value.version,
+            sub_version: value.sub_version,
+        }
+    }
 }
 
-thread_local! {
-    static THREAD_HANDSHAKE: RefCell<Option<HandshakeMetadata>> = const { RefCell::new(None) };
+#[allow(clippy::missing_const_for_thread_local)]
+mod handshake_local {
+    use std::cell::RefCell;
+
+    use super::HandshakeMetadata;
+
+    thread_local! {
+        pub static HANDSHAKE: RefCell<Option<HandshakeMetadata>> = RefCell::new(None);
+    }
 }
 
 /// Store handshake metadata for the current Tokio task.
 ///
-/// If the task ID cannot be determined (which should not occur for tasks
-/// spawned by the Wireframe runtime), the function logs a warning and leaves
-/// the registry unchanged.
-///
-/// # Panics
-///
-/// Panics if the handshake registry lock has been poisoned.
+/// When handshake handling runs outside a Tokio task context, the metadata is
+/// stored in a thread-local fallback so diagnostics and tests can still
+/// observe the negotiated values; a `debug` log marks this path.
 pub fn store_current_handshake(metadata: HandshakeMetadata) {
-    if let Some(id) = task::try_id() {
-        let mut guard = registry().write().expect("handshake registry poisoned");
-        guard.insert(id, metadata);
-    } else {
-        tracing::debug!("storing handshake metadata in thread-local fallback");
-        THREAD_HANDSHAKE.with(|cell| {
-            cell.borrow_mut().replace(metadata);
-        });
-    }
+    handshake_local::HANDSHAKE.with(|cell| {
+        cell.borrow_mut().replace(metadata);
+    });
 }
 
 /// Retrieve handshake metadata for the current Tokio task, if present.
+///
+/// Returns `None` if no metadata has been stored or if the registry lock is
+/// poisoned while reading; this is best-effort to avoid panics in teardown
+/// paths.
 #[must_use]
 pub fn current_handshake() -> Option<HandshakeMetadata> {
-    if let Some(id) = task::try_id() {
-        let guard = registry().read().ok()?;
-        guard.get(&id).cloned()
-    } else {
-        THREAD_HANDSHAKE.with(|cell| cell.borrow().clone())
-    }
+    handshake_local::HANDSHAKE.with(|cell| cell.borrow().clone())
 }
 
 /// Remove the handshake metadata entry for the current Tokio task.
+///
+/// Silently ignores a poisoned registry lock; cleanup is best-effort.
 pub fn clear_current_handshake() {
-    if let Some(id) = task::try_id() {
-        if let Ok(mut guard) = registry().write() {
-            guard.remove(&id);
-        }
-    } else {
-        THREAD_HANDSHAKE.with(|cell| {
-            cell.borrow_mut().take();
-        });
-    }
+    handshake_local::HANDSHAKE.with(|cell| {
+        cell.borrow_mut().take();
+    });
 }
 
-/// Return the number of stored handshake metadata entries.
+/// Return the number of stored handshake metadata entries visible to this
+/// thread.
 ///
-/// # Panics
-///
-/// Panics if the registry lock has been poisoned.
+/// This reflects only the thread-local store used by the current task/thread;
+/// entries placed in other threads are intentionally ignored, so this value is
+/// suitable for diagnostics rather than global accounting.
 #[must_use]
 pub fn registry_len() -> usize {
-    let task_entries = registry()
-        .read()
-        .expect("handshake registry poisoned")
-        .len();
-    let thread_entry = THREAD_HANDSHAKE.with(|cell| usize::from(cell.borrow().is_some()));
-    task_entries + thread_entry
+    handshake_local::HANDSHAKE.with(|cell| usize::from(cell.borrow().is_some()))
 }
 
 #[cfg(test)]

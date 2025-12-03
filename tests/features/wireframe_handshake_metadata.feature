@@ -13,3 +13,10 @@ Feature: Wireframe handshake metadata persistence
     Given a wireframe server that records handshake metadata
     When I send a Hotline handshake with protocol "WRNG" and version 1
     Then no handshake metadata is recorded
+
+  Scenario: Metadata does not leak between connections
+    Given a wireframe server that records handshake metadata
+    When I complete a Hotline handshake with sub-protocol "CHAT" and sub-version 7
+    And I complete a Hotline handshake with sub-protocol "NEWS" and sub-version 1
+    Then the recorded handshake sub-protocol is "NEWS"
+    And the recorded handshake sub-version is 1

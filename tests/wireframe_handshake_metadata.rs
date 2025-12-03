@@ -10,7 +10,7 @@ use std::{
 use mxd::{
     protocol::{HANDSHAKE_LEN, PROTOCOL_ID, REPLY_LEN, VERSION},
     wireframe::{
-        connection::{HandshakeMetadata, clear_current_handshake, current_handshake, registry_len},
+        connection::{clear_current_handshake, current_handshake, registry_len, HandshakeMetadata},
         handshake,
         preamble::HotlinePreamble,
     },
@@ -25,6 +25,9 @@ use tokio::{
     time::sleep,
 };
 use wireframe::{app::WireframeApp, server::WireframeServer};
+
+const MAX_ATTEMPTS: usize = 50;
+const POLL_INTERVAL_MS: u64 = 10;
 
 fn preamble_bytes(
     protocol: [u8; 4],
@@ -48,6 +51,10 @@ struct MetadataWorld {
 }
 
 impl MetadataWorld {
+    #[allow(
+        clippy::expect_used,
+        reason = "test harness should fail fast if the runtime cannot start"
+    )]
     fn new() -> Self {
         Self {
             rt: Runtime::new().expect("runtime"),
@@ -62,11 +69,25 @@ impl MetadataWorld {
         let (addr, shutdown_tx) = self.rt.block_on(async move {
             let server = WireframeServer::new(move || {
                 let handshake = current_handshake().unwrap_or_default();
-                recorded
-                    .lock()
-                    .expect("recorded handshake lock")
-                    .replace(handshake.clone());
-                let app = WireframeApp::default().app_data(handshake);
+                let recorded = Arc::clone(&recorded);
+                let app = WireframeApp::<
+                    wireframe::serializer::BincodeSerializer,
+                    (),
+                    wireframe::app::Envelope,
+                >::default()
+                .app_data(handshake.clone())
+                .on_connection_setup(move || {
+                    let recorded = Arc::clone(&recorded);
+                    let handshake_for_state = handshake.clone();
+                    async move {
+                        recorded
+                            .lock()
+                            .expect("recorded handshake lock")
+                            .replace(handshake_for_state.clone());
+                        clear_current_handshake();
+                    }
+                })
+                .expect("install connection setup");
                 clear_current_handshake();
                 app
             })
@@ -96,16 +117,23 @@ impl MetadataWorld {
         self.recorded.lock().expect("recorded lock").clone()
     }
 
-    fn connect_and_send(&self, bytes: &[u8]) {
+    fn connect_and_send(&self, bytes: &[u8], expect_recorded: bool) {
         let addr = self.addr.borrow().expect("server not started");
         self.rt.block_on(async {
             let mut stream = TcpStream::connect(addr).await.expect("connect");
             stream.write_all(bytes).await.expect("write handshake");
             let mut buf = [0u8; REPLY_LEN];
             let _ = stream.read_exact(&mut buf).await;
-            sleep(Duration::from_millis(50)).await;
             drop(stream);
-            sleep(Duration::from_millis(50)).await;
+
+            for _ in 0..MAX_ATTEMPTS {
+                if self.recorded().is_some() || !expect_recorded {
+                    return;
+                }
+                sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
+            }
+
+            panic!("handshake metadata was not recorded within the expected time");
         });
     }
 
@@ -138,7 +166,7 @@ fn when_valid_handshake(world: &MetadataWorld, tag: String, sub_version: u16) {
     let mut sub_protocol = [0u8; 4];
     sub_protocol.copy_from_slice(tag.as_bytes());
     let bytes = preamble_bytes(*PROTOCOL_ID, sub_protocol, VERSION, sub_version);
-    world.connect_and_send(&bytes);
+    world.connect_and_send(&bytes, true);
 }
 
 #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
@@ -150,7 +178,7 @@ fn when_invalid_handshake(world: &MetadataWorld, tag: String, version: u16) {
     let mut protocol = [0u8; 4];
     protocol.copy_from_slice(tag.as_bytes());
     let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
-    world.connect_and_send(&bytes);
+    world.connect_and_send(&bytes, false);
 }
 
 #[then("the recorded handshake sub-protocol is \"{tag}\"")]
@@ -174,6 +202,7 @@ fn then_sub_version(world: &MetadataWorld, sub_version: u16) {
 #[then("the handshake registry is cleared after teardown")]
 fn then_registry_cleared(world: &MetadataWorld) {
     assert_eq!(registry_len(), 0, "handshake registry should be empty");
+    // Reset captured metadata to prevent cross-scenario leakage when the fixture is reused.
     world.recorded.lock().expect("recorded lock").take();
 }
 
@@ -194,3 +223,9 @@ fn records_metadata(world: MetadataWorld) { let _ = world; }
     index = 1
 )]
 fn rejects_invalid(world: MetadataWorld) { let _ = world; }
+
+#[scenario(
+    path = "tests/features/wireframe_handshake_metadata.feature",
+    index = 2
+)]
+fn metadata_does_not_leak(world: MetadataWorld) { let _ = world; }
