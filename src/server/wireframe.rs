@@ -66,6 +66,13 @@ async fn run_daemon(config: AppConfig) -> Result<()> {
     bootstrap.run().await
 }
 
+/// Build a `WireframeApp` for a single connection using the current handshake
+/// metadata.
+///
+/// Reads handshake metadata captured during preamble handling, attaches it to
+/// app data alongside the shared configuration, and then clears the metadata
+/// to prevent leakage into subsequent connections. Call this exactly once per
+/// accepted connection after the handshake completes.
 fn build_app(config: Arc<AppConfig>) -> WireframeApp {
     let handshake = current_handshake().unwrap_or_else(|| {
         warn!("handshake metadata missing; defaulting to zeroed values");
@@ -74,8 +81,9 @@ fn build_app(config: Arc<AppConfig>) -> WireframeApp {
     #[cfg(test)]
     {
         let last = LAST_HANDSHAKE.get_or_init(|| Mutex::new(None));
-        let mut guard = last.lock().expect("record last handshake");
-        guard.replace(handshake.clone());
+        if let Ok(mut guard) = last.lock() {
+            guard.replace(handshake.clone());
+        }
     }
     let app = WireframeApp::default().app_data(config).app_data(handshake);
     clear_current_handshake();
@@ -189,7 +197,6 @@ mod tests {
         assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
     }
 
-    #[cfg(test)]
     fn take_last_handshake() -> Option<HandshakeMetadata> {
         LAST_HANDSHAKE
             .get_or_init(|| Mutex::new(None))

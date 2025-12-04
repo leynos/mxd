@@ -38,7 +38,7 @@ struct MetadataWorld {
 }
 
 impl MetadataWorld {
-    #[allow(
+    #[expect(
         clippy::expect_used,
         reason = "test harness should fail fast if the runtime cannot start"
     )]

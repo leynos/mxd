@@ -20,3 +20,4 @@ Feature: Wireframe handshake metadata persistence
     And I complete a Hotline handshake with sub-protocol "NEWS" and sub-version 1
     Then the recorded handshake sub-protocol is "NEWS"
     And the recorded handshake sub-version is 1
+    And the handshake registry is cleared after teardown

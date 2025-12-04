@@ -56,7 +56,10 @@ impl From<&Handshake> for HandshakeMetadata {
     }
 }
 
-#[allow(clippy::missing_const_for_thread_local)]
+#[expect(
+    clippy::missing_const_for_thread_local,
+    reason = "RefCell initialisation cannot be const for thread locals"
+)]
 mod handshake_local {
     use std::cell::RefCell;
 
@@ -80,17 +83,13 @@ pub fn store_current_handshake(metadata: HandshakeMetadata) {
 
 /// Retrieve handshake metadata for the current Tokio task, if present.
 ///
-/// Returns `None` if no metadata has been stored or if the registry lock is
-/// poisoned while reading; this is best-effort to avoid panics in teardown
-/// paths.
+/// Returns `None` if no metadata has been stored for this thread/task.
 #[must_use]
 pub fn current_handshake() -> Option<HandshakeMetadata> {
     handshake_local::HANDSHAKE.with(|cell| cell.borrow().clone())
 }
 
 /// Remove the handshake metadata entry for the current Tokio task.
-///
-/// Silently ignores a poisoned registry lock; cleanup is best-effort.
 pub fn clear_current_handshake() {
     handshake_local::HANDSHAKE.with(|cell| {
         cell.borrow_mut().take();
