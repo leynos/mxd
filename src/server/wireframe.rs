@@ -201,8 +201,8 @@ mod tests {
         LAST_HANDSHAKE
             .get_or_init(|| Mutex::new(None))
             .lock()
-            .expect("last handshake lock")
-            .take()
+            .ok()
+            .and_then(|mut guard| guard.take())
     }
 
     #[rstest]

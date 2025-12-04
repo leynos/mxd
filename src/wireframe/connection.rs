@@ -74,7 +74,7 @@ mod handshake_local {
 ///
 /// When handshake handling runs outside a Tokio task context, the metadata is
 /// stored in a thread-local fallback so diagnostics and tests can still
-/// observe the negotiated values; a `debug` log marks this path.
+/// observe the negotiated values.
 pub fn store_current_handshake(metadata: HandshakeMetadata) {
     handshake_local::HANDSHAKE.with(|cell| {
         cell.borrow_mut().replace(metadata);
