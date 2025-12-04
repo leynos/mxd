@@ -7,5 +7,4 @@
 pub mod connection;
 pub mod handshake;
 pub mod preamble;
-#[cfg(test)]
 pub mod test_helpers;

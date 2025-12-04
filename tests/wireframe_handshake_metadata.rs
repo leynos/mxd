@@ -8,11 +8,12 @@ use std::{
 };
 
 use mxd::{
-    protocol::{HANDSHAKE_LEN, PROTOCOL_ID, REPLY_LEN, VERSION},
+    protocol::{PROTOCOL_ID, REPLY_LEN, VERSION},
     wireframe::{
-        connection::{clear_current_handshake, current_handshake, registry_len, HandshakeMetadata},
+        connection::{HandshakeMetadata, clear_current_handshake, current_handshake, registry_len},
         handshake,
         preamble::HotlinePreamble,
+        test_helpers::preamble_bytes,
     },
 };
 use rstest::fixture;
@@ -28,20 +29,6 @@ use wireframe::{app::WireframeApp, server::WireframeServer};
 
 const MAX_ATTEMPTS: usize = 50;
 const POLL_INTERVAL_MS: u64 = 10;
-
-fn preamble_bytes(
-    protocol: [u8; 4],
-    sub_protocol: [u8; 4],
-    version: u16,
-    sub_version: u16,
-) -> [u8; HANDSHAKE_LEN] {
-    let mut buf = [0u8; HANDSHAKE_LEN];
-    buf[0..4].copy_from_slice(&protocol);
-    buf[4..8].copy_from_slice(&sub_protocol);
-    buf[8..10].copy_from_slice(&version.to_be_bytes());
-    buf[10..12].copy_from_slice(&sub_version.to_be_bytes());
-    buf
-}
 
 struct MetadataWorld {
     rt: Runtime,
