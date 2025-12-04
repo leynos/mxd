@@ -25,14 +25,17 @@ use wireframe::{
 };
 
 use super::preamble::HotlinePreamble;
-use crate::protocol::{
-    HANDSHAKE_ERR_INVALID,
-    HANDSHAKE_ERR_TIMEOUT,
-    HANDSHAKE_ERR_UNSUPPORTED_VERSION,
-    HANDSHAKE_INVALID_PROTOCOL_TOKEN,
-    HANDSHAKE_OK,
-    HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
-    write_handshake_reply,
+use crate::{
+    protocol::{
+        HANDSHAKE_ERR_INVALID,
+        HANDSHAKE_ERR_TIMEOUT,
+        HANDSHAKE_ERR_UNSUPPORTED_VERSION,
+        HANDSHAKE_INVALID_PROTOCOL_TOKEN,
+        HANDSHAKE_OK,
+        HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
+        write_handshake_reply,
+    },
+    wireframe::connection::{HandshakeMetadata, store_current_handshake},
 };
 
 /// Attach Hotline handshake behaviour to a [`WireframeServer`].
@@ -59,7 +62,10 @@ where
 fn success_handler()
 -> impl for<'a> Fn(&'a HotlinePreamble, &'a mut TcpStream) -> BoxFuture<'a, io::Result<()>> + Send + Sync
 {
-    move |_, stream| write_handshake_reply(stream, HANDSHAKE_OK).boxed()
+    move |preamble, stream| {
+        store_current_handshake(HandshakeMetadata::from(preamble.handshake()));
+        write_handshake_reply(stream, HANDSHAKE_OK).boxed()
+    }
 }
 
 fn failure_handler()
@@ -122,13 +128,21 @@ mod tests {
             PROTOCOL_ID,
             VERSION,
         },
-        wireframe::test_helpers::{preamble_bytes, recv_reply},
+        wireframe::{
+            connection::{clear_current_handshake, current_handshake},
+            test_helpers::{preamble_bytes, recv_reply},
+        },
     };
 
     pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
-        let server = WireframeServer::new(WireframeApp::default)
-            .workers(1)
-            .with_preamble::<HotlinePreamble>();
+        let server = WireframeServer::new(|| {
+            let handshake = current_handshake().unwrap_or_default();
+            let app = WireframeApp::default().app_data(handshake);
+            clear_current_handshake();
+            app
+        })
+        .workers(1)
+        .with_preamble::<HotlinePreamble>();
         let server = super::install(server, timeout);
         let server = server
             .bind("127.0.0.1:0".parse().expect("parse socket addr"))

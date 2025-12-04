@@ -57,10 +57,13 @@ and explicit dependencies. Timeframes are intentionally omitted.
   and validation errors, enforcing the five-second timeout, and covering the
   paths with `rstest` and `rstest-bdd` suites. Dependencies: Task “Implement
   the 12-byte Hotline handshake preamble as a `wireframe::preamble::Preamble`.”
-- [ ] Task: Persist handshake metadata (sub-protocol ID, sub-version) into
+- [x] Task: Persist handshake metadata (sub-protocol ID, sub-version) into
   per-connection state for later routing decisions. Acceptance: Subsequent
   handlers can branch on the stored metadata to decide compatibility shims.
-  Dependencies: Task “Implement the 12-byte Hotline handshake preamble as a
+  Status: Completed on 2 December 2025 by recording handshake metadata per
+  connection task, exposing it via connection state and app data, and clearing
+  it on teardown, so routing can gate compatibility shims safely. Dependencies:
+  Task “Implement the 12-byte Hotline handshake preamble as a
   `wireframe::preamble::Preamble`.”
 
 ### Step: Adopt wireframe transaction framing

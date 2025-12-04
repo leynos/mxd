@@ -7,6 +7,8 @@
 //! [`WireframeServer`]. Future work will register the Hotline handshake,
 //! serializer, and protocol routes described in the roadmap.
 
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
 use std::{
     net::{SocketAddr, ToSocketAddrs},
     sync::Arc,
@@ -14,6 +16,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
+use tracing::warn;
 use wireframe::{
     app::WireframeApp,
     server::{BackoffConfig, WireframeServer},
@@ -23,8 +26,15 @@ use super::{AppConfig, Cli};
 use crate::{
     protocol,
     server::admin,
-    wireframe::{handshake, preamble::HotlinePreamble},
+    wireframe::{
+        connection::{HandshakeMetadata, clear_current_handshake, current_handshake},
+        handshake,
+        preamble::HotlinePreamble,
+    },
 };
+
+#[cfg(test)]
+static LAST_HANDSHAKE: OnceLock<Mutex<Option<HandshakeMetadata>>> = OnceLock::new();
 
 /// Parse CLI arguments and start the Wireframe runtime.
 ///
@@ -56,6 +66,30 @@ async fn run_daemon(config: AppConfig) -> Result<()> {
     bootstrap.run().await
 }
 
+/// Build a `WireframeApp` for a single connection using the current handshake
+/// metadata.
+///
+/// Reads handshake metadata captured during preamble handling, attaches it to
+/// app data alongside the shared configuration, and then clears the metadata
+/// to prevent leakage into subsequent connections. Call this exactly once per
+/// accepted connection after the handshake completes.
+fn build_app(config: Arc<AppConfig>) -> WireframeApp {
+    let handshake = current_handshake().unwrap_or_else(|| {
+        warn!("handshake metadata missing; defaulting to zeroed values");
+        HandshakeMetadata::default()
+    });
+    #[cfg(test)]
+    {
+        let last = LAST_HANDSHAKE.get_or_init(|| Mutex::new(None));
+        if let Ok(mut guard) = last.lock() {
+            guard.replace(handshake.clone());
+        }
+    }
+    let app = WireframeApp::default().app_data(config).app_data(handshake);
+    clear_current_handshake();
+    app
+}
+
 #[derive(Clone, Debug)]
 struct WireframeBootstrap {
     bind_addr: SocketAddr,
@@ -82,11 +116,8 @@ impl WireframeBootstrap {
         println!("mxd-wireframe-server using database {}", config.database);
         println!("mxd-wireframe-server binding to {}", config.bind);
         let config_for_app = Arc::clone(&config);
-        let server = WireframeServer::new(move || {
-            let shared = Arc::clone(&config_for_app);
-            WireframeApp::default().app_data(shared)
-        })
-        .with_preamble::<HotlinePreamble>();
+        let server = WireframeServer::new(move || build_app(Arc::clone(&config_for_app)))
+            .with_preamble::<HotlinePreamble>();
         let server =
             handshake::install(server, protocol::HANDSHAKE_TIMEOUT).accept_backoff(backoff);
         let server = server
@@ -123,6 +154,10 @@ mod tests {
     use rstest::{fixture, rstest};
 
     use super::*;
+    use crate::{
+        protocol::VERSION,
+        wireframe::connection::{clear_current_handshake, store_current_handshake},
+    };
 
     #[fixture]
     fn bound_config() -> AppConfig {
@@ -160,6 +195,41 @@ mod tests {
         let bootstrap = WireframeBootstrap::prepare(bound_config).expect("bootstrap");
         assert_eq!(bootstrap.bind_addr, "127.0.0.1:7777".parse().unwrap());
         assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
+    }
+
+    fn take_last_handshake() -> Option<HandshakeMetadata> {
+        LAST_HANDSHAKE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .ok()
+            .and_then(|mut guard| guard.take())
+    }
+
+    #[rstest]
+    fn build_app_uses_current_handshake(bound_config: AppConfig) {
+        let meta = HandshakeMetadata {
+            sub_protocol: u32::from_be_bytes(*b"CHAT"),
+            version: VERSION,
+            sub_version: 7,
+        };
+        store_current_handshake(meta.clone());
+
+        let _app = build_app(Arc::new(bound_config));
+
+        assert!(current_handshake().is_none(), "handshake should be cleared");
+        let recorded = take_last_handshake().expect("handshake recorded");
+        assert_eq!(recorded, meta);
+    }
+
+    #[rstest]
+    fn build_app_defaults_when_missing(bound_config: AppConfig) {
+        clear_current_handshake();
+
+        let _app = build_app(Arc::new(bound_config));
+
+        assert!(current_handshake().is_none(), "handshake should be cleared");
+        let recorded = take_last_handshake().expect("handshake recorded");
+        assert_eq!(recorded, HandshakeMetadata::default());
     }
 }
 

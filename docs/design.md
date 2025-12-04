@@ -184,6 +184,15 @@ the runtime now leans on `on_preamble_decode_success`,
 `on_preamble_decode_failure`, and `preamble_timeout` to emit Hotline reply
 codes and apply the five-second idle cap without local patches.
 
+The handshake handler now also captures the negotiated sub-protocol ID and
+sub-version in a task-scoped registry keyed by the Tokio task running the
+connection. The Wireframe app builder copies that metadata into per-connection
+state and app data so downstream routing can gate compatibility shims (for
+example, Synapse Hotline X (SynHX) vs Hotline 1.9 quirks) without reparsing the
+preamble. Entries are cleared on connection teardown to prevent leakage between
+sessions while keeping the data available for the full lifetime of each
+connection.
+
 - *Storage layer*: Implements **outbound ports** (database operations) using
   Diesel. For instance, the domain core may call
   `db::get_user_by_name(username)` which is implemented with a Diesel query
