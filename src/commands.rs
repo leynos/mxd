@@ -91,6 +91,21 @@ struct LoginCredentials {
     password: String,
 }
 
+/// Identifies which credential field a `FieldId` represents.
+fn credential_field(id: FieldId) -> Option<CredentialField> {
+    match id {
+        FieldId::Login => Some(CredentialField::Username),
+        FieldId::Password => Some(CredentialField::Password),
+        _ => None,
+    }
+}
+
+/// Credential field type for login parameter parsing.
+enum CredentialField {
+    Username,
+    Password,
+}
+
 /// Parameters for posting a new news article.
 struct PostArticleRequest {
     path: String,
@@ -105,10 +120,12 @@ fn parse_login_params(params: Vec<(FieldId, Vec<u8>)>) -> Result<LoginCredential
     let mut username = None;
     let mut password = None;
     for (id, data) in params {
-        match id {
-            FieldId::Login => username = Some(String::from_utf8(data).map_err(|_| "utf8")?),
-            FieldId::Password => password = Some(String::from_utf8(data).map_err(|_| "utf8")?),
-            _ => {}
+        if let Some(field) = credential_field(id) {
+            let value = String::from_utf8(data).map_err(|_| "utf8")?;
+            match field {
+                CredentialField::Username => username = Some(value),
+                CredentialField::Password => password = Some(value),
+            }
         }
     }
     Ok(LoginCredentials {

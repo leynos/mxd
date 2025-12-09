@@ -32,7 +32,8 @@ fn create_user_against_embedded_postgres() -> Result<()> {
                 eprintln!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
                 return Ok(());
             }
-            return Err(anyhow::anyhow!("{err}"));
+            return Err(anyhow::anyhow!(err)
+                .context("Failed to initialise PostgreSQL test database"));
         }
     };
 

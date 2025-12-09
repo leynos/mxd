@@ -33,7 +33,21 @@ use crate::{
 };
 
 /// Shared server resources passed to connection handlers.
+///
+/// This type is internal when compiled normally, but exposed publicly when
+/// the `test-support` feature is enabled for integration testing.
 #[derive(Clone)]
+#[cfg(feature = "test-support")]
+pub struct ServerResources {
+    /// Database connection pool.
+    pub pool: DbPool,
+    /// Argon2 password hasher instance.
+    pub argon2: Arc<Argon2<'static>>,
+}
+
+/// Shared server resources passed to connection handlers.
+#[derive(Clone)]
+#[cfg(not(feature = "test-support"))]
 struct ServerResources {
     pool: DbPool,
     argon2: Arc<Argon2<'static>>,
@@ -314,19 +328,12 @@ pub mod test_support {
     //! Expose legacy server internals exclusively for integration tests
     //! compiled with the `test-support` feature.
 
-    use std::{io, net::SocketAddr, sync::Arc};
+    use std::{io, net::SocketAddr};
 
-    use argon2::Argon2;
     use tokio::{net::TcpStream, sync::watch, task::JoinSet};
 
+    pub use super::ServerResources;
     use crate::{db::DbPool, protocol};
-
-    /// Shared server resources passed to connection handlers.
-    #[derive(Clone)]
-    pub struct ServerResources {
-        pub pool: DbPool,
-        pub argon2: Arc<Argon2<'static>>,
-    }
 
     /// Expose `is_postgres_url` for integration tests guarded by the
     /// `test-support` feature.
@@ -351,11 +358,7 @@ pub mod test_support {
         shutdown_rx: &watch::Receiver<bool>,
         join_set: &mut JoinSet<()>,
     ) {
-        let internal = super::ServerResources {
-            pool: resources.pool.clone(),
-            argon2: Arc::clone(&resources.argon2),
-        };
-        super::handle_accept_result(res, &internal, shutdown_rx, join_set);
+        super::handle_accept_result(res, resources, shutdown_rx, join_set);
     }
 }
 

@@ -16,10 +16,10 @@ use crate::{
 };
 
 /// Parameters for a login request containing credentials and protocol header.
-pub struct LoginRequest {
-    pub username: String,
-    pub password: String,
-    pub header: FrameHeader,
+pub(crate) struct LoginRequest {
+    pub(crate) username: String,
+    pub(crate) password: String,
+    pub(crate) header: FrameHeader,
 }
 
 /// Handle a user login request.
@@ -27,7 +27,7 @@ pub struct LoginRequest {
 /// # Errors
 /// Returns an error if database access fails or credentials are invalid.
 #[must_use = "handle the result"]
-pub async fn handle_login(
+pub(crate) async fn handle_login(
     peer: SocketAddr,
     session: &mut crate::handler::Session,
     pool: DbPool,
