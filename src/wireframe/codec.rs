@@ -9,12 +9,7 @@ use bincode::{
     error::DecodeError,
 };
 
-use crate::transaction::{
-    FrameHeader,
-    HEADER_LEN,
-    MAX_FRAME_DATA,
-    MAX_PAYLOAD_SIZE,
-};
+use crate::transaction::{FrameHeader, HEADER_LEN, MAX_FRAME_DATA, MAX_PAYLOAD_SIZE};
 
 /// Wireframe-decoded Hotline transaction.
 ///
@@ -261,8 +256,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn rejects_oversized_total() {
-        let oversized_total =
-            u32::try_from(MAX_PAYLOAD_SIZE + 1).expect("test size fits in u32");
+        let oversized_total = u32::try_from(MAX_PAYLOAD_SIZE + 1).expect("test size fits in u32");
         let frame_data = u32::try_from(MAX_FRAME_DATA).expect("frame data fits in u32");
         let header = FrameHeader {
             flags: 0,

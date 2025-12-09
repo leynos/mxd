@@ -93,8 +93,7 @@ fn given_transaction_flags(world: &TransactionWorld, flags: u8) {
 fn given_fragmented_transaction(world: &TransactionWorld, total: usize, count: usize) {
     let payload = build_valid_payload(total);
     let fragment_size = (total / count).max(1);
-    let total_u32 =
-        u32::try_from(total).expect("total size fits in u32 for test");
+    let total_u32 = u32::try_from(total).expect("total size fits in u32 for test");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -110,9 +109,7 @@ fn given_fragmented_transaction(world: &TransactionWorld, total: usize, count: u
 }
 
 #[when("I decode the transaction frame")]
-fn when_decode(world: &TransactionWorld) {
-    world.decode();
-}
+fn when_decode(world: &TransactionWorld) { world.decode(); }
 
 #[then("decoding succeeds")]
 fn then_success(world: &TransactionWorld) {
@@ -152,44 +149,28 @@ fn then_failure(world: &TransactionWorld, message: String) {
 
 // Scenario bindings
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 0)]
-fn single_frame_with_payload(world: TransactionWorld) {
-    let _ = world;
-}
+fn single_frame_with_payload(world: TransactionWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 1)]
-fn empty_transaction(world: TransactionWorld) {
-    let _ = world;
-}
+fn empty_transaction(world: TransactionWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 2)]
-fn multi_fragment_request(world: TransactionWorld) {
-    let _ = world;
-}
+fn multi_fragment_request(world: TransactionWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 3)]
-fn rejects_data_exceeds_total(world: TransactionWorld) {
-    let _ = world;
-}
+fn rejects_data_exceeds_total(world: TransactionWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 4)]
-fn rejects_empty_data_nonzero_total(world: TransactionWorld) {
-    let _ = world;
-}
+fn rejects_empty_data_nonzero_total(world: TransactionWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 5)]
-fn rejects_invalid_flags(world: TransactionWorld) {
-    let _ = world;
-}
+fn rejects_invalid_flags(world: TransactionWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 6)]
-fn rejects_oversized_total(world: TransactionWorld) {
-    let _ = world;
-}
+fn rejects_oversized_total(world: TransactionWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 7)]
-fn rejects_oversized_data(world: TransactionWorld) {
-    let _ = world;
-}
+fn rejects_oversized_data(world: TransactionWorld) { let _ = world; }
 
 // -----------------------------------------------------------------------------
 // Property Tests

@@ -464,6 +464,62 @@ continuation data does not exceed the remaining byte count.
    verify that valid single-frame and multi-fragment transactions decode
    correctly, and that all invalid length combinations are rejected.
 
+**Class diagram.** The following diagram shows the relationship between the
+codec, transaction types, and validation logic:
+
+```mermaid
+classDiagram
+    class FrameHeader {
+        +u16 flags
+        +u8 is_reply
+        +u16 ty
+        +u32 id
+        +u16 error
+        +u32 total_size
+        +u32 data_size
+        +from_bytes(bytes: u8_array) FrameHeader
+    }
+
+    class HotlineTransaction {
+        -FrameHeader header
+        -Vec_u8 payload
+        +header() &FrameHeader
+        +payload() u8_slice
+        +into_parts() (FrameHeader, Vec_u8)
+    }
+
+    class Transaction {
+        +FrameHeader header
+        +Vec_u8 payload
+    }
+
+    class TransactionError {
+    }
+
+    class transaction_module {
+        <<module>>
+        +HEADER_LEN : usize
+        +MAX_FRAME_DATA : usize
+        +MAX_PAYLOAD_SIZE : usize
+        +validate_payload(tx: Transaction) TransactionError
+    }
+
+    class HotlineTransactionCodec {
+        <<impl BorrowDecode>>
+        +borrow_decode(decoder: BorrowDecoder_unit) HotlineTransaction
+        -validate_header(hdr: FrameHeader) str
+        -validate_fragment_consistency(first: FrameHeader, next: FrameHeader) str
+    }
+
+    HotlineTransaction --> FrameHeader : has
+    Transaction --> FrameHeader : has
+    transaction_module --> Transaction : validates
+    transaction_module --> TransactionError : returns
+    HotlineTransactionCodec --> HotlineTransaction : constructs
+    HotlineTransactionCodec --> FrameHeader : parses
+    HotlineTransactionCodec ..> transaction_module : uses constants
+```
+
 The `HotlineTransaction` struct returned by decoding provides access to the
 validated header and reassembled payload, ready for dispatch to command
 handlers.
