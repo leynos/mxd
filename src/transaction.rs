@@ -268,7 +268,11 @@ fn check_duplicate(fid: FieldId, seen: &mut HashSet<u16>) -> Result<(), Transact
 
 /// Validate the assembled transaction payload for duplicate fields and length
 /// correctness according to the protocol specification.
-fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
+///
+/// # Errors
+///
+/// Returns an error if the payload structure is invalid.
+pub fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
     if tx.header.total_size as usize != tx.payload.len() {
         return Err(TransactionError::SizeMismatch);
     }

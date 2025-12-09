@@ -68,10 +68,11 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### Step: Adopt wireframe transaction framing
 
-- [ ] Task: Build a `wireframe` codec that reads and writes the 20-byte
+- [x] Task: Build a `wireframe` codec that reads and writes the 20-byte
   transaction header and payload framing described in `docs/protocol.md`.
   Acceptance: Property tests cover multi-fragment requests and reject invalid
-  length combinations. Dependencies: Step “Implement the wireframe handshake”.
+  length combinations. Dependencies: Step "Implement the wireframe handshake".
+  Done: 2025-12-09.
 - [ ] Task: Surface a streaming API for large payloads so file transfers and
   news posts can consume fragmented messages incrementally. Acceptance:
   Integration tests for file uploads download payloads over multiple fragments
