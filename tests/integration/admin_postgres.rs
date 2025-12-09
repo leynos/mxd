@@ -1,12 +1,11 @@
 //! Integration tests for the `create-user` admin flow against embedded
 //! `PostgreSQL`.
 //!
-//! These scenarios start a disposable cluster via `pg_embedded_setup_unpriv`,
+//! These scenarios start a disposable cluster via `PostgresTestDb::new()`,
 //! exercise `run_command(Commands::CreateUser)` end to end, then verify the
 //! user record exists in the database. The helper tears the cluster down
 //! automatically on drop. In CI, the suite skips gracefully when the embedded
-//! worker binary is unavailable (for example, if `PG_EMBEDDED_WORKER` is not
-//! set), emitting `SKIP-TEST-CLUSTER` so the failure is visible without
+//! worker binary is unavailable, emitting `SKIP-TEST-CLUSTER` so the failure is visible without
 //! breaking the pipeline.
 
 use anyhow::Result;
