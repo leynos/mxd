@@ -43,9 +43,8 @@ impl TransactionWorld {
 }
 
 #[fixture]
-fn world() -> TransactionWorld {
-    TransactionWorld::default()
-}
+#[allow(unused_braces)]
+fn world() -> TransactionWorld { TransactionWorld::default() }
 
 fn build_valid_payload(size: usize) -> Vec<u8> {
     if size == 0 {
