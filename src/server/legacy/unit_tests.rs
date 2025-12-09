@@ -14,7 +14,7 @@ use tokio::{
     task::JoinSet,
 };
 
-use super::{handle_accept_result, test_helpers};
+use super::{ServerResources, handle_accept_result, test_helpers};
 use crate::protocol;
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
@@ -33,6 +33,12 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
     let strong_before = Arc::strong_count(&argon2);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut join_set = JoinSet::new();
+    let resources = ServerResources {
+        pool,
+        argon2: Arc::clone(&argon2),
+    };
+    // resources holds one clone; count is now strong_before + 1
+    let after_resources = Arc::strong_count(&argon2);
 
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -41,13 +47,13 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
 
     handle_accept_result(
         Ok((server_socket, peer)),
-        pool,
-        Arc::clone(&argon2),
+        &resources,
         &shutdown_rx,
         &mut join_set,
     );
 
-    assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
+    // Spawned task receives a clone of resources, adding one more reference.
+    assert_eq!(Arc::strong_count(&argon2), after_resources + 1);
 
     client.write_all(&test_helpers::handshake_frame()).await?;
     let mut reply = [0u8; protocol::REPLY_LEN];
@@ -62,7 +68,8 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
         result.expect("client handler task");
     }
 
-    assert_eq!(Arc::strong_count(&argon2), strong_before);
+    // After task completes, only the original and resources clone remain.
+    assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
 
     Ok(())
 }

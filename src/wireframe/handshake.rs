@@ -248,6 +248,32 @@ mod bdd {
         wireframe::test_helpers::preamble_bytes,
     };
 
+    async fn perform_handshake(
+        addr: SocketAddr,
+        bytes: Option<Vec<u8>>,
+    ) -> Result<[u8; REPLY_LEN], String> {
+        let mut stream = TcpStream::connect(addr).await.expect("connect");
+        send_handshake_bytes(&mut stream, bytes).await;
+        read_handshake_reply(&mut stream).await
+    }
+
+    async fn send_handshake_bytes(stream: &mut TcpStream, bytes: Option<Vec<u8>>) {
+        if let Some(data) = bytes {
+            stream.write_all(&data).await.expect("write handshake");
+        }
+    }
+
+    async fn read_handshake_reply(stream: &mut TcpStream) -> Result<[u8; REPLY_LEN], String> {
+        let mut buf = [0u8; REPLY_LEN];
+        timeout(Duration::from_secs(1), stream.read_exact(&mut buf))
+            .await
+            .map(|res| {
+                res.expect("read reply");
+                buf
+            })
+            .map_err(|err| err.to_string())
+    }
+
     struct HandshakeWorld {
         rt: Runtime,
         addr: RefCell<Option<SocketAddr>>,
@@ -275,20 +301,7 @@ mod bdd {
 
         fn connect_and_maybe_send(&self, bytes: Option<Vec<u8>>) {
             let addr = self.addr.borrow().expect("server not started");
-            let reply = self.rt.block_on(async {
-                let mut stream = TcpStream::connect(addr).await.expect("connect");
-                if let Some(data) = bytes {
-                    stream.write_all(&data).await.expect("write handshake");
-                }
-                let mut buf = [0u8; REPLY_LEN];
-                timeout(Duration::from_secs(1), stream.read_exact(&mut buf))
-                    .await
-                    .map(|res| {
-                        res.expect("read reply");
-                        buf
-                    })
-                    .map_err(|err| err.to_string())
-            });
+            let reply = self.rt.block_on(perform_handshake(addr, bytes));
             self.reply.borrow_mut().replace(reply);
         }
 

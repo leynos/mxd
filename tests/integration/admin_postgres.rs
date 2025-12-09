@@ -9,55 +9,42 @@
 //! set), emitting `SKIP-TEST-CLUSTER` so the failure is visible without
 //! breaking the pipeline.
 
-use std::error::Error;
-
 use anyhow::Result;
+use argon2::Params;
 use diesel_async::AsyncConnection;
 use mxd::{
     db::{DbConnection, get_user_by_name},
     server::{AppConfig, Commands, CreateUserArgs, run_command},
 };
-use pg_embedded_setup_unpriv::{
-    BootstrapError,
-    BootstrapErrorKind,
-    ExecutionPrivileges,
-    PgEmbeddedError,
-    TestCluster,
-    detect_execution_privileges,
-};
 use rstest::rstest;
+use test_util::postgres::{PostgresTestDb, PostgresUnavailable};
 use tokio::runtime::Builder;
 
 #[rstest]
 #[test]
 fn create_user_against_embedded_postgres() -> Result<()> {
-    if detect_execution_privileges() == ExecutionPrivileges::Root
-        && std::env::var_os("PG_EMBEDDED_WORKER").is_none()
-    {
-        eprintln!(
-            "SKIP-TEST-CLUSTER: PG_EMBEDDED_WORKER must be set when running with root privileges"
-        );
-        return Ok(());
-    }
+    // PostgresTestDb::new() uses block_on internally when starting an embedded
+    // cluster, so must be called outside any tokio runtime to avoid runtime
+    // nesting errors.
+    let pg = match PostgresTestDb::new() {
+        Ok(db) => db,
+        Err(err) => {
+            if err.is::<PostgresUnavailable>() {
+                eprintln!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
+                return Ok(());
+            }
+            return Err(anyhow::anyhow!("{err}"));
+        }
+    };
+
     let rt = Builder::new_current_thread().enable_all().build()?;
 
     rt.block_on(async {
-        let cluster = match TestCluster::new() {
-            Ok(cluster) => cluster,
-            Err(err) => {
-                if let Some(reason) = cluster_skip_reason(&err) {
-                    eprintln!("{reason}");
-                    return Ok(());
-                }
-                return Err(err.into());
-            }
-        };
-
-        let connection = cluster.connection();
-        let database_url = connection.database_url("mxd_admin_test");
-
         let cfg = AppConfig {
-            database: database_url,
+            database: pg.url.to_string(),
+            argon2_m_cost: Params::DEFAULT_M_COST,
+            argon2_t_cost: Params::DEFAULT_T_COST,
+            argon2_p_cost: Params::DEFAULT_P_COST,
             ..AppConfig::default()
         };
 
@@ -77,30 +64,4 @@ fn create_user_against_embedded_postgres() -> Result<()> {
 
         Ok(())
     })
-}
-
-fn cluster_skip_reason(err: &(dyn Error + 'static)) -> Option<String> {
-    let mut cause: Option<&dyn Error> = Some(err);
-    while let Some(current) = cause {
-        if let Some(bootstrap) = current.downcast_ref::<BootstrapError>()
-            && bootstrap.kind() == BootstrapErrorKind::WorkerBinaryMissing
-        {
-            return Some("SKIP-TEST-CLUSTER: embedded worker binary missing".to_string());
-        }
-        if let Some(pg) = current.downcast_ref::<PgEmbeddedError>() {
-            match pg {
-                PgEmbeddedError::Bootstrap(inner)
-                    if inner.kind() == BootstrapErrorKind::WorkerBinaryMissing =>
-                {
-                    return Some("SKIP-TEST-CLUSTER: embedded worker binary missing".to_string());
-                }
-                PgEmbeddedError::Privilege(_) => {
-                    return Some(format!("SKIP-TEST-CLUSTER: {pg}"));
-                }
-                _ => {}
-            }
-        }
-        cause = current.source();
-    }
-    None
 }

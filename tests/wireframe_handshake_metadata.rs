@@ -51,6 +51,10 @@ impl MetadataWorld {
         }
     }
 
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "wireframe server setup requires nested closures for app factory and shutdown"
+    )]
     fn start_server(&self) {
         let recorded = Arc::clone(&self.recorded);
         let (addr, shutdown_tx) = self.rt.block_on(async move {
@@ -104,6 +108,10 @@ impl MetadataWorld {
         self.recorded.lock().expect("recorded lock").clone()
     }
 
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "test harness polling loop requires nested async block"
+    )]
     fn connect_and_send(&self, bytes: &[u8], expect_recorded: bool) {
         let addr = self.addr.borrow().expect("server not started");
         self.rt.block_on(async {

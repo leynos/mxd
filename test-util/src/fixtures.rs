@@ -26,6 +26,14 @@ use mxd::{
 
 use crate::AnyError;
 
+/// Resolve a file name to its ID from the lookup map.
+fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, AnyError> {
+    file_ids
+        .get(name)
+        .copied()
+        .ok_or_else(|| format!("missing file id for {name}").into())
+}
+
 pub fn with_db<F>(db: &str, f: F) -> Result<(), AnyError>
 where
     F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<(), AnyError>>,
@@ -79,9 +87,7 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
                 .await?;
             let file_ids: HashMap<_, _> = file_rows.into_iter().collect();
             for name in ["fileA.txt", "fileC.txt"] {
-                let Some(&file_id) = file_ids.get(name) else {
-                    return Err(format!("missing file id for {name}").into());
-                };
+                let file_id = resolve_file_id(&file_ids, name)?;
                 add_file_acl(conn, &NewFileAcl { file_id, user_id }).await?;
             }
             Ok(())

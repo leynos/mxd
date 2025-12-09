@@ -15,6 +15,13 @@ use crate::{
     users::verify_password,
 };
 
+/// Parameters for a login request containing credentials and protocol header.
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+    pub header: FrameHeader,
+}
+
 /// Handle a user login request.
 ///
 /// # Errors
@@ -24,14 +31,12 @@ pub async fn handle_login(
     peer: SocketAddr,
     session: &mut crate::handler::Session,
     pool: DbPool,
-    username: String,
-    password: String,
-    header: FrameHeader,
+    req: LoginRequest,
 ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let mut conn = pool.get().await?;
-    let user = get_user_by_name(&mut conn, &username).await?;
+    let user = get_user_by_name(&mut conn, &req.username).await?;
     let (error, payload) = if let Some(u) = user {
-        if verify_password(&u.password, &password) {
+        if verify_password(&u.password, &req.password) {
             session.user_id = Some(u.id);
             let params = encode_params(&[(
                 FieldId::Version,
@@ -45,13 +50,13 @@ pub async fn handle_login(
         (1u32, Vec::new())
     };
     let reply = Transaction {
-        header: reply_header(&header, error, payload.len()),
+        header: reply_header(&req.header, error, payload.len()),
         payload,
     };
     if error == 0 {
-        info!(%peer, %username, "authenticated");
+        info!(%peer, username = %req.username, "authenticated");
     } else {
-        warn!(%peer, %username, "authentication failed");
+        warn!(%peer, username = %req.username, "authentication failed");
     }
     Ok(reply)
 }

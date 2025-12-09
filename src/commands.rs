@@ -21,7 +21,7 @@ use crate::{
     },
     field_id::FieldId,
     header_util::reply_header,
-    login::handle_login,
+    login::{LoginRequest, handle_login},
     transaction::{
         FrameHeader,
         Transaction,
@@ -85,6 +85,38 @@ pub enum Command {
     },
 }
 
+/// Parsed login credentials extracted from transaction parameters.
+struct LoginCredentials {
+    username: String,
+    password: String,
+}
+
+/// Parameters for posting a new news article.
+struct PostArticleRequest {
+    path: String,
+    title: String,
+    flags: i32,
+    data_flavor: String,
+    data: String,
+}
+
+/// Extract username and password from login parameters.
+fn parse_login_params(params: Vec<(FieldId, Vec<u8>)>) -> Result<LoginCredentials, &'static str> {
+    let mut username = None;
+    let mut password = None;
+    for (id, data) in params {
+        match id {
+            FieldId::Login => username = Some(String::from_utf8(data).map_err(|_| "utf8")?),
+            FieldId::Password => password = Some(String::from_utf8(data).map_err(|_| "utf8")?),
+            _ => {}
+        }
+    }
+    Ok(LoginCredentials {
+        username: username.ok_or("missing username")?,
+        password: password.ok_or("missing password")?,
+    })
+}
+
 impl Command {
     /// Convert a [`Transaction`] into a [`Command`].
     ///
@@ -99,22 +131,10 @@ impl Command {
         match ty {
             TransactionType::Login => {
                 let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
-                let mut username = None;
-                let mut password = None;
-                for (id, data) in params {
-                    match id {
-                        FieldId::Login => {
-                            username = Some(String::from_utf8(data).map_err(|_| "utf8")?);
-                        }
-                        FieldId::Password => {
-                            password = Some(String::from_utf8(data).map_err(|_| "utf8")?);
-                        }
-                        _ => {}
-                    }
-                }
+                let creds = parse_login_params(params)?;
                 Ok(Command::Login {
-                    username: username.ok_or("missing username")?,
-                    password: password.ok_or("missing password")?,
+                    username: creds.username,
+                    password: creds.password,
                     header: tx.header,
                 })
             }
@@ -188,7 +208,14 @@ impl Command {
                 username,
                 password,
                 header,
-            } => handle_login(peer, session, pool, username, password, header).await,
+            } => {
+                let req = LoginRequest {
+                    username,
+                    password,
+                    header,
+                };
+                handle_login(peer, session, pool, req).await
+            }
             Command::GetFileNameList { header, .. } => {
                 let Some(user_id) = session.user_id else {
                     return Ok(Transaction {
@@ -226,7 +253,16 @@ impl Command {
                 flags,
                 data_flavor,
                 data,
-            } => handle_post_article(pool, header, path, title, flags, data_flavor, data).await,
+            } => {
+                let req = PostArticleRequest {
+                    path,
+                    title,
+                    flags,
+                    data_flavor,
+                    data,
+                };
+                handle_post_article(pool, header, req).await
+            }
             Command::InvalidPayload { header } => Ok(Transaction {
                 header: reply_header(&header, ERR_INVALID_PAYLOAD, 0),
                 payload: Vec::new(),
@@ -413,22 +449,18 @@ async fn handle_article_data(
 async fn handle_post_article(
     pool: DbPool,
     header: FrameHeader,
-    path: String,
-    title: String,
-    flags: i32,
-    data_flavor: String,
-    data: String,
+    req: PostArticleRequest,
 ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
             let id = create_root_article(
                 conn,
-                &path,
+                &req.path,
                 CreateRootArticleParams {
-                    title: &title,
-                    flags,
-                    data_flavor: &data_flavor,
-                    data: &data,
+                    title: &req.title,
+                    flags: req.flags,
+                    data_flavor: &req.data_flavor,
+                    data: &req.data,
                 },
             )
             .await?;
