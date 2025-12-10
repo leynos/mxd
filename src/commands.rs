@@ -611,14 +611,22 @@ mod tests {
         assert_eq!(result.password, "secret");
     }
 
+    /// Returns a `PostArticleRequest` with sensible default values for testing.
+    fn default_post_article_request() -> PostArticleRequest {
+        PostArticleRequest {
+            path: "/news".to_string(),
+            title: "Test Article".to_string(),
+            flags: 0,
+            data_flavor: "text/plain".to_string(),
+            data: "Test content".to_string(),
+        }
+    }
+
     #[test]
     fn post_article_request_to_db_params_maps_title() {
         let req = PostArticleRequest {
-            path: "/news/tech".to_string(),
             title: "Hello World".to_string(),
-            flags: 0,
-            data_flavor: "text/plain".to_string(),
-            data: "Content here".to_string(),
+            ..default_post_article_request()
         };
         let params = req.to_db_params();
         assert_eq!(params.title, "Hello World");
@@ -627,11 +635,8 @@ mod tests {
     #[test]
     fn post_article_request_to_db_params_maps_flags() {
         let req = PostArticleRequest {
-            path: "/news".to_string(),
-            title: "Test".to_string(),
             flags: 42,
-            data_flavor: "text/plain".to_string(),
-            data: "Body".to_string(),
+            ..default_post_article_request()
         };
         let params = req.to_db_params();
         assert_eq!(params.flags, 42);
@@ -640,11 +645,8 @@ mod tests {
     #[test]
     fn post_article_request_to_db_params_maps_data_flavor() {
         let req = PostArticleRequest {
-            path: "/news".to_string(),
-            title: "Test".to_string(),
-            flags: 0,
             data_flavor: "text/html".to_string(),
-            data: "<p>HTML</p>".to_string(),
+            ..default_post_article_request()
         };
         let params = req.to_db_params();
         assert_eq!(params.data_flavor, "text/html");
@@ -653,11 +655,8 @@ mod tests {
     #[test]
     fn post_article_request_to_db_params_maps_data() {
         let req = PostArticleRequest {
-            path: "/news".to_string(),
-            title: "Test".to_string(),
-            flags: 0,
-            data_flavor: "text/plain".to_string(),
             data: "Article body content".to_string(),
+            ..default_post_article_request()
         };
         let params = req.to_db_params();
         assert_eq!(params.data, "Article body content");
@@ -667,17 +666,14 @@ mod tests {
     fn post_article_request_to_db_params_excludes_path() {
         let req = PostArticleRequest {
             path: "/news/category".to_string(),
-            title: "Test".to_string(),
-            flags: 0,
-            data_flavor: "text/plain".to_string(),
-            data: "Content".to_string(),
+            ..default_post_article_request()
         };
         let params = req.to_db_params();
         // Path is not part of CreateRootArticleParams; it's used separately
         // for the path lookup. Verify the other fields are correctly mapped.
-        assert_eq!(params.title, "Test");
+        assert_eq!(params.title, "Test Article");
         assert_eq!(params.flags, 0);
         assert_eq!(params.data_flavor, "text/plain");
-        assert_eq!(params.data, "Content");
+        assert_eq!(params.data, "Test content");
     }
 }
