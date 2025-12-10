@@ -57,6 +57,7 @@ impl TransactionWorld {
 }
 
 #[fixture]
+#[rustfmt::skip]  // Multi-line format avoids unused_braces lint from rstest macro expansion
 fn world() -> TransactionWorld {
     TransactionWorld::default()
 }
