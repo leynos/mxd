@@ -146,7 +146,7 @@ cfg_if! {
             DieselError::SerializationError(Box::new(MigrationExecutorError(e)))
         }
 
-        /// Establish a PostgreSQL connection and execute migrations.
+        /// Establish a `PostgreSQL` connection and execute migrations.
         fn establish_and_migrate(url: String) -> QueryResult<()> {
             use diesel::pg::PgConnection;
             let mut conn = PgConnection::establish(&url).map_err(wrap_connection_error)?;

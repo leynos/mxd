@@ -2,11 +2,12 @@
     non_snake_case,
     reason = "OrthoConfig derives emit helper modules with CamelCase identifiers"
 )]
-// Note: The missing_docs suppression is crate-level because OrthoConfig derive macro
-// generates sibling items (not children) that cannot be individually annotated.
+// OrthoConfig derive macro generates sibling structs (e.g., PgEnvCfgBuilder) at module scope,
+// not as children of the annotated struct. These siblings cannot be individually documented
+// or have attributes applied to them, requiring crate-level suppression.
 #![expect(
     missing_docs,
-    reason = "OrthoConfig derive generates helper structs/functions without docs"
+    reason = "OrthoConfig derive generates undocumented sibling structs at module scope"
 )]
 
 //! Unprivileged `PostgreSQL` setup utilities.
