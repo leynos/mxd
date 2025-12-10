@@ -3,6 +3,9 @@
 //! These helpers keep handshake-related test plumbing in one place so unit and
 //! behaviour suites reuse the same encoding logic.
 
+#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![allow(clippy::expect_used, reason = "test utilities can panic on failure")]
+
 use tokio::io::AsyncReadExt;
 
 use crate::protocol::{HANDSHAKE_LEN, REPLY_LEN};

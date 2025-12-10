@@ -90,6 +90,9 @@ toml = ["figment/toml", "dep:toml"]
 lint = []
 test-support = []
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 test-util = { path = "test-util", default-features = false }
 postgresql_embedded = { version = "0.20", features = ["tokio"] }
@@ -99,7 +102,7 @@ rstest-bdd = "0.1.0"
 rstest-bdd-macros = { version = "0.1.0", features = ["compile-time-validation"] }
 serial_test = "3.2.0"
 tempfile = "3.23.0"
-paste = "1.0"
+paste = "1.0.15"
 pg-embedded-setup-unpriv = { package = "pg-embed-setup-unpriv", version = "0.1.0", features = ["diesel-support"] }
 
 [workspace.lints.clippy]

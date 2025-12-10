@@ -4,12 +4,16 @@ use thiserror::Error;
 
 use crate::news_path::prepare_path;
 
+/// Errors that can occur when resolving news paths.
 #[derive(Debug, Error)]
 pub enum PathLookupError {
+    /// The provided news path is invalid or malformed.
     #[error("invalid news path")]
     InvalidPath,
+    /// A database query error occurred.
     #[error(transparent)]
     Diesel(#[from] diesel::result::Error),
+    /// A JSON serialisation error occurred.
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 }
@@ -30,7 +34,7 @@ pub fn parse_path_segments(
 }
 
 /// Validate the lookup result, returning an error when a match is required.
-pub fn normalize_lookup_result(
+pub const fn normalize_lookup_result(
     id: Option<i32>,
     require_match: bool,
 ) -> Result<Option<i32>, PathLookupError> {

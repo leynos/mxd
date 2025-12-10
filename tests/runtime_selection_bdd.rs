@@ -1,8 +1,17 @@
+#![allow(missing_docs, reason = "test file")]
+#![allow(clippy::expect_used, reason = "test assertions")]
+#![allow(clippy::unwrap_used, reason = "test assertions")]
+#![allow(clippy::panic_in_result_fn, reason = "test assertions")]
+#![allow(clippy::big_endian_bytes, reason = "network protocol")]
+#![allow(clippy::let_underscore_must_use, reason = "test cleanup")]
+
 //! Behaviour-driven tests for runtime selection.
 //!
 //! Verifies `active_runtime()` and `NetworkRuntime` parsing against the
 //! `runtime_selection.feature` scenarios for both legacy-enabled and
 //! legacy-disabled builds.
+
+#![allow(clippy::missing_const_for_fn, reason = "test fixture functions")]
 
 use std::cell::RefCell;
 

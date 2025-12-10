@@ -3,6 +3,11 @@
 //! The runtime logic lives in `mxd::server::wireframe`, so this binary only
 //! delegates to the shared library code.
 
+#![allow(
+    clippy::print_stderr,
+    reason = "error output is appropriate for main binary"
+)]
+
 use std::process::ExitCode;
 
 #[tokio::main]

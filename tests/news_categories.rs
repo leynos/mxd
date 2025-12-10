@@ -1,3 +1,12 @@
+#![allow(missing_docs, reason = "test file")]
+#![allow(clippy::expect_used, reason = "test assertions")]
+#![allow(clippy::unwrap_used, reason = "test assertions")]
+#![allow(clippy::panic_in_result_fn, reason = "test assertions")]
+#![allow(clippy::big_endian_bytes, reason = "network protocol")]
+#![allow(clippy::shadow_reuse, reason = "test code")]
+#![allow(clippy::shadow_unrelated, reason = "test code")]
+#![allow(clippy::let_underscore_must_use, reason = "test cleanup")]
+
 //! Integration tests for news category listing operations.
 //!
 //! Validates that the server correctly returns category hierarchies at various

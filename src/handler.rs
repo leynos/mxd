@@ -15,20 +15,25 @@ use crate::{
 
 /// Per-connection context used by `handle_request`.
 pub struct Context {
+    /// Remote peer socket address.
     pub peer: SocketAddr,
+    /// Database connection pool.
     pub pool: DbPool,
+    /// Shared Argon2 instance for password hashing.
     pub argon2: Arc<Argon2<'static>>,
 }
 
 /// Session state for a single connection.
 #[derive(Default)]
 pub struct Session {
+    /// Authenticated user identifier, if logged in.
     pub user_id: Option<i32>,
 }
 
 impl Context {
+    /// Create a new connection context.
     #[must_use]
-    pub fn new(peer: SocketAddr, pool: DbPool, argon2: Arc<Argon2<'static>>) -> Self {
+    pub const fn new(peer: SocketAddr, pool: DbPool, argon2: Arc<Argon2<'static>>) -> Self {
         Self { peer, pool, argon2 }
     }
 }

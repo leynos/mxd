@@ -32,7 +32,7 @@ pub struct HotlinePreamble {
 impl HotlinePreamble {
     /// Return the parsed handshake payload.
     #[must_use]
-    pub fn handshake(&self) -> &Handshake { &self.handshake }
+    pub const fn handshake(&self) -> &Handshake { &self.handshake }
 }
 
 impl From<HotlinePreamble> for Handshake {

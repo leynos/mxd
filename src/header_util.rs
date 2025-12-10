@@ -3,6 +3,12 @@
 //! Provides utility functions for building reply [`crate::transaction::FrameHeader`] values that
 //! mirror a request. These helpers keep the framing logic centralized and
 //! consistent across commands.
+
+#![allow(
+    clippy::expect_used,
+    reason = "payload size is validated earlier in protocol layer"
+)]
+
 /// Build a reply `FrameHeader` mirroring the request and specifying
 /// the payload size and error code.
 ///

@@ -1,3 +1,8 @@
+#![allow(missing_docs, reason = "test file")]
+#![allow(clippy::print_stderr, reason = "test diagnostics")]
+#![allow(clippy::panic_in_result_fn, reason = "test assertions")]
+#![allow(clippy::string_slice, reason = "test string manipulation")]
+
 #[cfg(feature = "postgres")]
 use temp_env::with_var;
 #[cfg(feature = "postgres")]

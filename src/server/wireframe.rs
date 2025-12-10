@@ -7,6 +7,15 @@
 //! [`WireframeServer`]. Future work will register the Hotline handshake,
 //! serializer, and protocol routes described in the roadmap.
 
+#![allow(
+    clippy::shadow_reuse,
+    reason = "intentional shadowing for server building"
+)]
+#![allow(
+    clippy::print_stdout,
+    reason = "intentional console output for server status"
+)]
+
 #[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 use std::{
@@ -108,7 +117,7 @@ impl WireframeBootstrap {
     }
 
     async fn run(self) -> Result<()> {
-        let WireframeBootstrap {
+        let Self {
             bind_addr,
             config,
             backoff,

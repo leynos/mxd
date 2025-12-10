@@ -3,9 +3,11 @@
 //! The Wireframe runtime executes each accepted TCP connection inside its own
 //! Tokio task. During the Hotline handshake we need to retain the negotiated
 //! metadata (sub-protocol ID and sub-version) so later routing and
-//! compatibility shims can branch on the client’s capabilities. This module
+//! compatibility shims can branch on the client's capabilities. This module
 //! keeps a per-task/thread store of handshake metadata and exposes helpers to
 //! store, read, and clear that data.
+
+#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 use crate::protocol::{Handshake, VERSION};
 
@@ -33,7 +35,7 @@ impl Default for HandshakeMetadata {
 impl HandshakeMetadata {
     /// Return the four-byte sub-protocol tag in network byte order.
     #[must_use]
-    pub fn sub_protocol_tag(&self) -> [u8; 4] { self.sub_protocol.to_be_bytes() }
+    pub const fn sub_protocol_tag(&self) -> [u8; 4] { self.sub_protocol.to_be_bytes() }
 }
 
 impl From<Handshake> for HandshakeMetadata {

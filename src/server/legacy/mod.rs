@@ -4,6 +4,24 @@
 //! logic available to alternative front-ends (such as the upcoming wireframe
 //! adapter) without duplicating code.
 
+#![allow(clippy::shadow_reuse, reason = "intentional shadowing in async blocks")]
+#![allow(
+    clippy::print_stdout,
+    reason = "intentional console output for server status"
+)]
+#![allow(
+    clippy::print_stderr,
+    reason = "intentional error output for diagnostics"
+)]
+#![allow(
+    clippy::integer_division_remainder_used,
+    reason = "tokio::select! macro usage"
+)]
+#![allow(
+    clippy::let_underscore_must_use,
+    reason = "shutdown signal send is fire-and-forget"
+)]
+
 use std::{io, net::SocketAddr, sync::Arc};
 
 use anyhow::{Context, Result};

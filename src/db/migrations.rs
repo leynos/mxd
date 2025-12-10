@@ -1,5 +1,10 @@
 //! Embedded migration utilities.
 
+#![allow(
+    clippy::cognitive_complexity,
+    reason = "migration logic involves multiple conditional branches"
+)]
+
 use std::{error::Error as StdError, fmt, time::Duration};
 
 use cfg_if::cfg_if;

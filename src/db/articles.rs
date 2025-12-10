@@ -1,5 +1,10 @@
 //! Article helpers layered atop bundle/category path resolution.
 
+#![allow(
+    clippy::shadow_reuse,
+    reason = "intentional shadowing in transaction closures"
+)]
+
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -53,9 +58,13 @@ pub async fn list_article_titles(
 
 /// Parameters required to create a new root article.
 pub struct CreateRootArticleParams<'a> {
+    /// Article title.
     pub title: &'a str,
+    /// Article flags.
     pub flags: i32,
+    /// Data content type.
     pub data_flavor: &'a str,
+    /// Article content.
     pub data: &'a str,
 }
 

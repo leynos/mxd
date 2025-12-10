@@ -4,6 +4,9 @@
 //! [`Command`] variants and runs the appropriate handlers. Commands are used by
 //! the connection handler to drive database operations and build reply
 //! transactions.
+
+#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+
 use std::net::SocketAddr;
 
 use futures_util::future::BoxFuture;
@@ -44,43 +47,74 @@ pub const ERR_INVALID_PAYLOAD: u32 = 2;
 /// Error code used for unexpected server-side failures.
 pub const ERR_INTERNAL_SERVER: u32 = 3;
 
+/// High-level command representation parsed from incoming transactions.
+///
+/// Commands encapsulate the parameters and type information needed to
+/// process client requests.
 pub enum Command {
+    /// User login request with credentials.
     Login {
+        /// Username for authentication.
         username: String,
+        /// Password for authentication.
         password: String,
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Request for the list of available files.
     GetFileNameList {
+        /// Transaction frame header.
         header: FrameHeader,
+        /// Raw payload bytes.
         payload: Vec<u8>,
     },
+    /// Request for news category names at a given path.
     GetNewsCategoryNameList {
+        /// News hierarchy path (optional for root).
         path: Option<String>,
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Request for article titles within a news category.
     GetNewsArticleNameList {
+        /// News category path.
         path: String,
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Request for a specific news article's content.
     GetNewsArticleData {
+        /// News category path.
         path: String,
+        /// Article identifier.
         article_id: i32,
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Request to create a new news article.
     PostNewsArticle {
+        /// News category path.
         path: String,
+        /// Article title.
         title: String,
+        /// Article flags.
         flags: i32,
+        /// Data content type.
         data_flavor: String,
+        /// Article content.
         data: String,
+        /// Transaction frame header.
         header: FrameHeader,
     },
     /// Request contained a payload when none was expected. The server
     /// responds with [`crate::commands::ERR_INVALID_PAYLOAD`].
     InvalidPayload {
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Unrecognised transaction type.
     Unknown {
+        /// Transaction frame header.
         header: FrameHeader,
     },
 }
@@ -92,7 +126,7 @@ struct LoginCredentials {
 }
 
 /// Identifies which credential field a `FieldId` represents.
-fn credential_field(id: FieldId) -> Option<CredentialField> {
+const fn credential_field(id: FieldId) -> Option<CredentialField> {
     match id {
         FieldId::Login => Some(CredentialField::Username),
         FieldId::Password => Some(CredentialField::Password),
@@ -143,26 +177,26 @@ impl Command {
     pub fn from_transaction(tx: Transaction) -> Result<Self, &'static str> {
         let ty = TransactionType::from(tx.header.ty);
         if !ty.allows_payload() && !tx.payload.is_empty() {
-            return Ok(Command::InvalidPayload { header: tx.header });
+            return Ok(Self::InvalidPayload { header: tx.header });
         }
         match ty {
             TransactionType::Login => {
                 let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
                 let creds = parse_login_params(params)?;
-                Ok(Command::Login {
+                Ok(Self::Login {
                     username: creds.username,
                     password: creds.password,
                     header: tx.header,
                 })
             }
-            TransactionType::GetFileNameList => Ok(Command::GetFileNameList {
+            TransactionType::GetFileNameList => Ok(Self::GetFileNameList {
                 header: tx.header,
                 payload: tx.payload,
             }),
             TransactionType::NewsCategoryNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = first_param_string(&params, FieldId::NewsPath)?;
-                Ok(Command::GetNewsCategoryNameList {
+                Ok(Self::GetNewsCategoryNameList {
                     path,
                     header: tx.header,
                 })
@@ -170,7 +204,7 @@ impl Command {
             TransactionType::NewsArticleNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
-                Ok(Command::GetNewsArticleNameList {
+                Ok(Self::GetNewsArticleNameList {
                     path,
                     header: tx.header,
                 })
@@ -179,7 +213,7 @@ impl Command {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
                 let id = required_param_i32(&params, FieldId::NewsArticleId, "missing id", "id")?;
-                Ok(Command::GetNewsArticleData {
+                Ok(Self::GetNewsArticleData {
                     path,
                     article_id: id,
                     header: tx.header,
@@ -195,7 +229,7 @@ impl Command {
                     required_param_string(&params, FieldId::NewsDataFlavor, "missing flavor")?;
                 let data =
                     required_param_string(&params, FieldId::NewsArticleData, "missing data")?;
-                Ok(Command::PostNewsArticle {
+                Ok(Self::PostNewsArticle {
                     path,
                     title,
                     flags,
@@ -204,7 +238,7 @@ impl Command {
                     header: tx.header,
                 })
             }
-            _ => Ok(Command::Unknown { header: tx.header }),
+            _ => Ok(Self::Unknown { header: tx.header }),
         }
     }
 
@@ -221,7 +255,7 @@ impl Command {
         session: &mut crate::handler::Session,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
         match self {
-            Command::Login {
+            Self::Login {
                 username,
                 password,
                 header,
@@ -233,7 +267,7 @@ impl Command {
                 };
                 handle_login(peer, session, pool, req).await
             }
-            Command::GetFileNameList { header, .. } => {
+            Self::GetFileNameList { header, .. } => {
                 let Some(user_id) = session.user_id else {
                     return Ok(Transaction {
                         header: reply_header(&header, 1, 0),
@@ -252,18 +286,18 @@ impl Command {
                     payload,
                 })
             }
-            Command::GetNewsCategoryNameList { header, path } => {
+            Self::GetNewsCategoryNameList { header, path } => {
                 handle_category_list(pool, header, path).await
             }
-            Command::GetNewsArticleNameList { header, path } => {
+            Self::GetNewsArticleNameList { header, path } => {
                 handle_article_titles(pool, header, path).await
             }
-            Command::GetNewsArticleData {
+            Self::GetNewsArticleData {
                 header,
                 path,
                 article_id,
             } => handle_article_data(pool, header, path, article_id).await,
-            Command::PostNewsArticle {
+            Self::PostNewsArticle {
                 header,
                 path,
                 title,
@@ -280,11 +314,11 @@ impl Command {
                 };
                 handle_post_article(pool, header, req).await
             }
-            Command::InvalidPayload { header } => Ok(Transaction {
+            Self::InvalidPayload { header } => Ok(Transaction {
                 header: reply_header(&header, ERR_INVALID_PAYLOAD, 0),
                 payload: Vec::new(),
             }),
-            Command::Unknown { header } => Ok(handle_unknown(peer, &header)),
+            Self::Unknown { header } => Ok(handle_unknown(peer, &header)),
         }
     }
 }
@@ -293,6 +327,10 @@ impl Command {
 ///
 /// # Errors
 /// Returns an error if database access fails or the operation itself errors.
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "refactoring would reduce readability"
+)]
 async fn run_news_tx<F>(
     pool: DbPool,
     header: FrameHeader,
@@ -326,6 +364,10 @@ where
     }
 }
 
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "error handling requires matching multiple error types"
+)]
 fn news_error_reply(header: &FrameHeader, err: PathLookupError) -> Transaction {
     match err {
         PathLookupError::InvalidPath => Transaction {
@@ -407,6 +449,10 @@ async fn handle_article_data(
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
             let article = get_article(conn, &path, article_id).await?;
+            #[expect(
+                clippy::shadow_reuse,
+                reason = "intentional pattern for option handling"
+            )]
             let Some(article) = article else {
                 return Err(PathLookupError::InvalidPath);
             };
@@ -501,6 +547,12 @@ fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
         },
         payload: Vec::new(),
     };
-    println!("{} sent unknown transaction: {}", peer, header.ty);
+    #[expect(
+        clippy::print_stdout,
+        reason = "intentional debug output for unknown transactions"
+    )]
+    {
+        println!("{} sent unknown transaction: {}", peer, header.ty);
+    }
     reply
 }

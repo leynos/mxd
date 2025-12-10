@@ -2,38 +2,51 @@
 //!
 //! Each variant corresponds to a Hotline protocol transaction identifier used
 //! for client/server communication.
+/// Transaction type identifier for file name list requests.
 pub const FILE_NAME_LIST_ID: u16 = 200;
+/// Transaction type identifier for banner download requests.
 pub const DOWNLOAD_BANNER_ID: u16 = 212;
+/// Transaction type identifier for user name list requests.
 pub const USER_NAME_LIST_ID: u16 = 300;
 
+/// Transaction types supported by the Hotline protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionType {
+    /// Server error response.
     Error,
+    /// User login request.
     Login,
+    /// Server agreement/banner display.
     Agreement,
+    /// Client has accepted the agreement.
     Agreed,
+    /// Request for the list of available files.
     GetFileNameList,
     /// Request to download the server's banner image.
     DownloadBanner,
     /// Request the list of logged-in users.
     GetUserNameList,
+    /// User access privileges response.
     UserAccess,
+    /// Request for news category names.
     NewsCategoryNameList,
+    /// Request for news article names within a category.
     NewsArticleNameList,
+    /// Request for a specific news article's content.
     NewsArticleData,
+    /// Request to post a new news article.
     PostNewsArticle,
+    /// Any other transaction type not explicitly handled.
     Other(u16),
 }
 
 impl TransactionType {
     /// Return true if this transaction type may include a payload.
     #[must_use]
-    pub fn allows_payload(self) -> bool {
+    pub const fn allows_payload(self) -> bool {
         !matches!(
             self,
-            TransactionType::GetFileNameList
-                | TransactionType::DownloadBanner
-                | TransactionType::GetUserNameList
+            Self::GetFileNameList | Self::DownloadBanner | Self::GetUserNameList
         )
     }
 }
@@ -81,19 +94,19 @@ impl From<TransactionType> for u16 {
 impl std::fmt::Display for TransactionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TransactionType::Error => f.write_str("Error"),
-            TransactionType::Login => f.write_str("Login"),
-            TransactionType::Agreement => f.write_str("Agreement"),
-            TransactionType::Agreed => f.write_str("Agreed"),
-            TransactionType::GetFileNameList => f.write_str("GetFileNameList"),
-            TransactionType::DownloadBanner => f.write_str("DownloadBanner"),
-            TransactionType::GetUserNameList => f.write_str("GetUserNameList"),
-            TransactionType::UserAccess => f.write_str("UserAccess"),
-            TransactionType::NewsCategoryNameList => f.write_str("NewsCategoryNameList"),
-            TransactionType::NewsArticleNameList => f.write_str("NewsArticleNameList"),
-            TransactionType::NewsArticleData => f.write_str("NewsArticleData"),
-            TransactionType::PostNewsArticle => f.write_str("PostNewsArticle"),
-            TransactionType::Other(v) => write!(f, "Other({v})"),
+            Self::Error => f.write_str("Error"),
+            Self::Login => f.write_str("Login"),
+            Self::Agreement => f.write_str("Agreement"),
+            Self::Agreed => f.write_str("Agreed"),
+            Self::GetFileNameList => f.write_str("GetFileNameList"),
+            Self::DownloadBanner => f.write_str("DownloadBanner"),
+            Self::GetUserNameList => f.write_str("GetUserNameList"),
+            Self::UserAccess => f.write_str("UserAccess"),
+            Self::NewsCategoryNameList => f.write_str("NewsCategoryNameList"),
+            Self::NewsArticleNameList => f.write_str("NewsArticleNameList"),
+            Self::NewsArticleData => f.write_str("NewsArticleData"),
+            Self::PostNewsArticle => f.write_str("PostNewsArticle"),
+            Self::Other(v) => write!(f, "Other({v})"),
         }
     }
 }

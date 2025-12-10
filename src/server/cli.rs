@@ -7,6 +7,14 @@
     non_snake_case,
     reason = "Clap/OrthoConfig derive macros generate helper modules with uppercase names"
 )]
+#![allow(
+    missing_docs,
+    reason = "OrthoConfig and Clap derive macros generate items that cannot be documented"
+)]
+#![allow(
+    unfulfilled_lint_expectations,
+    reason = "derive macros conditionally generate items"
+)]
 
 use argon2::Params;
 use clap::{Args, Parser, Subcommand};
@@ -14,36 +22,52 @@ use ortho_config::OrthoConfig;
 use serde::{Deserialize, Serialize};
 
 /// Arguments for the `create-user` administrative subcommand.
+#[expect(
+    missing_docs,
+    reason = "OrthoConfig derive macro generates items that cannot be documented"
+)]
 #[derive(Parser, OrthoConfig, Deserialize, Serialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 pub struct CreateUserArgs {
+    /// Username for the new account.
     pub username: Option<String>,
+    /// Password for the new account.
     pub password: Option<String>,
 }
 
 /// CLI subcommands exposed by `mxd`.
 #[derive(Subcommand, Deserialize, Serialize, Debug, Clone)]
 pub enum Commands {
+    /// Create a new user account.
     #[command(name = "create-user")]
     CreateUser(CreateUserArgs),
 }
 
 /// Runtime configuration shared by all binaries.
+#[expect(
+    missing_docs,
+    reason = "OrthoConfig derive macro generates items that cannot be documented"
+)]
 #[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 pub struct AppConfig {
-    #[ortho_config(default = "0.0.0.0:5500".to_string())]
+    /// Server bind address.
+    #[ortho_config(default = "0.0.0.0:5500".to_owned())]
     #[arg(long, default_value_t = String::from("0.0.0.0:5500"))]
     pub bind: String,
-    #[ortho_config(default = "mxd.db".to_string())]
+    /// Database connection string or path.
+    #[ortho_config(default = "mxd.db".to_owned())]
     #[arg(long, default_value_t = String::from("mxd.db"))]
     pub database: String,
+    /// Argon2 memory cost parameter.
     #[ortho_config(default = Params::DEFAULT_M_COST)]
     #[arg(long, default_value_t = Params::DEFAULT_M_COST)]
     pub argon2_m_cost: u32,
+    /// Argon2 time cost parameter.
     #[ortho_config(default = Params::DEFAULT_T_COST)]
     #[arg(long, default_value_t = Params::DEFAULT_T_COST)]
     pub argon2_t_cost: u32,
+    /// Argon2 parallelism cost parameter.
     #[ortho_config(default = Params::DEFAULT_P_COST)]
     #[arg(long, default_value_t = Params::DEFAULT_P_COST)]
     pub argon2_p_cost: u32,
@@ -52,8 +76,10 @@ pub struct AppConfig {
 /// Top-level CLI entry point consumed by binaries.
 #[derive(Parser, Deserialize, Serialize, Debug, Clone)]
 pub struct Cli {
+    /// Application configuration.
     #[command(flatten)]
     pub config: AppConfig,
+    /// Optional subcommand.
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

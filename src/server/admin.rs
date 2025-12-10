@@ -5,6 +5,15 @@
 //! dependencies so both the legacy Tokio loop and the Wireframe runtime can
 //! reuse them.
 
+#![allow(
+    clippy::shadow_reuse,
+    reason = "intentional shadowing for config merging"
+)]
+#![allow(
+    clippy::print_stdout,
+    reason = "intentional user output for CLI commands"
+)]
+
 use anyhow::{Context, Result, anyhow};
 use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
 use diesel_async::AsyncConnection;

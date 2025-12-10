@@ -1,3 +1,10 @@
+#![allow(missing_docs, reason = "test file")]
+#![allow(clippy::expect_used, reason = "test assertions")]
+#![allow(clippy::unwrap_used, reason = "test assertions")]
+#![allow(clippy::panic_in_result_fn, reason = "test assertions")]
+#![allow(clippy::big_endian_bytes, reason = "network protocol")]
+#![allow(clippy::let_underscore_must_use, reason = "test cleanup")]
+
 //! Legacy handshake integration covering unsupported protocol versions.
 #![cfg(feature = "legacy-networking")]
 

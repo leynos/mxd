@@ -1,3 +1,6 @@
+#![allow(missing_docs, reason = "test helpers")]
+#![allow(clippy::print_stderr, reason = "test diagnostics")]
+
 #[cfg(feature = "postgres")]
 use test_util::postgres::PostgresUnavailable;
 use test_util::{AnyError, TestServer, ensure_server_binary_env};

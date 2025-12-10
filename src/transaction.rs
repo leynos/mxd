@@ -2,6 +2,21 @@
 //!
 //! Transactions consist of a [`FrameHeader`] followed by an optional payload
 //! encoded using [`FieldId`] identifiers.
+
+#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![allow(
+    clippy::indexing_slicing,
+    reason = "array bounds are validated earlier in parsing"
+)]
+#![allow(clippy::unwrap_used, reason = "slice conversions are length-validated")]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::allow_attributes,
+        reason = "dead_code detection varies by test type"
+    )
+)]
+
 use std::{collections::HashSet, time::Duration};
 
 use thiserror::Error;
@@ -67,27 +82,36 @@ pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
 }
 
 /// Write a big-endian u16 to the provided byte slice.
+#[expect(clippy::missing_const_for_fn, reason = "copy_from_slice is not const")]
 pub fn write_u16(buf: &mut [u8], val: u16) { buf.copy_from_slice(&val.to_be_bytes()); }
 
 /// Write a big-endian u32 to the provided byte slice.
+#[expect(clippy::missing_const_for_fn, reason = "copy_from_slice is not const")]
 pub fn write_u32(buf: &mut [u8], val: u32) { buf.copy_from_slice(&val.to_be_bytes()); }
 
 /// Parsed frame header according to the protocol specification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrameHeader {
+    /// Frame flags (must be zero for protocol version 1).
     pub flags: u8,
+    /// Whether this is a reply (0 = request, 1 = reply).
     pub is_reply: u8,
+    /// Transaction type identifier.
     pub ty: u16,
+    /// Transaction identifier for matching requests and replies.
     pub id: u32,
+    /// Error code (0 indicates success).
     pub error: u32,
+    /// Total size of the complete payload in bytes.
     pub total_size: u32,
+    /// Size of the payload in this frame.
     pub data_size: u32,
 }
 
 impl FrameHeader {
     /// Parse a frame header from a 20-byte buffer.
     #[must_use = "use the returned header"]
-    pub fn from_bytes(buf: &[u8; HEADER_LEN]) -> Self {
+    pub const fn from_bytes(buf: &[u8; HEADER_LEN]) -> Self {
         Self {
             flags: buf[0],
             is_reply: buf[1],
@@ -134,7 +158,9 @@ impl FrameHeader {
 /// Complete transaction payload assembled from one or more fragments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transaction {
+    /// Transaction frame header.
     pub header: FrameHeader,
+    /// Complete payload data.
     pub payload: Vec<u8>,
 }
 
@@ -145,7 +171,7 @@ pub struct Transaction {
 ///
 /// # Errors
 /// Returns an error if the frame is malformed or exceeds size limits.
-#[cfg_attr(test, allow(dead_code))]
+#[cfg_attr(test, allow(dead_code, reason = "used in integration tests"))]
 #[must_use = "handle the result"]
 pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
     if buf.len() < HEADER_LEN {
@@ -167,7 +193,7 @@ pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
 
 impl Transaction {
     /// Serialize the transaction into a vector of bytes.
-    #[cfg_attr(test, allow(dead_code))]
+    #[cfg_attr(test, allow(dead_code, reason = "used in integration tests"))]
     #[must_use = "use the serialized bytes"]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(HEADER_LEN + self.payload.len());
@@ -210,24 +236,31 @@ async fn write_frame<W: AsyncWrite + Unpin>(
 /// Errors that can occur when parsing or writing transactions.
 #[derive(Debug, Error)]
 pub enum TransactionError {
+    /// Frame flags are invalid (must be zero for protocol version 1).
     #[error("invalid flags")] // flags must be zero for v1.8.5
     InvalidFlags,
+    /// Payload size exceeds the maximum allowed.
     #[error("payload too large")]
     PayloadTooLarge,
+    /// Payload size does not match the header specification.
     #[error("size mismatch")]
     SizeMismatch,
+    /// A field identifier appears more than once when not allowed.
     #[error("duplicate field id {0}")]
     DuplicateField(u16),
+    /// Buffer is too short to contain the expected data.
     #[error("buffer too short")]
     ShortBuffer,
+    /// I/O error occurred during read or write.
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Operation timed out.
     #[error("I/O timeout")]
     Timeout,
 }
 
 /// Determine whether duplicate instances of the given field id are permitted.
-fn duplicate_allowed(fid: FieldId) -> bool {
+const fn duplicate_allowed(fid: FieldId) -> bool {
     matches!(
         fid,
         FieldId::NewsCategory | FieldId::NewsArticle | FieldId::FileName
@@ -290,7 +323,7 @@ where
 {
     /// Create a new reader with default timeout and payload limits.
     #[must_use = "create a reader"]
-    pub fn new(reader: R) -> Self {
+    pub const fn new(reader: R) -> Self {
         Self {
             reader,
             timeout: IO_TIMEOUT,
@@ -354,7 +387,7 @@ where
 {
     /// Create a new writer with default timeout and size limits.
     #[must_use = "create a writer"]
-    pub fn new(writer: W) -> Self {
+    pub const fn new(writer: W) -> Self {
         Self {
             writer,
             timeout: IO_TIMEOUT,
@@ -404,7 +437,7 @@ where
 ///
 /// # Errors
 /// Returns an error if the buffer is malformed or shorter than expected.
-#[cfg_attr(test, allow(dead_code))]
+#[cfg_attr(test, allow(dead_code, reason = "used in integration tests"))]
 #[must_use = "handle the result"]
 pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionError> {
     if buf.is_empty() {

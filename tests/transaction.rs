@@ -1,3 +1,9 @@
+#![allow(missing_docs, reason = "test file")]
+#![allow(clippy::unwrap_used, reason = "test code can panic")]
+#![allow(clippy::expect_used, reason = "test code can panic")]
+#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![allow(clippy::indexing_slicing, reason = "test code with known bounds")]
+
 use std::time::Duration;
 
 use mxd::{field_id, transaction::*, transaction_type};
