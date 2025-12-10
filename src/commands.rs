@@ -120,48 +120,26 @@ pub enum Command {
 }
 
 /// Parsed login credentials extracted from transaction parameters.
+#[derive(Debug, PartialEq, Eq)]
 struct LoginCredentials {
     username: String,
     password: String,
-}
-
-/// Identifies which credential field a `FieldId` represents.
-const fn credential_field(id: FieldId) -> Option<CredentialField> {
-    match id {
-        FieldId::Login => Some(CredentialField::Username),
-        FieldId::Password => Some(CredentialField::Password),
-        _ => None,
-    }
-}
-
-/// Credential field type for login parameter parsing.
-enum CredentialField {
-    Username,
-    Password,
-}
-
-/// Parameters for posting a new news article.
-struct PostArticleRequest {
-    path: String,
-    title: String,
-    flags: i32,
-    data_flavor: String,
-    data: String,
 }
 
 /// Extract username and password from login parameters.
 fn parse_login_params(params: Vec<(FieldId, Vec<u8>)>) -> Result<LoginCredentials, &'static str> {
     let mut username = None;
     let mut password = None;
+
     for (id, data) in params {
-        if let Some(field) = credential_field(id) {
-            let value = String::from_utf8(data).map_err(|_| "utf8")?;
-            match field {
-                CredentialField::Username => username = Some(value),
-                CredentialField::Password => password = Some(value),
-            }
+        let value = String::from_utf8(data).map_err(|_| "utf8")?;
+        match id {
+            FieldId::Login => username = Some(value),
+            FieldId::Password => password = Some(value),
+            _ => {}
         }
     }
+
     Ok(LoginCredentials {
         username: username.ok_or("missing username")?,
         password: password.ok_or("missing password")?,
@@ -259,14 +237,7 @@ impl Command {
                 username,
                 password,
                 header,
-            } => {
-                let req = LoginRequest {
-                    username,
-                    password,
-                    header,
-                };
-                handle_login(peer, session, pool, req).await
-            }
+            } => handle_login(peer, session, pool, LoginRequest { username, password, header }).await,
             Self::GetFileNameList { header, .. } => {
                 let Some(user_id) = session.user_id else {
                     return Ok(Transaction {
@@ -297,21 +268,8 @@ impl Command {
                 path,
                 article_id,
             } => handle_article_data(pool, header, path, article_id).await,
-            Self::PostNewsArticle {
-                header,
-                path,
-                title,
-                flags,
-                data_flavor,
-                data,
-            } => {
-                let req = PostArticleRequest {
-                    path,
-                    title,
-                    flags,
-                    data_flavor,
-                    data,
-                };
+            Self::PostNewsArticle { header, path, title, flags, data_flavor, data } => {
+                let req = PostArticleRequest { path, title, flags, data_flavor, data };
                 handle_post_article(pool, header, req).await
             }
             Self::InvalidPayload { header } => Ok(Transaction {
@@ -505,6 +463,15 @@ async fn handle_article_data(
     .await
 }
 
+/// Parameters for posting a new news article.
+struct PostArticleRequest {
+    path: String,
+    title: String,
+    flags: i32,
+    data_flavor: String,
+    data: String,
+}
+
 /// Create a new root article under the provided path.
 ///
 /// # Errors
@@ -555,4 +522,66 @@ fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
         println!("{} sent unknown transaction: {}", peer, header.ty);
     }
     reply
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_login_params_both_fields_valid() {
+        let params = vec![
+            (FieldId::Login, b"alice".to_vec()),
+            (FieldId::Password, b"secret".to_vec()),
+        ];
+        let result = parse_login_params(params).expect("should parse");
+        assert_eq!(result.username, "alice");
+        assert_eq!(result.password, "secret");
+    }
+
+    #[test]
+    fn parse_login_params_missing_username() {
+        let params = vec![(FieldId::Password, b"secret".to_vec())];
+        let result = parse_login_params(params);
+        assert_eq!(result, Err("missing username"));
+    }
+
+    #[test]
+    fn parse_login_params_missing_password() {
+        let params = vec![(FieldId::Login, b"alice".to_vec())];
+        let result = parse_login_params(params);
+        assert_eq!(result, Err("missing password"));
+    }
+
+    #[test]
+    fn parse_login_params_invalid_utf8_username() {
+        let params = vec![
+            (FieldId::Login, vec![0xff, 0xfe]),
+            (FieldId::Password, b"secret".to_vec()),
+        ];
+        let result = parse_login_params(params);
+        assert_eq!(result, Err("utf8"));
+    }
+
+    #[test]
+    fn parse_login_params_invalid_utf8_password() {
+        let params = vec![
+            (FieldId::Login, b"alice".to_vec()),
+            (FieldId::Password, vec![0xff, 0xfe]),
+        ];
+        let result = parse_login_params(params);
+        assert_eq!(result, Err("utf8"));
+    }
+
+    #[test]
+    fn parse_login_params_ignores_extra_fields() {
+        let params = vec![
+            (FieldId::Login, b"alice".to_vec()),
+            (FieldId::Password, b"secret".to_vec()),
+            (FieldId::NewsPath, b"/news".to_vec()),
+        ];
+        let result = parse_login_params(params).expect("should parse");
+        assert_eq!(result.username, "alice");
+        assert_eq!(result.password, "secret");
+    }
 }

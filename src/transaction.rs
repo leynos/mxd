@@ -9,13 +9,6 @@
     reason = "array bounds are validated earlier in parsing"
 )]
 #![allow(clippy::unwrap_used, reason = "slice conversions are length-validated")]
-#![cfg_attr(
-    test,
-    allow(
-        clippy::allow_attributes,
-        reason = "dead_code detection varies by test type"
-    )
-)]
 
 use std::{collections::HashSet, time::Duration};
 
@@ -171,7 +164,7 @@ pub struct Transaction {
 ///
 /// # Errors
 /// Returns an error if the frame is malformed or exceeds size limits.
-#[cfg_attr(test, allow(dead_code, reason = "used in integration tests"))]
+#[cfg_attr(test, expect(dead_code, reason = "used in integration tests"))]
 #[must_use = "handle the result"]
 pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
     if buf.len() < HEADER_LEN {
@@ -193,7 +186,7 @@ pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
 
 impl Transaction {
     /// Serialize the transaction into a vector of bytes.
-    #[cfg_attr(test, allow(dead_code, reason = "used in integration tests"))]
+    #[cfg_attr(test, expect(dead_code, reason = "used in integration tests"))]
     #[must_use = "use the serialized bytes"]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(HEADER_LEN + self.payload.len());
@@ -437,7 +430,7 @@ where
 ///
 /// # Errors
 /// Returns an error if the buffer is malformed or shorter than expected.
-#[cfg_attr(test, allow(dead_code, reason = "used in integration tests"))]
+#[cfg_attr(test, expect(dead_code, reason = "used in integration tests"))]
 #[must_use = "handle the result"]
 pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionError> {
     if buf.is_empty() {
