@@ -5,7 +5,7 @@
 //! the connection handler to drive database operations and build reply
 //! transactions.
 
-#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 use std::net::SocketAddr;
 

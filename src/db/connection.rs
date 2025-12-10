@@ -22,13 +22,13 @@ cfg_if! {
     } else if #[cfg(all(feature = "postgres", not(feature = "sqlite")))] {
         use diesel::pg::Pg;
         use diesel_async::AsyncPgConnection;
-        /// Database backend type for PostgreSQL.
+        /// Database backend type for `PostgreSQL`.
         pub type Backend = Pg;
-        /// Embedded database migrations for PostgreSQL.
+        /// Embedded database migrations for `PostgreSQL`.
         pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
-        /// Connection type for PostgreSQL database access.
+        /// Connection type for `PostgreSQL` database access.
         pub type DbConnection = AsyncPgConnection;
-        /// Connection pool type for PostgreSQL.
+        /// Connection pool type for `PostgreSQL`.
         pub type DbPool = Pool<DbConnection>;
     } else {
         compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");

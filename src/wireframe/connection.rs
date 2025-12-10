@@ -7,7 +7,7 @@
 //! keeps a per-task/thread store of handshake metadata and exposes helpers to
 //! store, read, and clear that data.
 
-#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 use crate::protocol::{Handshake, VERSION};
 

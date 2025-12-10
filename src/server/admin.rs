@@ -5,11 +5,11 @@
 //! dependencies so both the legacy Tokio loop and the Wireframe runtime can
 //! reuse them.
 
-#![allow(
+#![expect(
     clippy::shadow_reuse,
     reason = "intentional shadowing for config merging"
 )]
-#![allow(
+#![expect(
     clippy::print_stdout,
     reason = "intentional user output for CLI commands"
 )]

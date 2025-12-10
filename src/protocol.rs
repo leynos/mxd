@@ -4,7 +4,7 @@
 //! talking to Hotline clients. It contains the numeric constants used by the
 //! framing layer and basic handshake implementation.
 
-#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 use std::time::Duration;
 

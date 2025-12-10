@@ -7,8 +7,12 @@
 //! transaction mapping lands.
 
 #![cfg(feature = "legacy-networking")]
-#![allow(clippy::expect_used, reason = "test assertions")]
-#![allow(clippy::panic_in_result_fn, reason = "test assertions")]
+#![allow(
+    unfulfilled_lint_expectations,
+    reason = "test lint expectations may not all trigger"
+)]
+#![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
 
 use std::{
     io::{Read, Write},

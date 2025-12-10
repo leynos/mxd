@@ -1,6 +1,6 @@
 //! Shared helper utilities for exercising legacy server logic in tests.
 
-#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 use std::time::Duration;
 

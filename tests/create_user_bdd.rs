@@ -1,11 +1,15 @@
-#![allow(missing_docs, reason = "test file")]
-#![allow(clippy::expect_used, reason = "test assertions")]
-#![allow(clippy::unwrap_used, reason = "test assertions")]
-#![allow(clippy::panic_in_result_fn, reason = "test assertions")]
-#![allow(clippy::big_endian_bytes, reason = "network protocol")]
-#![allow(clippy::let_underscore_must_use, reason = "test cleanup")]
-#![allow(clippy::str_to_string, reason = "test code")]
-#![allow(clippy::shadow_unrelated, reason = "test code")]
+#![allow(
+    unfulfilled_lint_expectations,
+    reason = "test lint expectations may not all trigger"
+)]
+#![expect(missing_docs, reason = "test file")]
+#![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol")]
+#![expect(clippy::let_underscore_must_use, reason = "test cleanup")]
+#![expect(clippy::str_to_string, reason = "test code")]
+#![expect(clippy::shadow_unrelated, reason = "test code")]
 
 //! BDD-style integration tests for the create-user command.
 //!

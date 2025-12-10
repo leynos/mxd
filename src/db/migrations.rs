@@ -1,10 +1,5 @@
 //! Embedded migration utilities.
 
-#![allow(
-    clippy::cognitive_complexity,
-    reason = "migration logic involves multiple conditional branches"
-)]
-
 use std::{error::Error as StdError, fmt, time::Duration};
 
 use cfg_if::cfg_if;
@@ -81,6 +76,10 @@ cfg_if! {
         ///
         /// # Errors
         /// Returns any error produced by Diesel while running migrations.
+        #[expect(
+            clippy::cognitive_complexity,
+            reason = "migration logic involves multiple conditional branches"
+        )]
         #[must_use = "handle the result"]
         pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
             timeout(

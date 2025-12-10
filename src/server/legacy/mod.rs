@@ -4,20 +4,20 @@
 //! logic available to alternative front-ends (such as the upcoming wireframe
 //! adapter) without duplicating code.
 
-#![allow(clippy::shadow_reuse, reason = "intentional shadowing in async blocks")]
-#![allow(
+#![expect(clippy::shadow_reuse, reason = "intentional shadowing in async blocks")]
+#![expect(
     clippy::print_stdout,
     reason = "intentional console output for server status"
 )]
-#![allow(
+#![expect(
     clippy::print_stderr,
     reason = "intentional error output for diagnostics"
 )]
-#![allow(
+#![expect(
     clippy::integer_division_remainder_used,
     reason = "tokio::select! macro usage"
 )]
-#![allow(
+#![expect(
     clippy::let_underscore_must_use,
     reason = "shutdown signal send is fire-and-forget"
 )]

@@ -3,7 +3,7 @@
 //! Functions in this module provide a thin wrapper around the `argon2` crate
 //! to hash and verify user passwords for authentication purposes.
 
-#![allow(
+#![expect(
     clippy::expect_used,
     reason = "password hash format is validated by argon2 library"
 )]

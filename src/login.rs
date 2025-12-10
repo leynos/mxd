@@ -4,8 +4,8 @@
 //! on success. Login attempts are logged and rejected with appropriate error
 //! codes when validation fails.
 
-#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-#![allow(
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![expect(
     clippy::cognitive_complexity,
     reason = "login flow requires multiple validation steps"
 )]

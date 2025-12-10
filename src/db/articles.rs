@@ -1,10 +1,5 @@
 //! Article helpers layered atop bundle/category path resolution.
 
-#![allow(
-    clippy::shadow_reuse,
-    reason = "intentional shadowing in transaction closures"
-)]
-
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -72,6 +67,10 @@ pub struct CreateRootArticleParams<'a> {
 ///
 /// # Errors
 /// Returns an error if the path is invalid or the insertion fails.
+#[expect(
+    clippy::shadow_reuse,
+    reason = "intentional shadowing in transaction closure"
+)]
 #[must_use = "handle the result"]
 pub async fn create_root_article(
     conn: &mut DbConnection,

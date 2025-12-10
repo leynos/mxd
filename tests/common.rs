@@ -1,5 +1,9 @@
-#![allow(missing_docs, reason = "test helpers")]
-#![allow(clippy::print_stderr, reason = "test diagnostics")]
+#![allow(
+    unfulfilled_lint_expectations,
+    reason = "test lint expectations may not all trigger"
+)]
+#![expect(missing_docs, reason = "test helpers")]
+#![expect(clippy::print_stderr, reason = "test diagnostics")]
 
 #[cfg(feature = "postgres")]
 use test_util::postgres::PostgresUnavailable;

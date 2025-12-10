@@ -6,23 +6,23 @@
 
 #![cfg_attr(
     test,
-    allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")
+    expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")
 )]
-#![cfg_attr(test, allow(clippy::str_to_string, reason = "test code"))]
-#![cfg_attr(test, allow(clippy::unwrap_used, reason = "test code can panic"))]
+#![cfg_attr(test, expect(clippy::str_to_string, reason = "test code"))]
+#![cfg_attr(test, expect(clippy::unwrap_used, reason = "test code can panic"))]
 #![cfg_attr(
     test,
-    allow(clippy::indexing_slicing, reason = "test code with known bounds")
+    expect(clippy::indexing_slicing, reason = "test code with known bounds")
 )]
-#![cfg_attr(test, allow(clippy::panic_in_result_fn, reason = "test assertions"))]
-#![cfg_attr(test, allow(clippy::shadow_reuse, reason = "test code shadowing"))]
+#![cfg_attr(test, expect(clippy::panic_in_result_fn, reason = "test assertions"))]
+#![cfg_attr(test, expect(clippy::shadow_reuse, reason = "test code shadowing"))]
 #![cfg_attr(
     test,
-    allow(clippy::let_underscore_must_use, reason = "test cleanup code")
+    expect(clippy::let_underscore_must_use, reason = "test cleanup code")
 )]
 #![cfg_attr(
     test,
-    allow(clippy::unneeded_field_pattern, reason = "test pattern matching")
+    expect(clippy::unneeded_field_pattern, reason = "test pattern matching")
 )]
 #![cfg_attr(
     test,

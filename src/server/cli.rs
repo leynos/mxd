@@ -7,7 +7,7 @@
     non_snake_case,
     reason = "Clap/OrthoConfig derive macros generate helper modules with uppercase names"
 )]
-#![allow(
+#![expect(
     missing_docs,
     reason = "OrthoConfig and Clap derive macros generate items that cannot be documented"
 )]
@@ -22,10 +22,6 @@ use ortho_config::OrthoConfig;
 use serde::{Deserialize, Serialize};
 
 /// Arguments for the `create-user` administrative subcommand.
-#[expect(
-    missing_docs,
-    reason = "OrthoConfig derive macro generates items that cannot be documented"
-)]
 #[derive(Parser, OrthoConfig, Deserialize, Serialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 pub struct CreateUserArgs {
@@ -44,10 +40,6 @@ pub enum Commands {
 }
 
 /// Runtime configuration shared by all binaries.
-#[expect(
-    missing_docs,
-    reason = "OrthoConfig derive macro generates items that cannot be documented"
-)]
 #[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 pub struct AppConfig {
