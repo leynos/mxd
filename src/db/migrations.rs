@@ -70,76 +70,86 @@ impl StdError for MigrationTimeoutError {}
 
 const MIGRATION_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Wrap a migration harness error in a Diesel error.
+fn wrap_harness_error(e: Box<dyn StdError + Send + Sync>) -> DieselError {
+    DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
+}
+
+/// Wrap a timeout error in a Diesel error.
+fn wrap_timeout_error() -> DieselError {
+    DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
+}
+
+/// Check for pending migrations and execute them if present.
+///
+/// Returns `Ok(())` if no migrations are pending or if migrations complete successfully.
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "inherent complexity from MigrationHarness trait; logic is already minimal"
+)]
+fn execute_migrations_sync<C>(conn: &mut C) -> QueryResult<()>
+where
+    C: MigrationHarness<super::connection::Backend>,
+{
+    if let Ok(false) = conn.has_pending_migration(MIGRATIONS) {
+        info!("no pending migrations; skipping apply");
+        return Ok(());
+    }
+    info!("applying pending migrations");
+    conn.run_pending_migrations(MIGRATIONS)
+        .map(|_| ())
+        .map_err(wrap_harness_error)
+}
+
 cfg_if! {
     if #[cfg(feature = "sqlite")] {
         /// Run embedded database migrations.
         ///
         /// # Errors
         /// Returns any error produced by Diesel while running migrations.
-        #[expect(
-            clippy::cognitive_complexity,
-            reason = "migration logic involves multiple conditional branches"
-        )]
         #[must_use = "handle the result"]
         pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
             timeout(
                 MIGRATION_TIMEOUT,
-                conn.spawn_blocking(|c| {
-                    if let Ok(false) = c.has_pending_migration(MIGRATIONS) {
-                        info!("no pending migrations; skipping apply");
-                        return Ok(());
-                    }
-                    info!("applying pending migrations");
-                    c.run_pending_migrations(MIGRATIONS)
-                        .map(|_| ())
-                        .map_err(|e: Box<dyn StdError + Send + Sync>| {
-                            DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
-                        })
-                }),
+                conn.spawn_blocking(execute_migrations_sync),
             )
             .await
-            .map_err(|_| {
-                DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
-            })??;
+            .map_err(|_| wrap_timeout_error())??;
             Ok(())
         }
     } else if #[cfg(all(feature = "postgres", not(feature = "sqlite")))] {
+        /// Wrap a connection error in a Diesel error.
+        fn wrap_connection_error(e: ConnectionError) -> DieselError {
+            DieselError::SerializationError(Box::new(MigrationConnectionError(e)))
+        }
+
+        /// Wrap a task executor error in a Diesel error.
+        fn wrap_executor_error(e: tokio::task::JoinError) -> DieselError {
+            DieselError::SerializationError(Box::new(MigrationExecutorError(e)))
+        }
+
+        /// Establish a PostgreSQL connection and execute migrations.
+        fn establish_and_migrate(url: String) -> QueryResult<()> {
+            use diesel::pg::PgConnection;
+            let mut conn = PgConnection::establish(&url).map_err(wrap_connection_error)?;
+            execute_migrations_sync(&mut conn)
+        }
+
         /// Run embedded database migrations.
         ///
         /// # Errors
         /// Returns any error produced by Diesel while running migrations.
-        #[expect(
-            clippy::cognitive_complexity,
-            reason = "migration logic involves multiple conditional branches"
-        )]
         #[must_use = "handle the result"]
         pub async fn run_migrations(database_url: &str) -> QueryResult<()> {
-            use diesel::pg::PgConnection;
             use tokio::task;
             let url = database_url.to_owned();
             timeout(
                 MIGRATION_TIMEOUT,
-                task::spawn_blocking(move || -> QueryResult<()> {
-                    let mut conn = PgConnection::establish(&url).map_err(|e| {
-                        DieselError::SerializationError(Box::new(MigrationConnectionError(e)))
-                    })?;
-                    if let Ok(false) = conn.has_pending_migration(MIGRATIONS) {
-                        info!("no pending migrations; skipping apply");
-                        return Ok(());
-                    }
-                    info!("applying pending migrations");
-                    conn.run_pending_migrations(MIGRATIONS)
-                        .map(|_| ())
-                        .map_err(|e: Box<dyn StdError + Send + Sync>| {
-                            DieselError::SerializationError(Box::new(MigrationHarnessError(e)))
-                        })
-                }),
+                task::spawn_blocking(move || establish_and_migrate(url)),
             )
             .await
-            .map_err(|_| {
-                DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
-            })?
-            .map_err(|e| DieselError::SerializationError(Box::new(MigrationExecutorError(e))))??;
+            .map_err(|_| wrap_timeout_error())?
+            .map_err(wrap_executor_error)??;
             Ok(())
         }
     }

@@ -1,4 +1,11 @@
 //! Helpers for `PostgreSQL`-backed integration tests.
+
+// Note: The rstest #[fixture] macro generates sibling items that cannot be
+// individually annotated, requiring this module-level suppression.
+#![expect(
+    missing_docs,
+    reason = "rstest #[fixture] macro generates undocumented helper items"
+)]
 use std::{
     error::Error as StdError,
     net::{TcpStream, ToSocketAddrs},
@@ -12,9 +19,11 @@ use rstest::fixture;
 use url::Url;
 use uuid::Uuid;
 
+/// A validated `PostgreSQL` database connection URL.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseUrl(String);
 
+/// A validated `PostgreSQL` database name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseName(String);
 
@@ -86,6 +95,7 @@ pub(crate) struct EmbeddedPg {
     _cluster: TestCluster,
 }
 
+/// Error indicating that a `PostgreSQL` server could not be reached.
 #[derive(Debug)]
 pub struct PostgresUnavailable;
 
@@ -111,11 +121,9 @@ fn postgres_available(url: &Url) -> bool {
     false
 }
 
-fn generate_db_name(prefix: &str) -> DatabaseName {
+fn generate_db_name(prefix: &str) -> Result<DatabaseName, String> {
     let name = format!("{prefix}{}", Uuid::now_v7().simple());
-    // SAFETY: Generated names from UUID are always valid (alphanumeric only)
-    #[expect(clippy::expect_used, reason = "UUID-based names are always valid")]
-    DatabaseName::new(name).expect("generated database name should be valid")
+    DatabaseName::new(name)
 }
 
 pub(crate) fn start_embedded_postgres<F>(
@@ -161,7 +169,7 @@ fn create_external_db(
     base_url: &DatabaseUrl,
 ) -> Result<(DatabaseUrl, DatabaseName), Box<dyn StdError + Send + Sync>> {
     let mut url = Url::parse(base_url.as_ref())?;
-    let db_name = generate_db_name("test_");
+    let db_name = generate_db_name("test_")?;
     let admin_url = url.to_string();
     let mut client = Client::connect(&admin_url, NoTls)?;
     let query = format!("CREATE DATABASE \"{db_name}\"");
@@ -174,7 +182,9 @@ fn drop_external_db(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
     drop_database(admin_url, db_name);
 }
 
+/// A test database instance backed by either embedded or external `PostgreSQL`.
 pub struct PostgresTestDb {
+    /// The connection URL for the test database.
     pub url: DatabaseUrl,
     admin_url: Option<DatabaseUrl>,
     embedded: Option<EmbeddedPg>,
@@ -189,7 +199,9 @@ impl PostgresTestDb {
     ///
     /// # Errors
     ///
-    /// Returns an error if `PostgreSQL` is not available or database creation fails.
+    /// Returns `PostgresUnavailable` if the configured external server cannot be
+    /// reached. Propagates other errors (initialization, database creation)
+    /// directly to distinguish them from unavailability.
     pub fn new() -> Result<Self, Box<dyn StdError + Send + Sync>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let admin_url = DatabaseUrl::parse(&value.to_string_lossy())?;
@@ -206,9 +218,7 @@ impl PostgresTestDb {
             });
         }
 
-        let Ok(embedded) = start_embedded_postgres(reset_postgres_db) else {
-            return Err(Box::new(PostgresUnavailable));
-        };
+        let embedded = start_embedded_postgres(reset_postgres_db)?;
         let url = embedded.url.clone();
         let db_name = embedded.db_name.clone();
         Ok(Self {
@@ -219,6 +229,8 @@ impl PostgresTestDb {
         })
     }
 
+    /// Returns `true` if this test database uses an embedded `PostgreSQL` instance.
+    #[must_use]
     pub const fn uses_embedded(&self) -> bool { self.embedded.is_some() }
 }
 
@@ -245,11 +257,18 @@ impl Drop for PostgresTestDb {
 ///
 /// # Panics
 ///
-/// Panics if the test database cannot be created (acceptable for test fixtures).
+/// Panics if:
+/// - `PostgreSQL` is unavailable (use `PostgresTestDb::new()` directly with
+///   `downcast_ref::<PostgresUnavailable>()` for skip semantics)
+/// - Initialization or database creation fails (configuration error)
 #[fixture]
 pub fn postgres_db() -> PostgresTestDb {
-    match PostgresTestDb::new() {
-        Ok(db) => db,
-        Err(e) => panic!("Failed to prepare Postgres test database: {e}"),
-    }
+    PostgresTestDb::new().unwrap_or_else(|e| {
+        let msg = if e.is::<PostgresUnavailable>() {
+            format!("PostgreSQL unavailable; skipping test: {e}")
+        } else {
+            format!("Failed to prepare Postgres test database: {e}")
+        };
+        panic!("{msg}");
+    })
 }

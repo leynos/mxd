@@ -4,12 +4,6 @@
 //! when the `postgres` feature is enabled, manage embedded `PostgreSQL`
 //! instances. It is used by integration tests in the main crate.
 
-#![expect(missing_docs, reason = "test utility crate; API docs not required")]
-#![expect(
-    clippy::missing_errors_doc,
-    reason = "test utility crate; error docs not required"
-)]
-
 /// A boxed error type for test functions.
 pub type AnyError = Box<dyn std::error::Error + Send + Sync>;
 

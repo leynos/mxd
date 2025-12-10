@@ -2,6 +2,8 @@
     non_snake_case,
     reason = "OrthoConfig derives emit helper modules with CamelCase identifiers"
 )]
+// Note: The missing_docs suppression is crate-level because OrthoConfig derive macro
+// generates sibling items (not children) that cannot be individually annotated.
 #![expect(
     missing_docs,
     reason = "OrthoConfig derive generates helper structs/functions without docs"

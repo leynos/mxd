@@ -3,11 +3,6 @@
 //! Verifies that a test user can be created and authenticated through the `/server`
 //! command with username and password credentials.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "tests: eprintln for skip messages is appropriate"
-)]
-
 use expectrl::{Regex, spawn};
 use test_util::{AnyError, TestServer};
 use which::which;
@@ -15,7 +10,13 @@ use which::which;
 #[test]
 fn login_validation() -> Result<(), AnyError> {
     if which("hx").is_err() {
-        eprintln!("hx not installed; skipping test");
+        #[expect(
+            clippy::print_stderr,
+            reason = "skip message: inform user why test is being skipped"
+        )]
+        {
+            eprintln!("hx not installed; skipping test");
+        }
         return Ok(());
     }
 
