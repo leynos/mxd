@@ -1,6 +1,3 @@
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#![expect(clippy::big_endian_bytes, reason = "network protocol")]
-
 //! Exercises the legacy TCP handshake with an invalid protocol preamble.
 //! Skipped when the `legacy-networking` feature is not compiled.
 #![cfg(feature = "legacy-networking")]
@@ -15,6 +12,8 @@ use test_util::AnyError;
 
 mod common;
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn handshake_invalid_protocol() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
