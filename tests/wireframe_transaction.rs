@@ -57,8 +57,9 @@ impl TransactionWorld {
 }
 
 #[fixture]
-#[allow(unused_braces)] // cargo fmt formats fixture as single-line block
-fn world() -> TransactionWorld { TransactionWorld::default() }
+fn world() -> TransactionWorld {
+    TransactionWorld::default()
+}
 
 fn build_valid_payload(size: usize) -> Vec<u8> {
     if size == 0 {
@@ -240,7 +241,7 @@ proptest! {
         let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, hotline_config());
 
         prop_assert!(result.is_ok(), "decode failed: {:?}", result.err());
-        let (tx, _) = result.unwrap();
+        let (tx, _) = result.expect("decode succeeded per prop_assert above");
         prop_assert_eq!(tx.header().ty, ty);
         prop_assert_eq!(tx.header().id, id);
         prop_assert_eq!(tx.payload().len(), payload.len());
@@ -287,7 +288,7 @@ proptest! {
         let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, hotline_config());
 
         prop_assert!(result.is_ok(), "decode failed: {:?}", result.err());
-        let (tx, _) = result.unwrap();
+        let (tx, _) = result.expect("decode succeeded per prop_assert above");
         prop_assert_eq!(tx.header().total_size, total_u32);
         prop_assert_eq!(tx.payload().len(), total_size);
     }

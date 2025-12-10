@@ -157,6 +157,12 @@ impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
         let mut header = first_header;
         header.data_size = header.total_size;
 
+        // Note: Payload validation (transaction::validate_payload) is intentionally
+        // omitted here. The codec layer handles only frame-level concerns—header
+        // validation, length bounds, and multi-fragment reassembly. Semantic payload
+        // validation (parameter counts, field types) is deferred to command handlers,
+        // which have the context to interpret transaction types and enforce
+        // application-level constraints.
         Ok(Self { header, payload })
     }
 }

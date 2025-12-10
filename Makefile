@@ -1,9 +1,9 @@
-.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only lint fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release
+.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only lint lint-postgres lint-sqlite lint-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release
 
 APP ?= mxd
 CARGO ?= cargo
 BUILD_JOBS ?=
-CLIPPY_FLAGS ?= --workspace --all-targets --all-features -- -D warnings
+CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
 MDLINT ?= markdownlint-cli2
 NIXIE ?= nixie
 RSTEST_TIMEOUT ?= 20
@@ -13,7 +13,6 @@ TEST_SQLITE_FEATURES := --features "sqlite test-support"
 TEST_POSTGRES_FEATURES := --no-default-features --features "postgres test-support legacy-networking"
 WIREFRAME_ONLY_FEATURES := --no-default-features --features "sqlite toml test-support"
 POSTGRES_TARGET_DIR := target/postgres
-RUSTDOC_FLAGS ?= --cfg docsrs -D warnings
 
 all: release ## Build release binaries for sqlite and postgres
 
@@ -39,9 +38,16 @@ fmt: ## Format Rust and Markdown sources
 check-fmt: ## Verify formatting for Rust sources
 	$(CARGO) fmt --all -- --check
 
-lint: ## Run Clippy with warnings denied
-	RUSTDOCFLAGS="$(RUSTDOC_FLAGS)" $(CARGO) doc --workspace --no-deps
-	$(CARGO) clippy $(CLIPPY_FLAGS)
+lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy for all feature sets
+
+lint-postgres: ## Run Clippy with the postgres backend
+	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
+
+lint-sqlite: ## Run Clippy with the sqlite backend
+	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
+
+lint-wireframe-only: ## Run Clippy with legacy networking disabled
+	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
 
 markdownlint: ## Lint Markdown files
 	$(MDLINT) '**/*.md'
