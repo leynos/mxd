@@ -4,7 +4,6 @@
 //! behaviour suites reuse the same encoding logic.
 
 #![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-#![allow(clippy::expect_used, reason = "test utilities can panic on failure")]
 
 use tokio::io::AsyncReadExt;
 
@@ -28,11 +27,13 @@ pub fn preamble_bytes(
 
 /// Receive a single Hotline handshake reply from the stream.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if the stream cannot supply the full reply buffer.
-pub async fn recv_reply(stream: &mut tokio::net::TcpStream) -> [u8; REPLY_LEN] {
+/// Returns an error if the stream cannot supply the full reply buffer.
+pub async fn recv_reply(
+    stream: &mut tokio::net::TcpStream,
+) -> Result<[u8; REPLY_LEN], std::io::Error> {
     let mut buf = [0u8; REPLY_LEN];
-    stream.read_exact(&mut buf).await.expect("handshake reply");
-    buf
+    stream.read_exact(&mut buf).await?;
+    Ok(buf)
 }

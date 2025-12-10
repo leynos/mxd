@@ -167,7 +167,7 @@ mod tests {
         let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 7);
         stream.write_all(&bytes).await.expect("write handshake");
 
-        let reply = recv_reply(&mut stream).await;
+        let reply = recv_reply(&mut stream).await.expect("handshake reply");
         assert_eq!(&reply[0..4], PROTOCOL_ID);
         assert_eq!(
             u32::from_be_bytes(
@@ -195,7 +195,7 @@ mod tests {
         let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
         stream.write_all(&bytes).await.expect("write handshake");
 
-        let reply = recv_reply(&mut stream).await;
+        let reply = recv_reply(&mut stream).await.expect("handshake reply");
         assert_eq!(
             u32::from_be_bytes(
                 reply[4..8]
@@ -215,7 +215,8 @@ mod tests {
 
         let reply = timeout(Duration::from_secs(1), recv_reply(&mut stream))
             .await
-            .expect("reply timed out in test");
+            .expect("reply timed out in test")
+            .expect("handshake reply");
         assert_eq!(
             u32::from_be_bytes(
                 reply[4..8]

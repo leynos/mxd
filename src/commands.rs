@@ -233,11 +233,10 @@ impl Command {
         session: &mut crate::handler::Session,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
         match self {
-            Self::Login {
-                username,
-                password,
-                header,
-            } => handle_login(peer, session, pool, LoginRequest { username, password, header }).await,
+            Self::Login { username, password, header } => {
+                let req = LoginRequest { username, password, header };
+                handle_login(peer, session, pool, req).await
+            }
             Self::GetFileNameList { header, .. } => {
                 let Some(user_id) = session.user_id else {
                     return Ok(Transaction {

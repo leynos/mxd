@@ -316,7 +316,11 @@ where
 {
     /// Create a new reader with default timeout and payload limits.
     #[must_use = "create a reader"]
-    pub const fn new(reader: R) -> Self {
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "const fn with non-const trait bounds (AsyncRead + Unpin) is misleading"
+    )]
+    pub fn new(reader: R) -> Self {
         Self {
             reader,
             timeout: IO_TIMEOUT,
@@ -380,7 +384,11 @@ where
 {
     /// Create a new writer with default timeout and size limits.
     #[must_use = "create a writer"]
-    pub const fn new(writer: W) -> Self {
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "const fn with non-const trait bounds (AsyncWrite + Unpin) is misleading"
+    )]
+    pub fn new(writer: W) -> Self {
         Self {
             writer,
             timeout: IO_TIMEOUT,
