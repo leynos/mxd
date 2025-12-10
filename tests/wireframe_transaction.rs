@@ -3,16 +3,6 @@
 use std::cell::RefCell;
 
 use bincode::{borrow_decode_from_slice, config, error::DecodeError};
-
-/// Return the bincode configuration for Hotline transaction decoding.
-///
-/// Uses big-endian byte order and fixed-width integer encoding as required by
-/// the Hotline protocol.
-fn hotline_config() -> impl bincode::config::Config {
-    config::standard()
-        .with_big_endian()
-        .with_fixed_int_encoding()
-}
 use mxd::{
     transaction::{FrameHeader, MAX_FRAME_DATA, MAX_PAYLOAD_SIZE},
     wireframe::{
@@ -28,6 +18,16 @@ use proptest::prelude::*;
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
 use rstest_bdd_macros::{given, scenario, then, when};
+
+/// Return the bincode configuration for Hotline transaction decoding.
+///
+/// Uses big-endian byte order and fixed-width integer encoding as required by
+/// the Hotline protocol.
+fn hotline_config() -> impl bincode::config::Config {
+    config::standard()
+        .with_big_endian()
+        .with_fixed_int_encoding()
+}
 
 // -----------------------------------------------------------------------------
 // BDD World and Step Definitions
