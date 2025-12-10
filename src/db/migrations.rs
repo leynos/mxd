@@ -80,25 +80,43 @@ fn wrap_timeout_error() -> DieselError {
     DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
 }
 
-/// Check for pending migrations and execute them if present.
+/// Check whether migrations are pending.
 ///
-/// Returns `Ok(())` if no migrations are pending or if migrations complete successfully.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "inherent complexity from MigrationHarness trait; logic is already minimal"
-)]
-fn execute_migrations_sync<C>(conn: &mut C) -> QueryResult<()>
+/// Returns `true` if there are pending migrations, `false` otherwise.
+fn has_pending_migrations<C>(conn: &mut C) -> bool
 where
     C: MigrationHarness<super::connection::Backend>,
 {
-    if let Ok(false) = conn.has_pending_migration(MIGRATIONS) {
-        info!("no pending migrations; skipping apply");
-        return Ok(());
-    }
+    // has_pending_migration returns Ok(true) if pending, Ok(false) if not,
+    // or Err if it cannot determine. Treat errors as "pending" to be safe.
+    !matches!(conn.has_pending_migration(MIGRATIONS), Ok(false))
+}
+
+/// Execute all pending migrations.
+///
+/// Assumes caller has already verified migrations are pending.
+fn apply_pending_migrations<C>(conn: &mut C) -> QueryResult<()>
+where
+    C: MigrationHarness<super::connection::Backend>,
+{
     info!("applying pending migrations");
     conn.run_pending_migrations(MIGRATIONS)
         .map(|_| ())
         .map_err(wrap_harness_error)
+}
+
+/// Check for pending migrations and execute them if present.
+///
+/// Returns `Ok(())` if no migrations are pending or if migrations complete successfully.
+fn execute_migrations_sync<C>(conn: &mut C) -> QueryResult<()>
+where
+    C: MigrationHarness<super::connection::Backend>,
+{
+    if !has_pending_migrations(conn) {
+        info!("no pending migrations; skipping apply");
+        return Ok(());
+    }
+    apply_pending_migrations(conn)
 }
 
 cfg_if! {
