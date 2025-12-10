@@ -1,7 +1,20 @@
-//! Integration tests for postgres_setup_unpriv configuration and privilege handling.
+//! Integration tests for `postgres_setup_unpriv` configuration and privilege handling.
 //!
 //! Validates configuration round-trips, default values, directory access helpers, and
 //! temporary UID management to ensure the binary operates safely when dropping privileges.
+
+#![expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: assertions in Result-returning tests are idiomatic"
+)]
+#![expect(
+    clippy::print_stderr,
+    reason = "tests: eprintln for skip messages is appropriate"
+)]
+#![expect(
+    clippy::unnecessary_wraps,
+    reason = "tests: Result return type required by rstest for ? propagation"
+)]
 
 use std::path::PathBuf;
 
@@ -41,11 +54,11 @@ fn to_settings_roundtrip() -> color_eyre::Result<()> {
     assert_eq!(settings.installation_dir, PathBuf::from("/tmp/runtime"));
     assert_eq!(
         settings.configuration.get("locale"),
-        Some(&"en_US".to_string())
+        Some(&"en_US".to_owned())
     );
     assert_eq!(
         settings.configuration.get("encoding"),
-        Some(&"UTF8".to_string())
+        Some(&"UTF8".to_owned())
     );
     Ok(())
 }

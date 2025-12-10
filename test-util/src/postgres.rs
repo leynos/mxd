@@ -1,4 +1,4 @@
-//! Helpers for PostgreSQL-backed integration tests.
+//! Helpers for `PostgreSQL`-backed integration tests.
 use std::{
     error::Error as StdError,
     net::{TcpStream, ToSocketAddrs},
@@ -19,9 +19,14 @@ pub struct DatabaseUrl(String);
 pub struct DatabaseName(String);
 
 impl DatabaseUrl {
+    /// Parses a database URL string into a validated `DatabaseUrl`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the URL cannot be parsed.
     pub fn parse(url: &str) -> Result<Self, url::ParseError> {
         Url::parse(url)?;
-        Ok(Self(url.to_string()))
+        Ok(Self(url.to_owned()))
     }
 }
 
@@ -52,6 +57,13 @@ impl std::fmt::Display for DatabaseName {
 }
 
 impl DatabaseName {
+    /// Creates a new validated database name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the name is empty, exceeds 63 characters, or
+    /// contains non-alphanumeric characters (except underscores).
+    #[expect(clippy::shadow_reuse, reason = "standard Into pattern")]
     pub fn new(name: impl Into<String>) -> Result<Self, String> {
         let name = name.into();
         if name.trim().is_empty() {
@@ -85,6 +97,7 @@ impl std::fmt::Display for PostgresUnavailable {
 
 impl std::error::Error for PostgresUnavailable {}
 
+#[expect(clippy::shadow_reuse, reason = "clearer flow with shadowing")]
 fn postgres_available(url: &Url) -> bool {
     if let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) {
         let addr = (host, port)
@@ -99,8 +112,10 @@ fn postgres_available(url: &Url) -> bool {
 }
 
 fn generate_db_name(prefix: &str) -> DatabaseName {
-    let name = format!("{}{}", prefix, Uuid::now_v7().simple());
-    DatabaseName::new(name).expect("generated database name")
+    let name = format!("{prefix}{}", Uuid::now_v7().simple());
+    // SAFETY: Generated names from UUID are always valid (alphanumeric only)
+    #[expect(clippy::expect_used, reason = "UUID-based names are always valid")]
+    DatabaseName::new(name).expect("generated database name should be valid")
 }
 
 pub(crate) fn start_embedded_postgres<F>(
@@ -129,11 +144,15 @@ pub(crate) fn reset_postgres_db(url: &DatabaseUrl) -> Result<(), Box<dyn StdErro
     Ok(())
 }
 
+#[expect(
+    clippy::print_stderr,
+    reason = "test cleanup: user should see cleanup failures"
+)]
 fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
     if let Ok(mut client) = Client::connect(admin_url.as_ref(), NoTls) {
-        let query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
+        let query = format!("DROP DATABASE IF EXISTS \"{db_name}\"");
         if let Err(e) = client.batch_execute(&query) {
-            eprintln!("error dropping database {}: {}", db_name, e);
+            eprintln!("error dropping database {db_name}: {e}");
         }
     }
 }
@@ -145,7 +164,7 @@ fn create_external_db(
     let db_name = generate_db_name("test_");
     let admin_url = url.to_string();
     let mut client = Client::connect(&admin_url, NoTls)?;
-    let query = format!("CREATE DATABASE \"{}\"", db_name);
+    let query = format!("CREATE DATABASE \"{db_name}\"");
     client.batch_execute(&query)?;
     url.set_path(&db_name);
     Ok((DatabaseUrl::parse(url.as_str())?, db_name))
@@ -163,6 +182,14 @@ pub struct PostgresTestDb {
 }
 
 impl PostgresTestDb {
+    /// Creates a new test database instance.
+    ///
+    /// Uses `POSTGRES_TEST_URL` environment variable if set, otherwise starts
+    /// an embedded `PostgreSQL` instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `PostgreSQL` is not available or database creation fails.
     pub fn new() -> Result<Self, Box<dyn StdError + Send + Sync>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let admin_url = DatabaseUrl::parse(&value.to_string_lossy())?;
@@ -179,9 +206,8 @@ impl PostgresTestDb {
             });
         }
 
-        let embedded = match start_embedded_postgres(reset_postgres_db) {
-            Ok(pg) => pg,
-            Err(_) => return Err(Box::new(PostgresUnavailable)),
+        let Ok(embedded) = start_embedded_postgres(reset_postgres_db) else {
+            return Err(Box::new(PostgresUnavailable));
         };
         let url = embedded.url.clone();
         let db_name = embedded.db_name.clone();
@@ -193,10 +219,14 @@ impl PostgresTestDb {
         })
     }
 
-    pub fn uses_embedded(&self) -> bool { self.embedded.is_some() }
+    pub const fn uses_embedded(&self) -> bool { self.embedded.is_some() }
 }
 
 impl Drop for PostgresTestDb {
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "best-effort cleanup; Drop cannot propagate errors"
+    )]
     fn drop(&mut self) {
         if let Some(embedded) = self.embedded.take() {
             drop_database(&embedded.admin_url, &embedded.db_name);
@@ -211,7 +241,15 @@ impl Drop for PostgresTestDb {
     }
 }
 
+/// rstest fixture providing a `PostgreSQL` test database.
+///
+/// # Panics
+///
+/// Panics if the test database cannot be created (acceptable for test fixtures).
 #[fixture]
 pub fn postgres_db() -> PostgresTestDb {
-    PostgresTestDb::new().expect("Failed to prepare Postgres test database")
+    match PostgresTestDb::new() {
+        Ok(db) => db,
+        Err(e) => panic!("Failed to prepare Postgres test database: {e}"),
+    }
 }

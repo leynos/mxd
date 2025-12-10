@@ -20,6 +20,9 @@ postgres = { version = "0.19", optional = true }
 uuid = { version = "1", features = ["v7"], optional = true }
 url = { version = "2", optional = true }
 
+[lints]
+workspace = true
+
 [features]
 default = ["sqlite"]
 postgres = [
