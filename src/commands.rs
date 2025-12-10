@@ -233,8 +233,16 @@ impl Command {
         session: &mut crate::handler::Session,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
         match self {
-            Self::Login { username, password, header } => {
-                let req = LoginRequest { username, password, header };
+            Self::Login {
+                username,
+                password,
+                header,
+            } => {
+                let req = LoginRequest {
+                    username,
+                    password,
+                    header,
+                };
                 handle_login(peer, session, pool, req).await
             }
             Self::GetFileNameList { header, .. } => {
@@ -267,8 +275,21 @@ impl Command {
                 path,
                 article_id,
             } => handle_article_data(pool, header, path, article_id).await,
-            Self::PostNewsArticle { header, path, title, flags, data_flavor, data } => {
-                let req = PostArticleRequest { path, title, flags, data_flavor, data };
+            Self::PostNewsArticle {
+                header,
+                path,
+                title,
+                flags,
+                data_flavor,
+                data,
+            } => {
+                let req = PostArticleRequest {
+                    path,
+                    title,
+                    flags,
+                    data_flavor,
+                    data,
+                };
                 handle_post_article(pool, header, req).await
             }
             Self::InvalidPayload { header } => Ok(Transaction {
@@ -463,12 +484,28 @@ async fn handle_article_data(
 }
 
 /// Parameters for posting a new news article.
+#[derive(Debug, PartialEq, Eq)]
 struct PostArticleRequest {
     path: String,
     title: String,
     flags: i32,
     data_flavor: String,
     data: String,
+}
+
+impl PostArticleRequest {
+    /// Build database parameters from this request.
+    ///
+    /// The returned [`CreateRootArticleParams`] borrows from `self` and contains
+    /// all fields except `path`, which is used separately for path lookup.
+    fn to_db_params(&self) -> CreateRootArticleParams<'_> {
+        CreateRootArticleParams {
+            title: &self.title,
+            flags: self.flags,
+            data_flavor: &self.data_flavor,
+            data: &self.data,
+        }
+    }
 }
 
 /// Create a new root article under the provided path.
@@ -482,17 +519,7 @@ async fn handle_post_article(
 ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
-            let id = create_root_article(
-                conn,
-                &req.path,
-                CreateRootArticleParams {
-                    title: &req.title,
-                    flags: req.flags,
-                    data_flavor: &req.data_flavor,
-                    data: &req.data,
-                },
-            )
-            .await?;
+            let id = create_root_article(conn, &req.path, req.to_db_params()).await?;
             let bytes = id.to_be_bytes();
             Ok(vec![(FieldId::NewsArticleId, bytes.to_vec())])
         })
@@ -582,5 +609,75 @@ mod tests {
         let result = parse_login_params(params).expect("should parse");
         assert_eq!(result.username, "alice");
         assert_eq!(result.password, "secret");
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_maps_title() {
+        let req = PostArticleRequest {
+            path: "/news/tech".to_string(),
+            title: "Hello World".to_string(),
+            flags: 0,
+            data_flavor: "text/plain".to_string(),
+            data: "Content here".to_string(),
+        };
+        let params = req.to_db_params();
+        assert_eq!(params.title, "Hello World");
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_maps_flags() {
+        let req = PostArticleRequest {
+            path: "/news".to_string(),
+            title: "Test".to_string(),
+            flags: 42,
+            data_flavor: "text/plain".to_string(),
+            data: "Body".to_string(),
+        };
+        let params = req.to_db_params();
+        assert_eq!(params.flags, 42);
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_maps_data_flavor() {
+        let req = PostArticleRequest {
+            path: "/news".to_string(),
+            title: "Test".to_string(),
+            flags: 0,
+            data_flavor: "text/html".to_string(),
+            data: "<p>HTML</p>".to_string(),
+        };
+        let params = req.to_db_params();
+        assert_eq!(params.data_flavor, "text/html");
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_maps_data() {
+        let req = PostArticleRequest {
+            path: "/news".to_string(),
+            title: "Test".to_string(),
+            flags: 0,
+            data_flavor: "text/plain".to_string(),
+            data: "Article body content".to_string(),
+        };
+        let params = req.to_db_params();
+        assert_eq!(params.data, "Article body content");
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_excludes_path() {
+        let req = PostArticleRequest {
+            path: "/news/category".to_string(),
+            title: "Test".to_string(),
+            flags: 0,
+            data_flavor: "text/plain".to_string(),
+            data: "Content".to_string(),
+        };
+        let params = req.to_db_params();
+        // Path is not part of CreateRootArticleParams; it's used separately
+        // for the path lookup. Verify the other fields are correctly mapped.
+        assert_eq!(params.title, "Test");
+        assert_eq!(params.flags, 0);
+        assert_eq!(params.data_flavor, "text/plain");
+        assert_eq!(params.data, "Content");
     }
 }
