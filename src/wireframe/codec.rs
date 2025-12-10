@@ -73,22 +73,22 @@ fn validate_fragment_consistency(
     next: &FrameHeader,
 ) -> Result<(), &'static str> {
     if next.flags != first.flags {
-        return Err("header field 'flags' changed between fragments");
+        return Err("header mismatch: 'flags' changed between fragments");
     }
     if next.is_reply != first.is_reply {
-        return Err("header field 'is_reply' changed between fragments");
+        return Err("header mismatch: 'is_reply' changed between fragments");
     }
     if next.ty != first.ty {
-        return Err("header field 'type' changed between fragments");
+        return Err("header mismatch: 'type' changed between fragments");
     }
     if next.id != first.id {
-        return Err("header field 'id' changed between fragments");
+        return Err("header mismatch: 'id' changed between fragments");
     }
     if next.error != first.error {
-        return Err("header field 'error' changed between fragments");
+        return Err("header mismatch: 'error' changed between fragments");
     }
     if next.total_size != first.total_size {
-        return Err("header field 'total_size' changed between fragments");
+        return Err("header mismatch: 'total_size' changed between fragments");
     }
     Ok(())
 }

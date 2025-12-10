@@ -44,3 +44,8 @@ Feature: Wireframe transaction codec
     Given a transaction with total size 40000 and data size 40000
     When I decode the transaction frame
     Then decoding fails with "data size exceeds maximum"
+
+  Scenario: Rejects mismatched continuation header
+    Given a fragmented transaction with mismatched continuation headers
+    When I decode the transaction frame
+    Then decoding fails with "header mismatch"

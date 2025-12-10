@@ -17,7 +17,11 @@ use mxd::{
     transaction::{FrameHeader, MAX_FRAME_DATA, MAX_PAYLOAD_SIZE},
     wireframe::{
         codec::HotlineTransaction,
-        test_helpers::{fragmented_transaction_bytes, transaction_bytes},
+        test_helpers::{
+            fragmented_transaction_bytes,
+            mismatched_continuation_bytes,
+            transaction_bytes,
+        },
     },
 };
 use proptest::prelude::*;
@@ -53,9 +57,8 @@ impl TransactionWorld {
 }
 
 #[fixture]
-fn world() -> TransactionWorld {
-    TransactionWorld::default()
-}
+#[allow(unused_braces)] // cargo fmt formats fixture as single-line block
+fn world() -> TransactionWorld { TransactionWorld::default() }
 
 fn build_valid_payload(size: usize) -> Vec<u8> {
     if size == 0 {
@@ -113,8 +116,15 @@ fn given_fragmented_transaction(world: &TransactionWorld, total: usize, count: u
         total_size: total_u32,
         data_size: total_u32,
     };
-    let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size);
+    let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size)
+        .expect("chunk size fits in u32 for test");
     let bytes: Vec<u8> = fragments.into_iter().flatten().collect();
+    world.set_bytes(&bytes);
+}
+
+#[given("a fragmented transaction with mismatched continuation headers")]
+fn given_mismatched_continuation(world: &TransactionWorld) {
+    let bytes = mismatched_continuation_bytes().expect("test values fit in u32");
     world.set_bytes(&bytes);
 }
 
@@ -181,6 +191,9 @@ fn rejects_oversized_total(world: TransactionWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_transaction.feature", index = 7)]
 fn rejects_oversized_data(world: TransactionWorld) { let _ = world; }
+
+#[scenario(path = "tests/features/wireframe_transaction.feature", index = 8)]
+fn rejects_mismatched_continuation(world: TransactionWorld) { let _ = world; }
 
 // -----------------------------------------------------------------------------
 // Property Tests
@@ -267,7 +280,8 @@ proptest! {
             data_size: total_u32,
         };
 
-        let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size);
+        let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size)
+            .expect("chunk size fits in u32 for test");
         let bytes: Vec<u8> = fragments.into_iter().flatten().collect();
 
         let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, hotline_config());

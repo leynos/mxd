@@ -44,9 +44,9 @@ jobs:
       - name: Format
         run: make check-fmt
       - name: Lint
-        run: cargo clippy --no-default-features --features ${{ matrix.feature }} -- -D warnings
+        run: cargo clippy --no-default-features --features "${{ matrix.feature }} test-support" -- -D warnings
       - name: Test
-        run: cargo test --no-default-features --features ${{ matrix.feature }}
+        run: cargo test --no-default-features --features "${{ matrix.feature }} test-support"
 
   coverage:
     runs-on: ubuntu-latest
@@ -84,13 +84,13 @@ jobs:
       - name: Generate coverage for SQLite
         uses: ./.github/actions/generate-coverage
         with:
-          features: sqlite
+          features: sqlite test-support
           output-path: lcov-sqlite.info
       - name: Generate coverage for Postgres
         uses: ./.github/actions/generate-coverage
         with:
           with-default-features: false
-          features: postgres
+          features: postgres test-support
           output-path: lcov-postgres.info
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info

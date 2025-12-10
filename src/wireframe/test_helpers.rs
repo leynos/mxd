@@ -70,16 +70,18 @@ pub fn transaction_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
 /// * `payload` - Complete payload to fragment
 /// * `fragment_size` - Maximum data bytes per fragment
 ///
+/// # Errors
+///
+/// Returns an error if any chunk length exceeds `u32::MAX`.
+///
 /// # Panics
 ///
-/// Panics if any chunk length exceeds `u32::MAX`, or in debug builds if
-/// `header.total_size` does not match `payload.len()`.
-#[must_use]
+/// Panics in debug builds if `header.total_size` does not match `payload.len()`.
 pub fn fragmented_transaction_bytes(
     header: &FrameHeader,
     payload: &[u8],
     fragment_size: usize,
-) -> Vec<Vec<u8>> {
+) -> Result<Vec<Vec<u8>>, std::num::TryFromIntError> {
     debug_assert_eq!(
         header.total_size as usize,
         payload.len(),
@@ -94,7 +96,7 @@ pub fn fragmented_transaction_bytes(
         let chunk = &payload[offset..end];
 
         let mut frag_header = header.clone();
-        frag_header.data_size = u32::try_from(chunk.len()).expect("chunk size fits in u32");
+        frag_header.data_size = u32::try_from(chunk.len())?;
 
         fragments.push(transaction_bytes(&frag_header, chunk));
         offset = end;
@@ -107,5 +109,48 @@ pub fn fragmented_transaction_bytes(
         fragments.push(transaction_bytes(&frag_header, &[]));
     }
 
-    fragments
+    Ok(fragments)
+}
+
+/// Build fragmented transaction frames where the continuation header has a
+/// mismatched field.
+///
+/// Creates a two-fragment transaction where the second frame has a different
+/// transaction ID than the first, which should be rejected by the decoder.
+///
+/// # Errors
+///
+/// Returns an error if any chunk length exceeds `u32::MAX`.
+pub fn mismatched_continuation_bytes() -> Result<Vec<u8>, std::num::TryFromIntError> {
+    let total_size = 2000u32;
+    let first_chunk = 1000usize;
+
+    let payload = vec![0u8; total_size as usize];
+
+    // First fragment
+    let first_header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 107,
+        id: 1,
+        error: 0,
+        total_size,
+        data_size: u32::try_from(first_chunk)?,
+    };
+
+    // Second fragment with mismatched ID
+    let second_header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 107,
+        id: 999, // Different ID — this should trigger header mismatch
+        error: 0,
+        total_size,
+        data_size: u32::try_from(total_size as usize - first_chunk)?,
+    };
+
+    let mut bytes = transaction_bytes(&first_header, &payload[..first_chunk]);
+    bytes.extend(transaction_bytes(&second_header, &payload[first_chunk..]));
+
+    Ok(bytes)
 }
