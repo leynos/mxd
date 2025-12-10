@@ -20,7 +20,6 @@ use test_util::postgres::{PostgresTestDb, PostgresUnavailable};
 use tokio::runtime::Builder;
 
 #[rstest]
-#[test]
 fn create_user_against_embedded_postgres() -> Result<()> {
     // PostgresTestDb::new() uses block_on internally when starting an embedded
     // cluster, so must be called outside any tokio runtime to avoid runtime
