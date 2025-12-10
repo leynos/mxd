@@ -1,8 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#![expect(clippy::big_endian_bytes, reason = "network protocol")]
-#![expect(clippy::shadow_unrelated, reason = "test code")]
-
 //! Legacy TCP integration tests covering news article flows. Exercises
 //! listing, posting, and fetching news articles through the legacy adapter.
 //! Skips when the `legacy-networking` feature is disabled because wireframe
@@ -46,6 +41,7 @@ fn send_transaction(stream: &mut TcpStream, tx: &Transaction) -> Result<(), AnyE
     Ok(())
 }
 
+#[expect(clippy::expect_used, reason = "infallible: payload size fits u32")]
 fn send_transaction_with_params(
     stream: &mut TcpStream,
     ty: TransactionType,
@@ -86,6 +82,7 @@ fn receive_transaction(stream: &mut TcpStream) -> Result<(FrameHeader, ParamList
     Ok((hdr, params))
 }
 
+#[expect(clippy::expect_used, reason = "test assertion helper")]
 fn assert_field_utf8(params: &ParamList, field_id: FieldId, expected: &str, context: &str) {
     let bytes = params
         .iter()
@@ -95,6 +92,7 @@ fn assert_field_utf8(params: &ParamList, field_id: FieldId, expected: &str, cont
     assert_eq!(value, expected, "{context}");
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertion helper")]
 fn verify_article_titles(db_url: &str, expected: &[&str]) -> Result<(), AnyError> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
@@ -111,6 +109,7 @@ fn verify_article_titles(db_url: &str, expected: &[&str]) -> Result<(), AnyError
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|db| {
@@ -146,6 +145,7 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_articles_valid_path() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(setup_news_db)? else {
@@ -175,6 +175,7 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
     Ok(())
 }
 
+#[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn get_news_article_data() -> Result<(), AnyError> {
     use chrono::{DateTime, Utc};
@@ -245,6 +246,8 @@ fn get_news_article_data() -> Result<(), AnyError> {
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn post_news_article_root() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|db| {
@@ -268,15 +271,15 @@ fn post_news_article_root() -> Result<(), AnyError> {
 
     let mut stream = connect_and_handshake(server.port())?;
 
-    let mut params = Vec::new();
-    params.push((FieldId::NewsPath, b"General".as_ref()));
-    params.push((FieldId::NewsTitle, b"Hello".as_ref()));
+    let mut request_params = Vec::new();
+    request_params.push((FieldId::NewsPath, b"General".as_ref()));
+    request_params.push((FieldId::NewsTitle, b"Hello".as_ref()));
     let flag_bytes = 0i32.to_be_bytes();
-    params.push((FieldId::NewsArticleFlags, flag_bytes.as_ref()));
-    params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
-    params.push((FieldId::NewsArticleData, b"hi".as_ref()));
-    let payload = encode_params(&params)?;
-    let payload_size = u32::try_from(payload.len()).expect("payload fits in u32");
+    request_params.push((FieldId::NewsArticleFlags, flag_bytes.as_ref()));
+    request_params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
+    request_params.push((FieldId::NewsArticleData, b"hi".as_ref()));
+    let request_payload = encode_params(&request_params)?;
+    let payload_size = u32::try_from(request_payload.len()).expect("payload fits in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -286,15 +289,18 @@ fn post_news_article_root() -> Result<(), AnyError> {
         total_size: payload_size,
         data_size: payload_size,
     };
-    let tx = Transaction { header, payload };
+    let tx = Transaction {
+        header,
+        payload: request_payload,
+    };
     send_transaction(&mut stream, &tx)?;
 
     let hdr = read_response_header(&mut stream)?;
     assert_eq!(hdr.error, 0);
-    let payload = read_response_payload(&mut stream, hdr.data_size)?;
-    let params = decode_params(&payload)?;
+    let reply_payload = read_response_payload(&mut stream, hdr.data_size)?;
+    let reply_params = decode_params(&reply_payload)?;
     let mut id_found = false;
-    for (id, data) in params {
+    for (id, data) in reply_params {
         if id == FieldId::NewsArticleId {
             let arr: [u8; 4] = data
                 .try_into()

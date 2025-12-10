@@ -1,7 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#![expect(clippy::shadow_unrelated, reason = "test code")]
-
 //! Integration tests for news category listing operations.
 //!
 //! Validates that the server correctly returns category hierarchies at various
@@ -34,16 +30,17 @@ use test_util::{
 };
 mod common;
 
+#[expect(clippy::expect_used, reason = "test helper: size and UTF-8 assertions")]
 fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<String>), AnyError> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(std::time::Duration::from_secs(20)))?;
     handshake(&mut stream)?;
-    let params = path
+    let request_params = path
         .map(|p| vec![(FieldId::NewsPath, p.as_bytes())])
         .unwrap_or_default();
-    let payload = encode_params(&params)?;
-    let payload_size = u32::try_from(payload.len()).expect("payload fits in u32");
+    let request_payload = encode_params(&request_params)?;
+    let payload_size = u32::try_from(request_payload.len()).expect("payload fits in u32");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -53,7 +50,10 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
         total_size: payload_size,
         data_size: payload_size,
     };
-    let tx = Transaction { header, payload };
+    let tx = Transaction {
+        header,
+        payload: request_payload,
+    };
     stream.write_all(&tx.to_bytes())?;
 
     let mut hdr_buf = [0u8; 20];
@@ -65,8 +65,8 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
         header: hdr,
         payload: data,
     };
-    let params = decode_params(&reply_tx.payload)?;
-    let names = params
+    let reply_params = decode_params(&reply_tx.payload)?;
+    let names = reply_params
         .into_iter()
         .filter_map(|(id, d)| {
             if id == FieldId::NewsCategory {
@@ -79,25 +79,59 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
     Ok((reply_tx.header, names))
 }
 
-/// Tests that listing news categories at the root path (with or without explicit "/")
-/// returns all root-level bundles and categories.
-#[rstest]
-#[case(Some("/"))]
-#[case(None)]
-fn list_news_categories_root(#[case] path: Option<&str>) -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
-        return Ok(());
-    };
+/// rstest-decorated tests that need `panic_in_result_fn` suppression.
+///
+/// The rstest macro generates wrapper functions that cannot be individually annotated,
+/// so module-level suppression is the narrowest possible scope.
+mod rstest_tests {
+    #![expect(
+        clippy::panic_in_result_fn,
+        reason = "rstest macro generates functions with assertions"
+    )]
 
-    let port = server.port();
-    let (_, mut names) = list_categories(port, path)?;
+    use super::*;
 
-    names.sort_unstable();
-    let mut expected = vec!["Bundle", "General", "Updates"];
-    expected.sort_unstable();
+    /// Tests that listing news categories at the root path (with or without explicit "/")
+    /// returns all root-level bundles and categories.
+    #[rstest]
+    #[case(Some("/"))]
+    #[case(None)]
+    fn list_news_categories_root(#[case] path: Option<&str>) -> Result<(), AnyError> {
+        let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
+            return Ok(());
+        };
 
-    assert_eq!(names, expected);
-    Ok(())
+        let port = server.port();
+        let (_, mut names) = list_categories(port, path)?;
+
+        names.sort_unstable();
+        let mut expected = vec!["Bundle", "General", "Updates"];
+        expected.sort_unstable();
+
+        assert_eq!(names, expected);
+        Ok(())
+    }
+
+    /// Tests that requesting news categories at a nested bundle path returns only the categories
+    /// within that sub-bundle, ignoring leading and trailing slashes.
+    ///
+    /// Sets up a nested bundle structure with a root bundle and a sub-bundle containing a single
+    /// category. Sends a transaction requesting categories at the nested path and verifies that
+    /// only the expected category is returned.
+    #[rstest]
+    #[case("Bundle/Sub")]
+    #[case("/Bundle/Sub/")]
+    fn list_news_categories_nested(#[case] path: &str) -> Result<(), AnyError> {
+        let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
+            return Ok(());
+        };
+
+        let port = server.port();
+        let (_, names) = list_categories(port, Some(path))?;
+
+        assert_eq!(names, vec!["Inside"]);
+        Ok(())
+    }
 }
 
 /// Tests that requesting news categories with an invalid path returns the expected unsupported path
@@ -108,6 +142,7 @@ fn list_news_categories_root(#[case] path: Option<&str>) -> Result<(), AnyError>
 ///
 /// # Returns
 /// Returns `Ok(())` if the test passes; otherwise, returns an error if any step fails.
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_invalid_path() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|db| {
@@ -150,6 +185,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
 /// ```
 /// list_news_categories_empty().unwrap(); 
 /// ```
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_empty() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|db| {
@@ -167,26 +203,5 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
     let port = server.port();
     let (_, names) = list_categories(port, None)?;
     assert!(names.is_empty());
-    Ok(())
-}
-
-/// Tests that requesting news categories at a nested bundle path returns only the categories within
-/// that sub-bundle, ignoring leading and trailing slashes.
-///
-/// Sets up a nested bundle structure with a root bundle and a sub-bundle containing a single
-/// category. Sends a transaction requesting categories at the nested path and verifies that only
-/// the expected category is returned.
-#[rstest]
-#[case("Bundle/Sub")]
-#[case("/Bundle/Sub/")]
-fn list_news_categories_nested(#[case] path: &str) -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
-        return Ok(());
-    };
-
-    let port = server.port();
-    let (_, names) = list_categories(port, Some(path))?;
-
-    assert_eq!(names, vec!["Inside"]);
     Ok(())
 }
