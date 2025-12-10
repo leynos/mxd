@@ -126,18 +126,47 @@ fn generate_db_name(prefix: &str) -> Result<DatabaseName, String> {
     DatabaseName::new(name)
 }
 
-pub(crate) fn start_embedded_postgres<F>(
-    setup: F,
-) -> Result<EmbeddedPg, Box<dyn StdError + Send + Sync>>
+/// Error type distinguishing `PostgreSQL` unavailability from initialization failures.
+#[derive(Debug)]
+pub(crate) enum EmbeddedPgError {
+    /// `PostgreSQL` binary not found or cannot be started (unavailable).
+    Unavailable(String),
+    /// `PostgreSQL` started but initialization failed (genuine error).
+    InitFailed(Box<dyn StdError + Send + Sync>),
+}
+
+impl std::fmt::Display for EmbeddedPgError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable(msg) => write!(f, "PostgreSQL unavailable: {msg}"),
+            Self::InitFailed(e) => write!(f, "PostgreSQL initialization failed: {e}"),
+        }
+    }
+}
+
+impl StdError for EmbeddedPgError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Self::Unavailable(_) => None,
+            Self::InitFailed(e) => Some(&**e),
+        }
+    }
+}
+
+pub(crate) fn start_embedded_postgres<F>(setup: F) -> Result<EmbeddedPg, EmbeddedPgError>
 where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
 {
-    let cluster =
-        TestCluster::new().map_err(|e| format!("bootstrapping embedded PostgreSQL: {e}"))?;
+    let cluster = TestCluster::new().map_err(|e| {
+        // TestCluster::new fails when the PostgreSQL binary is not found or cannot start.
+        // This is an "unavailable" condition, not an initialization failure.
+        EmbeddedPgError::Unavailable(format!("bootstrapping embedded PostgreSQL: {e}"))
+    })?;
     let connection = cluster.connection();
-    let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))?;
-    let (url, db_name) = create_external_db(&admin_url)?;
-    setup(&url)?;
+    let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
+        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let (url, db_name) = create_external_db(&admin_url).map_err(EmbeddedPgError::InitFailed)?;
+    setup(&url).map_err(EmbeddedPgError::InitFailed)?;
     Ok(EmbeddedPg {
         url,
         db_name,
@@ -199,9 +228,12 @@ impl PostgresTestDb {
     ///
     /// # Errors
     ///
-    /// Returns `PostgresUnavailable` if the configured external server cannot be
-    /// reached. Propagates other errors (initialization, database creation)
-    /// directly to distinguish them from unavailability.
+    /// Returns `PostgresUnavailable` if:
+    /// - The configured external server cannot be reached
+    /// - The embedded `PostgreSQL` binary is not available
+    ///
+    /// Propagates other errors (initialization, database creation) directly
+    /// to distinguish them from unavailability conditions.
     pub fn new() -> Result<Self, Box<dyn StdError + Send + Sync>> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let admin_url = DatabaseUrl::parse(&value.to_string_lossy())?;
@@ -218,7 +250,12 @@ impl PostgresTestDb {
             });
         }
 
-        let embedded = start_embedded_postgres(reset_postgres_db)?;
+        let embedded = start_embedded_postgres(reset_postgres_db).map_err(|e| match e {
+            EmbeddedPgError::Unavailable(_) => {
+                Box::new(PostgresUnavailable) as Box<dyn StdError + Send + Sync>
+            }
+            EmbeddedPgError::InitFailed(inner) => inner,
+        })?;
         let url = embedded.url.clone();
         let db_name = embedded.db_name.clone();
         Ok(Self {
@@ -255,17 +292,36 @@ impl Drop for PostgresTestDb {
 
 /// rstest fixture providing a `PostgreSQL` test database.
 ///
+/// This fixture is for tests that **require** `PostgreSQL` and should fail loudly
+/// when it is unavailable. Use this when `PostgreSQL` is a hard dependency of the
+/// test (e.g., testing `PostgreSQL`-specific SQL syntax).
+///
+/// # When to Use Direct `PostgresTestDb::new()` Instead
+///
+/// For tests that should **skip gracefully** when `PostgreSQL` is unavailable,
+/// call `PostgresTestDb::new()` directly and check for `PostgresUnavailable`:
+///
+/// ```ignore
+/// let db = match PostgresTestDb::new() {
+///     Ok(db) => db,
+///     Err(e) if e.is::<PostgresUnavailable>() => {
+///         eprintln!("PostgreSQL unavailable; skipping test");
+///         return Ok(());
+///     }
+///     Err(e) => return Err(e),
+/// };
+/// ```
+///
 /// # Panics
 ///
 /// Panics if:
-/// - `PostgreSQL` is unavailable (use `PostgresTestDb::new()` directly with
-///   `downcast_ref::<PostgresUnavailable>()` for skip semantics)
+/// - `PostgreSQL` is unavailable (binary not found or server unreachable)
 /// - Initialization or database creation fails (configuration error)
 #[fixture]
 pub fn postgres_db() -> PostgresTestDb {
     PostgresTestDb::new().unwrap_or_else(|e| {
         let msg = if e.is::<PostgresUnavailable>() {
-            format!("PostgreSQL unavailable; skipping test: {e}")
+            format!("PostgreSQL unavailable: {e}")
         } else {
             format!("Failed to prepare Postgres test database: {e}")
         };
