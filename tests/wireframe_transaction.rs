@@ -53,8 +53,9 @@ impl TransactionWorld {
 }
 
 #[fixture]
-#[allow(unused_braces)]
-fn world() -> TransactionWorld { TransactionWorld::default() }
+fn world() -> TransactionWorld {
+    TransactionWorld::default()
+}
 
 fn build_valid_payload(size: usize) -> Vec<u8> {
     if size == 0 {
@@ -186,7 +187,6 @@ fn rejects_oversized_data(world: TransactionWorld) { let _ = world; }
 // -----------------------------------------------------------------------------
 
 /// Check if a length combination is invalid per protocol spec.
-#[allow(clippy::cast_possible_truncation)]
 fn is_invalid_combination(data_size: u32, total_size: u32) -> bool {
     data_size > total_size
         || (data_size == 0 && total_size > 0)
