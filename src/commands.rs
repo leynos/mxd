@@ -554,15 +554,25 @@ fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
 mod tests {
     use super::*;
 
-    #[test]
-    fn parse_login_params_both_fields_valid() {
-        let params = vec![
+    /// Returns valid login parameters for testing.
+    fn valid_login_params() -> Vec<(FieldId, Vec<u8>)> {
+        vec![
             (FieldId::Login, b"alice".to_vec()),
             (FieldId::Password, b"secret".to_vec()),
-        ];
+        ]
+    }
+
+    /// Asserts that credentials match expected valid values.
+    fn assert_valid_credentials(creds: &LoginCredentials) {
+        assert_eq!(creds.username, "alice");
+        assert_eq!(creds.password, "secret");
+    }
+
+    #[test]
+    fn parse_login_params_both_fields_valid() {
+        let params = valid_login_params();
         let result = parse_login_params(params).expect("should parse");
-        assert_eq!(result.username, "alice");
-        assert_eq!(result.password, "secret");
+        assert_valid_credentials(&result);
     }
 
     #[test]
@@ -601,14 +611,10 @@ mod tests {
 
     #[test]
     fn parse_login_params_ignores_extra_fields() {
-        let params = vec![
-            (FieldId::Login, b"alice".to_vec()),
-            (FieldId::Password, b"secret".to_vec()),
-            (FieldId::NewsPath, b"/news".to_vec()),
-        ];
+        let mut params = valid_login_params();
+        params.push((FieldId::NewsPath, b"/news".to_vec()));
         let result = parse_login_params(params).expect("should parse");
-        assert_eq!(result.username, "alice");
-        assert_eq!(result.password, "secret");
+        assert_valid_credentials(&result);
     }
 
     /// Returns a `PostArticleRequest` with sensible default values for testing.
