@@ -122,7 +122,9 @@ pub enum Command {
 /// Parsed login credentials extracted from transaction parameters.
 #[derive(Debug, PartialEq, Eq)]
 struct LoginCredentials {
+    /// Username for authentication.
     username: String,
+    /// Password for authentication.
     password: String,
 }
 
@@ -132,10 +134,13 @@ fn parse_login_params(params: Vec<(FieldId, Vec<u8>)>) -> Result<LoginCredential
     let mut password = None;
 
     for (id, data) in params {
-        let value = String::from_utf8(data).map_err(|_| "utf8")?;
         match id {
-            FieldId::Login => username = Some(value),
-            FieldId::Password => password = Some(value),
+            FieldId::Login => {
+                username = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+            }
+            FieldId::Password => {
+                password = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+            }
             _ => {}
         }
     }
@@ -540,13 +545,7 @@ fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
         },
         payload: Vec::new(),
     };
-    #[expect(
-        clippy::print_stdout,
-        reason = "intentional debug output for unknown transactions"
-    )]
-    {
-        println!("{} sent unknown transaction: {}", peer, header.ty);
-    }
+    tracing::warn!(%peer, ty = %header.ty, "unknown transaction");
     reply
 }
 

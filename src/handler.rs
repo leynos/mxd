@@ -32,8 +32,12 @@ pub struct Session {
 
 impl Context {
     /// Create a new connection context.
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "const fn with Arc may not be portable across Rust versions"
+    )]
     #[must_use]
-    pub const fn new(peer: SocketAddr, pool: DbPool, argon2: Arc<Argon2<'static>>) -> Self {
+    pub fn new(peer: SocketAddr, pool: DbPool, argon2: Arc<Argon2<'static>>) -> Self {
         Self { peer, pool, argon2 }
     }
 }
