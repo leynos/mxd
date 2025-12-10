@@ -108,6 +108,10 @@ cfg_if! {
         ///
         /// # Errors
         /// Returns any error produced by Diesel while running migrations.
+        #[expect(
+            clippy::cognitive_complexity,
+            reason = "migration logic involves multiple conditional branches"
+        )]
         #[must_use = "handle the result"]
         pub async fn run_migrations(database_url: &str) -> QueryResult<()> {
             use diesel::pg::PgConnection;
