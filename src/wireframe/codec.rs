@@ -15,6 +15,9 @@ use crate::transaction::{FrameHeader, HEADER_LEN, MAX_FRAME_DATA, MAX_PAYLOAD_SI
 ///
 /// Wraps the validated header and reassembled payload after decoding from the
 /// wireframe transport layer.
+///
+/// **Note:** After multi-fragment reassembly, the header's `data_size` field is
+/// set to `total_size` to reflect the fully-assembled payload length.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HotlineTransaction {
     header: FrameHeader,
@@ -228,7 +231,6 @@ mod tests {
         );
     }
 
-    #[rstest]
     #[tokio::test]
     async fn rejects_invalid_flags() {
         let header = FrameHeader {
@@ -253,7 +255,6 @@ mod tests {
         );
     }
 
-    #[rstest]
     #[tokio::test]
     async fn rejects_oversized_total() {
         let oversized_total = u32::try_from(MAX_PAYLOAD_SIZE + 1).expect("test size fits in u32");
@@ -281,7 +282,6 @@ mod tests {
         );
     }
 
-    #[rstest]
     #[tokio::test]
     async fn rejects_oversized_data() {
         let oversized = u32::try_from(MAX_FRAME_DATA + 1).expect("test size fits in u32");

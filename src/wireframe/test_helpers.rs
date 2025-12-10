@@ -2,6 +2,9 @@
 //!
 //! These helpers keep handshake and transaction-related test plumbing in one
 //! place so unit and behaviour suites reuse the same encoding logic.
+//!
+//! This module is only available when running tests or when the `test-support`
+//! feature is enabled.
 
 #![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
@@ -69,13 +72,20 @@ pub fn transaction_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
 ///
 /// # Panics
 ///
-/// Panics if any chunk length exceeds `u32::MAX`.
+/// Panics if any chunk length exceeds `u32::MAX`, or in debug builds if
+/// `header.total_size` does not match `payload.len()`.
 #[must_use]
 pub fn fragmented_transaction_bytes(
     header: &FrameHeader,
     payload: &[u8],
     fragment_size: usize,
 ) -> Vec<Vec<u8>> {
+    debug_assert_eq!(
+        header.total_size as usize,
+        payload.len(),
+        "header.total_size must match payload.len()"
+    );
+
     let mut fragments = Vec::new();
     let mut offset = 0usize;
 

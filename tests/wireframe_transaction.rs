@@ -3,6 +3,16 @@
 use std::cell::RefCell;
 
 use bincode::{borrow_decode_from_slice, config, error::DecodeError};
+
+/// Return the bincode configuration for Hotline transaction decoding.
+///
+/// Uses big-endian byte order and fixed-width integer encoding as required by
+/// the Hotline protocol.
+fn hotline_config() -> impl bincode::config::Config {
+    config::standard()
+        .with_big_endian()
+        .with_fixed_int_encoding()
+}
 use mxd::{
     transaction::{FrameHeader, MAX_FRAME_DATA, MAX_PAYLOAD_SIZE},
     wireframe::{
@@ -33,11 +43,11 @@ impl TransactionWorld {
     }
 
     fn decode(&self) {
-        let cfg = config::standard()
-            .with_big_endian()
-            .with_fixed_int_encoding();
-        let result = borrow_decode_from_slice::<HotlineTransaction, _>(&self.bytes.borrow(), cfg)
-            .map(|(tx, _)| tx);
+        let result = borrow_decode_from_slice::<HotlineTransaction, _>(
+            &self.bytes.borrow(),
+            hotline_config(),
+        )
+        .map(|(tx, _)| tx);
         self.outcome.borrow_mut().replace(result);
     }
 }
@@ -214,10 +224,7 @@ proptest! {
         };
         let bytes = transaction_bytes(&header, &payload);
 
-        let cfg = config::standard()
-            .with_big_endian()
-            .with_fixed_int_encoding();
-        let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, cfg);
+        let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, hotline_config());
 
         prop_assert!(result.is_ok(), "decode failed: {:?}", result.err());
         let (tx, _) = result.unwrap();
@@ -234,6 +241,15 @@ proptest! {
         total_size in 4usize..65536usize,
         fragment_size in 100usize..MAX_FRAME_DATA,
     ) {
+        // Bias towards true multi-fragment cases by discarding inputs where the
+        // fragment size would collapse everything into a single frame or a
+        // single full fragment.
+        //
+        // Since `total_size >= 4`, requiring `fragment_size <= total_size / 2`
+        // guarantees at least two fragments and increases the chance of
+        // exercising a final partial fragment in the reassembly logic.
+        prop_assume!(fragment_size <= total_size / 2);
+
         let mut payload = vec![0u8; total_size];
         if total_size >= 2 {
             payload[0] = 0;
@@ -254,10 +270,7 @@ proptest! {
         let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size);
         let bytes: Vec<u8> = fragments.into_iter().flatten().collect();
 
-        let cfg = config::standard()
-            .with_big_endian()
-            .with_fixed_int_encoding();
-        let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, cfg);
+        let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, hotline_config());
 
         prop_assert!(result.is_ok(), "decode failed: {:?}", result.err());
         let (tx, _) = result.unwrap();
@@ -285,10 +298,7 @@ proptest! {
         let payload = vec![0u8; data_size as usize];
         let bytes = transaction_bytes(&header, &payload);
 
-        let cfg = config::standard()
-            .with_big_endian()
-            .with_fixed_int_encoding();
-        let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, cfg);
+        let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, hotline_config());
 
         prop_assert!(result.is_err(), "expected rejection for data={data_size}, total={total_size}");
     }

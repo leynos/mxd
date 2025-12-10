@@ -457,9 +457,9 @@ continuation data does not exceed the remaining byte count.
 
 1. **Unit tests** (`src/wireframe/codec.rs`) use `rstest` to cover single-frame
    and multi-fragment decoding with parametrised test cases.
-2. **BDD scenarios** (`tests/features/wireframe_transaction.feature`) express
-   acceptance criteria in Gherkin syntax, with step definitions in
-   `tests/wireframe_transaction.rs`.
+2. **Behaviour-Driven Development (BDD) scenarios**
+   (`tests/features/wireframe_transaction.feature`) express acceptance criteria
+   in Gherkin syntax, with step definitions in `tests/wireframe_transaction.rs`.
 3. **Property tests** (`tests/wireframe_transaction.rs`) use `proptest` to
    verify that valid single-frame and multi-fragment transactions decode
    correctly, and that all invalid length combinations are rejected.
@@ -470,11 +470,11 @@ codec, transaction types, and validation logic:
 ```mermaid
 classDiagram
     class FrameHeader {
-        +u16 flags
+        +u8 flags
         +u8 is_reply
         +u16 ty
         +u32 id
-        +u16 error
+        +u32 error
         +u32 total_size
         +u32 data_size
         +from_bytes(bytes: u8_array) FrameHeader
