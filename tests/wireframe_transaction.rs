@@ -77,9 +77,11 @@ fn build_valid_payload(size: usize) -> Vec<u8> {
     }
     let mut payload = vec![0u8; size];
     // Set param-count to 0 (requires at least 2 bytes)
-    if size >= 2 {
-        payload[0] = 0;
-        payload[1] = 0;
+    if let Some(first) = payload.get_mut(0) {
+        *first = 0;
+    }
+    if let Some(second) = payload.get_mut(1) {
+        *second = 0;
     }
     payload
 }
@@ -120,8 +122,10 @@ fn given_fragmented_transaction(world: &TransactionWorld, total: usize, count: u
         "fragment count must be positive in BDD scenarios"
     );
     let payload = build_valid_payload(total);
-    let fragment_size = (total / count).max(1);
-    let total_u32 = u32::try_from(total).expect("total size fits in u32 for test");
+    let fragment_size = total.div_ceil(count).max(1);
+    let Ok(total_u32) = u32::try_from(total) else {
+        panic!("total size must fit in u32 for test");
+    };
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -131,15 +135,18 @@ fn given_fragmented_transaction(world: &TransactionWorld, total: usize, count: u
         total_size: total_u32,
         data_size: total_u32,
     };
-    let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size)
-        .expect("chunk size fits in u32 for test");
+    let fragments = match fragmented_transaction_bytes(&header, &payload, fragment_size) {
+        Ok(frags) => frags,
+        Err(err) => panic!("chunk size fits in u32 for test: {err:?}"),
+    };
     let bytes: Vec<u8> = fragments.into_iter().flatten().collect();
     world.set_bytes(&bytes);
 }
 
 #[given("a fragmented transaction with mismatched continuation headers")]
 fn given_mismatched_continuation(world: &TransactionWorld) {
-    let bytes = mismatched_continuation_bytes().expect("test values fit in u32");
+    let bytes = mismatched_continuation_bytes()
+        .unwrap_or_else(|err| panic!("test values fit in u32: {err:?}"));
     world.set_bytes(&bytes);
 }
 
@@ -209,7 +216,7 @@ fn rejects_mismatched_continuation(world: TransactionWorld) { let _ = world; }
 // -----------------------------------------------------------------------------
 
 /// Check if a length combination is invalid per protocol spec.
-fn is_invalid_combination(data_size: u32, total_size: u32) -> bool {
+const fn is_invalid_combination(data_size: u32, total_size: u32) -> bool {
     data_size > total_size
         || (data_size == 0 && total_size > 0)
         || total_size as usize > MAX_PAYLOAD_SIZE
@@ -229,7 +236,9 @@ proptest! {
             return Ok(());
         }
         let payload = build_valid_payload(payload_len);
-        let total = u32::try_from(payload.len()).expect("test payload fits in u32");
+        let Ok(total) = u32::try_from(payload.len()) else {
+            return Err(TestCaseError::fail("payload length exceeds u32"));
+        };
         let header = FrameHeader {
             flags: 0,
             is_reply: 0,
@@ -244,7 +253,10 @@ proptest! {
         let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, hotline_config());
 
         prop_assert!(result.is_ok(), "decode failed: {:?}", result.err());
-        let (tx, _) = result.expect("decode succeeded per prop_assert above");
+        let (tx, _) = match result {
+            Ok(val) => val,
+            Err(err) => return Err(TestCaseError::fail(format!("decode failed: {err}"))),
+        };
         prop_assert_eq!(tx.header().ty, ty);
         prop_assert_eq!(tx.header().id, id);
         prop_assert_eq!(tx.payload().len(), payload.len());
@@ -262,13 +274,15 @@ proptest! {
         // fragment size would collapse everything into a single frame or a
         // single full fragment.
         //
-        // Since `total_size >= 4`, requiring `fragment_size <= total_size / 2`
+        // Since `total_size >= 4`, requiring `fragment_size * 2 <= total_size`
         // guarantees at least two fragments and increases the chance of
         // exercising a final partial fragment in the reassembly logic.
-        prop_assume!(fragment_size <= total_size / 2);
+        prop_assume!(fragment_size.saturating_mul(2) <= total_size);
 
         let payload = build_valid_payload(total_size);
-        let total_u32 = u32::try_from(total_size).expect("test total fits in u32");
+        let Ok(total_u32) = u32::try_from(total_size) else {
+            return Err(TestCaseError::fail("test total fits in u32"));
+        };
         let header = FrameHeader {
             flags: 0,
             is_reply: 0,
@@ -279,14 +293,19 @@ proptest! {
             data_size: total_u32,
         };
 
-        let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size)
-            .expect("chunk size fits in u32 for test");
+        let fragments = match fragmented_transaction_bytes(&header, &payload, fragment_size) {
+            Ok(frags) => frags,
+            Err(err) => return Err(TestCaseError::fail(format!("chunk size fits in u32: {err}"))),
+        };
         let bytes: Vec<u8> = fragments.into_iter().flatten().collect();
 
         let result = borrow_decode_from_slice::<HotlineTransaction, _>(&bytes, hotline_config());
 
         prop_assert!(result.is_ok(), "decode failed: {:?}", result.err());
-        let (tx, _) = result.expect("decode succeeded per prop_assert above");
+        let (tx, _) = match result {
+            Ok(val) => val,
+            Err(err) => return Err(TestCaseError::fail(format!("decode failed: {err}"))),
+        };
         prop_assert_eq!(tx.header().total_size, total_u32);
         prop_assert_eq!(tx.payload().len(), total_size);
     }

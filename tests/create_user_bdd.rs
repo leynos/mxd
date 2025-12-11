@@ -1,6 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::str_to_string, reason = "test code")]
-
 //! BDD-style integration tests for the create-user command.
 //!
 //! These tests exercise the CLI-driven create-user workflow against a temporary
@@ -34,16 +31,18 @@ struct CreateUserWorld {
 
 impl CreateUserWorld {
     fn new() -> Self {
-        let temp_dir = TempDir::new().expect("tempdir");
+        let temp_dir =
+            TempDir::new().unwrap_or_else(|err| panic!("failed to create tempdir for test: {err}"));
         let db_path = temp_dir.path().join("bdd.mxd.db");
         let config = AppConfig {
             database: db_path.to_string_lossy().into_owned(),
-            bind: "127.0.0.1:0".to_string(),
+            bind: "127.0.0.1:0".to_owned(),
             argon2_m_cost: Params::DEFAULT_M_COST,
             argon2_t_cost: Params::DEFAULT_T_COST,
             argon2_p_cost: Params::DEFAULT_P_COST,
         };
-        let rt = Runtime::new().expect("runtime");
+        let rt =
+            Runtime::new().unwrap_or_else(|err| panic!("failed to create runtime for test: {err}"));
         Self {
             _temp_dir: temp_dir,
             config: RefCell::new(config),
@@ -69,12 +68,16 @@ impl CreateUserWorld {
 
     fn assert_user_exists(&self, username: &str) {
         let db = self.database_path();
-        let lookup = username.to_string();
+        let lookup = username.to_owned();
         let fetched = self.rt.block_on(async move {
-            let mut conn = DbConnection::establish(&db).await.expect("db conn");
+            let mut conn = DbConnection::establish(&db)
+                .await
+                .unwrap_or_else(|err| panic!("db conn: {err}"));
             db::get_user_by_name(&mut conn, &lookup)
                 .await
-                .expect("query")
+                .unwrap_or_else(|err| {
+                    panic!("query for user '{lookup}' failed: {err}");
+                })
         });
         let found = fetched.map(|u| u.username);
         assert_eq!(found.as_deref(), Some(username));

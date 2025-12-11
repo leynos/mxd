@@ -14,8 +14,8 @@ use anyhow::Result;
 use argon2::Params;
 use diesel_async::AsyncConnection;
 use mxd::{
-    db::{get_user_by_name, DbConnection},
-    server::{run_command, AppConfig, Commands, CreateUserArgs},
+    db::{DbConnection, get_user_by_name},
+    server::{AppConfig, Commands, CreateUserArgs, run_command},
 };
 use rstest::rstest;
 use test_util::postgres::{PostgresTestDb, PostgresTestDbError};
@@ -24,12 +24,10 @@ use tokio::runtime::Builder;
 #[rstest]
 fn create_user_against_embedded_postgres() -> Result<()> {
     if std::env::var_os("POSTGRES_TEST_URL").is_some() {
-        eprintln!(
-            concat!(
-                "SKIP-TEST-CLUSTER: POSTGRES_TEST_URL set, skipping embedded ",
-                "postgres test"
-            )
-        );
+        eprintln!(concat!(
+            "SKIP-TEST-CLUSTER: POSTGRES_TEST_URL set, skipping embedded ",
+            "postgres test"
+        ));
         return Ok(());
     }
 

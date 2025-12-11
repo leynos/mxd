@@ -124,7 +124,7 @@ fn ensure_single_backend() {
 }
 
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-/// Creates a temporary SQLite database at `temp/mxd.db`, runs the provided
+/// Creates a temporary `SQLite` database at `temp/mxd.db`, runs the provided
 /// setup callback with its URL, and returns that URL on success. The callback
 /// must implement `FnOnce(&DbUrl) -> Result<(), AnyError>`. Returns an error if
 /// the path is not valid UTF-8 or if the callback fails.
@@ -135,7 +135,7 @@ where
     let path = temp.path().join("mxd.db");
     let path_str = path
         .to_str()
-        .ok_or_else(|| "database path is not valid UTF-8".to_string())?;
+        .ok_or_else(|| "database path is not valid UTF-8".to_owned())?;
     let url = DbUrl::from(path_str);
     setup(&url)?;
     Ok(url)
@@ -335,13 +335,16 @@ impl TestServer {
     }
 
     /// Returns the ephemeral port on which the server is listening.
+    #[must_use]
     pub const fn port(&self) -> u16 { self.port }
 
     /// Returns the database URL used by the server.
+    #[must_use]
     pub const fn db_url(&self) -> &DbUrl { &self.db_url }
 
     /// Returns the temporary directory holding the `SQLite` database, if
     /// applicable. Returns `None` when using `PostgreSQL`.
+    #[must_use]
     pub const fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
     #[cfg(feature = "postgres")]

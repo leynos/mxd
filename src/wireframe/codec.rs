@@ -27,7 +27,7 @@ pub struct HotlineTransaction {
 impl HotlineTransaction {
     /// Return the transaction header.
     #[must_use]
-    pub fn header(&self) -> &FrameHeader { &self.header }
+    pub const fn header(&self) -> &FrameHeader { &self.header }
 
     /// Return the reassembled payload.
     #[must_use]
@@ -43,7 +43,7 @@ impl HotlineTransaction {
 /// # Errors
 ///
 /// Returns a descriptive error string if validation fails.
-fn validate_header(hdr: &FrameHeader) -> Result<(), &'static str> {
+const fn validate_header(hdr: &FrameHeader) -> Result<(), &'static str> {
     if hdr.flags != 0 {
         return Err("invalid flags: must be 0 for v1.8.5");
     }
@@ -68,7 +68,7 @@ fn validate_header(hdr: &FrameHeader) -> Result<(), &'static str> {
 /// # Errors
 ///
 /// Returns a descriptive error string if header fields mutated between fragments.
-fn validate_fragment_consistency(
+const fn validate_fragment_consistency(
     first: &FrameHeader,
     next: &FrameHeader,
 ) -> Result<(), &'static str> {
@@ -150,7 +150,10 @@ impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
             let chunk_size = next_header.data_size as usize;
             let start = payload.len();
             payload.resize(start + chunk_size, 0);
-            decoder.reader().read(&mut payload[start..])?;
+            let chunk = payload.get_mut(start..start + chunk_size).ok_or_else(|| {
+                DecodeError::OtherString("payload resize failed for continuation".to_owned())
+            })?;
+            decoder.reader().read(chunk)?;
             accumulated += next_header.data_size;
         }
 

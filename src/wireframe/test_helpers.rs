@@ -67,21 +67,43 @@ pub fn transaction_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
 /// # Arguments
 ///
 /// * `header` - Base header (`total_size` should match payload length)
+///
+/// Errors returned by wireframe test helper builders.
+#[derive(Debug)]
+pub enum FragmentError {
+    /// Calculated slice bounds exceeded the payload length.
+    SliceOutOfBounds,
+    /// Fragment length could not be represented as `u32`.
+    Length(std::num::TryFromIntError),
+}
+
+impl From<std::num::TryFromIntError> for FragmentError {
+    fn from(err: std::num::TryFromIntError) -> Self { Self::Length(err) }
+}
+
+impl std::fmt::Display for FragmentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SliceOutOfBounds => write!(f, "payload slice bounds exceeded payload length"),
+            Self::Length(err) => write!(f, "fragment length overflow: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for FragmentError {}
+
 /// * `payload` - Complete payload to fragment
 /// * `fragment_size` - Maximum data bytes per fragment
 ///
 /// # Errors
 ///
-/// Returns an error if any chunk length exceeds `u32::MAX`.
-///
-/// # Panics
-///
-/// Panics in debug builds if `header.total_size` does not match `payload.len()`.
+/// Returns an error if any chunk length exceeds `u32::MAX` or if calculated
+/// slice bounds fall outside the payload.
 pub fn fragmented_transaction_bytes(
     header: &FrameHeader,
     payload: &[u8],
     fragment_size: usize,
-) -> Result<Vec<Vec<u8>>, std::num::TryFromIntError> {
+) -> Result<Vec<Vec<u8>>, FragmentError> {
     debug_assert_eq!(
         header.total_size as usize,
         payload.len(),
@@ -93,7 +115,9 @@ pub fn fragmented_transaction_bytes(
 
     while offset < payload.len() {
         let end = (offset + fragment_size).min(payload.len());
-        let chunk = &payload[offset..end];
+        let chunk = payload
+            .get(offset..end)
+            .ok_or(FragmentError::SliceOutOfBounds)?;
 
         let mut frag_header = header.clone();
         frag_header.data_size = u32::try_from(chunk.len())?;
@@ -121,7 +145,7 @@ pub fn fragmented_transaction_bytes(
 /// # Errors
 ///
 /// Returns an error if any chunk length exceeds `u32::MAX`.
-pub fn mismatched_continuation_bytes() -> Result<Vec<u8>, std::num::TryFromIntError> {
+pub fn mismatched_continuation_bytes() -> Result<Vec<u8>, FragmentError> {
     let total_size = 2000u32;
     let first_chunk = 1000usize;
 
@@ -149,8 +173,15 @@ pub fn mismatched_continuation_bytes() -> Result<Vec<u8>, std::num::TryFromIntEr
         data_size: u32::try_from(total_size as usize - first_chunk)?,
     };
 
-    let mut bytes = transaction_bytes(&first_header, &payload[..first_chunk]);
-    bytes.extend(transaction_bytes(&second_header, &payload[first_chunk..]));
+    let first_slice = payload
+        .get(..first_chunk)
+        .ok_or(FragmentError::SliceOutOfBounds)?;
+    let second_slice = payload
+        .get(first_chunk..)
+        .ok_or(FragmentError::SliceOutOfBounds)?;
+
+    let mut bytes = transaction_bytes(&first_header, first_slice);
+    bytes.extend(transaction_bytes(&second_header, second_slice));
 
     Ok(bytes)
 }
