@@ -167,7 +167,7 @@ mod tests {
         let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 7);
         stream.write_all(&bytes).await.expect("write handshake");
 
-        let reply = recv_reply(&mut stream).await;
+        let reply = recv_reply(&mut stream).await.expect("handshake reply");
         assert_eq!(&reply[0..4], PROTOCOL_ID);
         assert_eq!(
             u32::from_be_bytes(
@@ -195,7 +195,7 @@ mod tests {
         let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
         stream.write_all(&bytes).await.expect("write handshake");
 
-        let reply = recv_reply(&mut stream).await;
+        let reply = recv_reply(&mut stream).await.expect("handshake reply");
         assert_eq!(
             u32::from_be_bytes(
                 reply[4..8]
@@ -215,7 +215,8 @@ mod tests {
 
         let reply = timeout(Duration::from_secs(1), recv_reply(&mut stream))
             .await
-            .expect("reply timed out in test");
+            .expect("reply timed out in test")
+            .expect("handshake reply");
         assert_eq!(
             u32::from_be_bytes(
                 reply[4..8]
@@ -248,6 +249,32 @@ mod bdd {
         wireframe::test_helpers::preamble_bytes,
     };
 
+    async fn perform_handshake(
+        addr: SocketAddr,
+        bytes: Option<Vec<u8>>,
+    ) -> Result<[u8; REPLY_LEN], String> {
+        let mut stream = TcpStream::connect(addr).await.expect("connect");
+        send_handshake_bytes(&mut stream, bytes).await;
+        read_handshake_reply(&mut stream).await
+    }
+
+    async fn send_handshake_bytes(stream: &mut TcpStream, bytes: Option<Vec<u8>>) {
+        if let Some(data) = bytes {
+            stream.write_all(&data).await.expect("write handshake");
+        }
+    }
+
+    async fn read_handshake_reply(stream: &mut TcpStream) -> Result<[u8; REPLY_LEN], String> {
+        let mut buf = [0u8; REPLY_LEN];
+        timeout(Duration::from_secs(1), stream.read_exact(&mut buf))
+            .await
+            .map(|res| {
+                res.expect("read reply");
+                buf
+            })
+            .map_err(|err| err.to_string())
+    }
+
     struct HandshakeWorld {
         rt: Runtime,
         addr: RefCell<Option<SocketAddr>>,
@@ -275,20 +302,7 @@ mod bdd {
 
         fn connect_and_maybe_send(&self, bytes: Option<Vec<u8>>) {
             let addr = self.addr.borrow().expect("server not started");
-            let reply = self.rt.block_on(async {
-                let mut stream = TcpStream::connect(addr).await.expect("connect");
-                if let Some(data) = bytes {
-                    stream.write_all(&data).await.expect("write handshake");
-                }
-                let mut buf = [0u8; REPLY_LEN];
-                timeout(Duration::from_secs(1), stream.read_exact(&mut buf))
-                    .await
-                    .map(|res| {
-                        res.expect("read reply");
-                        buf
-                    })
-                    .map_err(|err| err.to_string())
-            });
+            let reply = self.rt.block_on(perform_handshake(addr, bytes));
             self.reply.borrow_mut().replace(reply);
         }
 

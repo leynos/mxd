@@ -4,6 +4,24 @@
 //! logic available to alternative front-ends (such as the upcoming wireframe
 //! adapter) without duplicating code.
 
+#![expect(clippy::shadow_reuse, reason = "intentional shadowing in async blocks")]
+#![expect(
+    clippy::print_stdout,
+    reason = "intentional console output for server status"
+)]
+#![expect(
+    clippy::print_stderr,
+    reason = "intentional error output for diagnostics"
+)]
+#![expect(
+    clippy::integer_division_remainder_used,
+    reason = "tokio::select! macro usage"
+)]
+#![expect(
+    clippy::let_underscore_must_use,
+    reason = "shutdown signal send is fire-and-forget"
+)]
+
 use std::{io, net::SocketAddr, sync::Arc};
 
 use anyhow::{Context, Result};
@@ -31,6 +49,33 @@ use crate::{
     protocol,
     transaction::{TransactionError, TransactionReader, TransactionWriter},
 };
+
+/// Shared server resources passed to connection handlers.
+///
+/// This type is internal when compiled normally, but exposed publicly when
+/// the `test-support` feature is enabled for integration testing.
+#[derive(Clone)]
+#[cfg(feature = "test-support")]
+pub struct ServerResources {
+    /// Database connection pool.
+    pub pool: DbPool,
+    /// Argon2 password hasher instance.
+    pub argon2: Arc<Argon2<'static>>,
+}
+
+/// Shared server resources passed to connection handlers.
+#[derive(Clone)]
+#[cfg(not(feature = "test-support"))]
+struct ServerResources {
+    pool: DbPool,
+    argon2: Arc<Argon2<'static>>,
+}
+
+/// An accepted TCP connection with its peer address.
+struct AcceptedConnection {
+    socket: TcpStream,
+    peer: SocketAddr,
+}
 
 /// Parse CLI arguments and execute the requested action.
 ///
@@ -135,6 +180,7 @@ async fn accept_connections(
     let mut join_set = JoinSet::new();
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
+    let resources = ServerResources { pool, argon2 };
 
     loop {
         tokio::select! {
@@ -143,13 +189,7 @@ async fn accept_connections(
                 break;
             }
             res = listener.accept() => {
-                handle_accept_result(
-                    res,
-                    pool.clone(),
-                    Arc::clone(&argon2),
-                    &shutdown_rx,
-                    &mut join_set,
-                );
+                handle_accept_result(res, &resources, &shutdown_rx, &mut join_set);
             }
         }
     }
@@ -163,32 +203,29 @@ async fn accept_connections(
 /// Spawn a client handler task for the accepted connection.
 fn handle_accept_result(
     res: io::Result<(TcpStream, SocketAddr)>,
-    pool: DbPool,
-    argon2: Arc<Argon2<'static>>,
+    resources: &ServerResources,
     shutdown_rx: &watch::Receiver<bool>,
     join_set: &mut JoinSet<()>,
 ) {
     match res {
         Ok((socket, peer)) => {
-            let rx = shutdown_rx.clone();
-            spawn_client_handler(socket, peer, pool, argon2, rx, join_set);
+            let conn = AcceptedConnection { socket, peer };
+            spawn_client_handler(conn, resources.clone(), shutdown_rx.clone(), join_set);
         }
         Err(e) => eprintln!("accept error: {e}"),
     }
 }
 
 fn spawn_client_handler(
-    socket: TcpStream,
-    peer: SocketAddr,
-    pool: DbPool,
-    argon2: Arc<Argon2<'static>>,
+    conn: AcceptedConnection,
+    resources: ServerResources,
     mut shutdown_rx: watch::Receiver<bool>,
     join_set: &mut JoinSet<()>,
 ) {
-    let ctx = HandlerContext::new(peer, pool, argon2);
+    let ctx = HandlerContext::new(conn.peer, resources.pool, resources.argon2);
     join_set.spawn(async move {
-        if let Err(e) = handle_client(socket, ctx, &mut shutdown_rx).await {
-            eprintln!("connection error from {peer}: {e}");
+        if let Err(e) = handle_client(conn.socket, ctx, &mut shutdown_rx).await {
+            eprintln!("connection error from {}: {e}", conn.peer);
         }
     });
 }
@@ -309,11 +346,11 @@ pub mod test_support {
     //! Expose legacy server internals exclusively for integration tests
     //! compiled with the `test-support` feature.
 
-    use std::{io, net::SocketAddr, sync::Arc};
+    use std::{io, net::SocketAddr};
 
-    use argon2::Argon2;
     use tokio::{net::TcpStream, sync::watch, task::JoinSet};
 
+    pub use super::ServerResources;
     use crate::{db::DbPool, protocol};
 
     /// Expose `is_postgres_url` for integration tests guarded by the
@@ -335,12 +372,11 @@ pub mod test_support {
     /// `test-support` feature.
     pub fn handle_accept_result(
         res: io::Result<(TcpStream, SocketAddr)>,
-        pool: DbPool,
-        argon2: Arc<Argon2<'static>>,
+        resources: &ServerResources,
         shutdown_rx: &watch::Receiver<bool>,
         join_set: &mut JoinSet<()>,
     ) {
-        super::handle_accept_result(res, pool, argon2, shutdown_rx, join_set);
+        super::handle_accept_result(res, resources, shutdown_rx, join_set);
     }
 }
 

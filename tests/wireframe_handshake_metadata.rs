@@ -1,3 +1,15 @@
+#![allow(
+    unfulfilled_lint_expectations,
+    reason = "test lint expectations may not all trigger"
+)]
+#![expect(missing_docs, reason = "test file")]
+#![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol")]
+#![expect(clippy::let_underscore_must_use, reason = "test cleanup")]
+#![expect(clippy::shadow_reuse, reason = "test code")]
+
 //! Behavioural tests for persisting Hotline handshake metadata per connection.
 
 use std::{
@@ -51,6 +63,10 @@ impl MetadataWorld {
         }
     }
 
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "wireframe server setup requires nested closures for app factory and shutdown"
+    )]
     fn start_server(&self) {
         let recorded = Arc::clone(&self.recorded);
         let (addr, shutdown_tx) = self.rt.block_on(async move {
@@ -104,6 +120,10 @@ impl MetadataWorld {
         self.recorded.lock().expect("recorded lock").clone()
     }
 
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "test harness polling loop requires nested async block"
+    )]
     fn connect_and_send(&self, bytes: &[u8], expect_recorded: bool) {
         let addr = self.addr.borrow().expect("server not started");
         self.rt.block_on(async {

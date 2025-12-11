@@ -87,9 +87,5 @@ pub(super) async fn category_id_from_path(
     let query = build_path_cte_with_conn(conn, step, body);
     let res: Option<CatId> = query.get_result(conn).await.optional()?;
     let maybe_id = normalize_lookup_result(res.map(|c| c.id), true)?;
-    if let Some(id) = maybe_id {
-        Ok(id)
-    } else {
-        Err(PathLookupError::InvalidPath)
-    }
+    maybe_id.ok_or(PathLookupError::InvalidPath)
 }

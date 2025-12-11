@@ -1,9 +1,10 @@
 //! Utilities for integration tests.
 //!
 //! The `test-util` crate provides helpers to spin up temporary servers and,
-//! when the `postgres` feature is enabled, manage embedded PostgreSQL
+//! when the `postgres` feature is enabled, manage embedded `PostgreSQL`
 //! instances. It is used by integration tests in the main crate.
 
+/// A boxed error type for test functions.
 pub type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(feature = "postgres")]

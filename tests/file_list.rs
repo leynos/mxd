@@ -1,11 +1,18 @@
-#![cfg(feature = "legacy-networking")]
-// File list routing is exposed only via the legacy adapter until wireframe
-// transaction mapping lands.
-
 //! Integration tests for file list operations.
 //!
 //! Exercises the `GetFileNameList` transaction with ACL filtering and error
 //! handling scenarios.
+//!
+//! File list routing is exposed only via the legacy adapter until wireframe
+//! transaction mapping lands.
+
+#![cfg(feature = "legacy-networking")]
+#![allow(
+    unfulfilled_lint_expectations,
+    reason = "test lint expectations may not all trigger"
+)]
+#![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
 
 use std::{
     io::{Read, Write},

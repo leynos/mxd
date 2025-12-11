@@ -3,6 +3,9 @@
 //! The protocol module defines handshake sequences and utility functions for
 //! talking to Hotline clients. It contains the numeric constants used by the
 //! framing layer and basic handshake implementation.
+
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+
 use std::time::Duration;
 
 use thiserror::Error;
@@ -50,8 +53,10 @@ pub struct Handshake {
 /// Errors that can occur when parsing a handshake.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum HandshakeError {
+    /// The protocol identifier does not match the expected value.
     #[error("invalid protocol id")]
     InvalidProtocol,
+    /// The protocol version is not supported by this server.
     #[error("unsupported version {0}")]
     UnsupportedVersion(u16),
 }
@@ -80,7 +85,7 @@ pub fn parse_handshake(buf: &[u8; HANDSHAKE_LEN]) -> Result<Handshake, Handshake
 
 /// Convert a [`HandshakeError`] into a numeric error code for clients.
 #[must_use = "handle the result"]
-pub fn handshake_error_code(err: &HandshakeError) -> u32 {
+pub const fn handshake_error_code(err: &HandshakeError) -> u32 {
     match err {
         HandshakeError::InvalidProtocol => HANDSHAKE_ERR_INVALID,
         HandshakeError::UnsupportedVersion(_) => HANDSHAKE_ERR_UNSUPPORTED_VERSION,

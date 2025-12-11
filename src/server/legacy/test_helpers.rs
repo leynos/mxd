@@ -1,5 +1,7 @@
 //! Shared helper utilities for exercising legacy server logic in tests.
 
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+
 use std::time::Duration;
 
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};

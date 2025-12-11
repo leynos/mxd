@@ -1,11 +1,19 @@
+// FIXME: https://github.com/leynos/ortho-config/issues/253
+// OrthoConfig derive macro generates sibling structs (e.g., PgEnvCfgBuilder) at module scope,
+// not as children of the annotated struct. These siblings cannot be individually documented
+// or have attributes applied to them, requiring crate-level suppression.
 #![expect(
     non_snake_case,
     reason = "OrthoConfig derives emit helper modules with CamelCase identifiers"
 )]
+#![expect(
+    missing_docs,
+    reason = "OrthoConfig derive generates undocumented sibling structs at module scope"
+)]
 
-//! Unprivileged PostgreSQL setup utilities.
+//! Unprivileged `PostgreSQL` setup utilities.
 //!
-//! Provides helpers for staging PostgreSQL installations and data directories
+//! Provides helpers for staging `PostgreSQL` installations and data directories
 //! using temporary privilege drops so the resulting assets are owned by an
 //! unprivileged user.
 
@@ -19,17 +27,28 @@ use ortho_config::OrthoConfig;
 use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
 use serde::{Deserialize, Serialize};
 
+/// Configuration for `PostgreSQL` environment settings loaded via `OrthoConfig`.
+///
+/// This struct provides configuration options for setting up a `PostgreSQL` instance,
+/// including version constraints, connection parameters, and storage locations.
 #[derive(Debug, Clone, Serialize, Deserialize, OrthoConfig, Default)]
 #[ortho_config(prefix = "PG")]
 pub struct PgEnvCfg {
-    /// e.g. "=16.4.0" or "^17"
+    /// Version requirement specification, e.g. "=16.4.0" or "^17"
     pub version_req: Option<String>,
+    /// Port number for the `PostgreSQL` server
     pub port: Option<u16>,
+    /// Superuser name for the `PostgreSQL` instance
     pub superuser: Option<String>,
+    /// Password for the superuser account
     pub password: Option<String>,
+    /// Path to the data directory for the `PostgreSQL` instance
     pub data_dir: Option<std::path::PathBuf>,
+    /// Path to the runtime/installation directory
     pub runtime_dir: Option<std::path::PathBuf>,
+    /// Locale setting for the database
     pub locale: Option<String>,
+    /// Character encoding for the database
     pub encoding: Option<String>,
 }
 
@@ -39,8 +58,10 @@ impl PgEnvCfg {
     /// Applies version, connection, path, and locale settings from the current configuration.
     /// Returns an error if the version requirement is invalid.
     ///
-    /// # Returns
-    /// A fully configured `Settings` instance on success, or an error if configuration fails.
+    /// # Errors
+    ///
+    /// Returns an error if the version requirement string cannot be parsed as a valid semver
+    /// specification.
     pub fn to_settings(&self) -> Result<Settings> {
         let mut s = Settings::default();
 
@@ -65,23 +86,23 @@ impl PgEnvCfg {
             settings.port = p;
         }
         if let Some(ref u) = self.superuser {
-            settings.username = u.clone();
+            settings.username.clone_from(u);
         }
         if let Some(ref pw) = self.password {
-            settings.password = pw.clone();
+            settings.password.clone_from(pw);
         }
     }
 
     fn apply_paths(&self, settings: &mut Settings) {
         if let Some(ref dir) = self.data_dir {
-            settings.data_dir = dir.clone();
+            settings.data_dir.clone_from(dir);
         }
         if let Some(ref dir) = self.runtime_dir {
-            settings.installation_dir = dir.clone();
+            settings.installation_dir.clone_from(dir);
         }
     }
 
-    /// Applies locale and encoding settings to the PostgreSQL configuration if specified
+    /// Applies locale and encoding settings to the `PostgreSQL` configuration if specified
     /// in the environment.
     ///
     /// Inserts the `locale` and `encoding` values into the settings configuration map when
@@ -96,6 +117,23 @@ impl PgEnvCfg {
                 .insert("encoding".into(), enc.clone());
         }
     }
+}
+
+/// RAII guard that restores privileges on drop.
+///
+/// Used by [`with_temp_euid`] to ensure privileges are restored even if the
+/// closure panics.
+struct EuidGuard {
+    real: Uid,
+    saved: Uid,
+}
+
+impl Drop for EuidGuard {
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "best-effort restore; Drop cannot propagate errors"
+    )]
+    fn drop(&mut self) { let _ = setresuid(self.real, Uid::from_raw(0), self.saved); }
 }
 
 /// Temporarily drop privileges to `target` UID for the duration of `body`.
@@ -115,7 +153,7 @@ impl PgEnvCfg {
 ///
 /// # Implementation note
 ///
-/// The guard’s `Drop` implementation cannot propagate errors, so failures while
+/// The guard's `Drop` implementation cannot propagate errors, so failures while
 /// restoring privileges are silently discarded during the best-effort `setresuid`
 /// call.
 pub fn with_temp_euid<F, R>(target: Uid, body: F) -> Result<R>
@@ -128,15 +166,7 @@ where
     let ids = getresuid().context("getresuid failed")?;
     setresuid(ids.real, target, ids.saved).context("failed to set euid")?;
 
-    struct Guard {
-        real: Uid,
-        saved: Uid,
-    }
-    impl Drop for Guard {
-        fn drop(&mut self) { let _ = setresuid(self.real, Uid::from_raw(0), self.saved); }
-    }
-
-    let _guard = Guard {
+    let _guard = EuidGuard {
         real: ids.real,
         saved: ids.saved,
     };
@@ -149,25 +179,48 @@ where
 /// Creates the directory if it does not exist, sets its owner to `uid`, and
 /// applies permissions (0755) so the unprivileged user can read and execute its
 /// contents.
+///
+/// # Errors
+///
+/// Returns an error if directory creation, ownership change, or permission
+/// setting fails.
 #[cfg(unix)]
 pub fn make_dir_accessible<P: AsRef<Path>>(dir: P, uid: Uid) -> Result<()> {
-    let dir = dir.as_ref();
-    fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-    chown(dir, Some(uid), None).with_context(|| format!("chown {}", dir.display()))?;
-    fs::set_permissions(dir, fs::Permissions::from_mode(0o755))
-        .with_context(|| format!("chmod {}", dir.display()))?;
+    let path = dir.as_ref();
+    fs::create_dir_all(path).with_context(|| format!("create {}", path.display()))?;
+    chown(path, Some(uid), None).with_context(|| format!("chown {}", path.display()))?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+        .with_context(|| format!("chmod {}", path.display()))?;
     Ok(())
 }
 
+/// Returns the UID for the "nobody" user, or 65534 as fallback.
+///
+/// Looks up the "nobody" user in the system's user database. If the lookup
+/// fails or the user doesn't exist, falls back to UID 65534 which is the
+/// conventional "nobody" UID on most systems.
+#[must_use]
 pub fn nobody_uid() -> Uid {
     use nix::unistd::User;
     User::from_name("nobody")
         .ok()
         .flatten()
-        .map(|u| u.uid)
-        .unwrap_or_else(|| Uid::from_raw(65534))
+        .map_or_else(|| Uid::from_raw(65534), |u| u.uid)
 }
 
+/// Main entry point for the `PostgreSQL` unprivileged setup process.
+///
+/// Loads configuration via [`OrthoConfig`], sets up
+/// directories with appropriate ownership, and initializes a `PostgreSQL`
+/// instance using `postgresql_embedded`.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The process is not running as root
+/// - Configuration loading fails
+/// - Directory setup fails
+/// - `PostgreSQL` setup fails
 pub fn run() -> Result<()> {
     color_eyre::install()?;
 

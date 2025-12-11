@@ -29,6 +29,7 @@ fn main() {
         }
 
         // Panic on parse errors so AFL can detect crashes.
+        #[expect(clippy::unwrap_used, reason = "AFL fuzz target: crash on parse errors")]
         parse_transaction(&data).unwrap();
     }
 }

@@ -13,6 +13,7 @@ TEST_SQLITE_FEATURES := --features "sqlite test-support"
 TEST_POSTGRES_FEATURES := --no-default-features --features "postgres test-support legacy-networking"
 WIREFRAME_ONLY_FEATURES := --no-default-features --features "sqlite toml test-support"
 POSTGRES_TARGET_DIR := target/postgres
+RUSTDOC_FLAGS ?= --cfg docsrs -D warnings
 
 all: release ## Build release binaries for sqlite and postgres
 
@@ -39,6 +40,7 @@ check-fmt: ## Verify formatting for Rust sources
 	$(CARGO) fmt --all -- --check
 
 lint: ## Run Clippy with warnings denied
+	RUSTDOCFLAGS="$(RUSTDOC_FLAGS)" $(CARGO) doc --workspace --no-deps
 	$(CARGO) clippy $(CLIPPY_FLAGS)
 
 markdownlint: ## Lint Markdown files

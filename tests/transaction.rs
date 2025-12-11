@@ -1,3 +1,13 @@
+#![allow(
+    unfulfilled_lint_expectations,
+    reason = "test lint expectations may not all trigger"
+)]
+#![expect(missing_docs, reason = "test file")]
+#![expect(clippy::unwrap_used, reason = "test code can panic")]
+#![expect(clippy::expect_used, reason = "test code can panic")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![expect(clippy::indexing_slicing, reason = "test code with known bounds")]
+
 use std::time::Duration;
 
 use mxd::{field_id, transaction::*, transaction_type};

@@ -53,9 +53,13 @@ pub async fn list_article_titles(
 
 /// Parameters required to create a new root article.
 pub struct CreateRootArticleParams<'a> {
+    /// Article title.
     pub title: &'a str,
+    /// Article flags.
     pub flags: i32,
+    /// Data content type.
     pub data_flavor: &'a str,
+    /// Article content.
     pub data: &'a str,
 }
 
@@ -63,6 +67,10 @@ pub struct CreateRootArticleParams<'a> {
 ///
 /// # Errors
 /// Returns an error if the path is invalid or the insertion fails.
+#[expect(
+    clippy::shadow_reuse,
+    reason = "intentional shadowing in transaction closure"
+)]
 #[must_use = "handle the result"]
 pub async fn create_root_article(
     conn: &mut DbConnection,

@@ -48,8 +48,8 @@ impl FromStr for NetworkRuntime {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lower = s.to_ascii_lowercase();
         match lower.as_str() {
-            "legacy" => Ok(NetworkRuntime::Legacy),
-            "wireframe" => Ok(NetworkRuntime::Wireframe),
+            "legacy" => Ok(Self::Legacy),
+            "wireframe" => Ok(Self::Wireframe),
             _ => Err(format!("unknown runtime '{s}'")),
         }
     }

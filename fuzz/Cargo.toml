@@ -7,6 +7,9 @@ edition = "2024"
 afl = "0.15"
 mxd = { path = "..", default-features = false }
 
+[lints]
+workspace = true
+
 [features]
 default = ["sqlite"]
 sqlite = ["mxd/sqlite"]

@@ -10,7 +10,13 @@ use which::which;
 #[test]
 fn login_validation() -> Result<(), AnyError> {
     if which("hx").is_err() {
-        eprintln!("hx not installed; skipping test");
+        #[expect(
+            clippy::print_stderr,
+            reason = "skip message: inform user why test is being skipped"
+        )]
+        {
+            eprintln!("hx not installed; skipping test");
+        }
         return Ok(());
     }
 
@@ -35,7 +41,7 @@ fn login_validation() -> Result<(), AnyError> {
     let port = server.port();
     let mut p = spawn("hx")?;
     p.expect(Regex("HX"))?;
-    p.send_line(format!("/server -l test -p secret 127.0.0.1 {}", port))?;
+    p.send_line(format!("/server -l test -p secret 127.0.0.1 {port}"))?;
     p.expect(Regex("connected"))?;
     p.send_line("/quit")?;
     Ok(())

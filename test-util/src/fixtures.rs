@@ -26,6 +26,22 @@ use mxd::{
 
 use crate::AnyError;
 
+/// Resolve a file name to its ID from the lookup map.
+fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, AnyError> {
+    file_ids
+        .get(name)
+        .copied()
+        .ok_or_else(|| format!("missing file id for {name}").into())
+}
+
+/// Execute a database operation within a connection.
+///
+/// Establishes a connection, runs migrations, and executes the provided closure.
+///
+/// # Errors
+///
+/// Returns an error if the connection cannot be established, migrations fail,
+/// or the closure returns an error.
 pub fn with_db<F>(db: &str, f: F) -> Result<(), AnyError>
 where
     F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<(), AnyError>>,
@@ -38,6 +54,11 @@ where
     })
 }
 
+/// Create a test database with users and files for ACL testing.
+///
+/// # Errors
+///
+/// Returns an error if database setup fails.
 pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
@@ -79,9 +100,7 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
                 .await?;
             let file_ids: HashMap<_, _> = file_rows.into_iter().collect();
             for name in ["fileA.txt", "fileC.txt"] {
-                let Some(&file_id) = file_ids.get(name) else {
-                    return Err(format!("missing file id for {name}").into());
-                };
+                let file_id = resolve_file_id(&file_ids, name)?;
                 add_file_acl(conn, &NewFileAcl { file_id, user_id }).await?;
             }
             Ok(())
@@ -89,6 +108,11 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
     })
 }
 
+/// Create a test database with news categories and articles.
+///
+/// # Errors
+///
+/// Returns an error if database setup fails.
 pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
@@ -157,6 +181,11 @@ pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
     })
 }
 
+/// Create a test database with root-level news categories.
+///
+/// # Errors
+///
+/// Returns an error if database setup fails.
 pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
     setup_news_categories_with_structure(db, |conn, _| {
         Box::pin(async move {
@@ -181,6 +210,11 @@ pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
     })
 }
 
+/// Create a test database with nested news categories.
+///
+/// # Errors
+///
+/// Returns an error if database setup fails.
 pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
     setup_news_categories_with_structure(db, |conn, root_id| {
         Box::pin(async move {
@@ -206,6 +240,13 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
     })
 }
 
+/// Create a test database with custom news category structure.
+///
+/// The provided closure receives the root bundle ID to build upon.
+///
+/// # Errors
+///
+/// Returns an error if database setup fails.
 pub fn setup_news_categories_with_structure<F>(db: &str, build: F) -> Result<(), AnyError>
 where
     F: Send

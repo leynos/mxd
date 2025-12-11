@@ -3,6 +3,10 @@
 //! Each `FieldId` corresponds to a specific parameter or data value defined by
 //! the Hotline protocol. They are used when encoding and decoding transaction
 //! parameters.
+/// Field identifiers for transaction parameters.
+///
+/// Each variant represents a specific parameter type used in the Hotline
+/// protocol's transaction payloads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FieldId {
     /// Login name for an account.
@@ -100,25 +104,25 @@ impl From<FieldId> for u16 {
 impl std::fmt::Display for FieldId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FieldId::Login => f.write_str("Login"),
-            FieldId::Password => f.write_str("Password"),
-            FieldId::Version => f.write_str("Version"),
-            FieldId::NewsCategory => f.write_str("NewsCategory"),
-            FieldId::NewsArticle => f.write_str("NewsArticle"),
-            FieldId::NewsArticleId => f.write_str("NewsArticleId"),
-            FieldId::NewsDataFlavor => f.write_str("NewsDataFlavor"),
-            FieldId::NewsTitle => f.write_str("NewsTitle"),
-            FieldId::NewsPoster => f.write_str("NewsPoster"),
-            FieldId::NewsDate => f.write_str("NewsDate"),
-            FieldId::NewsPrevId => f.write_str("NewsPrevId"),
-            FieldId::NewsNextId => f.write_str("NewsNextId"),
-            FieldId::NewsArticleData => f.write_str("NewsArticleData"),
-            FieldId::NewsArticleFlags => f.write_str("NewsArticleFlags"),
-            FieldId::NewsParentId => f.write_str("NewsParentId"),
-            FieldId::NewsFirstChildId => f.write_str("NewsFirstChildId"),
-            FieldId::NewsPath => f.write_str("NewsPath"),
-            FieldId::FileName => f.write_str("FileName"),
-            FieldId::Other(v) => write!(f, "Other({v})"),
+            Self::Login => f.write_str("Login"),
+            Self::Password => f.write_str("Password"),
+            Self::Version => f.write_str("Version"),
+            Self::NewsCategory => f.write_str("NewsCategory"),
+            Self::NewsArticle => f.write_str("NewsArticle"),
+            Self::NewsArticleId => f.write_str("NewsArticleId"),
+            Self::NewsDataFlavor => f.write_str("NewsDataFlavor"),
+            Self::NewsTitle => f.write_str("NewsTitle"),
+            Self::NewsPoster => f.write_str("NewsPoster"),
+            Self::NewsDate => f.write_str("NewsDate"),
+            Self::NewsPrevId => f.write_str("NewsPrevId"),
+            Self::NewsNextId => f.write_str("NewsNextId"),
+            Self::NewsArticleData => f.write_str("NewsArticleData"),
+            Self::NewsArticleFlags => f.write_str("NewsArticleFlags"),
+            Self::NewsParentId => f.write_str("NewsParentId"),
+            Self::NewsFirstChildId => f.write_str("NewsFirstChildId"),
+            Self::NewsPath => f.write_str("NewsPath"),
+            Self::FileName => f.write_str("FileName"),
+            Self::Other(v) => write!(f, "Other({v})"),
         }
     }
 }

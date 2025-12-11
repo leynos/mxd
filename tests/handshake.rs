@@ -1,3 +1,6 @@
+#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol")]
+
 //! Handshake integration tests for the legacy TCP adapter.
 //! Skips when the build omits the `legacy-networking` runtime.
 #![cfg(feature = "legacy-networking")]

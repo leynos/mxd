@@ -5,6 +5,10 @@
 
 use std::process::ExitCode;
 
+#[expect(
+    clippy::print_stderr,
+    reason = "error output is appropriate for main binary"
+)]
 #[tokio::main]
 async fn main() -> ExitCode {
     match mxd::server::wireframe::run().await {

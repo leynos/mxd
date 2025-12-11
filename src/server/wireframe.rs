@@ -7,6 +7,15 @@
 //! [`WireframeServer`]. Future work will register the Hotline handshake,
 //! serializer, and protocol routes described in the roadmap.
 
+#![expect(
+    clippy::shadow_reuse,
+    reason = "intentional shadowing for server building"
+)]
+#![expect(
+    clippy::print_stdout,
+    reason = "intentional console output for server status"
+)]
+
 #[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 use std::{
@@ -108,7 +117,7 @@ impl WireframeBootstrap {
     }
 
     async fn run(self) -> Result<()> {
-        let WireframeBootstrap {
+        let Self {
             bind_addr,
             config,
             backoff,
@@ -152,6 +161,7 @@ fn resolve_hostname(target: &str) -> Result<SocketAddr> {
 #[cfg(test)]
 mod tests {
     use rstest::{fixture, rstest};
+    use serial_test::serial;
 
     use super::*;
     use crate::{
@@ -206,6 +216,7 @@ mod tests {
     }
 
     #[rstest]
+    #[serial]
     fn build_app_uses_current_handshake(bound_config: AppConfig) {
         let meta = HandshakeMetadata {
             sub_protocol: u32::from_be_bytes(*b"CHAT"),
@@ -222,6 +233,7 @@ mod tests {
     }
 
     #[rstest]
+    #[serial]
     fn build_app_defaults_when_missing(bound_config: AppConfig) {
         clear_current_handshake();
 

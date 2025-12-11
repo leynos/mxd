@@ -7,9 +7,13 @@ use argon2::Argon2;
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use mxd::server::legacy::test_support::is_postgres_url;
 use mxd::{
-    db::DbPool,
     protocol,
-    server::legacy::test_support::{dummy_pool, handle_accept_result, handshake_frame},
+    server::legacy::test_support::{
+        ServerResources,
+        dummy_pool,
+        handle_accept_result,
+        handshake_frame,
+    },
 };
 use rstest::{fixture, rstest};
 use tokio::{
@@ -33,8 +37,12 @@ fn accept_context() -> AcceptContext {
     let pool = dummy_pool();
     let argon2 = Arc::new(Argon2::default());
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    AcceptContext {
+    let resources = ServerResources {
         pool,
+        argon2: Arc::clone(&argon2),
+    };
+    AcceptContext {
+        resources,
         argon2,
         shutdown_tx,
         shutdown_rx,
@@ -43,7 +51,7 @@ fn accept_context() -> AcceptContext {
 }
 
 struct AcceptContext {
-    pool: DbPool,
+    resources: ServerResources,
     argon2: Arc<Argon2<'static>>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
@@ -56,7 +64,7 @@ async fn handle_accept_result_shares_argon2_between_clients(
     accept_context: AcceptContext,
 ) -> Result<()> {
     let AcceptContext {
-        pool,
+        resources,
         argon2,
         shutdown_tx,
         shutdown_rx,
@@ -71,8 +79,7 @@ async fn handle_accept_result_shares_argon2_between_clients(
 
     handle_accept_result(
         Ok((server_socket, peer)),
-        pool,
-        Arc::clone(&argon2),
+        &resources,
         &shutdown_rx,
         &mut join_set,
     );

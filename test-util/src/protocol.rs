@@ -9,6 +9,22 @@ use std::{
 };
 
 /// Send a client handshake and verify the server reply matches expectations.
+///
+/// # Errors
+///
+/// Returns an I/O error if the handshake fails.
+///
+/// # Panics
+///
+/// Panics if the protocol magic doesn't match or the server returns an error code.
+#[expect(
+    clippy::big_endian_bytes,
+    reason = "TRTP protocol uses network byte order"
+)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test helper: panics indicate protocol violations"
+)]
 pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
     let mut buf = Vec::new();
     buf.extend_from_slice(b"TRTP");
@@ -27,6 +43,6 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
         .try_into()
         .map_err(|_| io::Error::new(io::ErrorKind::UnexpectedEof, "handshake reply too short"))?;
     let code = u32::from_be_bytes(code_bytes);
-    assert_eq!(code, 0, "handshake returned error code {}", code);
+    assert_eq!(code, 0, "handshake returned error code {code}");
     Ok(())
 }

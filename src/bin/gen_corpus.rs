@@ -2,6 +2,13 @@
 //!
 //! Generates a set of minimal transactions for the protocol fuzz target and
 //! writes them into the `fuzz/corpus` directory.
+
+#![expect(
+    clippy::expect_used,
+    reason = "fuzzing utility can panic on setup failure"
+)]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+
 use std::{
     fs::{self, File},
     io::Write,

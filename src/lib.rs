@@ -3,6 +3,35 @@
 //! This crate exposes database utilities, protocol types, and helper
 //! functions used by the server and supporting tools. Only one database
 //! backend (either `sqlite` or `postgres`) should be enabled at a time.
+
+#![cfg_attr(
+    test,
+    expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")
+)]
+#![cfg_attr(test, expect(clippy::str_to_string, reason = "test code"))]
+#![cfg_attr(test, expect(clippy::unwrap_used, reason = "test code can panic"))]
+#![cfg_attr(
+    test,
+    expect(clippy::indexing_slicing, reason = "test code with known bounds")
+)]
+#![cfg_attr(test, expect(clippy::panic_in_result_fn, reason = "test assertions"))]
+#![cfg_attr(test, expect(clippy::shadow_reuse, reason = "test code shadowing"))]
+#![cfg_attr(
+    test,
+    expect(clippy::let_underscore_must_use, reason = "test cleanup code")
+)]
+#![cfg_attr(
+    test,
+    expect(clippy::unneeded_field_pattern, reason = "test pattern matching")
+)]
+#![cfg_attr(
+    test,
+    allow(
+        unfulfilled_lint_expectations,
+        reason = "test functions may not trigger all expectations"
+    )
+)]
+
 cfg_if::cfg_if! {
     if #[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))] {
         compile_error!("Choose either sqlite or postgres, not both");

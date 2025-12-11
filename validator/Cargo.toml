@@ -9,6 +9,9 @@ tempfile = "3"
 which = "4"
 nix = { version = "0.27", optional = false, features = ["signal"] }
 
+[lints]
+workspace = true
+
 [features]
 default = ["sqlite"]
 sqlite = ["test-util/sqlite", "mxd/sqlite"]

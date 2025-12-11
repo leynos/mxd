@@ -23,6 +23,9 @@ toml = ["figment/toml", "dep:toml"]
 json5 = ["dep:figment-json5"]
 yaml = ["figment/yaml", "dep:serde_yaml"]
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 rstest = "0.18"
 temp-env = "0.3"

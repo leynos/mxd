@@ -1,3 +1,6 @@
+#![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::str_to_string, reason = "test code")]
+
 //! BDD-style integration tests for the create-user command.
 //!
 //! These tests exercise the CLI-driven create-user workflow against a temporary

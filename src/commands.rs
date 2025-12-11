@@ -4,6 +4,9 @@
 //! [`Command`] variants and runs the appropriate handlers. Commands are used by
 //! the connection handler to drive database operations and build reply
 //! transactions.
+
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+
 use std::net::SocketAddr;
 
 use futures_util::future::BoxFuture;
@@ -21,7 +24,7 @@ use crate::{
     },
     field_id::FieldId,
     header_util::reply_header,
-    login::handle_login,
+    login::{LoginRequest, handle_login},
     transaction::{
         FrameHeader,
         Transaction,
@@ -44,45 +47,108 @@ pub const ERR_INVALID_PAYLOAD: u32 = 2;
 /// Error code used for unexpected server-side failures.
 pub const ERR_INTERNAL_SERVER: u32 = 3;
 
+/// High-level command representation parsed from incoming transactions.
+///
+/// Commands encapsulate the parameters and type information needed to
+/// process client requests.
 pub enum Command {
+    /// User login request with credentials.
     Login {
+        /// Username for authentication.
         username: String,
+        /// Password for authentication.
         password: String,
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Request for the list of available files.
     GetFileNameList {
+        /// Transaction frame header.
         header: FrameHeader,
+        /// Raw payload bytes.
         payload: Vec<u8>,
     },
+    /// Request for news category names at a given path.
     GetNewsCategoryNameList {
+        /// News hierarchy path (optional for root).
         path: Option<String>,
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Request for article titles within a news category.
     GetNewsArticleNameList {
+        /// News category path.
         path: String,
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Request for a specific news article's content.
     GetNewsArticleData {
+        /// News category path.
         path: String,
+        /// Article identifier.
         article_id: i32,
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Request to create a new news article.
     PostNewsArticle {
+        /// News category path.
         path: String,
+        /// Article title.
         title: String,
+        /// Article flags.
         flags: i32,
+        /// Data content type.
         data_flavor: String,
+        /// Article content.
         data: String,
+        /// Transaction frame header.
         header: FrameHeader,
     },
     /// Request contained a payload when none was expected. The server
     /// responds with [`crate::commands::ERR_INVALID_PAYLOAD`].
     InvalidPayload {
+        /// Transaction frame header.
         header: FrameHeader,
     },
+    /// Unrecognised transaction type.
     Unknown {
+        /// Transaction frame header.
         header: FrameHeader,
     },
+}
+
+/// Parsed login credentials extracted from transaction parameters.
+#[derive(Debug, PartialEq, Eq)]
+struct LoginCredentials {
+    /// Username for authentication.
+    username: String,
+    /// Password for authentication.
+    password: String,
+}
+
+/// Extract username and password from login parameters.
+fn parse_login_params(params: Vec<(FieldId, Vec<u8>)>) -> Result<LoginCredentials, &'static str> {
+    let mut username = None;
+    let mut password = None;
+
+    for (id, data) in params {
+        match id {
+            FieldId::Login => {
+                username = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+            }
+            FieldId::Password => {
+                password = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(LoginCredentials {
+        username: username.ok_or("missing username")?,
+        password: password.ok_or("missing password")?,
+    })
 }
 
 impl Command {
@@ -94,38 +160,26 @@ impl Command {
     pub fn from_transaction(tx: Transaction) -> Result<Self, &'static str> {
         let ty = TransactionType::from(tx.header.ty);
         if !ty.allows_payload() && !tx.payload.is_empty() {
-            return Ok(Command::InvalidPayload { header: tx.header });
+            return Ok(Self::InvalidPayload { header: tx.header });
         }
         match ty {
             TransactionType::Login => {
                 let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
-                let mut username = None;
-                let mut password = None;
-                for (id, data) in params {
-                    match id {
-                        FieldId::Login => {
-                            username = Some(String::from_utf8(data).map_err(|_| "utf8")?);
-                        }
-                        FieldId::Password => {
-                            password = Some(String::from_utf8(data).map_err(|_| "utf8")?);
-                        }
-                        _ => {}
-                    }
-                }
-                Ok(Command::Login {
-                    username: username.ok_or("missing username")?,
-                    password: password.ok_or("missing password")?,
+                let creds = parse_login_params(params)?;
+                Ok(Self::Login {
+                    username: creds.username,
+                    password: creds.password,
                     header: tx.header,
                 })
             }
-            TransactionType::GetFileNameList => Ok(Command::GetFileNameList {
+            TransactionType::GetFileNameList => Ok(Self::GetFileNameList {
                 header: tx.header,
                 payload: tx.payload,
             }),
             TransactionType::NewsCategoryNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = first_param_string(&params, FieldId::NewsPath)?;
-                Ok(Command::GetNewsCategoryNameList {
+                Ok(Self::GetNewsCategoryNameList {
                     path,
                     header: tx.header,
                 })
@@ -133,7 +187,7 @@ impl Command {
             TransactionType::NewsArticleNameList => {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
-                Ok(Command::GetNewsArticleNameList {
+                Ok(Self::GetNewsArticleNameList {
                     path,
                     header: tx.header,
                 })
@@ -142,7 +196,7 @@ impl Command {
                 let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
                 let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
                 let id = required_param_i32(&params, FieldId::NewsArticleId, "missing id", "id")?;
-                Ok(Command::GetNewsArticleData {
+                Ok(Self::GetNewsArticleData {
                     path,
                     article_id: id,
                     header: tx.header,
@@ -158,7 +212,7 @@ impl Command {
                     required_param_string(&params, FieldId::NewsDataFlavor, "missing flavor")?;
                 let data =
                     required_param_string(&params, FieldId::NewsArticleData, "missing data")?;
-                Ok(Command::PostNewsArticle {
+                Ok(Self::PostNewsArticle {
                     path,
                     title,
                     flags,
@@ -167,7 +221,7 @@ impl Command {
                     header: tx.header,
                 })
             }
-            _ => Ok(Command::Unknown { header: tx.header }),
+            _ => Ok(Self::Unknown { header: tx.header }),
         }
     }
 
@@ -184,12 +238,19 @@ impl Command {
         session: &mut crate::handler::Session,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
         match self {
-            Command::Login {
+            Self::Login {
                 username,
                 password,
                 header,
-            } => handle_login(peer, session, pool, username, password, header).await,
-            Command::GetFileNameList { header, .. } => {
+            } => {
+                let req = LoginRequest {
+                    username,
+                    password,
+                    header,
+                };
+                handle_login(peer, session, pool, req).await
+            }
+            Self::GetFileNameList { header, .. } => {
                 let Some(user_id) = session.user_id else {
                     return Ok(Transaction {
                         header: reply_header(&header, 1, 0),
@@ -208,30 +269,39 @@ impl Command {
                     payload,
                 })
             }
-            Command::GetNewsCategoryNameList { header, path } => {
+            Self::GetNewsCategoryNameList { header, path } => {
                 handle_category_list(pool, header, path).await
             }
-            Command::GetNewsArticleNameList { header, path } => {
+            Self::GetNewsArticleNameList { header, path } => {
                 handle_article_titles(pool, header, path).await
             }
-            Command::GetNewsArticleData {
+            Self::GetNewsArticleData {
                 header,
                 path,
                 article_id,
             } => handle_article_data(pool, header, path, article_id).await,
-            Command::PostNewsArticle {
+            Self::PostNewsArticle {
                 header,
                 path,
                 title,
                 flags,
                 data_flavor,
                 data,
-            } => handle_post_article(pool, header, path, title, flags, data_flavor, data).await,
-            Command::InvalidPayload { header } => Ok(Transaction {
+            } => {
+                let req = PostArticleRequest {
+                    path,
+                    title,
+                    flags,
+                    data_flavor,
+                    data,
+                };
+                handle_post_article(pool, header, req).await
+            }
+            Self::InvalidPayload { header } => Ok(Transaction {
                 header: reply_header(&header, ERR_INVALID_PAYLOAD, 0),
                 payload: Vec::new(),
             }),
-            Command::Unknown { header } => Ok(handle_unknown(peer, &header)),
+            Self::Unknown { header } => Ok(handle_unknown(peer, &header)),
         }
     }
 }
@@ -240,6 +310,10 @@ impl Command {
 ///
 /// # Errors
 /// Returns an error if database access fails or the operation itself errors.
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "refactoring would reduce readability"
+)]
 async fn run_news_tx<F>(
     pool: DbPool,
     header: FrameHeader,
@@ -273,6 +347,10 @@ where
     }
 }
 
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "error handling requires matching multiple error types"
+)]
 fn news_error_reply(header: &FrameHeader, err: PathLookupError) -> Transaction {
     match err {
         PathLookupError::InvalidPath => Transaction {
@@ -354,6 +432,10 @@ async fn handle_article_data(
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
             let article = get_article(conn, &path, article_id).await?;
+            #[expect(
+                clippy::shadow_reuse,
+                reason = "intentional pattern for option handling"
+            )]
             let Some(article) = article else {
                 return Err(PathLookupError::InvalidPath);
             };
@@ -406,6 +488,31 @@ async fn handle_article_data(
     .await
 }
 
+/// Parameters for posting a new news article.
+#[derive(Debug, PartialEq, Eq)]
+struct PostArticleRequest {
+    path: String,
+    title: String,
+    flags: i32,
+    data_flavor: String,
+    data: String,
+}
+
+impl PostArticleRequest {
+    /// Build database parameters from this request.
+    ///
+    /// The returned [`CreateRootArticleParams`] borrows from `self` and contains
+    /// all fields except `path`, which is used separately for path lookup.
+    fn to_db_params(&self) -> CreateRootArticleParams<'_> {
+        CreateRootArticleParams {
+            title: &self.title,
+            flags: self.flags,
+            data_flavor: &self.data_flavor,
+            data: &self.data,
+        }
+    }
+}
+
 /// Create a new root article under the provided path.
 ///
 /// # Errors
@@ -413,25 +520,11 @@ async fn handle_article_data(
 async fn handle_post_article(
     pool: DbPool,
     header: FrameHeader,
-    path: String,
-    title: String,
-    flags: i32,
-    data_flavor: String,
-    data: String,
+    req: PostArticleRequest,
 ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
-            let id = create_root_article(
-                conn,
-                &path,
-                CreateRootArticleParams {
-                    title: &title,
-                    flags,
-                    data_flavor: &data_flavor,
-                    data: &data,
-                },
-            )
-            .await?;
+            let id = create_root_article(conn, &req.path, req.to_db_params()).await?;
             let bytes = id.to_be_bytes();
             Ok(vec![(FieldId::NewsArticleId, bytes.to_vec())])
         })
@@ -452,6 +545,140 @@ fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
         },
         payload: Vec::new(),
     };
-    println!("{} sent unknown transaction: {}", peer, header.ty);
+    tracing::warn!(%peer, ty = %header.ty, "unknown transaction");
     reply
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Returns valid login parameters for testing.
+    fn valid_login_params() -> Vec<(FieldId, Vec<u8>)> {
+        vec![
+            (FieldId::Login, b"alice".to_vec()),
+            (FieldId::Password, b"secret".to_vec()),
+        ]
+    }
+
+    /// Asserts that credentials match expected valid values.
+    fn assert_valid_credentials(creds: &LoginCredentials) {
+        assert_eq!(creds.username, "alice");
+        assert_eq!(creds.password, "secret");
+    }
+
+    #[test]
+    fn parse_login_params_both_fields_valid() {
+        let params = valid_login_params();
+        let result = parse_login_params(params).expect("should parse");
+        assert_valid_credentials(&result);
+    }
+
+    #[test]
+    fn parse_login_params_missing_username() {
+        let params = vec![(FieldId::Password, b"secret".to_vec())];
+        let result = parse_login_params(params);
+        assert_eq!(result, Err("missing username"));
+    }
+
+    #[test]
+    fn parse_login_params_missing_password() {
+        let params = vec![(FieldId::Login, b"alice".to_vec())];
+        let result = parse_login_params(params);
+        assert_eq!(result, Err("missing password"));
+    }
+
+    #[test]
+    fn parse_login_params_invalid_utf8_username() {
+        let params = vec![
+            (FieldId::Login, vec![0xff, 0xfe]),
+            (FieldId::Password, b"secret".to_vec()),
+        ];
+        let result = parse_login_params(params);
+        assert_eq!(result, Err("utf8"));
+    }
+
+    #[test]
+    fn parse_login_params_invalid_utf8_password() {
+        let params = vec![
+            (FieldId::Login, b"alice".to_vec()),
+            (FieldId::Password, vec![0xff, 0xfe]),
+        ];
+        let result = parse_login_params(params);
+        assert_eq!(result, Err("utf8"));
+    }
+
+    #[test]
+    fn parse_login_params_ignores_extra_fields() {
+        let mut params = valid_login_params();
+        params.push((FieldId::NewsPath, b"/news".to_vec()));
+        let result = parse_login_params(params).expect("should parse");
+        assert_valid_credentials(&result);
+    }
+
+    /// Returns a `PostArticleRequest` with sensible default values for testing.
+    fn default_post_article_request() -> PostArticleRequest {
+        PostArticleRequest {
+            path: "/news".to_string(),
+            title: "Test Article".to_string(),
+            flags: 0,
+            data_flavor: "text/plain".to_string(),
+            data: "Test content".to_string(),
+        }
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_maps_title() {
+        let req = PostArticleRequest {
+            title: "Hello World".to_string(),
+            ..default_post_article_request()
+        };
+        let params = req.to_db_params();
+        assert_eq!(params.title, "Hello World");
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_maps_flags() {
+        let req = PostArticleRequest {
+            flags: 42,
+            ..default_post_article_request()
+        };
+        let params = req.to_db_params();
+        assert_eq!(params.flags, 42);
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_maps_data_flavor() {
+        let req = PostArticleRequest {
+            data_flavor: "text/html".to_string(),
+            ..default_post_article_request()
+        };
+        let params = req.to_db_params();
+        assert_eq!(params.data_flavor, "text/html");
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_maps_data() {
+        let req = PostArticleRequest {
+            data: "Article body content".to_string(),
+            ..default_post_article_request()
+        };
+        let params = req.to_db_params();
+        assert_eq!(params.data, "Article body content");
+    }
+
+    #[test]
+    fn post_article_request_to_db_params_excludes_path() {
+        let req = PostArticleRequest {
+            path: "/news/category".to_string(),
+            ..default_post_article_request()
+        };
+        let params = req.to_db_params();
+        // Path is not part of CreateRootArticleParams; it's used separately
+        // for the path lookup. Verify the other fields are correctly mapped.
+        assert_eq!(params.title, "Test Article");
+        assert_eq!(params.flags, 0);
+        assert_eq!(params.data_flavor, "text/plain");
+        assert_eq!(params.data, "Test content");
+    }
 }
