@@ -1,6 +1,7 @@
 //! Handshake integration tests for the legacy TCP adapter.
 //! Skips when the build omits the `legacy-networking` runtime.
 #![cfg(feature = "legacy-networking")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol")]
 
 use std::{
     io::{Read, Write},
@@ -35,15 +36,12 @@ fn handshake() -> Result<(), AnyError> {
         return Err("unexpected reply magic".into());
     }
 
-    let len_bytes: [u8; 4] = reply[4..8]
+    let status_bytes: [u8; 4] = reply[4..8]
         .try_into()
-        .map_err(|_| "failed to decode reply length bytes")?;
-    let reply_len = (u32::from(len_bytes[0]) << 24)
-        | (u32::from(len_bytes[1]) << 16)
-        | (u32::from(len_bytes[2]) << 8)
-        | u32::from(len_bytes[3]);
-    if reply_len != 0 {
-        return Err(format!("expected zero-length reply, got {reply_len}").into());
+        .map_err(|_| "failed to decode reply status bytes")?;
+    let status = u32::from_be_bytes(status_bytes);
+    if status != 0 {
+        return Err(format!("expected zero status, got {status}").into());
     }
 
     // Close the write side to signal that no further data will be sent.

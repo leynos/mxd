@@ -119,11 +119,6 @@ impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
             let next_header = FrameHeader::from_bytes(&hdr_buf);
 
             // Validate continuation header
-            if next_header.flags != 0 {
-                return Err(DecodeError::OtherString(
-                    "invalid flags in continuation fragment".to_owned(),
-                ));
-            }
             validate_fragment_consistency(&first_header, &next_header)
                 .map_err(|msg| DecodeError::OtherString(msg.to_owned()))?;
 
