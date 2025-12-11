@@ -356,6 +356,7 @@ pub mod test_support {
     /// Expose `is_postgres_url` for integration tests guarded by the
     /// `test-support` feature.
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+    #[must_use]
     pub fn is_postgres_url(s: &str) -> bool { super::is_postgres_url(s) }
 
     /// Provide a lightweight database pool for exercising connection handlers.

@@ -1,5 +1,12 @@
+#![allow(
+    unfulfilled_lint_expectations,
+    reason = "test lint expectations may not all trigger"
+)]
+#![expect(missing_docs, reason = "test file")]
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::str_to_string, reason = "test code")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#![expect(clippy::let_underscore_must_use, reason = "test cleanup")]
 
 //! BDD-style integration tests for the create-user command.
 //!
@@ -10,7 +17,7 @@
 
 use std::cell::RefCell;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use argon2::Params;
 use diesel_async::AsyncConnection;
 use mxd::{
@@ -33,23 +40,23 @@ struct CreateUserWorld {
 }
 
 impl CreateUserWorld {
-    fn new() -> Self {
-        let temp_dir = TempDir::new().expect("tempdir");
+    fn new() -> Result<Self> {
+        let temp_dir = TempDir::new().context("failed to create tempdir for test")?;
         let db_path = temp_dir.path().join("bdd.mxd.db");
         let config = AppConfig {
             database: db_path.to_string_lossy().into_owned(),
-            bind: "127.0.0.1:0".to_string(),
+            bind: "127.0.0.1:0".to_owned(),
             argon2_m_cost: Params::DEFAULT_M_COST,
             argon2_t_cost: Params::DEFAULT_T_COST,
             argon2_p_cost: Params::DEFAULT_P_COST,
         };
-        let rt = Runtime::new().expect("runtime");
-        Self {
+        let rt = Runtime::new().context("failed to create runtime for test")?;
+        Ok(Self {
             _temp_dir: temp_dir,
             config: RefCell::new(config),
             outcome: RefCell::new(None),
             rt,
-        }
+        })
     }
 
     fn database_path(&self) -> String { self.config.borrow().database.clone() }
@@ -67,17 +74,20 @@ impl CreateUserWorld {
         self.outcome.borrow_mut().replace(result);
     }
 
-    fn assert_user_exists(&self, username: &str) {
+    fn assert_user_exists(&self, username: &str) -> Result<()> {
         let db = self.database_path();
-        let lookup = username.to_string();
+        let lookup = username.to_owned();
         let fetched = self.rt.block_on(async move {
-            let mut conn = DbConnection::establish(&db).await.expect("db conn");
+            let mut conn = DbConnection::establish(&db)
+                .await
+                .context("failed to establish db connection")?;
             db::get_user_by_name(&mut conn, &lookup)
                 .await
-                .expect("query")
-        });
+                .context("failed to query user")
+        })?;
         let found = fetched.map(|u| u.username);
         assert_eq!(found.as_deref(), Some(username));
+        Ok(())
     }
 
     fn assert_failure_contains(&self, message: &str) {
@@ -96,7 +106,7 @@ impl CreateUserWorld {
 
 #[fixture]
 fn world() -> CreateUserWorld {
-    let world = CreateUserWorld::new();
+    let world = CreateUserWorld::new().expect("failed to create test world");
     // Sanity-check fixture invariants so step definitions can rely on the DB path shape.
     assert!(
         world.config.borrow().database.ends_with("bdd.mxd.db"),
@@ -143,7 +153,9 @@ fn then_success(world: &CreateUserWorld) {
 
 #[then("the database contains a user named \"{username}\"")]
 fn then_user_exists(world: &CreateUserWorld, username: String) {
-    world.assert_user_exists(&username);
+    world
+        .assert_user_exists(&username)
+        .expect("user existence check failed");
     drop(username); // rstest_bdd provides owned strings, so consume them to silence needless-pass-by-value.
 }
 

@@ -5,8 +5,10 @@
 //! exercise `run_command(Commands::CreateUser)` end to end, then verify the
 //! user record exists in the database. The helper tears the cluster down
 //! automatically on drop. In CI, the suite skips gracefully when the embedded
-//! worker binary is unavailable, emitting `SKIP-TEST-CLUSTER` so the failure is visible without
-//! breaking the pipeline.
+//! worker binary is unavailable, emitting `SKIP-TEST-CLUSTER` so the failure
+//! is visible without breaking the pipeline. The suite also skips when an
+//! external `POSTGRES_TEST_URL` is configured because this test targets the
+//! embedded workflow specifically.
 
 use anyhow::Result;
 use argon2::Params;
@@ -21,6 +23,14 @@ use tokio::runtime::Builder;
 
 #[rstest]
 fn create_user_against_embedded_postgres() -> Result<()> {
+    if std::env::var_os("POSTGRES_TEST_URL").is_some() {
+        eprintln!(concat!(
+            "SKIP-TEST-CLUSTER: POSTGRES_TEST_URL set, skipping embedded ",
+            "postgres test"
+        ));
+        return Ok(());
+    }
+
     // PostgresTestDb::new() uses block_on internally when starting an embedded
     // cluster, so must be called outside any tokio runtime to avoid runtime
     // nesting errors.

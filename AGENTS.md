@@ -125,21 +125,12 @@ project:
     ```
 
     validating formatting across the entire workspace without modifying files.
-  - `make lint` executes:
-
-    ```sh
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
-    ```
-
-    linting every target with all features enabled and denying all Clippy
-    warnings.
-  - `make test` executes:
-
-    ```sh
-    cargo test --workspace
-    ```
-
-    running the full workspace test suite. Use `make fmt`
+  - `make lint` runs Clippy for each feature set (postgres, sqlite, and
+    wireframe-only) since the `sqlite` and `postgres` features are mutually
+    exclusive. Each invocation includes the `test-support` feature and denies
+    all Clippy warnings.
+  - `make test` runs the test suite for each feature set (postgres, sqlite, and
+    wireframe-only) using `cargo nextest`. Use `make fmt`
     (`cargo fmt --workspace`) to apply formatting fixes reported by the
     formatter check.
 - Clippy warnings MUST be disallowed.

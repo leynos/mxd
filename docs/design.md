@@ -429,6 +429,101 @@ classDiagram
     Cli --> Command
 ```
 
+#### Transaction framing codec (December 2025)
+
+The `src/wireframe/codec.rs` module implements `BorrowDecode` for Hotline
+transaction frames, enabling the wireframe transport to decode the 20-byte
+header and reassemble fragmented payloads according to `docs/protocol.md`. The
+codec wraps validation logic and multi-fragment reassembly into a single
+decoding pass.
+
+**Header validation.** Each frame header is validated against protocol
+constraints before payload processing begins:
+
+- `flags` must be `0` for protocol version 1.8.5.
+- `total_size` must not exceed `MAX_PAYLOAD_SIZE` (1 MiB).
+- `data_size` must not exceed `MAX_FRAME_DATA` (32 KiB).
+- `data_size` must not exceed `total_size`.
+- A zero `data_size` with non-zero `total_size` is invalid (except for empty
+  frames where both are zero).
+
+**Multi-fragment reassembly.** When `data_size < total_size`, the codec reads
+continuation frames until the full payload is assembled. Each continuation
+frame must maintain header consistency with the first frame (same `flags`,
+`is_reply`, `type`, `id`, `error`, and `total_size`). The codec validates that
+continuation data does not exceed the remaining byte count.
+
+**Testing strategy.** The codec is tested at three levels:
+
+1. **Unit tests** (`src/wireframe/codec.rs`) use `rstest` to cover single-frame
+   and multi-fragment decoding with parametrised test cases.
+2. **Behaviour-Driven Development (BDD) scenarios**
+   (`tests/features/wireframe_transaction.feature`) express acceptance criteria
+   in Gherkin syntax, with step definitions in `tests/wireframe_transaction.rs`.
+3. **Property tests** (`tests/wireframe_transaction.rs`) use `proptest` to
+   verify that valid single-frame and multi-fragment transactions decode
+   correctly, and that all invalid length combinations are rejected.
+
+**Class diagram.** The following diagram shows the relationship between the
+codec, transaction types, and validation logic:
+
+```mermaid
+classDiagram
+    class FrameHeader {
+        +u8 flags
+        +u8 is_reply
+        +u16 ty
+        +u32 id
+        +u32 error
+        +u32 total_size
+        +u32 data_size
+        +from_bytes(bytes: u8_array) FrameHeader
+    }
+
+    class HotlineTransaction {
+        -FrameHeader header
+        -Vec_u8 payload
+        +header() &FrameHeader
+        +payload() u8_slice
+        +into_parts() (FrameHeader, Vec_u8)
+    }
+
+    class Transaction {
+        +FrameHeader header
+        +Vec_u8 payload
+    }
+
+    class TransactionError {
+    }
+
+    class transaction_module {
+        <<module>>
+        +HEADER_LEN : usize
+        +MAX_FRAME_DATA : usize
+        +MAX_PAYLOAD_SIZE : usize
+        +validate_payload(tx: Transaction) TransactionError
+    }
+
+    class HotlineTransactionCodec {
+        <<impl BorrowDecode>>
+        +borrow_decode(decoder: BorrowDecoder_unit) HotlineTransaction
+        -validate_header(hdr: FrameHeader) str
+        -validate_fragment_consistency(first: FrameHeader, next: FrameHeader) str
+    }
+
+    HotlineTransaction --> FrameHeader : has
+    Transaction --> FrameHeader : has
+    transaction_module --> Transaction : validates
+    transaction_module --> TransactionError : returns
+    HotlineTransactionCodec --> HotlineTransaction : constructs
+    HotlineTransactionCodec --> FrameHeader : parses
+    HotlineTransactionCodec ..> transaction_module : uses constants
+```
+
+The `HotlineTransaction` struct returned by decoding provides access to the
+validated header and reassembled payload, ready for dispatch to command
+handlers.
+
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
 Configuration management in MXD is handled by the **OrthoConfig** library,
