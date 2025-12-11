@@ -6,7 +6,7 @@
 #![expect(clippy::print_stderr, reason = "test diagnostics")]
 
 #[cfg(feature = "postgres")]
-use test_util::postgres::PostgresUnavailable;
+use test_util::postgres::PostgresTestDbError;
 use test_util::{AnyError, TestServer, ensure_server_binary_env};
 
 /// Start the server for a test or skip if prerequisites are unavailable.
@@ -26,7 +26,9 @@ where
         Ok(s) => Ok(Some(s)),
         Err(e) => {
             #[cfg(feature = "postgres")]
-            if e.downcast_ref::<PostgresUnavailable>().is_some() {
+            if e.downcast_ref::<PostgresTestDbError>()
+                .is_some_and(PostgresTestDbError::is_unavailable)
+            {
                 eprintln!("skipping test: {e}");
                 return Ok(None);
             }

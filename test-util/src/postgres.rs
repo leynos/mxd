@@ -27,6 +27,20 @@ pub struct DatabaseUrl(String);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseName(String);
 
+/// Validation error for [`DatabaseName::new`].
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum DatabaseNameError {
+    /// Database name is empty or contains only whitespace.
+    #[error("database name cannot be empty")]
+    Empty,
+    /// Database name exceeds `PostgreSQL`'s 63-character limit.
+    #[error("database name cannot exceed 63 characters")]
+    TooLong,
+    /// Database name contains non-ASCII-alphanumeric characters (except underscores).
+    #[error("database name contains invalid characters")]
+    InvalidCharacters,
+}
+
 impl DatabaseUrl {
     /// Parses a database URL string into a validated `DatabaseUrl`.
     ///
@@ -73,16 +87,16 @@ impl DatabaseName {
     /// Returns an error if the name is empty, exceeds 63 characters, or
     /// contains non-alphanumeric characters (except underscores).
     #[expect(clippy::shadow_reuse, reason = "standard Into pattern")]
-    pub fn new(name: impl Into<String>) -> Result<Self, String> {
+    pub fn new(name: impl Into<String>) -> Result<Self, DatabaseNameError> {
         let name = name.into();
         if name.trim().is_empty() {
-            return Err("database name cannot be empty".into());
+            return Err(DatabaseNameError::Empty);
         }
         if name.len() > 63 {
-            return Err("database name cannot exceed 63 characters".into());
+            return Err(DatabaseNameError::TooLong);
         }
         if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-            return Err("database name contains invalid characters".into());
+            return Err(DatabaseNameError::InvalidCharacters);
         }
         Ok(Self(name))
     }
@@ -107,6 +121,43 @@ impl std::fmt::Display for PostgresUnavailable {
 
 impl std::error::Error for PostgresUnavailable {}
 
+/// Error type for [`PostgresTestDb::new`].
+#[derive(Debug)]
+pub enum PostgresTestDbError {
+    /// `PostgreSQL` binary not found or server unreachable.
+    Unavailable(PostgresUnavailable),
+    /// Initialization failed (URL parsing, database creation, etc.).
+    InitFailed(Box<dyn StdError + Send + Sync>),
+}
+
+impl std::fmt::Display for PostgresTestDbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable(e) => write!(f, "{e}"),
+            Self::InitFailed(e) => write!(f, "PostgreSQL initialization failed: {e}"),
+        }
+    }
+}
+
+impl StdError for PostgresTestDbError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Self::Unavailable(e) => Some(e),
+            Self::InitFailed(e) => Some(&**e),
+        }
+    }
+}
+
+impl From<PostgresUnavailable> for PostgresTestDbError {
+    fn from(e: PostgresUnavailable) -> Self { Self::Unavailable(e) }
+}
+
+impl PostgresTestDbError {
+    /// Returns `true` if this error indicates `PostgreSQL` is unavailable.
+    #[must_use]
+    pub const fn is_unavailable(&self) -> bool { matches!(self, Self::Unavailable(_)) }
+}
+
 #[expect(clippy::shadow_reuse, reason = "clearer flow with shadowing")]
 fn postgres_available(url: &Url) -> bool {
     if let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) {
@@ -121,7 +172,7 @@ fn postgres_available(url: &Url) -> bool {
     false
 }
 
-fn generate_db_name(prefix: &str) -> Result<DatabaseName, String> {
+fn generate_db_name(prefix: &str) -> Result<DatabaseName, DatabaseNameError> {
     let name = format!("{prefix}{}", Uuid::now_v7().simple());
     DatabaseName::new(name)
 }
@@ -228,20 +279,23 @@ impl PostgresTestDb {
     ///
     /// # Errors
     ///
-    /// Returns `PostgresUnavailable` if:
+    /// Returns [`PostgresTestDbError::Unavailable`] if:
     /// - The configured external server cannot be reached
     /// - The embedded `PostgreSQL` binary is not available
     ///
-    /// Propagates other errors (initialization, database creation) directly
-    /// to distinguish them from unavailability conditions.
-    pub fn new() -> Result<Self, Box<dyn StdError + Send + Sync>> {
+    /// Returns [`PostgresTestDbError::InitFailed`] for other errors
+    /// (URL parsing, database creation, etc.).
+    pub fn new() -> Result<Self, PostgresTestDbError> {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-            let admin_url = DatabaseUrl::parse(&value.to_string_lossy())?;
-            let parsed = Url::parse(admin_url.as_ref())?;
+            let admin_url = DatabaseUrl::parse(&value.to_string_lossy())
+                .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
+            let parsed = Url::parse(admin_url.as_ref())
+                .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
             if !postgres_available(&parsed) {
-                return Err(Box::new(PostgresUnavailable));
+                return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
             }
-            let (url, db_name) = create_external_db(&admin_url)?;
+            let (url, db_name) =
+                create_external_db(&admin_url).map_err(PostgresTestDbError::InitFailed)?;
             return Ok(Self {
                 url,
                 admin_url: Some(admin_url),
@@ -252,9 +306,9 @@ impl PostgresTestDb {
 
         let embedded = start_embedded_postgres(reset_postgres_db).map_err(|e| match e {
             EmbeddedPgError::Unavailable(_) => {
-                Box::new(PostgresUnavailable) as Box<dyn StdError + Send + Sync>
+                PostgresTestDbError::Unavailable(PostgresUnavailable)
             }
-            EmbeddedPgError::InitFailed(inner) => inner,
+            EmbeddedPgError::InitFailed(inner) => PostgresTestDbError::InitFailed(inner),
         })?;
         let url = embedded.url.clone();
         let db_name = embedded.db_name.clone();
@@ -299,16 +353,17 @@ impl Drop for PostgresTestDb {
 /// # When to Use Direct `PostgresTestDb::new()` Instead
 ///
 /// For tests that should **skip gracefully** when `PostgreSQL` is unavailable,
-/// call `PostgresTestDb::new()` directly and check for `PostgresUnavailable`:
+/// call `PostgresTestDb::new()` directly and check for
+/// [`PostgresTestDbError::Unavailable`]:
 ///
 /// ```ignore
 /// let db = match PostgresTestDb::new() {
 ///     Ok(db) => db,
-///     Err(e) if e.is::<PostgresUnavailable>() => {
+///     Err(PostgresTestDbError::Unavailable(_)) => {
 ///         eprintln!("PostgreSQL unavailable; skipping test");
 ///         return Ok(());
 ///     }
-///     Err(e) => return Err(e),
+///     Err(e) => return Err(e.into()),
 /// };
 /// ```
 ///
@@ -320,7 +375,7 @@ impl Drop for PostgresTestDb {
 #[fixture]
 pub fn postgres_db() -> PostgresTestDb {
     PostgresTestDb::new().unwrap_or_else(|e| {
-        let msg = if e.is::<PostgresUnavailable>() {
+        let msg = if e.is_unavailable() {
             format!("PostgreSQL unavailable: {e}")
         } else {
             format!("Failed to prepare Postgres test database: {e}")

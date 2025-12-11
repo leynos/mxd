@@ -10,7 +10,7 @@
 #[cfg(feature = "postgres")]
 use temp_env::with_var;
 #[cfg(feature = "postgres")]
-use test_util::{AnyError, PostgresTestDb};
+use test_util::{AnyError, PostgresTestDb, postgres::PostgresTestDbError};
 
 #[cfg(feature = "postgres")]
 #[test]
@@ -29,15 +29,11 @@ fn external_postgres_is_used() -> Result<(), AnyError> {
                 assert_ne!(db.url.as_ref(), base);
                 Ok::<_, AnyError>(())
             }
-            Err(e) => {
-                if e.downcast_ref::<test_util::postgres::PostgresUnavailable>()
-                    .is_some()
-                {
-                    eprintln!("skipping test: {e}");
-                    return Ok(());
-                }
-                Err(e)
+            Err(PostgresTestDbError::Unavailable(_)) => {
+                eprintln!("skipping test: PostgreSQL unavailable");
+                Ok(())
             }
+            Err(e) => Err(Box::new(e) as AnyError),
         },
     )
 }

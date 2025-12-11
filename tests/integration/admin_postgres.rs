@@ -16,7 +16,7 @@ use mxd::{
     server::{AppConfig, Commands, CreateUserArgs, run_command},
 };
 use rstest::rstest;
-use test_util::postgres::{PostgresTestDb, PostgresUnavailable};
+use test_util::postgres::{PostgresTestDb, PostgresTestDbError};
 use tokio::runtime::Builder;
 
 #[rstest]
@@ -26,11 +26,11 @@ fn create_user_against_embedded_postgres() -> Result<()> {
     // nesting errors.
     let pg = match PostgresTestDb::new() {
         Ok(db) => db,
+        Err(PostgresTestDbError::Unavailable(_)) => {
+            eprintln!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
+            return Ok(());
+        }
         Err(err) => {
-            if err.is::<PostgresUnavailable>() {
-                eprintln!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
-                return Ok(());
-            }
             anyhow::bail!("Failed to initialise PostgreSQL test database: {err}");
         }
     };
