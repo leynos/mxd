@@ -65,11 +65,10 @@ impl TransactionWorld {
     }
 }
 
+#[expect(clippy::allow_attributes, reason = "rustc compiler does not emit expected lint")]
+#[allow(unused_braces, reason = "rstest-bdd macro expansion produces braces")]
 #[fixture]
-#[rustfmt::skip]  // Multi-line avoids unused_braces lint; #[expect] cannot be used as rstest injects #[allow]
-fn world() -> TransactionWorld {
-    TransactionWorld::default()
-}
+fn world() -> TransactionWorld { TransactionWorld::default() }
 
 fn build_valid_payload(size: usize) -> Vec<u8> {
     if size == 0 {

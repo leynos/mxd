@@ -332,10 +332,8 @@ mod bdd {
         }
     }
 
-    #[expect(
-        unused_braces,
-        reason = "rstest fixture macro expansion triggers unused_braces false positive"
-    )]
+    #[expect(clippy::allow_attributes, reason = "rustc compiler does not emit expected lint")]
+    #[allow(unused_braces, reason = "rstest-bdd macro expansion produces braces")]
     #[fixture]
     fn world() -> HandshakeWorld { HandshakeWorld::new() }
 
