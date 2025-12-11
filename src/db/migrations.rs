@@ -147,9 +147,9 @@ cfg_if! {
         }
 
         /// Establish a `PostgreSQL` connection and execute migrations.
-        fn establish_and_migrate(url: String) -> QueryResult<()> {
+        fn establish_and_migrate(url: &str) -> QueryResult<()> {
             use diesel::pg::PgConnection;
-            let mut conn = PgConnection::establish(&url).map_err(wrap_connection_error)?;
+            let mut conn = PgConnection::establish(url).map_err(wrap_connection_error)?;
             execute_migrations_sync(&mut conn)
         }
 
@@ -163,7 +163,7 @@ cfg_if! {
             let url = database_url.to_owned();
             timeout(
                 MIGRATION_TIMEOUT,
-                task::spawn_blocking(move || establish_and_migrate(url)),
+                task::spawn_blocking(move || establish_and_migrate(&url)),
             )
             .await
             .map_err(|_| wrap_timeout_error())?
