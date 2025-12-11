@@ -348,9 +348,9 @@ impl TestServer {
     pub const fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
     #[cfg(feature = "postgres")]
-    #[must_use]
     /// Returns `true` when the server is using an embedded `PostgreSQL` instance
     /// rather than an external server.
+    #[must_use]
     pub const fn uses_embedded_postgres(&self) -> bool { self.db.uses_embedded() }
 }
 

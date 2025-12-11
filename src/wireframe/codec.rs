@@ -145,9 +145,11 @@ impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
             let chunk_size = next_header.data_size as usize;
             let start = payload.len();
             payload.resize(start + chunk_size, 0);
-            let chunk = payload.get_mut(start..start + chunk_size).ok_or_else(|| {
-                DecodeError::OtherString("payload resize failed for continuation".to_owned())
-            })?;
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "range is guaranteed in-bounds after resize"
+            )]
+            let chunk = &mut payload[start..start + chunk_size];
             decoder.reader().read(chunk)?;
             accumulated += next_header.data_size;
         }
