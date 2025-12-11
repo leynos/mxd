@@ -146,10 +146,11 @@ impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
                 ));
             }
 
-            // Read continuation data
-            let mut chunk = vec![0u8; next_header.data_size as usize];
-            decoder.reader().read(&mut chunk)?;
-            payload.extend_from_slice(&chunk);
+            // Read continuation data directly into payload
+            let chunk_size = next_header.data_size as usize;
+            let start = payload.len();
+            payload.resize(start + chunk_size, 0);
+            decoder.reader().read(&mut payload[start..])?;
             accumulated += next_header.data_size;
         }
 

@@ -54,10 +54,19 @@ impl TransactionWorld {
         .map(|(tx, _)| tx);
         self.outcome.borrow_mut().replace(result);
     }
+
+    /// Access the decode outcome, panicking if decode was not executed.
+    fn with_outcome<T>(&self, f: impl FnOnce(&Result<HotlineTransaction, DecodeError>) -> T) -> T {
+        let outcome_ref = self.outcome.borrow();
+        let Some(outcome) = outcome_ref.as_ref() else {
+            panic!("decode not executed");
+        };
+        f(outcome)
+    }
 }
 
 #[fixture]
-#[rustfmt::skip]  // Multi-line format avoids unused_braces lint from rstest macro expansion
+#[rustfmt::skip]  // Multi-line avoids unused_braces lint; #[expect] cannot be used as rstest injects #[allow]
 fn world() -> TransactionWorld {
     TransactionWorld::default()
 }
@@ -106,6 +115,10 @@ fn given_transaction_flags(world: &TransactionWorld, flags: u8) {
 
 #[given("a fragmented transaction with total size {total} across {count} fragments")]
 fn given_fragmented_transaction(world: &TransactionWorld, total: usize, count: usize) {
+    assert!(
+        count > 0,
+        "fragment count must be positive in BDD scenarios"
+    );
     let payload = build_valid_payload(total);
     let fragment_size = (total / count).max(1);
     let total_u32 = u32::try_from(total).expect("total size fits in u32 for test");
@@ -135,21 +148,17 @@ fn when_decode(world: &TransactionWorld) { world.decode(); }
 
 #[then("decoding succeeds")]
 fn then_success(world: &TransactionWorld) {
-    let outcome_ref = world.outcome.borrow();
-    let Some(outcome) = outcome_ref.as_ref() else {
-        panic!("decode not executed");
-    };
-    assert_step_ok!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
+    world.with_outcome(|outcome| {
+        assert_step_ok!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
+    });
 }
 
 #[then("the payload length is {len}")]
 fn then_payload_length(world: &TransactionWorld, len: usize) {
-    let outcome_ref = world.outcome.borrow();
-    let Some(outcome) = outcome_ref.as_ref() else {
-        panic!("decode not executed");
-    };
-    let tx = assert_step_ok!(outcome.as_ref().map_err(ToString::to_string));
-    assert_eq!(tx.payload().len(), len);
+    world.with_outcome(|outcome| {
+        let tx = assert_step_ok!(outcome.as_ref().map_err(ToString::to_string));
+        assert_eq!(tx.payload().len(), len);
+    });
 }
 
 #[expect(
@@ -158,15 +167,13 @@ fn then_payload_length(world: &TransactionWorld, len: usize) {
 )]
 #[then("decoding fails with \"{message}\"")]
 fn then_failure(world: &TransactionWorld, message: String) {
-    let outcome_ref = world.outcome.borrow();
-    let Some(outcome) = outcome_ref.as_ref() else {
-        panic!("decode not executed");
-    };
-    let text = assert_step_err!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
-    assert!(
-        text.contains(&message),
-        "expected '{text}' to contain '{message}'"
-    );
+    world.with_outcome(|outcome| {
+        let text = assert_step_err!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
+        assert!(
+            text.contains(&message),
+            "expected '{text}' to contain '{message}'"
+        );
+    });
 }
 
 // Scenario bindings
@@ -217,16 +224,11 @@ proptest! {
         id in 1u32..u32::MAX,
         payload_len in 0usize..1000usize,
     ) {
-        let payload = if payload_len >= 2 {
-            let mut p = vec![0u8; payload_len];
-            p[0] = 0;
-            p[1] = 0;
-            p
-        } else if payload_len == 0 {
-            Vec::new()
-        } else {
+        // Skip payload_len == 1 (invalid: can't set param-count with only 1 byte)
+        if payload_len == 1 {
             return Ok(());
-        };
+        }
+        let payload = build_valid_payload(payload_len);
         let total = u32::try_from(payload.len()).expect("test payload fits in u32");
         let header = FrameHeader {
             flags: 0,
@@ -265,12 +267,7 @@ proptest! {
         // exercising a final partial fragment in the reassembly logic.
         prop_assume!(fragment_size <= total_size / 2);
 
-        let mut payload = vec![0u8; total_size];
-        if total_size >= 2 {
-            payload[0] = 0;
-            payload[1] = 0;
-        }
-
+        let payload = build_valid_payload(total_size);
         let total_u32 = u32::try_from(total_size).expect("test total fits in u32");
         let header = FrameHeader {
             flags: 0,
