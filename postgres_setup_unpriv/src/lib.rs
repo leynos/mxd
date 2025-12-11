@@ -1,10 +1,11 @@
+// FIXME: https://github.com/leynos/ortho-config/issues/253
+// OrthoConfig derive macro generates sibling structs (e.g., PgEnvCfgBuilder) at module scope,
+// not as children of the annotated struct. These siblings cannot be individually documented
+// or have attributes applied to them, requiring crate-level suppression.
 #![expect(
     non_snake_case,
     reason = "OrthoConfig derives emit helper modules with CamelCase identifiers"
 )]
-// OrthoConfig derive macro generates sibling structs (e.g., PgEnvCfgBuilder) at module scope,
-// not as children of the annotated struct. These siblings cannot be individually documented
-// or have attributes applied to them, requiring crate-level suppression.
 #![expect(
     missing_docs,
     reason = "OrthoConfig derive generates undocumented sibling structs at module scope"
