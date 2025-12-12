@@ -27,15 +27,24 @@ use super::{
     params::validate_payload,
 };
 
+async fn io_with_timeout<F, T>(timeout_dur: Duration, operation: F) -> Result<T, TransactionError>
+where
+    F: std::future::Future<Output = std::io::Result<T>>,
+{
+    timeout(timeout_dur, operation)
+        .await
+        .map_err(|_| TransactionError::Timeout)?
+        .map_err(Into::into)
+}
+
 async fn read_timeout_exact<R: AsyncRead + Unpin>(
     r: &mut R,
     buf: &mut [u8],
     timeout_dur: Duration,
 ) -> Result<(), TransactionError> {
-    timeout(timeout_dur, r.read_exact(buf))
+    io_with_timeout(timeout_dur, r.read_exact(buf))
         .await
-        .map_err(|_| TransactionError::Timeout)??;
-    Ok(())
+        .map(|_| ())
 }
 
 async fn write_timeout_all<W: AsyncWrite + Unpin>(
@@ -43,10 +52,7 @@ async fn write_timeout_all<W: AsyncWrite + Unpin>(
     buf: &[u8],
     timeout_dur: Duration,
 ) -> Result<(), TransactionError> {
-    timeout(timeout_dur, w.write_all(buf))
-        .await
-        .map_err(|_| TransactionError::Timeout)??;
-    Ok(())
+    io_with_timeout(timeout_dur, w.write_all(buf)).await
 }
 
 /// Read a big-endian `u32` from the provided byte slice.

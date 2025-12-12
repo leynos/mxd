@@ -28,11 +28,81 @@ const fn headers_match(first: &FrameHeader, next: &FrameHeader) -> bool {
         && next.is_reply == first.is_reply
 }
 
+/// Validate and read the first frame of a streaming transaction.
+async fn validate_first_frame<R: AsyncRead + Unpin>(
+    reader: &mut R,
+    timeout: Duration,
+    max_limit: usize,
+) -> Result<(FrameHeader, Vec<u8>, u32), TransactionError> {
+    let (first_hdr, first_chunk) = read_frame(reader, timeout, max_limit).await?;
+
+    if first_hdr.flags != 0 {
+        return Err(TransactionError::InvalidFlags);
+    }
+    if first_hdr.total_size as usize > max_limit {
+        return Err(TransactionError::PayloadTooLarge);
+    }
+    if first_hdr.data_size > first_hdr.total_size {
+        return Err(TransactionError::SizeMismatch);
+    }
+    if first_hdr.data_size == 0 && first_hdr.total_size > 0 {
+        return Err(TransactionError::SizeMismatch);
+    }
+
+    let remaining = first_hdr.total_size - first_hdr.data_size;
+    Ok((first_hdr, first_chunk, remaining))
+}
+
 /// Reader for assembling complete transactions from a byte stream.
 pub struct TransactionReader<R> {
     reader: R,
     timeout: Duration,
     max_payload: usize,
+}
+
+const fn validate_first_header(
+    header: &FrameHeader,
+    max_payload: usize,
+) -> Result<(), TransactionError> {
+    if header.flags != 0 {
+        return Err(TransactionError::InvalidFlags);
+    }
+    if header.total_size as usize > max_payload {
+        return Err(TransactionError::PayloadTooLarge);
+    }
+    if header.data_size > header.total_size {
+        return Err(TransactionError::SizeMismatch);
+    }
+    if header.data_size == 0 && header.total_size > 0 {
+        return Err(TransactionError::SizeMismatch);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "spells out streaming framing concerns explicitly"
+)]
+async fn read_continuation_frames<R: AsyncRead + Unpin>(
+    reader: &mut R,
+    header: &FrameHeader,
+    payload: &mut Vec<u8>,
+    mut remaining: u32,
+    timeout: Duration,
+    max_payload: usize,
+) -> Result<(), TransactionError> {
+    while remaining > 0 {
+        let (next_hdr, chunk) = read_frame(reader, timeout, max_payload).await?;
+        if !headers_match(header, &next_hdr) {
+            return Err(TransactionError::SizeMismatch);
+        }
+        if next_hdr.data_size == 0 || next_hdr.data_size > remaining {
+            return Err(TransactionError::SizeMismatch);
+        }
+        payload.extend_from_slice(&chunk);
+        remaining -= next_hdr.data_size;
+    }
+    Ok(())
 }
 
 impl<R> TransactionReader<R>
@@ -76,32 +146,19 @@ where
         let (first_hdr, mut payload) =
             read_frame(&mut self.reader, self.timeout, self.max_payload).await?;
         let mut header = first_hdr.clone();
-        if header.flags != 0 {
-            return Err(TransactionError::InvalidFlags);
-        }
-        if header.total_size as usize > self.max_payload {
-            return Err(TransactionError::PayloadTooLarge);
-        }
-        if header.data_size > header.total_size {
-            return Err(TransactionError::SizeMismatch);
-        }
-        if header.data_size == 0 && header.total_size > 0 {
-            return Err(TransactionError::SizeMismatch);
-        }
+        validate_first_header(&header, self.max_payload)?;
 
-        let mut remaining = header.total_size - header.data_size;
-        while remaining > 0 {
-            let (next_hdr, chunk) =
-                read_frame(&mut self.reader, self.timeout, self.max_payload).await?;
-            if !headers_match(&header, &next_hdr) {
-                return Err(TransactionError::SizeMismatch);
-            }
-            if next_hdr.data_size == 0 || next_hdr.data_size > remaining {
-                return Err(TransactionError::SizeMismatch);
-            }
-            payload.extend_from_slice(&chunk);
-            remaining -= next_hdr.data_size;
-        }
+        let remaining = header.total_size - header.data_size;
+        read_continuation_frames(
+            &mut self.reader,
+            &header,
+            &mut payload,
+            remaining,
+            self.timeout,
+            self.max_payload,
+        )
+        .await?;
+
         header.data_size = header.total_size;
         let tx = Transaction { header, payload };
         validate_payload(&tx)?;
@@ -115,23 +172,8 @@ where
     pub async fn read_streaming_transaction(
         &mut self,
     ) -> Result<StreamingTransaction<'_, R>, TransactionError> {
-        let (first_hdr, first_chunk) =
-            read_frame(&mut self.reader, self.timeout, self.max_payload).await?;
-        if first_hdr.flags != 0 {
-            return Err(TransactionError::InvalidFlags);
-        }
-        if first_hdr.total_size as usize > self.max_payload {
-            return Err(TransactionError::PayloadTooLarge);
-        }
-        if first_hdr.data_size > first_hdr.total_size {
-            return Err(TransactionError::SizeMismatch);
-        }
-        if first_hdr.data_size == 0 && first_hdr.total_size > 0 {
-            return Err(TransactionError::SizeMismatch);
-        }
-
-        let remaining = first_hdr.total_size - first_hdr.data_size;
-
+        let (first_hdr, first_chunk, remaining) =
+            validate_first_frame(&mut self.reader, self.timeout, self.max_payload).await?;
         Ok(StreamingTransaction {
             reader: &mut self.reader,
             first_header: first_hdr,
@@ -262,23 +304,8 @@ where
     pub async fn start_transaction(
         &mut self,
     ) -> Result<StreamingTransaction<'_, R>, TransactionError> {
-        let (first_hdr, first_chunk) =
-            read_frame(&mut self.reader, self.timeout, self.max_total).await?;
-        if first_hdr.flags != 0 {
-            return Err(TransactionError::InvalidFlags);
-        }
-        if first_hdr.total_size as usize > self.max_total {
-            return Err(TransactionError::PayloadTooLarge);
-        }
-        if first_hdr.data_size > first_hdr.total_size {
-            return Err(TransactionError::SizeMismatch);
-        }
-        if first_hdr.data_size == 0 && first_hdr.total_size > 0 {
-            return Err(TransactionError::SizeMismatch);
-        }
-
-        let remaining = first_hdr.total_size - first_hdr.data_size;
-
+        let (first_hdr, first_chunk, remaining) =
+            validate_first_frame(&mut self.reader, self.timeout, self.max_total).await?;
         Ok(StreamingTransaction {
             reader: &mut self.reader,
             first_header: first_hdr,
