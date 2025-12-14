@@ -60,6 +60,19 @@ pub struct TransactionReader<R> {
     max_payload: usize,
 }
 
+/// Configuration for frame reading operations.
+struct FrameReadConfig {
+    timeout: Duration,
+    max_payload: usize,
+}
+
+/// Accumulator for assembling a multi-frame transaction payload.
+struct FrameAccumulator<'a> {
+    header: &'a FrameHeader,
+    payload: &'a mut Vec<u8>,
+    remaining: u32,
+}
+
 const fn validate_first_header(
     header: &FrameHeader,
     max_payload: usize,
@@ -79,28 +92,21 @@ const fn validate_first_header(
     Ok(())
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "spells out streaming framing concerns explicitly"
-)]
 async fn read_continuation_frames<R: AsyncRead + Unpin>(
     reader: &mut R,
-    header: &FrameHeader,
-    payload: &mut Vec<u8>,
-    mut remaining: u32,
-    timeout: Duration,
-    max_payload: usize,
+    accumulator: &mut FrameAccumulator<'_>,
+    config: &FrameReadConfig,
 ) -> Result<(), TransactionError> {
-    while remaining > 0 {
-        let (next_hdr, chunk) = read_frame(reader, timeout, max_payload).await?;
-        if !headers_match(header, &next_hdr) {
+    while accumulator.remaining > 0 {
+        let (next_hdr, chunk) = read_frame(reader, config.timeout, config.max_payload).await?;
+        if !headers_match(accumulator.header, &next_hdr) {
             return Err(TransactionError::SizeMismatch);
         }
-        if next_hdr.data_size == 0 || next_hdr.data_size > remaining {
+        if next_hdr.data_size == 0 || next_hdr.data_size > accumulator.remaining {
             return Err(TransactionError::SizeMismatch);
         }
-        payload.extend_from_slice(&chunk);
-        remaining -= next_hdr.data_size;
+        accumulator.payload.extend_from_slice(&chunk);
+        accumulator.remaining -= next_hdr.data_size;
     }
     Ok(())
 }
@@ -149,15 +155,16 @@ where
         validate_first_header(&header, self.max_payload)?;
 
         let remaining = header.total_size - header.data_size;
-        read_continuation_frames(
-            &mut self.reader,
-            &header,
-            &mut payload,
+        let config = FrameReadConfig {
+            timeout: self.timeout,
+            max_payload: self.max_payload,
+        };
+        let mut accumulator = FrameAccumulator {
+            header: &header,
+            payload: &mut payload,
             remaining,
-            self.timeout,
-            self.max_payload,
-        )
-        .await?;
+        };
+        read_continuation_frames(&mut self.reader, &mut accumulator, &config).await?;
 
         header.data_size = header.total_size;
         let tx = Transaction { header, payload };
