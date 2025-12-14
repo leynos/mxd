@@ -170,10 +170,6 @@ fn then_payload_length(world: &TransactionWorld, len: usize) {
     });
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "rstest-bdd captures String by value"
-)]
 #[then("decoding fails with \"{message}\"")]
 fn then_failure(world: &TransactionWorld, message: String) {
     world.with_outcome(|outcome| {

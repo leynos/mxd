@@ -75,12 +75,15 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `BorrowDecode` for `HotlineTransaction` with header validation,
   multi-fragment reassembly, and comprehensive property tests. Dependencies:
   Step "Implement the wireframe handshake".
-- [ ] Task: Surface a streaming API for large payloads so file transfers and
+- [x] Task: Surface a streaming API for large payloads so file transfers and
   news posts can consume fragmented messages incrementally. Acceptance:
   Integration tests for file uploads download payloads over multiple fragments
-  without buffer exhaustion. Dependencies: Task “Build a `wireframe` codec that
-  reads and writes the 20-byte transaction header and payload framing described
-  in `docs/protocol.md`.”
+  without buffer exhaustion. Status: Completed on 12 December 2025 by adding
+  `TransactionStreamReader`, `StreamingTransaction`, and
+  `TransactionWriter::write_streaming` with configurable total-size limits and
+  BDD coverage for multi-fragment streaming. Dependencies: Task “Build a
+  `wireframe` codec that reads and writes the 20-byte transaction header and
+  payload framing described in `docs/protocol.md`.”
 - [ ] Task: Reuse existing parameter encoding helpers within the new codec to
   prevent duplicate implementations. Acceptance: All transactions built through
   the new codec match the byte-for- byte output of the existing encoder for
