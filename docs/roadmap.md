@@ -77,7 +77,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Step "Implement the wireframe handshake".
 - [x] Task: Surface a streaming API for large payloads so file transfers and
   news posts can consume fragmented messages incrementally. Acceptance:
-  Integration tests for file uploads download payloads over multiple fragments
+  Integration tests stream upload and download payloads over multiple fragments
   without buffer exhaustion. Status: Completed on 12 December 2025 by adding
   `TransactionStreamReader`, `StreamingTransaction`, and
   `TransactionWriter::write_streaming` with configurable total-size limits and

@@ -15,6 +15,9 @@ pub enum TransactionError {
     /// Payload size does not match the header specification.
     #[error("size mismatch")]
     SizeMismatch,
+    /// Continuation frame header fields do not match the initial frame.
+    #[error("continuation header mismatch")]
+    HeaderMismatch,
     /// A field identifier appears more than once when not allowed.
     #[error("duplicate field id {0}")]
     DuplicateField(u16),

@@ -14,7 +14,7 @@ Feature: Transaction streaming framing
   Scenario: Rejects mismatched continuation headers during streaming
     Given a fragmented transaction with mismatched continuation headers
     When I stream the transaction fragments with a limit of 1048576 bytes
-    Then streaming fails with error "size mismatch"
+    Then streaming fails with error "continuation header mismatch"
 
   Scenario: Rejects payload exceeding the stream limit
     Given a transaction with total size 10 and data size 10

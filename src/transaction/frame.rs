@@ -5,11 +5,6 @@
 //! live in sibling modules.
 
 #![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "array bounds are validated earlier in parsing"
-)]
-#![expect(clippy::unwrap_used, reason = "slice conversions are length-validated")]
 
 use std::time::Duration;
 
@@ -60,6 +55,7 @@ async fn write_timeout_all<W: AsyncWrite + Unpin>(
 /// # Errors
 /// Returns an error if `buf` is shorter than four bytes.
 #[must_use = "handle the result"]
+#[expect(clippy::indexing_slicing, reason = "length is checked before indexing")]
 pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
     if buf.len() < 4 {
         return Err(TransactionError::ShortBuffer);
@@ -72,6 +68,7 @@ pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
 /// # Errors
 /// Returns an error if `buf` is shorter than two bytes.
 #[must_use = "handle the result"]
+#[expect(clippy::indexing_slicing, reason = "length is checked before indexing")]
 pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
     if buf.len() < 2 {
         return Err(TransactionError::ShortBuffer);
@@ -137,6 +134,7 @@ impl FrameHeader {
     /// # Errors
     /// Returns an error if the slice is too short or the header fields cannot be read.
     #[must_use = "handle the result"]
+    #[expect(clippy::indexing_slicing, reason = "length is checked before indexing")]
     pub fn new(buf: &[u8]) -> Result<Self, TransactionError> {
         if buf.len() < HEADER_LEN {
             return Err(TransactionError::ShortBuffer);
@@ -164,16 +162,22 @@ pub struct Transaction {
 
 /// Parse a transaction from a single frame of bytes.
 ///
-/// # Panics
-/// Panics if `buf` is shorter than [`HEADER_LEN`], which is checked earlier.
-///
 /// # Errors
 /// Returns an error if the frame is malformed or exceeds size limits.
+///
+/// # Panics
+/// Cannot panic; the slice conversion is guarded by an earlier length check.
 #[must_use = "handle the result"]
+#[expect(clippy::indexing_slicing, reason = "length is checked before slicing")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "slice conversion cannot fail after length check"
+)]
 pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
     if buf.len() < HEADER_LEN {
         return Err(TransactionError::SizeMismatch);
     }
+    debug_assert!(buf.len() >= HEADER_LEN, "buffer too short for header");
     let hdr: &[u8; HEADER_LEN] = buf[0..HEADER_LEN].try_into().unwrap();
     let header = FrameHeader::from_bytes(hdr);
     if header.total_size as usize > MAX_PAYLOAD_SIZE {
@@ -189,8 +193,8 @@ pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
 }
 
 impl Transaction {
-    /// Serialize the transaction into a vector of bytes.
-    #[must_use = "use the serialized bytes"]
+    /// Serialise the transaction into a vector of bytes.
+    #[must_use = "use the serialised bytes"]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(HEADER_LEN + self.payload.len());
         let mut hdr = [0u8; HEADER_LEN];

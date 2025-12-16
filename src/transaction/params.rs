@@ -9,7 +9,7 @@
     clippy::indexing_slicing,
     reason = "array bounds are validated earlier in parsing"
 )]
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::{Transaction, errors::TransactionError, read_u16};
 use crate::field_id::FieldId;
@@ -111,12 +111,9 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
 /// # Errors
 /// Returns an error if the buffer cannot be parsed.
 #[must_use = "handle the result"]
-pub fn decode_params_map(
-    buf: &[u8],
-) -> Result<std::collections::HashMap<FieldId, Vec<Vec<u8>>>, TransactionError> {
+pub fn decode_params_map(buf: &[u8]) -> Result<HashMap<FieldId, Vec<Vec<u8>>>, TransactionError> {
     let params = decode_params(buf)?;
-    let mut map: std::collections::HashMap<FieldId, Vec<Vec<u8>>> =
-        std::collections::HashMap::new();
+    let mut map: HashMap<FieldId, Vec<Vec<u8>>> = HashMap::new();
     for (fid, value) in params {
         map.entry(fid).or_default().push(value);
     }
@@ -176,11 +173,13 @@ pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Result<Vec<u8>, Trans
 /// Returns an error if the parameter value is not valid UTF-8.
 #[must_use = "handle the result"]
 pub fn first_param_string<S: std::hash::BuildHasher>(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
 ) -> Result<Option<String>, &'static str> {
     match map.get(&field).and_then(|v| v.first()) {
-        Some(bytes) => Ok(Some(String::from_utf8(bytes.clone()).map_err(|_| "utf8")?)),
+        Some(bytes) => Ok(Some(
+            std::str::from_utf8(bytes).map_err(|_| "utf8")?.to_owned(),
+        )),
         None => Ok(None),
     }
 }
@@ -191,7 +190,7 @@ pub fn first_param_string<S: std::hash::BuildHasher>(
 /// Returns an error if the field is missing or not valid UTF-8.
 #[must_use = "handle the result"]
 pub fn required_param_string<S: std::hash::BuildHasher>(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     missing_err: &'static str,
 ) -> Result<String, &'static str> {
@@ -204,7 +203,7 @@ pub fn required_param_string<S: std::hash::BuildHasher>(
 /// Returns an error if the field is missing or cannot be parsed as `i32`.
 #[must_use = "handle the result"]
 pub fn required_param_i32<S: std::hash::BuildHasher>(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     missing_err: &'static str,
     parse_err: &'static str,
@@ -223,7 +222,7 @@ pub fn required_param_i32<S: std::hash::BuildHasher>(
 /// Returns an error if the value cannot be parsed as `i32`.
 #[must_use = "handle the result"]
 pub fn first_param_i32<S: std::hash::BuildHasher>(
-    map: &std::collections::HashMap<FieldId, Vec<Vec<u8>>, S>,
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
     parse_err: &'static str,
 ) -> Result<Option<i32>, &'static str> {

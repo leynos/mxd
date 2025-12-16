@@ -2,10 +2,10 @@
     unfulfilled_lint_expectations,
     reason = "test lint expectations may not all trigger"
 )]
-#![expect(missing_docs, reason = "test file")]
-#![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#![allow(missing_docs, reason = "test file")]
+#![allow(clippy::expect_used, reason = "test assertions")]
+#![allow(clippy::unwrap_used, reason = "test assertions")]
+#![allow(clippy::panic_in_result_fn, reason = "test assertions")]
 
 //! Behavioural tests for streaming transaction framing.
 
@@ -167,7 +167,6 @@ fn then_fragment_max(world: &StreamingWorld, max: usize) {
 #[then("streaming fails with error \"{message}\"")]
 fn then_streaming_fails(world: &StreamingWorld, message: String) {
     world.assert_failure_contains(&message);
-    drop(message);
 }
 
 #[scenario(path = "tests/features/transaction_streaming.feature", index = 0)]

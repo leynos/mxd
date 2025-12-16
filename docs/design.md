@@ -545,8 +545,10 @@ writer reads at most `MAX_FRAME_DATA` bytes at a time, stamps `data_size`
 accordingly, and emits each fragment sequentially. Unlike the buffered
 `write_transaction` path, the streaming writer does not validate parameter
 structure because file transfers use raw bytes. Both buffered and streaming
-writers now flush once the full transaction has been written so buffered sinks
-(for example, test harnesses) observe the final fragment promptly.
+writers clamp the configured `max_frame` to `MAX_FRAME_DATA` so that emitted
+frames remain within the limit enforced by `read_frame`, and both flush once
+the full transaction has been written so buffered sinks (for example, test
+harnesses) observe the final fragment promptly.
 
 **Limits and safety.** Buffered readers and the Wireframe codec continue to
 default to `MAX_PAYLOAD_SIZE` (1 MiB). Streaming readers accept a configurable

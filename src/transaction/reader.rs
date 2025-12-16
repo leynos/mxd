@@ -36,18 +36,8 @@ async fn validate_first_frame<R: AsyncRead + Unpin>(
 ) -> Result<(FrameHeader, Vec<u8>, u32), TransactionError> {
     let (first_hdr, first_chunk) = read_frame(reader, timeout, max_limit).await?;
 
-    if first_hdr.flags != 0 {
-        return Err(TransactionError::InvalidFlags);
-    }
-    if first_hdr.total_size as usize > max_limit {
-        return Err(TransactionError::PayloadTooLarge);
-    }
-    if first_hdr.data_size > first_hdr.total_size {
-        return Err(TransactionError::SizeMismatch);
-    }
-    if first_hdr.data_size == 0 && first_hdr.total_size > 0 {
-        return Err(TransactionError::SizeMismatch);
-    }
+    // Delegate to shared header validation to keep invariants in one place.
+    validate_first_header(&first_hdr, max_limit)?;
 
     let remaining = first_hdr.total_size - first_hdr.data_size;
     Ok((first_hdr, first_chunk, remaining))
@@ -100,7 +90,7 @@ async fn read_continuation_frames<R: AsyncRead + Unpin>(
     while accumulator.remaining > 0 {
         let (next_hdr, chunk) = read_frame(reader, config.timeout, config.max_payload).await?;
         if !headers_match(accumulator.header, &next_hdr) {
-            return Err(TransactionError::SizeMismatch);
+            return Err(TransactionError::HeaderMismatch);
         }
         if next_hdr.data_size == 0 || next_hdr.data_size > accumulator.remaining {
             return Err(TransactionError::SizeMismatch);
@@ -250,7 +240,7 @@ where
 
         let (next_hdr, chunk) = read_frame(self.reader, self.timeout, self.max_total).await?;
         if !headers_match(&self.first_header, &next_hdr) {
-            return Err(TransactionError::SizeMismatch);
+            return Err(TransactionError::HeaderMismatch);
         }
         if next_hdr.data_size == 0 || next_hdr.data_size > self.remaining {
             return Err(TransactionError::SizeMismatch);
@@ -386,7 +376,7 @@ mod tests {
             .await
             .expect_err("second fragment should fail");
 
-        assert!(matches!(err, TransactionError::SizeMismatch));
+        assert!(matches!(err, TransactionError::HeaderMismatch));
     }
 
     #[rstest]

@@ -97,9 +97,11 @@ where
             return Ok(());
         }
 
+        // Clamp max_frame to MAX_FRAME_DATA to ensure frames are accepted by readers.
+        let max_frame = self.max_frame.min(max_frame_data());
         let mut offset = 0usize;
         while offset < tx.payload.len() {
-            let end = (offset + self.max_frame).min(tx.payload.len());
+            let end = (offset + max_frame).min(tx.payload.len());
             let Some(chunk) = tx.payload.get(offset..end) else {
                 return Err(TransactionError::SizeMismatch);
             };
