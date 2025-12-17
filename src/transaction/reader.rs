@@ -43,6 +43,26 @@ async fn validate_first_frame<R: AsyncRead + Unpin>(
     Ok((first_hdr, first_chunk, remaining))
 }
 
+/// Construct a StreamingTransaction from validated first-frame data.
+fn build_streaming_transaction<'a, R: AsyncRead + Unpin>(
+    reader: &'a mut R,
+    first_hdr: FrameHeader,
+    first_chunk: Vec<u8>,
+    remaining: u32,
+    timeout: Duration,
+    max_total: usize,
+) -> StreamingTransaction<'a, R> {
+    StreamingTransaction {
+        reader,
+        first_header: first_hdr,
+        timeout,
+        remaining,
+        offset: 0,
+        pending_first: Some(first_chunk),
+        max_total,
+    }
+}
+
 /// Reader for assembling complete transactions from a byte stream.
 pub struct TransactionReader<R> {
     reader: R,
@@ -171,15 +191,14 @@ where
     ) -> Result<StreamingTransaction<'_, R>, TransactionError> {
         let (first_hdr, first_chunk, remaining) =
             validate_first_frame(&mut self.reader, self.timeout, self.max_payload).await?;
-        Ok(StreamingTransaction {
-            reader: &mut self.reader,
-            first_header: first_hdr,
-            timeout: self.timeout,
+        Ok(build_streaming_transaction(
+            &mut self.reader,
+            first_hdr,
+            first_chunk,
             remaining,
-            offset: 0,
-            pending_first: Some(first_chunk),
-            max_total: self.max_payload,
-        })
+            self.timeout,
+            self.max_payload,
+        ))
     }
 }
 
@@ -303,15 +322,14 @@ where
     ) -> Result<StreamingTransaction<'_, R>, TransactionError> {
         let (first_hdr, first_chunk, remaining) =
             validate_first_frame(&mut self.reader, self.timeout, self.max_total).await?;
-        Ok(StreamingTransaction {
-            reader: &mut self.reader,
-            first_header: first_hdr,
-            timeout: self.timeout,
+        Ok(build_streaming_transaction(
+            &mut self.reader,
+            first_hdr,
+            first_chunk,
             remaining,
-            offset: 0,
-            pending_first: Some(first_chunk),
-            max_total: self.max_total,
-        })
+            self.timeout,
+            self.max_total,
+        ))
     }
 }
 
