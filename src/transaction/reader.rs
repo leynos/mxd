@@ -43,15 +43,19 @@ async fn validate_first_frame<R: AsyncRead + Unpin>(
     Ok((first_hdr, first_chunk, remaining))
 }
 
-/// Construct a StreamingTransaction from validated first-frame data.
-fn build_streaming_transaction<'a, R: AsyncRead + Unpin>(
-    reader: &'a mut R,
+/// Construct a `StreamingTransaction` from validated first-frame data.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "constructor mirrors struct fields for clarity"
+)]
+const fn build_streaming_transaction<R: AsyncRead + Unpin>(
+    reader: &mut R,
     first_hdr: FrameHeader,
     first_chunk: Vec<u8>,
     remaining: u32,
     timeout: Duration,
     max_total: usize,
-) -> StreamingTransaction<'a, R> {
+) -> StreamingTransaction<'_, R> {
     StreamingTransaction {
         reader,
         first_header: first_hdr,
