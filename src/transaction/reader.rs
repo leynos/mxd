@@ -43,27 +43,28 @@ async fn validate_first_frame<R: AsyncRead + Unpin>(
     Ok((first_hdr, first_chunk, remaining))
 }
 
-/// Construct a `StreamingTransaction` from validated first-frame data.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "constructor mirrors struct fields for clarity"
-)]
-const fn build_streaming_transaction<R: AsyncRead + Unpin>(
-    reader: &mut R,
+/// Initialisation data for constructing a `StreamingTransaction`.
+struct StreamingTransactionInit {
     first_hdr: FrameHeader,
     first_chunk: Vec<u8>,
     remaining: u32,
     timeout: Duration,
     max_total: usize,
+}
+
+/// Construct a `StreamingTransaction` from validated first-frame data.
+fn build_streaming_transaction<R: AsyncRead + Unpin>(
+    reader: &mut R,
+    init: StreamingTransactionInit,
 ) -> StreamingTransaction<'_, R> {
     StreamingTransaction {
         reader,
-        first_header: first_hdr,
-        timeout,
-        remaining,
+        first_header: init.first_hdr,
+        timeout: init.timeout,
+        remaining: init.remaining,
         offset: 0,
-        pending_first: Some(first_chunk),
-        max_total,
+        pending_first: Some(init.first_chunk),
+        max_total: init.max_total,
     }
 }
 
@@ -195,14 +196,15 @@ where
     ) -> Result<StreamingTransaction<'_, R>, TransactionError> {
         let (first_hdr, first_chunk, remaining) =
             validate_first_frame(&mut self.reader, self.timeout, self.max_payload).await?;
-        Ok(build_streaming_transaction(
-            &mut self.reader,
+
+        let init = StreamingTransactionInit {
             first_hdr,
             first_chunk,
             remaining,
-            self.timeout,
-            self.max_payload,
-        ))
+            timeout: self.timeout,
+            max_total: self.max_payload,
+        };
+        Ok(build_streaming_transaction(&mut self.reader, init))
     }
 }
 
@@ -326,14 +328,15 @@ where
     ) -> Result<StreamingTransaction<'_, R>, TransactionError> {
         let (first_hdr, first_chunk, remaining) =
             validate_first_frame(&mut self.reader, self.timeout, self.max_total).await?;
-        Ok(build_streaming_transaction(
-            &mut self.reader,
+
+        let init = StreamingTransactionInit {
             first_hdr,
             first_chunk,
             remaining,
-            self.timeout,
-            self.max_total,
-        ))
+            timeout: self.timeout,
+            max_total: self.max_total,
+        };
+        Ok(build_streaming_transaction(&mut self.reader, init))
     }
 }
 
