@@ -167,15 +167,12 @@ where
         while sent < total {
             let remaining = (total - sent) as usize;
             let to_read = remaining.min(self.max_frame);
-            let Some(chunk_buf) = buf.get_mut(..to_read) else {
-                return Err(TransactionError::PayloadTooLarge);
-            };
-            read_stream_chunk(&mut source, chunk_buf, self.timeout)
+            let chunk = buf
+                .get_mut(..to_read)
+                .ok_or(TransactionError::PayloadTooLarge)?;
+            read_stream_chunk(&mut source, chunk, self.timeout)
                 .await
                 .map_err(map_eof_to_size_mismatch)?;
-            let Some(chunk) = buf.get(..to_read) else {
-                return Err(TransactionError::PayloadTooLarge);
-            };
             write_frame(&mut self.writer, header.clone(), chunk, self.timeout).await?;
             sent += u32::try_from(to_read).map_err(|_| TransactionError::PayloadTooLarge)?;
         }
@@ -240,5 +237,37 @@ mod tests {
         assert_eq!(seen, payload);
         assert_eq!(ty, expected_header.ty);
         assert_eq!(id, expected_header.id);
+    }
+
+    /// Verifies that `write_streaming` returns `SizeMismatch` when the source
+    /// stream ends before supplying the promised `total_size` bytes.
+    #[rstest]
+    #[tokio::test]
+    async fn write_streaming_truncated_source_returns_size_mismatch() {
+        let actual_bytes = vec![1u8; 50];
+        let promised_total: u32 = 100_000;
+
+        let (_, server) = duplex(16 * 1024);
+        let mut writer = TransactionWriter::new(BufWriter::new(server))
+            .with_max_payload(promised_total as usize + 1);
+
+        let header = FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 100,
+            id: 1,
+            error: 0,
+            total_size: promised_total,
+            data_size: 0,
+        };
+
+        let result = writer
+            .write_streaming(header, Cursor::new(actual_bytes))
+            .await;
+
+        assert!(
+            matches!(result, Err(TransactionError::SizeMismatch)),
+            "expected SizeMismatch, got {result:?}"
+        );
     }
 }
