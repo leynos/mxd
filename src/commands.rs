@@ -32,7 +32,6 @@ use crate::{
         decode_params,
         decode_params_map,
         encode_params,
-        encode_vec_params,
         first_param_i32,
         first_param_string,
         required_param_i32,
@@ -335,7 +334,7 @@ where
     match pool.get().await {
         Ok(mut conn) => match op(&mut conn).await {
             Ok(params) => {
-                let payload = encode_vec_params(&params)?;
+                let payload = encode_params(&params)?;
                 Ok(Transaction {
                     header: reply_header(&header, 0, payload.len()),
                     payload,

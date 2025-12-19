@@ -181,12 +181,15 @@ pub fn decode_params_map(buf: &[u8]) -> Result<HashMap<FieldId, Vec<Vec<u8>>>, T
 
 /// Build a parameter block from field id/data pairs.
 ///
+/// Accepts any slice of pairs where the second element can be borrowed as `&[u8]`,
+/// allowing both `&[(FieldId, &[u8])]` and `&[(FieldId, Vec<u8>)]`.
+///
 /// # Errors
 /// Returns [`TransactionError::PayloadTooLarge`] if the number of parameters
 /// or any data length exceeds `u16::MAX`.
 #[must_use = "use the encoded bytes"]
 #[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-pub fn encode_params(params: &[(FieldId, &[u8])]) -> Result<Vec<u8>, TransactionError> {
+pub fn encode_params<T: AsRef<[u8]>>(params: &[(FieldId, T)]) -> Result<Vec<u8>, TransactionError> {
     let mut buf = Vec::new();
     buf.extend_from_slice(
         &u16::try_from(params.len())
@@ -195,33 +198,26 @@ pub fn encode_params(params: &[(FieldId, &[u8])]) -> Result<Vec<u8>, Transaction
     );
     for (id, data) in params {
         let raw: u16 = (*id).into();
+        let data_bytes = data.as_ref();
         buf.extend_from_slice(&raw.to_be_bytes());
         buf.extend_from_slice(
-            &u16::try_from(data.len())
+            &u16::try_from(data_bytes.len())
                 .map_err(|_| TransactionError::PayloadTooLarge)?
                 .to_be_bytes(),
         );
-        buf.extend_from_slice(data);
+        buf.extend_from_slice(data_bytes);
     }
     Ok(buf)
 }
 
-/// Convenience for encoding a vector of owned parameter values.
+/// Retrieve the first value for `field` from a parameter map.
 ///
-/// This converts a `&[(FieldId, Vec<u8>)]` slice into the borrowed
-/// form expected by [`encode_params`]. It avoids repeating the
-/// conversion logic at call sites.
-///
-/// # Errors
-/// Returns [`TransactionError`] if the inner call to [`encode_params`]
-/// fails, for example when the payload is too large.
-#[must_use = "use the encoded bytes"]
-pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Result<Vec<u8>, TransactionError> {
-    let borrowed: Vec<(FieldId, &[u8])> = params
-        .iter()
-        .map(|(id, bytes)| (*id, bytes.as_slice()))
-        .collect();
-    encode_params(&borrowed)
+/// Returns `None` if the field is absent.
+fn first_value<S: std::hash::BuildHasher>(
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
+    field: FieldId,
+) -> Option<&[u8]> {
+    map.get(&field).and_then(|v| v.first()).map(Vec::as_slice)
 }
 
 /// Return the first value for `field` in a parameter map as a `String`.
@@ -237,7 +233,7 @@ pub fn first_param_string<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
 ) -> Result<Option<String>, TransactionError> {
-    match map.get(&field).and_then(|v| v.first()) {
+    match first_value(map, field) {
         Some(bytes) => Ok(Some(
             std::str::from_utf8(bytes)
                 .map_err(|_| TransactionError::InvalidParamValue(field))?
@@ -271,12 +267,8 @@ pub fn required_param_i32<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
 ) -> Result<i32, TransactionError> {
-    let bytes = map
-        .get(&field)
-        .and_then(|v| v.first())
-        .ok_or(TransactionError::MissingField(field))?;
+    let bytes = first_value(map, field).ok_or(TransactionError::MissingField(field))?;
     let arr: [u8; 4] = bytes
-        .as_slice()
         .try_into()
         .map_err(|_| TransactionError::InvalidParamValue(field))?;
     Ok(i32::from_be_bytes(arr))
@@ -296,10 +288,9 @@ pub fn first_param_i32<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
 ) -> Result<Option<i32>, TransactionError> {
-    match map.get(&field).and_then(|v| v.first()) {
+    match first_value(map, field) {
         Some(bytes) => {
             let arr: [u8; 4] = bytes
-                .as_slice()
                 .try_into()
                 .map_err(|_| TransactionError::InvalidParamValue(field))?;
             Ok(Some(i32::from_be_bytes(arr)))

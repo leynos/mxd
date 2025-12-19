@@ -28,7 +28,6 @@ pub use params::{
     decode_params,
     decode_params_map,
     encode_params,
-    encode_vec_params,
     first_param_i32,
     first_param_string,
     required_param_i32,
