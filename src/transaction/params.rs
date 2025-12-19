@@ -4,11 +4,6 @@
 //! 16-bit [`FieldId`]. This module validates and serialises that parameter
 //! structure.
 
-#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-#![expect(
-    clippy::indexing_slicing,
-    reason = "array bounds are validated earlier in parsing"
-)]
 use std::collections::{HashMap, HashSet};
 
 use super::{Transaction, errors::TransactionError, read_u16};
@@ -30,6 +25,105 @@ fn check_duplicate(fid: FieldId, seen: &mut HashSet<u16>) -> Result<(), Transact
     Ok(())
 }
 
+/// Iterate over parameters in a buffer, yielding (`field_id`, start, len) tuples.
+///
+/// This is the shared parsing logic used by both `validate_payload` and
+/// `decode_params` to avoid duplication.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bounds are validated before each slice"
+)]
+fn iter_params(buf: &[u8]) -> Result<ParamIter<'_>, TransactionError> {
+    if buf.is_empty() {
+        return Ok(ParamIter {
+            buf,
+            offset: 0,
+            remaining: 0,
+            seen: HashSet::new(),
+            error: None,
+        });
+    }
+    if buf.len() < 2 {
+        return Err(TransactionError::SizeMismatch);
+    }
+    let param_count = read_u16(&buf[0..2])? as usize;
+    Ok(ParamIter {
+        buf,
+        offset: 2,
+        remaining: param_count,
+        seen: HashSet::new(),
+        error: None,
+    })
+}
+
+/// Iterator over parameter entries in a buffer.
+struct ParamIter<'a> {
+    buf: &'a [u8],
+    offset: usize,
+    remaining: usize,
+    seen: HashSet<u16>,
+    error: Option<TransactionError>,
+}
+
+impl Iterator for ParamIter<'_> {
+    type Item = (FieldId, usize, usize);
+
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "bounds are validated before each slice"
+    )]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 || self.error.is_some() {
+            return None;
+        }
+        if self.offset + 4 > self.buf.len() {
+            self.error = Some(TransactionError::SizeMismatch);
+            return None;
+        }
+        let field_id = match read_u16(&self.buf[self.offset..self.offset + 2]) {
+            Ok(id) => id,
+            Err(e) => {
+                self.error = Some(e);
+                return None;
+            }
+        };
+        let field_len = match read_u16(&self.buf[self.offset + 2..self.offset + 4]) {
+            Ok(len) => len as usize,
+            Err(e) => {
+                self.error = Some(e);
+                return None;
+            }
+        };
+        self.offset += 4;
+        let start = self.offset;
+        if start + field_len > self.buf.len() {
+            self.error = Some(TransactionError::SizeMismatch);
+            return None;
+        }
+        let fid = FieldId::from(field_id);
+        if let Err(e) = check_duplicate(fid, &mut self.seen) {
+            self.error = Some(e);
+            return None;
+        }
+        self.offset += field_len;
+        self.remaining -= 1;
+        Some((fid, start, field_len))
+    }
+}
+
+impl ParamIter<'_> {
+    /// Check if iteration completed successfully and the buffer was fully consumed.
+    fn finish(self, buf_len: usize) -> Result<(), TransactionError> {
+        if let Some(e) = self.error {
+            return Err(e);
+        }
+        if self.offset != buf_len {
+            return Err(TransactionError::SizeMismatch);
+        }
+        Ok(())
+    }
+}
+
 /// Validate the assembled transaction payload for duplicate fields and length
 /// correctness according to the protocol specification.
 ///
@@ -43,30 +137,10 @@ pub fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
     if tx.payload.is_empty() {
         return Ok(());
     }
-    if tx.payload.len() < 2 {
-        return Err(TransactionError::SizeMismatch);
-    }
-    let param_count = read_u16(&tx.payload[0..2])? as usize;
-    let mut offset = 2;
-    let mut seen = HashSet::new();
-    for _ in 0..param_count {
-        if offset + 4 > tx.payload.len() {
-            return Err(TransactionError::SizeMismatch);
-        }
-        let field_id = read_u16(&tx.payload[offset..offset + 2])?;
-        let field_size = read_u16(&tx.payload[offset + 2..offset + 4])? as usize;
-        offset += 4;
-        if offset + field_size > tx.payload.len() {
-            return Err(TransactionError::SizeMismatch);
-        }
-        let fid = FieldId::from(field_id);
-        check_duplicate(fid, &mut seen)?;
-        offset += field_size;
-    }
-    if offset != tx.payload.len() {
-        return Err(TransactionError::SizeMismatch);
-    }
-    Ok(())
+    let mut iter = iter_params(&tx.payload)?;
+    // Consume the iterator to validate all parameters
+    for _ in &mut iter {}
+    iter.finish(tx.payload.len())
 }
 
 /// Decode the parameter block into a vector of field id/value pairs.
@@ -74,35 +148,20 @@ pub fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
 /// # Errors
 /// Returns an error if the buffer cannot be parsed.
 #[must_use = "handle the result"]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bounds are validated by iter_params"
+)]
 pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionError> {
     if buf.is_empty() {
         return Ok(Vec::new());
     }
-    if buf.len() < 2 {
-        return Err(TransactionError::SizeMismatch);
+    let mut iter = iter_params(buf)?;
+    let mut params = Vec::new();
+    for (fid, start, len) in &mut iter {
+        params.push((fid, buf[start..start + len].to_vec()));
     }
-    let param_count = read_u16(&buf[0..2])? as usize;
-    let mut offset = 2;
-    let mut params = Vec::with_capacity(param_count);
-    let mut seen = HashSet::new();
-    for _ in 0..param_count {
-        if offset + 4 > buf.len() {
-            return Err(TransactionError::SizeMismatch);
-        }
-        let field_id = read_u16(&buf[offset..offset + 2])?;
-        let field_len = read_u16(&buf[offset + 2..offset + 4])? as usize;
-        offset += 4;
-        if offset + field_len > buf.len() {
-            return Err(TransactionError::SizeMismatch);
-        }
-        let fid = FieldId::from(field_id);
-        check_duplicate(fid, &mut seen)?;
-        params.push((fid, buf[offset..offset + field_len].to_vec()));
-        offset += field_len;
-    }
-    if offset != buf.len() {
-        return Err(TransactionError::SizeMismatch);
-    }
+    iter.finish(buf.len())?;
     Ok(params)
 }
 
@@ -126,6 +185,7 @@ pub fn decode_params_map(buf: &[u8]) -> Result<HashMap<FieldId, Vec<Vec<u8>>>, T
 /// Returns [`TransactionError::PayloadTooLarge`] if the number of parameters
 /// or any data length exceeds `u16::MAX`.
 #[must_use = "use the encoded bytes"]
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub fn encode_params(params: &[(FieldId, &[u8])]) -> Result<Vec<u8>, TransactionError> {
     let mut buf = Vec::new();
     buf.extend_from_slice(
@@ -202,6 +262,7 @@ pub fn required_param_string<S: std::hash::BuildHasher>(
 /// # Errors
 /// Returns an error if the field is missing or cannot be parsed as `i32`.
 #[must_use = "handle the result"]
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub fn required_param_i32<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
@@ -221,6 +282,7 @@ pub fn required_param_i32<S: std::hash::BuildHasher>(
 /// # Errors
 /// Returns an error if the value cannot be parsed as `i32`.
 #[must_use = "handle the result"]
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub fn first_param_i32<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,

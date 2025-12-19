@@ -4,8 +4,6 @@
 //! helpers for single physical frames. Higher-level reassembly and streaming
 //! live in sibling modules.
 
-#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-
 use std::time::Duration;
 
 use tokio::{
@@ -56,6 +54,7 @@ async fn write_timeout_all<W: AsyncWrite + Unpin>(
 /// Returns an error if `buf` is shorter than four bytes.
 #[must_use = "handle the result"]
 #[expect(clippy::indexing_slicing, reason = "length is checked before indexing")]
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
     if buf.len() < 4 {
         return Err(TransactionError::ShortBuffer);
@@ -69,6 +68,7 @@ pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
 /// Returns an error if `buf` is shorter than two bytes.
 #[must_use = "handle the result"]
 #[expect(clippy::indexing_slicing, reason = "length is checked before indexing")]
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
     if buf.len() < 2 {
         return Err(TransactionError::ShortBuffer);
@@ -77,9 +77,11 @@ pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
 }
 
 /// Write a big-endian u16 to the provided byte slice.
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub const fn write_u16(buf: &mut [u8; 2], val: u16) { *buf = val.to_be_bytes(); }
 
 /// Write a big-endian u32 to the provided byte slice.
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub const fn write_u32(buf: &mut [u8; 4], val: u32) { *buf = val.to_be_bytes(); }
 
 /// Parsed frame header according to the protocol specification.
@@ -104,6 +106,7 @@ pub struct FrameHeader {
 impl FrameHeader {
     /// Parse a frame header from a 20-byte buffer.
     #[must_use = "use the returned header"]
+    #[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
     pub const fn from_bytes(buf: &[u8; HEADER_LEN]) -> Self {
         Self {
             flags: buf[0],
@@ -117,6 +120,7 @@ impl FrameHeader {
     }
 
     /// Write the header to a 20-byte buffer.
+    #[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
     pub fn write_bytes(&self, buf: &mut [u8; HEADER_LEN]) {
         buf[0] = self.flags;
         buf[1] = self.is_reply;

@@ -44,19 +44,6 @@ pub struct TransactionReader<R> {
     max_payload: usize,
 }
 
-/// Configuration for frame reading operations.
-struct FrameReadConfig {
-    timeout: Duration,
-    max_payload: usize,
-}
-
-/// Accumulator for assembling a multi-frame transaction payload.
-struct FrameAccumulator<'a> {
-    header: &'a FrameHeader,
-    payload: &'a mut Vec<u8>,
-    remaining: u32,
-}
-
 pub(crate) const fn validate_first_header(
     header: &FrameHeader,
     max_payload: usize,
@@ -72,20 +59,6 @@ pub(crate) const fn validate_first_header(
     }
     if header.data_size == 0 && header.total_size > 0 {
         return Err(TransactionError::SizeMismatch);
-    }
-    Ok(())
-}
-
-async fn read_continuation_frames<R: AsyncRead + Unpin>(
-    reader: &mut R,
-    accumulator: &mut FrameAccumulator<'_>,
-    config: &FrameReadConfig,
-) -> Result<(), TransactionError> {
-    while accumulator.remaining > 0 {
-        let (next_hdr, chunk) = read_frame(reader, config.timeout, config.max_payload).await?;
-        validate_continuation_frame(accumulator.header, &next_hdr, accumulator.remaining)?;
-        accumulator.payload.extend_from_slice(&chunk);
-        accumulator.remaining -= next_hdr.data_size;
     }
     Ok(())
 }
@@ -133,17 +106,14 @@ where
         let mut header = first_hdr.clone();
         validate_first_header(&header, self.max_payload)?;
 
-        let remaining = header.total_size - header.data_size;
-        let config = FrameReadConfig {
-            timeout: self.timeout,
-            max_payload: self.max_payload,
-        };
-        let mut accumulator = FrameAccumulator {
-            header: &header,
-            payload: &mut payload,
-            remaining,
-        };
-        read_continuation_frames(&mut self.reader, &mut accumulator, &config).await?;
+        let mut remaining = header.total_size - header.data_size;
+        while remaining > 0 {
+            let (next_hdr, chunk) =
+                read_frame(&mut self.reader, self.timeout, self.max_payload).await?;
+            validate_continuation_frame(&header, &next_hdr, remaining)?;
+            payload.extend_from_slice(&chunk);
+            remaining -= next_hdr.data_size;
+        }
 
         header.data_size = header.total_size;
         let tx = Transaction { header, payload };
