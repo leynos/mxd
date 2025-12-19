@@ -5,6 +5,12 @@ CARGO ?= cargo
 BUILD_JOBS ?=
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
 MDLINT ?= markdownlint-cli2
+MDLINT_FALLBACK := $(HOME)/.bun/bin/markdownlint-cli2
+ifneq ($(wildcard $(MDLINT_FALLBACK)),)
+  ifneq ($(shell command -v $(MDLINT) >/dev/null 2>&1; echo $$?),0)
+    MDLINT := $(MDLINT_FALLBACK)
+  endif
+endif
 NIXIE ?= nixie
 RSTEST_TIMEOUT ?= 20
 SQLITE_FEATURES := --features sqlite

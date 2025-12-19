@@ -86,12 +86,15 @@ and explicit dependencies. Timeframes are intentionally omitted.
   BDD coverage for multi-fragment streaming. Dependencies: Task "Build a
   `wireframe` codec that reads and writes the 20-byte transaction header and
   payload framing described in `docs/protocol.md`."
-- [ ] Task: Reuse existing parameter encoding helpers within the new codec to
+- [x] Task: Reuse existing parameter encoding helpers within the new codec to
   prevent duplicate implementations. Acceptance: All transactions built through
-  the new codec match the byte-for- byte output of the existing encoder for
-  shared cases. Dependencies: Task “Build a `wireframe` codec that reads and
-  writes the 20-byte transaction header and payload framing described in
-  `docs/protocol.md`.”
+  the new codec match the byte-for-byte output of the existing encoder for
+  shared cases. Status: Completed on 19 December 2025 by adding outbound
+  encoding support to `HotlineTransaction`, reusing
+  `transaction::encode_params` for parameter payloads, and covering parity with
+  the legacy writer via `rstest-bdd` scenarios. Dependencies: Task “Build a
+  `wireframe` codec that reads and writes the 20-byte transaction header and
+  payload framing described in `docs/protocol.md`.”
 
 ### Step: Route transactions through wireframe
 

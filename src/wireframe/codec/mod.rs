@@ -1,15 +1,28 @@
 //! Wireframe codec for Hotline transaction framing.
 //!
-//! This module implements `BorrowDecode` for transaction frames, enabling the
-//! wireframe transport to decode the 20-byte header and reassemble fragmented
-//! payloads according to `docs/protocol.md`.
+//! This module implements `BorrowDecode` and `Encode` for transaction frames,
+//! enabling the wireframe transport to decode the 20-byte header, reassemble
+//! fragmented payloads, and emit outbound frames according to `docs/protocol.md`.
 
 use bincode::{
     de::{BorrowDecode, BorrowDecoder, read::Reader},
-    error::DecodeError,
+    enc::{Encode, Encoder, write::Writer},
+    error::{DecodeError, EncodeError},
 };
 
-use crate::transaction::{FrameHeader, HEADER_LEN, MAX_FRAME_DATA, MAX_PAYLOAD_SIZE};
+use crate::{
+    field_id::FieldId,
+    transaction::{
+        FrameHeader,
+        HEADER_LEN,
+        MAX_FRAME_DATA,
+        MAX_PAYLOAD_SIZE,
+        Transaction,
+        TransactionError,
+        encode_params,
+        validate_payload_parts,
+    },
+};
 
 /// Wireframe-decoded Hotline transaction.
 ///
@@ -25,6 +38,85 @@ pub struct HotlineTransaction {
 }
 
 impl HotlineTransaction {
+    /// Build a parameter-encoded request transaction.
+    ///
+    /// The payload is encoded using [`crate::transaction::encode_params`] and
+    /// validated using the shared parameter validation rules.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the parameter block cannot be encoded or if the
+    /// resulting payload violates protocol constraints.
+    pub fn request_from_params<T: AsRef<[u8]>>(
+        ty: u16,
+        id: u32,
+        params: &[(FieldId, T)],
+    ) -> Result<Self, TransactionError> {
+        Self::from_params(
+            FrameHeader {
+                flags: 0,
+                is_reply: 0,
+                ty,
+                id,
+                error: 0,
+                total_size: 0,
+                data_size: 0,
+            },
+            params,
+        )
+    }
+
+    /// Build a parameter-encoded reply transaction mirroring a request.
+    ///
+    /// The payload is encoded using [`crate::transaction::encode_params`] and
+    /// validated using the shared parameter validation rules.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the parameter block cannot be encoded or if the
+    /// resulting payload violates protocol constraints.
+    pub fn reply_from_params<T: AsRef<[u8]>>(
+        req: &FrameHeader,
+        error: u32,
+        params: &[(FieldId, T)],
+    ) -> Result<Self, TransactionError> {
+        Self::from_params(
+            FrameHeader {
+                flags: 0,
+                is_reply: 1,
+                ty: req.ty,
+                id: req.id,
+                error,
+                total_size: 0,
+                data_size: 0,
+            },
+            params,
+        )
+    }
+
+    fn from_params<T: AsRef<[u8]>>(
+        mut header: FrameHeader,
+        params: &[(FieldId, T)],
+    ) -> Result<Self, TransactionError> {
+        if header.flags != 0 {
+            return Err(TransactionError::InvalidFlags);
+        }
+        let payload = if params.is_empty() {
+            Vec::new()
+        } else {
+            encode_params(params)?
+        };
+        let total_size = payload.len();
+        if total_size > MAX_PAYLOAD_SIZE {
+            return Err(TransactionError::PayloadTooLarge);
+        }
+        header.total_size =
+            u32::try_from(total_size).map_err(|_| TransactionError::PayloadTooLarge)?;
+        header.data_size = header.total_size;
+        validate_payload_parts(&header, &payload)?;
+        Ok(Self { header, payload })
+    }
+
     /// Return the transaction header.
     #[must_use]
     pub const fn header(&self) -> &FrameHeader { &self.header }
@@ -36,6 +128,33 @@ impl HotlineTransaction {
     /// Consume self and return the inner header and payload.
     #[must_use]
     pub fn into_parts(self) -> (FrameHeader, Vec<u8>) { (self.header, self.payload) }
+}
+
+impl TryFrom<Transaction> for HotlineTransaction {
+    type Error = TransactionError;
+
+    fn try_from(mut value: Transaction) -> Result<Self, Self::Error> {
+        if value.header.flags != 0 {
+            return Err(TransactionError::InvalidFlags);
+        }
+        if value.payload.len() > MAX_PAYLOAD_SIZE {
+            return Err(TransactionError::PayloadTooLarge);
+        }
+        validate_payload_parts(&value.header, &value.payload)?;
+        // Normalise the logical header to "reassembled" form.
+        value.header.data_size = value.header.total_size;
+        Ok(Self {
+            header: value.header,
+            payload: value.payload,
+        })
+    }
+}
+
+impl From<HotlineTransaction> for Transaction {
+    fn from(value: HotlineTransaction) -> Self {
+        let (header, payload) = value.into_parts();
+        Self { header, payload }
+    }
 }
 
 /// Validate a frame header against protocol constraints.
@@ -168,150 +287,51 @@ impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
+impl Encode for HotlineTransaction {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        fn tx_err(err: &TransactionError) -> EncodeError {
+            EncodeError::OtherString(err.to_string())
+        }
 
-    use rstest::rstest;
-    use tokio::io::BufReader;
-    use wireframe::preamble::read_preamble;
+        if self.header.flags != 0 {
+            return Err(tx_err(&TransactionError::InvalidFlags));
+        }
+        if self.payload.len() > MAX_PAYLOAD_SIZE {
+            return Err(tx_err(&TransactionError::PayloadTooLarge));
+        }
+        let total_size = u32::try_from(self.payload.len())
+            .map_err(|_| tx_err(&TransactionError::PayloadTooLarge))?;
+        if self.header.total_size != total_size {
+            return Err(tx_err(&TransactionError::SizeMismatch));
+        }
 
-    use super::*;
-    use crate::wireframe::test_helpers::transaction_bytes;
+        let mut hdr_buf = [0u8; HEADER_LEN];
+        if self.payload.is_empty() {
+            let mut header = self.header.clone();
+            header.data_size = 0;
+            header.write_bytes(&mut hdr_buf);
+            encoder.writer().write(&hdr_buf)?;
+            return Ok(());
+        }
 
-    #[rstest]
-    #[case(20, 20)] // Single frame with payload
-    #[case(0, 0)] // Empty payload
-    #[tokio::test]
-    async fn decodes_valid_single_frame(#[case] total: u32, #[case] data: u32) {
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: total,
-            data_size: data,
-        };
-        let payload = vec![0u8; total as usize];
-        let bytes = transaction_bytes(&header, &payload);
-        let mut reader = BufReader::new(Cursor::new(bytes));
-
-        let (tx, leftover) = read_preamble::<_, HotlineTransaction>(&mut reader)
-            .await
-            .expect("transaction must decode");
-
-        assert!(leftover.is_empty());
-        assert_eq!(tx.header().total_size, total);
-        assert_eq!(tx.payload().len(), total as usize);
-    }
-
-    #[rstest]
-    #[case(10, 20, "data size exceeds total")]
-    #[case(100, 0, "data size is zero but total size is non-zero")]
-    #[tokio::test]
-    async fn rejects_invalid_length_combinations(
-        #[case] total: u32,
-        #[case] data: u32,
-        #[case] expected_msg: &str,
-    ) {
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: total,
-            data_size: data,
-        };
-        let payload = vec![0u8; data as usize];
-        let bytes = transaction_bytes(&header, &payload);
-        let mut reader = BufReader::new(Cursor::new(bytes));
-
-        let err = read_preamble::<_, HotlineTransaction>(&mut reader)
-            .await
-            .expect_err("decode must fail");
-
-        assert!(
-            err.to_string().contains(expected_msg),
-            "expected '{expected_msg}' in '{err}'"
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_invalid_flags() {
-        let header = FrameHeader {
-            flags: 1,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        };
-        let bytes = transaction_bytes(&header, &[]);
-        let mut reader = BufReader::new(Cursor::new(bytes));
-
-        let err = read_preamble::<_, HotlineTransaction>(&mut reader)
-            .await
-            .expect_err("decode must fail");
-
-        assert!(
-            err.to_string().contains("invalid flags"),
-            "expected 'invalid flags' in '{err}'"
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_oversized_total() {
-        let oversized_total = u32::try_from(MAX_PAYLOAD_SIZE + 1).expect("test size fits in u32");
-        let frame_data = u32::try_from(MAX_FRAME_DATA).expect("frame data fits in u32");
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: oversized_total,
-            data_size: frame_data,
-        };
-        let payload = vec![0u8; MAX_FRAME_DATA];
-        let bytes = transaction_bytes(&header, &payload);
-        let mut reader = BufReader::new(Cursor::new(bytes));
-
-        let err = read_preamble::<_, HotlineTransaction>(&mut reader)
-            .await
-            .expect_err("decode must fail");
-
-        assert!(
-            err.to_string().contains("total size exceeds maximum"),
-            "expected 'total size exceeds maximum' in '{err}'"
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_oversized_data() {
-        let oversized = u32::try_from(MAX_FRAME_DATA + 1).expect("test size fits in u32");
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: oversized,
-            data_size: oversized,
-        };
-        let payload = vec![0u8; MAX_FRAME_DATA + 1];
-        let bytes = transaction_bytes(&header, &payload);
-        let mut reader = BufReader::new(Cursor::new(bytes));
-
-        let err = read_preamble::<_, HotlineTransaction>(&mut reader)
-            .await
-            .expect_err("decode must fail");
-
-        assert!(
-            err.to_string().contains("data size exceeds maximum"),
-            "expected 'data size exceeds maximum' in '{err}'"
-        );
+        let mut offset = 0usize;
+        while offset < self.payload.len() {
+            let end = (offset + MAX_FRAME_DATA).min(self.payload.len());
+            let chunk = self
+                .payload
+                .get(offset..end)
+                .ok_or_else(|| tx_err(&TransactionError::SizeMismatch))?;
+            let mut header = self.header.clone();
+            header.data_size = u32::try_from(chunk.len())
+                .map_err(|_| tx_err(&TransactionError::PayloadTooLarge))?;
+            header.write_bytes(&mut hdr_buf);
+            encoder.writer().write(&hdr_buf)?;
+            encoder.writer().write(chunk)?;
+            offset = end;
+        }
+        Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

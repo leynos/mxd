@@ -431,11 +431,12 @@ classDiagram
 
 #### Transaction framing codec (December 2025)
 
-The `src/wireframe/codec.rs` module implements `BorrowDecode` for Hotline
-transaction frames, enabling the wireframe transport to decode the 20-byte
-header and reassemble fragmented payloads according to `docs/protocol.md`. The
-codec wraps validation logic and multi-fragment reassembly into a single
-decoding pass.
+The `src/wireframe/codec/mod.rs` module implements `BorrowDecode` and `Encode`
+for `HotlineTransaction`, enabling the wireframe transport to decode the
+20-byte header and reassemble fragmented payloads according to
+`docs/protocol.md`, and to emit outbound frames in the same wire format as the
+legacy runtime. The codec wraps validation logic and multi-fragment reassembly
+into a single decoding pass.
 
 **Header validation.** Each frame header is validated against protocol
 constraints before payload processing begins:
@@ -453,14 +454,30 @@ frame must maintain header consistency with the first frame (same `flags`,
 `is_reply`, `type`, `id`, `error`, and `total_size`). The codec validates that
 continuation data does not exceed the remaining byte count.
 
-**Testing strategy.** The codec is tested at three levels:
+**Outbound encoding parity.** `HotlineTransaction` implements `bincode::Encode`
+by emitting one or more physical frames. Payloads larger than `MAX_FRAME_DATA`
+(32 KiB) are fragmented using the same header-stamping rules as
+`TransactionWriter` (copying the base header and adjusting `data_size` per
+frame). For parameter-centric payloads, the codec exposes constructor helpers
+that reuse `transaction::encode_params` so there is a single implementation of
+parameter serialisation. To match the legacy encoder for shared cases, an empty
+parameter list produces an empty payload (rather than a two-byte zero-count
+parameter block).
 
-1. **Unit tests** (`src/wireframe/codec.rs`) use `rstest` to cover single-frame
-   and multi-fragment decoding with parametrised test cases.
+**Testing strategy.** The codec is tested at four levels:
+
+1. **Unit tests** (`src/wireframe/codec/mod.rs`) use `rstest` to cover
+   single-frame
+   and multi-fragment decoding with parametrised test cases, and to validate
+   that outbound encoding emits the expected frame structure.
 2. **Behaviour-Driven Development (BDD) scenarios**
    (`tests/features/wireframe_transaction.feature`) express acceptance criteria
    in Gherkin syntax, with step definitions in `tests/wireframe_transaction.rs`.
-3. **Property tests** (`tests/wireframe_transaction.rs`) use `proptest` to
+3. **BDD parity scenarios**
+   (`tests/features/wireframe_transaction_encoding.feature`) assert that
+   transactions encoded through the wireframe codec match the byte-for-byte
+   output of the legacy `TransactionWriter` for shared parameter payloads.
+4. **Property tests** (`tests/wireframe_transaction.rs`) use `proptest` to
    verify that valid single-frame and multi-fragment transactions decode
    correctly, and that all invalid length combinations are rejected.
 
@@ -481,8 +498,12 @@ classDiagram
     }
 
     class HotlineTransaction {
+        <<impl BorrowDecode>>
+        <<impl Encode>>
         -FrameHeader header
         -Vec_u8 payload
+        +request_from_params(ty: u16, id: u32, params: FieldId_pairs) HotlineTransaction
+        +reply_from_params(req: FrameHeader, error: u32, params: FieldId_pairs) HotlineTransaction
         +header() &FrameHeader
         +payload() u8_slice
         +into_parts() (FrameHeader, Vec_u8)
@@ -501,23 +522,15 @@ classDiagram
         +HEADER_LEN : usize
         +MAX_FRAME_DATA : usize
         +MAX_PAYLOAD_SIZE : usize
-        +validate_payload(tx: Transaction) TransactionError
-    }
-
-    class HotlineTransactionCodec {
-        <<impl BorrowDecode>>
-        +borrow_decode(decoder: BorrowDecoder_unit) HotlineTransaction
-        -validate_header(hdr: FrameHeader) str
-        -validate_fragment_consistency(first: FrameHeader, next: FrameHeader) str
+        +encode_params(params: FieldId_pairs) Vec_u8
+        +validate_payload_parts(header: FrameHeader, payload: u8_slice) TransactionError
     }
 
     HotlineTransaction --> FrameHeader : has
     Transaction --> FrameHeader : has
     transaction_module --> Transaction : validates
     transaction_module --> TransactionError : returns
-    HotlineTransactionCodec --> HotlineTransaction : constructs
-    HotlineTransactionCodec --> FrameHeader : parses
-    HotlineTransactionCodec ..> transaction_module : uses constants
+    HotlineTransaction ..> transaction_module : encodes params
 ```
 
 The `HotlineTransaction` struct returned by decoding provides access to the

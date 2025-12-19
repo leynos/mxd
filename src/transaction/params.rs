@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{Transaction, errors::TransactionError, read_u16};
+use super::{FrameHeader, Transaction, errors::TransactionError, read_u16};
 use crate::field_id::FieldId;
 
 /// Determine whether duplicate instances of the given field id are permitted.
@@ -131,16 +131,31 @@ impl ParamIter<'_> {
 ///
 /// Returns an error if the payload structure is invalid.
 pub fn validate_payload(tx: &Transaction) -> Result<(), TransactionError> {
-    if tx.header.total_size as usize != tx.payload.len() {
+    validate_payload_parts(&tx.header, &tx.payload)
+}
+
+/// Validate a transaction payload slice against its header.
+///
+/// This helper lets callers validate parameter blocks without constructing a
+/// full [`Transaction`] value.
+///
+/// # Errors
+///
+/// Returns an error if the payload structure is invalid.
+pub fn validate_payload_parts(
+    header: &FrameHeader,
+    payload: &[u8],
+) -> Result<(), TransactionError> {
+    if header.total_size as usize != payload.len() {
         return Err(TransactionError::SizeMismatch);
     }
-    if tx.payload.is_empty() {
+    if payload.is_empty() {
         return Ok(());
     }
-    let mut iter = iter_params(&tx.payload)?;
+    let mut iter = iter_params(payload)?;
     // Consume the iterator to validate all parameters
     for _ in &mut iter {}
-    iter.finish(tx.payload.len())
+    iter.finish(payload.len())
 }
 
 /// Decode the parameter block into a vector of field id/value pairs.
