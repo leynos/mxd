@@ -195,7 +195,10 @@ mod tests {
     use super::*;
     use crate::transaction::reader::TransactionStreamReader;
 
-    #[expect(clippy::excessive_nesting, reason = "spawned task requires extra nesting")]
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "spawned task requires extra nesting"
+    )]
     #[tokio::test]
     async fn write_streaming_fragments_payload() {
         let payload = vec![1u8; 100_000];

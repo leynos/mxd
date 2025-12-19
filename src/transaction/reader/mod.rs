@@ -28,6 +28,7 @@ use super::{
     params::validate_payload,
 };
 
+/// Check whether a continuation frame header matches the first frame header.
 pub(crate) const fn headers_match(first: &FrameHeader, next: &FrameHeader) -> bool {
     next.ty == first.ty
         && next.id == first.id
@@ -49,6 +50,7 @@ pub struct TransactionReader<R> {
     max_payload: usize,
 }
 
+/// Validate the first frame header of a transaction.
 pub(crate) const fn validate_first_header(
     header: &FrameHeader,
     max_payload: usize,
@@ -106,9 +108,8 @@ where
     /// Returns an error if the stream does not contain a valid transaction.
     #[must_use = "handle the result"]
     pub async fn read_transaction(&mut self) -> Result<Transaction, TransactionError> {
-        let (first_hdr, mut payload) =
+        let (mut header, mut payload) =
             read_frame(&mut self.reader, self.timeout, self.max_payload).await?;
-        let mut header = first_hdr.clone();
         validate_first_header(&header, self.max_payload)?;
 
         let mut remaining = header.total_size - header.data_size;
@@ -137,13 +138,13 @@ where
             validate_first_frame(&mut self.reader, self.timeout, self.max_payload).await?;
         Ok(build_streaming_transaction(
             &mut self.reader,
-            StreamingTransactionInit::new(
+            StreamingTransactionInit {
                 first_hdr,
                 first_chunk,
                 remaining,
-                self.timeout,
-                self.max_payload,
-            ),
+                timeout: self.timeout,
+                max_total: self.max_payload,
+            },
         ))
     }
 }
