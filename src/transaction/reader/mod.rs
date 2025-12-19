@@ -130,15 +130,16 @@ where
     ) -> Result<StreamingTransaction<'_, R>, TransactionError> {
         let (first_hdr, first_chunk, remaining) =
             validate_first_frame(&mut self.reader, self.timeout, self.max_payload).await?;
-
-        let init = StreamingTransactionInit {
-            first_hdr,
-            first_chunk,
-            remaining,
-            timeout: self.timeout,
-            max_total: self.max_payload,
-        };
-        Ok(build_streaming_transaction(&mut self.reader, init))
+        Ok(build_streaming_transaction(
+            &mut self.reader,
+            StreamingTransactionInit::new(
+                first_hdr,
+                first_chunk,
+                remaining,
+                self.timeout,
+                self.max_payload,
+            ),
+        ))
     }
 }
 

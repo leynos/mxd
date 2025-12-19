@@ -24,6 +24,28 @@ pub(super) struct StreamingTransactionInit {
     pub max_total: usize,
 }
 
+impl StreamingTransactionInit {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "constructor mirrors struct fields; grouping would add indirection"
+    )]
+    pub(super) const fn new(
+        first_hdr: FrameHeader,
+        first_chunk: Vec<u8>,
+        remaining: u32,
+        timeout: Duration,
+        max_total: usize,
+    ) -> Self {
+        Self {
+            first_hdr,
+            first_chunk,
+            remaining,
+            timeout,
+            max_total,
+        }
+    }
+}
+
 /// Validate and read the first frame of a streaming transaction.
 pub(super) async fn validate_first_frame<R: AsyncRead + Unpin>(
     reader: &mut R,
@@ -185,14 +207,15 @@ where
     ) -> Result<StreamingTransaction<'_, R>, TransactionError> {
         let (first_hdr, first_chunk, remaining) =
             validate_first_frame(&mut self.reader, self.timeout, self.max_total).await?;
-
-        let init = StreamingTransactionInit {
-            first_hdr,
-            first_chunk,
-            remaining,
-            timeout: self.timeout,
-            max_total: self.max_total,
-        };
-        Ok(build_streaming_transaction(&mut self.reader, init))
+        Ok(build_streaming_transaction(
+            &mut self.reader,
+            StreamingTransactionInit::new(
+                first_hdr,
+                first_chunk,
+                remaining,
+                self.timeout,
+                self.max_total,
+            ),
+        ))
     }
 }
