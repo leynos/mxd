@@ -172,6 +172,8 @@ where
         while sent < total {
             let remaining = (total - sent) as usize;
             let to_read = remaining.min(self.max_frame);
+            // Defensive: to_read <= buf.len() by construction but we keep the
+            // check to avoid panics.
             let chunk = buf
                 .get_mut(..to_read)
                 .ok_or(TransactionError::PayloadTooLarge)?;
@@ -179,6 +181,8 @@ where
                 .await
                 .map_err(map_eof_to_size_mismatch)?;
             write_frame(&mut self.writer, header.clone(), chunk, self.timeout).await?;
+            // Defensive: to_read <= max_frame <= MAX_FRAME_DATA < u32::MAX but
+            // we keep the check to avoid panics.
             sent += u32::try_from(to_read).map_err(|_| TransactionError::PayloadTooLarge)?;
         }
         self.flush_timeout().await?;
