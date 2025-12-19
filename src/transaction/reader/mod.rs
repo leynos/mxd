@@ -37,7 +37,12 @@ pub(crate) const fn headers_match(first: &FrameHeader, next: &FrameHeader) -> bo
         && next.is_reply == first.is_reply
 }
 
-/// Reader for assembling complete transactions from a byte stream.
+/// Buffered reader for Hotline transactions.
+///
+/// Assembles multi-fragment transactions into a complete in-memory
+/// [`Transaction`]. For large payloads, use
+/// [`read_streaming_transaction`](Self::read_streaming_transaction) to obtain
+/// a [`StreamingTransaction`] that yields fragments incrementally.
 pub struct TransactionReader<R> {
     reader: R,
     timeout: Duration,

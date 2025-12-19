@@ -92,7 +92,10 @@ pub(super) const fn validate_continuation_frame(
     Ok(())
 }
 
-/// A single payload fragment yielded by [`StreamingTransaction`].
+/// A single payload fragment from a multi-frame transaction.
+///
+/// Returned by [`StreamingTransaction::next_fragment`] to deliver payload
+/// chunks incrementally without buffering the full message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionFragment {
     /// Header for the fragment.
@@ -105,7 +108,12 @@ pub struct TransactionFragment {
     pub is_last: bool,
 }
 
-/// Streaming view over a multi-fragment transaction.
+/// Incremental view over a multi-fragment transaction.
+///
+/// Returned by [`TransactionReader::read_streaming_transaction`] or
+/// [`TransactionStreamReader::start_transaction`]. Call
+/// [`next_fragment`](Self::next_fragment) repeatedly to consume the payload
+/// without buffering the entire content in memory.
 pub struct StreamingTransaction<'a, R> {
     reader: &'a mut R,
     first_header: FrameHeader,
@@ -163,7 +171,12 @@ where
     }
 }
 
-/// Reader that yields transactions as streams of fragments.
+/// Streaming reader for large transaction payloads.
+///
+/// Unlike [`TransactionReader`](super::TransactionReader), this reader exposes
+/// an incremental interface via [`start_transaction`](Self::start_transaction),
+/// yielding payload fragments without buffering the full message. Suitable for
+/// file transfers and other large payloads.
 pub struct TransactionStreamReader<R> {
     reader: R,
     timeout: Duration,
