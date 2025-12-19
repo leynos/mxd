@@ -524,6 +524,45 @@ The `HotlineTransaction` struct returned by decoding provides access to the
 validated header and reassembled payload, ready for dispatch to command
 handlers.
 
+#### Streaming transaction framing (December 2025)
+
+Buffered decoding and writing are appropriate for the parameter-centric Hotline
+transactions currently implemented, but file transfers and large news posts can
+exceed the 1 MiB buffered cap. To support those cases without exhausting
+memory, MXD now surfaces an incremental streaming API at the protocol framing
+layer.
+
+**Streaming reader.** The `src/transaction/reader.rs` module introduces
+`TransactionStreamReader` and `StreamingTransaction`. Callers may start a
+transaction stream and consume fragments via `next_fragment()`, receiving each
+`TransactionFragment` with its per-fragment header and byte slice. The stream
+retains the first header for consistency checks and tracks the remaining byte
+count so callers never need to buffer the complete payload.
+
+**Streaming writer.** `TransactionWriter::write_streaming` accepts a prepared
+`FrameHeader` (with `total_size` already set) plus an `AsyncRead` source. The
+writer reads at most `MAX_FRAME_DATA` bytes at a time, stamps `data_size`
+accordingly, and emits each fragment sequentially. Unlike the buffered
+`write_transaction` path, the streaming writer does not validate parameter
+structure because file transfers use raw bytes. Both buffered and streaming
+writers clamp the configured `max_frame` to `MAX_FRAME_DATA` so that emitted
+frames remain within the limit enforced by `read_frame`, and both flush once
+the full transaction has been written so buffered sinks (for example, test
+harnesses) observe the final fragment promptly.
+
+**Limits and safety.** Buffered readers and the Wireframe codec continue to
+default to `MAX_PAYLOAD_SIZE` (1 MiB). Streaming readers accept a configurable
+`max_total` limit (defaulting to the same cap) that can be raised by file and
+news handlers. The shared `read_frame` helper now takes a `max_total` argument
+and enforces `data_size <= MAX_FRAME_DATA`, preventing oversized fragments even
+when total payload limits are relaxed.
+
+**Testing strategy.** The streaming framing is covered with `rstest` unit tests
+in `src/transaction/reader.rs` and `src/transaction/writer.rs`, plus BDD
+scenarios in `tests/features/transaction_streaming.feature` bound through
+`rstest-bdd` v0.2.0. The scenarios cover successful multi-fragment streaming,
+limit enforcement, and header mismatch rejection.
+
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
 Configuration management in MXD is handled by the **OrthoConfig** library,
