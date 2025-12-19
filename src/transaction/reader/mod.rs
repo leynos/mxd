@@ -51,6 +51,12 @@ pub struct TransactionReader<R> {
 }
 
 /// Validate the first frame header of a transaction.
+///
+/// Checks invariants that must hold for the opening frame:
+/// - `flags` must be zero (reserved for future use)
+/// - `total_size` must not exceed `max_payload`
+/// - `data_size` must not exceed `total_size`
+/// - `data_size` must be non-zero if `total_size` is non-zero
 pub(crate) const fn validate_first_header(
     header: &FrameHeader,
     max_payload: usize,
@@ -75,6 +81,8 @@ where
     R: AsyncRead + Unpin,
 {
     /// Create a new reader with default timeout and payload limits.
+    ///
+    /// Use the builder methods to override defaults before reading.
     #[must_use = "create a reader"]
     #[expect(
         clippy::missing_const_for_fn,
@@ -88,14 +96,19 @@ where
         }
     }
 
-    /// Override the I/O timeout used for reads.
+    /// Set the I/O timeout for frame reads.
+    ///
+    /// Defaults to [`IO_TIMEOUT`].
     #[must_use]
     pub const fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
-    /// Override the maximum buffered payload size.
+    /// Set the maximum buffered payload size.
+    ///
+    /// Defaults to [`MAX_PAYLOAD_SIZE`]. Transactions declaring a larger
+    /// `total_size` will be rejected with [`TransactionError::PayloadTooLarge`].
     #[must_use]
     pub const fn with_max_payload(mut self, max_payload: usize) -> Self {
         self.max_payload = max_payload;

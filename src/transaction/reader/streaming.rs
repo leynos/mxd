@@ -166,6 +166,9 @@ where
     R: AsyncRead + Unpin,
 {
     /// Create a new streaming reader with default limits.
+    ///
+    /// Use the builder methods to configure timeout and size limits before
+    /// calling [`start_transaction`](Self::start_transaction).
     #[must_use]
     pub const fn new(reader: R) -> Self {
         Self {
@@ -175,14 +178,20 @@ where
         }
     }
 
-    /// Override the I/O timeout used for streaming reads.
+    /// Set the I/O timeout for streaming reads.
+    ///
+    /// Defaults to [`IO_TIMEOUT`](crate::transaction::IO_TIMEOUT).
     #[must_use]
     pub const fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
-    /// Override the maximum accepted total size for a streamed payload.
+    /// Set the maximum total payload size for a streamed transaction.
+    ///
+    /// Defaults to [`MAX_PAYLOAD_SIZE`](crate::transaction::MAX_PAYLOAD_SIZE).
+    /// Transactions exceeding this limit will be rejected with
+    /// [`TransactionError::PayloadTooLarge`](crate::transaction::errors::TransactionError::PayloadTooLarge).
     #[must_use]
     pub const fn with_max_total(mut self, max_total: usize) -> Self {
         self.max_total = max_total;
