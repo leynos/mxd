@@ -28,6 +28,7 @@ use crate::{
     transaction::{
         FrameHeader,
         Transaction,
+        TransactionError,
         decode_params,
         decode_params_map,
         encode_params,
@@ -129,25 +130,33 @@ struct LoginCredentials {
 }
 
 /// Extract username and password from login parameters.
-fn parse_login_params(params: Vec<(FieldId, Vec<u8>)>) -> Result<LoginCredentials, &'static str> {
+fn parse_login_params(
+    params: Vec<(FieldId, Vec<u8>)>,
+) -> Result<LoginCredentials, TransactionError> {
     let mut username = None;
     let mut password = None;
 
     for (id, data) in params {
         match id {
             FieldId::Login => {
-                username = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+                username = Some(
+                    String::from_utf8(data)
+                        .map_err(|_| TransactionError::InvalidParamValue(FieldId::Login))?,
+                );
             }
             FieldId::Password => {
-                password = Some(String::from_utf8(data).map_err(|_| "utf8")?);
+                password = Some(
+                    String::from_utf8(data)
+                        .map_err(|_| TransactionError::InvalidParamValue(FieldId::Password))?,
+                );
             }
             _ => {}
         }
     }
 
     Ok(LoginCredentials {
-        username: username.ok_or("missing username")?,
-        password: password.ok_or("missing password")?,
+        username: username.ok_or(TransactionError::MissingField(FieldId::Login))?,
+        password: password.ok_or(TransactionError::MissingField(FieldId::Password))?,
     })
 }
 
@@ -157,14 +166,14 @@ impl Command {
     /// # Errors
     /// Returns an error if required parameters are missing or cannot be parsed.
     #[must_use = "handle the result"]
-    pub fn from_transaction(tx: Transaction) -> Result<Self, &'static str> {
+    pub fn from_transaction(tx: Transaction) -> Result<Self, TransactionError> {
         let ty = TransactionType::from(tx.header.ty);
         if !ty.allows_payload() && !tx.payload.is_empty() {
             return Ok(Self::InvalidPayload { header: tx.header });
         }
         match ty {
             TransactionType::Login => {
-                let params = decode_params(&tx.payload).map_err(|_| "invalid params")?;
+                let params = decode_params(&tx.payload)?;
                 let creds = parse_login_params(params)?;
                 Ok(Self::Login {
                     username: creds.username,
@@ -177,7 +186,7 @@ impl Command {
                 payload: tx.payload,
             }),
             TransactionType::NewsCategoryNameList => {
-                let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
+                let params = decode_params_map(&tx.payload)?;
                 let path = first_param_string(&params, FieldId::NewsPath)?;
                 Ok(Self::GetNewsCategoryNameList {
                     path,
@@ -185,17 +194,17 @@ impl Command {
                 })
             }
             TransactionType::NewsArticleNameList => {
-                let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
-                let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
+                let params = decode_params_map(&tx.payload)?;
+                let path = required_param_string(&params, FieldId::NewsPath)?;
                 Ok(Self::GetNewsArticleNameList {
                     path,
                     header: tx.header,
                 })
             }
             TransactionType::NewsArticleData => {
-                let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
-                let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
-                let id = required_param_i32(&params, FieldId::NewsArticleId, "missing id", "id")?;
+                let params = decode_params_map(&tx.payload)?;
+                let path = required_param_string(&params, FieldId::NewsPath)?;
+                let id = required_param_i32(&params, FieldId::NewsArticleId)?;
                 Ok(Self::GetNewsArticleData {
                     path,
                     article_id: id,
@@ -203,15 +212,12 @@ impl Command {
                 })
             }
             TransactionType::PostNewsArticle => {
-                let params = decode_params_map(&tx.payload).map_err(|_| "invalid params")?;
-                let path = required_param_string(&params, FieldId::NewsPath, "missing path")?;
-                let title = required_param_string(&params, FieldId::NewsTitle, "missing title")?;
-                let flags =
-                    first_param_i32(&params, FieldId::NewsArticleFlags, "flags")?.unwrap_or(0);
-                let data_flavor =
-                    required_param_string(&params, FieldId::NewsDataFlavor, "missing flavor")?;
-                let data =
-                    required_param_string(&params, FieldId::NewsArticleData, "missing data")?;
+                let params = decode_params_map(&tx.payload)?;
+                let path = required_param_string(&params, FieldId::NewsPath)?;
+                let title = required_param_string(&params, FieldId::NewsTitle)?;
+                let flags = first_param_i32(&params, FieldId::NewsArticleFlags)?.unwrap_or(0);
+                let data_flavor = required_param_string(&params, FieldId::NewsDataFlavor)?;
+                let data = required_param_string(&params, FieldId::NewsArticleData)?;
                 Ok(Self::PostNewsArticle {
                     path,
                     title,
@@ -578,14 +584,20 @@ mod tests {
     fn parse_login_params_missing_username() {
         let params = vec![(FieldId::Password, b"secret".to_vec())];
         let result = parse_login_params(params);
-        assert_eq!(result, Err("missing username"));
+        assert!(matches!(
+            result,
+            Err(TransactionError::MissingField(FieldId::Login))
+        ));
     }
 
     #[test]
     fn parse_login_params_missing_password() {
         let params = vec![(FieldId::Login, b"alice".to_vec())];
         let result = parse_login_params(params);
-        assert_eq!(result, Err("missing password"));
+        assert!(matches!(
+            result,
+            Err(TransactionError::MissingField(FieldId::Password))
+        ));
     }
 
     #[test]
@@ -595,7 +607,10 @@ mod tests {
             (FieldId::Password, b"secret".to_vec()),
         ];
         let result = parse_login_params(params);
-        assert_eq!(result, Err("utf8"));
+        assert!(matches!(
+            result,
+            Err(TransactionError::InvalidParamValue(FieldId::Login))
+        ));
     }
 
     #[test]
@@ -605,7 +620,10 @@ mod tests {
             (FieldId::Password, vec![0xff, 0xfe]),
         ];
         let result = parse_login_params(params);
-        assert_eq!(result, Err("utf8"));
+        assert!(matches!(
+            result,
+            Err(TransactionError::InvalidParamValue(FieldId::Password))
+        ));
     }
 
     #[test]

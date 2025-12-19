@@ -24,6 +24,12 @@ pub enum TransactionError {
     /// Buffer is too short to contain the expected data.
     #[error("buffer too short")]
     ShortBuffer,
+    /// A required parameter field is missing.
+    #[error("missing field {0:?}")]
+    MissingField(crate::field_id::FieldId),
+    /// A parameter value could not be parsed (e.g. invalid UTF-8 or wrong size).
+    #[error("invalid param value for field {0:?}")]
+    InvalidParamValue(crate::field_id::FieldId),
     /// I/O error occurred during read or write.
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),

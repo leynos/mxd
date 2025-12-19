@@ -230,15 +230,18 @@ pub fn encode_vec_params(params: &[(FieldId, Vec<u8>)]) -> Result<Vec<u8>, Trans
 /// valid UTF-8.
 ///
 /// # Errors
-/// Returns an error if the parameter value is not valid UTF-8.
+/// Returns [`TransactionError::InvalidParamValue`] if the parameter value is
+/// not valid UTF-8.
 #[must_use = "handle the result"]
 pub fn first_param_string<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
-) -> Result<Option<String>, &'static str> {
+) -> Result<Option<String>, TransactionError> {
     match map.get(&field).and_then(|v| v.first()) {
         Some(bytes) => Ok(Some(
-            std::str::from_utf8(bytes).map_err(|_| "utf8")?.to_owned(),
+            std::str::from_utf8(bytes)
+                .map_err(|_| TransactionError::InvalidParamValue(field))?
+                .to_owned(),
         )),
         None => Ok(None),
     }
@@ -247,30 +250,35 @@ pub fn first_param_string<S: std::hash::BuildHasher>(
 /// Return the first value for `field` as a `String` or an error if missing.
 ///
 /// # Errors
-/// Returns an error if the field is missing or not valid UTF-8.
+/// Returns [`TransactionError::MissingField`] if the field is absent, or
+/// [`TransactionError::InvalidParamValue`] if the value is not valid UTF-8.
 #[must_use = "handle the result"]
 pub fn required_param_string<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
-    missing_err: &'static str,
-) -> Result<String, &'static str> {
-    first_param_string(map, field)?.ok_or(missing_err)
+) -> Result<String, TransactionError> {
+    first_param_string(map, field)?.ok_or(TransactionError::MissingField(field))
 }
 
 /// Decode the first value for `field` as a big-endian `i32`.
 ///
 /// # Errors
-/// Returns an error if the field is missing or cannot be parsed as `i32`.
+/// Returns [`TransactionError::MissingField`] if the field is absent, or
+/// [`TransactionError::InvalidParamValue`] if the value cannot be parsed as `i32`.
 #[must_use = "handle the result"]
 #[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub fn required_param_i32<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
-    missing_err: &'static str,
-    parse_err: &'static str,
-) -> Result<i32, &'static str> {
-    let bytes = map.get(&field).and_then(|v| v.first()).ok_or(missing_err)?;
-    let arr: [u8; 4] = bytes.as_slice().try_into().map_err(|_| parse_err)?;
+) -> Result<i32, TransactionError> {
+    let bytes = map
+        .get(&field)
+        .and_then(|v| v.first())
+        .ok_or(TransactionError::MissingField(field))?;
+    let arr: [u8; 4] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| TransactionError::InvalidParamValue(field))?;
     Ok(i32::from_be_bytes(arr))
 }
 
@@ -280,17 +288,20 @@ pub fn required_param_i32<S: std::hash::BuildHasher>(
 /// but does not decode as a big-endian `i32`.
 ///
 /// # Errors
-/// Returns an error if the value cannot be parsed as `i32`.
+/// Returns [`TransactionError::InvalidParamValue`] if the value cannot be
+/// parsed as `i32`.
 #[must_use = "handle the result"]
 #[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 pub fn first_param_i32<S: std::hash::BuildHasher>(
     map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
     field: FieldId,
-    parse_err: &'static str,
-) -> Result<Option<i32>, &'static str> {
+) -> Result<Option<i32>, TransactionError> {
     match map.get(&field).and_then(|v| v.first()) {
         Some(bytes) => {
-            let arr: [u8; 4] = bytes.as_slice().try_into().map_err(|_| parse_err)?;
+            let arr: [u8; 4] = bytes
+                .as_slice()
+                .try_into()
+                .map_err(|_| TransactionError::InvalidParamValue(field))?;
             Ok(Some(i32::from_be_bytes(arr)))
         }
         None => Ok(None),
