@@ -556,6 +556,8 @@ fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     /// Returns valid login parameters for testing.
@@ -599,29 +601,35 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn parse_login_params_invalid_utf8_username() {
+    #[rstest]
+    #[case(FieldId::Login, FieldId::Login)]
+    #[case(FieldId::Password, FieldId::Password)]
+    fn parse_login_params_invalid_utf8(
+        #[case] invalid_field: FieldId,
+        #[case] expected_error_field: FieldId,
+    ) {
         let params = vec![
-            (FieldId::Login, vec![0xff, 0xfe]),
-            (FieldId::Password, b"secret".to_vec()),
+            (
+                FieldId::Login,
+                if invalid_field == FieldId::Login {
+                    vec![0xff, 0xfe]
+                } else {
+                    b"alice".to_vec()
+                },
+            ),
+            (
+                FieldId::Password,
+                if invalid_field == FieldId::Password {
+                    vec![0xff, 0xfe]
+                } else {
+                    b"secret".to_vec()
+                },
+            ),
         ];
         let result = parse_login_params(params);
         assert!(matches!(
             result,
-            Err(TransactionError::InvalidParamValue(FieldId::Login))
-        ));
-    }
-
-    #[test]
-    fn parse_login_params_invalid_utf8_password() {
-        let params = vec![
-            (FieldId::Login, b"alice".to_vec()),
-            (FieldId::Password, vec![0xff, 0xfe]),
-        ];
-        let result = parse_login_params(params);
-        assert!(matches!(
-            result,
-            Err(TransactionError::InvalidParamValue(FieldId::Password))
+            Err(TransactionError::InvalidParamValue(field)) if field == expected_error_field
         ));
     }
 
