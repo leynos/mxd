@@ -77,12 +77,10 @@ pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
 }
 
 /// Write a big-endian u16 to the provided byte slice.
-#[expect(clippy::missing_const_for_fn, reason = "copy_from_slice is not const")]
-pub fn write_u16(buf: &mut [u8], val: u16) { buf.copy_from_slice(&val.to_be_bytes()); }
+pub const fn write_u16(buf: &mut [u8; 2], val: u16) { *buf = val.to_be_bytes(); }
 
 /// Write a big-endian u32 to the provided byte slice.
-#[expect(clippy::missing_const_for_fn, reason = "copy_from_slice is not const")]
-pub fn write_u32(buf: &mut [u8], val: u32) { buf.copy_from_slice(&val.to_be_bytes()); }
+pub const fn write_u32(buf: &mut [u8; 4], val: u32) { *buf = val.to_be_bytes(); }
 
 /// Parsed frame header according to the protocol specification.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,11 +120,11 @@ impl FrameHeader {
     pub fn write_bytes(&self, buf: &mut [u8; HEADER_LEN]) {
         buf[0] = self.flags;
         buf[1] = self.is_reply;
-        write_u16(&mut buf[2..4], self.ty);
-        write_u32(&mut buf[4..8], self.id);
-        write_u32(&mut buf[8..12], self.error);
-        write_u32(&mut buf[12..16], self.total_size);
-        write_u32(&mut buf[16..20], self.data_size);
+        buf[2..4].copy_from_slice(&self.ty.to_be_bytes());
+        buf[4..8].copy_from_slice(&self.id.to_be_bytes());
+        buf[8..12].copy_from_slice(&self.error.to_be_bytes());
+        buf[12..16].copy_from_slice(&self.total_size.to_be_bytes());
+        buf[16..20].copy_from_slice(&self.data_size.to_be_bytes());
     }
 
     /// Parse a frame header from a byte slice.
@@ -169,16 +167,16 @@ pub struct Transaction {
 /// Cannot panic; the slice conversion is guarded by an earlier length check.
 #[must_use = "handle the result"]
 #[expect(clippy::indexing_slicing, reason = "length is checked before slicing")]
-#[expect(
-    clippy::unwrap_used,
-    reason = "slice conversion cannot fail after length check"
-)]
 pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
     if buf.len() < HEADER_LEN {
         return Err(TransactionError::SizeMismatch);
     }
     debug_assert!(buf.len() >= HEADER_LEN, "buffer too short for header");
-    let hdr: &[u8; HEADER_LEN] = buf[0..HEADER_LEN].try_into().unwrap();
+    #[expect(
+        clippy::expect_used,
+        reason = "slice conversion cannot fail after length check"
+    )]
+    let hdr: &[u8; HEADER_LEN] = buf[0..HEADER_LEN].try_into().expect("length checked above");
     let header = FrameHeader::from_bytes(hdr);
     if header.total_size as usize > MAX_PAYLOAD_SIZE {
         return Err(TransactionError::PayloadTooLarge);
@@ -246,5 +244,3 @@ pub(super) async fn read_stream_chunk<R: AsyncRead + Unpin>(
 }
 
 pub(super) const fn default_timeout() -> Duration { IO_TIMEOUT }
-
-pub(super) const fn max_frame_data() -> usize { MAX_FRAME_DATA }

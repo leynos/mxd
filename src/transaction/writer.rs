@@ -19,7 +19,7 @@ use super::{
     MAX_PAYLOAD_SIZE,
     Transaction,
     errors::TransactionError,
-    frame::{max_frame_data, read_stream_chunk, write_frame},
+    frame::{read_stream_chunk, write_frame},
     params::validate_payload,
 };
 
@@ -65,9 +65,18 @@ where
     }
 
     /// Override the maximum frame size used for fragmentation.
+    ///
+    /// The value is clamped to `1..=MAX_FRAME_DATA` to prevent infinite loops
+    /// (if zero) and to ensure frames are accepted by readers.
     #[must_use]
     pub const fn with_max_frame(mut self, max_frame: usize) -> Self {
-        self.max_frame = max_frame;
+        self.max_frame = if max_frame == 0 {
+            1
+        } else if max_frame > MAX_FRAME_DATA {
+            MAX_FRAME_DATA
+        } else {
+            max_frame
+        };
         self
     }
 
@@ -97,11 +106,9 @@ where
             return Ok(());
         }
 
-        // Clamp max_frame to MAX_FRAME_DATA to ensure frames are accepted by readers.
-        let max_frame = self.max_frame.min(max_frame_data());
         let mut offset = 0usize;
         while offset < tx.payload.len() {
-            let end = (offset + max_frame).min(tx.payload.len());
+            let end = (offset + self.max_frame).min(tx.payload.len());
             let Some(chunk) = tx.payload.get(offset..end) else {
                 return Err(TransactionError::SizeMismatch);
             };
@@ -143,12 +150,11 @@ where
             return Ok(());
         }
 
-        let max_frame = self.max_frame.min(max_frame_data());
-        let mut buf = vec![0u8; max_frame];
+        let mut buf = vec![0u8; self.max_frame];
         let mut sent = 0u32;
         while sent < total {
             let remaining = (total - sent) as usize;
-            let to_read = remaining.min(max_frame);
+            let to_read = remaining.min(self.max_frame);
             let Some(chunk_buf) = buf.get_mut(..to_read) else {
                 return Err(TransactionError::PayloadTooLarge);
             };
