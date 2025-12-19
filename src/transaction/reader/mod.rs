@@ -152,7 +152,6 @@ where
 mod tests {
     use std::io::Cursor;
 
-    use rstest::rstest;
     use tokio::io::BufReader;
 
     use super::*;
@@ -161,7 +160,6 @@ mod tests {
         mismatched_continuation_bytes,
     };
 
-    #[rstest]
     #[tokio::test]
     async fn streams_large_fragmented_payload() {
         let total = 2 * 1024 * 1024usize;
@@ -192,7 +190,6 @@ mod tests {
         assert_eq!(seen, total);
     }
 
-    #[rstest]
     #[tokio::test]
     async fn rejects_mismatched_continuation_headers() {
         let bytes = mismatched_continuation_bytes().expect("bytes");
@@ -212,7 +209,6 @@ mod tests {
         assert!(matches!(err, TransactionError::HeaderMismatch));
     }
 
-    #[rstest]
     #[tokio::test]
     async fn rejects_total_exceeding_stream_limit() {
         let payload = vec![0u8; 10];

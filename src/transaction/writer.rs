@@ -35,7 +35,12 @@ fn map_eof_to_size_mismatch(err: TransactionError) -> TransactionError {
     }
 }
 
-/// Writer for sending transactions over a byte stream.
+/// Buffered writer for Hotline transactions.
+///
+/// Fragments large payloads across multiple frames according to the configured
+/// maximum frame size. Use [`write_transaction`](Self::write_transaction) for
+/// fully buffered payloads or [`write_streaming`](Self::write_streaming) to
+/// stream from an [`AsyncRead`] source without buffering.
 pub struct TransactionWriter<W> {
     writer: W,
     timeout: Duration,
@@ -185,13 +190,12 @@ where
 mod tests {
     use std::io::Cursor;
 
-    use rstest::rstest;
     use tokio::io::{BufReader, BufWriter, duplex};
 
     use super::*;
     use crate::transaction::reader::TransactionStreamReader;
 
-    #[rstest]
+    #[expect(clippy::excessive_nesting, reason = "spawned task requires extra nesting")]
     #[tokio::test]
     async fn write_streaming_fragments_payload() {
         let payload = vec![1u8; 100_000];
@@ -241,7 +245,6 @@ mod tests {
 
     /// Verifies that `write_streaming` returns `SizeMismatch` when the source
     /// stream ends before supplying the promised `total_size` bytes.
-    #[rstest]
     #[tokio::test]
     async fn write_streaming_truncated_source_returns_size_mismatch() {
         let actual_bytes = vec![1u8; 50];
