@@ -1,11 +1,4 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
-#![allow(missing_docs, reason = "test file")]
-#![allow(clippy::expect_used, reason = "test assertions")]
-#![allow(clippy::unwrap_used, reason = "test assertions")]
-#![allow(clippy::panic_in_result_fn, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 
 //! Behavioural tests for streaming transaction framing.
 
@@ -78,12 +71,17 @@ impl StreamingWorld {
     }
 }
 
-#[expect(
-    unused_braces,
-    reason = "rstest fixture macro expansion triggers unused braces lint"
-)]
 #[fixture]
-fn world() -> StreamingWorld { StreamingWorld::new() }
+fn world() -> StreamingWorld {
+    #[expect(
+        clippy::allow_attributes,
+        reason = "cannot use expect due to macro interaction"
+    )]
+    #[allow(unused_braces, reason = "rustfmt requires braces")]
+    {
+        StreamingWorld::new()
+    }
+}
 
 fn build_payload(size: usize) -> Vec<u8> { vec![0u8; size] }
 

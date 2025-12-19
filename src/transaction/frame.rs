@@ -161,10 +161,13 @@ pub struct Transaction {
 /// Parse a transaction from a single frame of bytes.
 ///
 /// # Errors
-/// Returns an error if the frame is malformed or exceeds size limits.
+/// Returns an error if:
+/// - The buffer is too short for a transaction header
+/// - The payload exceeds `MAX_PAYLOAD_SIZE`
+/// - The frame is malformed or fails validation
 ///
 /// # Panics
-/// Cannot panic; the slice conversion is guarded by an earlier length check.
+/// Cannot panic; the internal slice conversion is guarded by an earlier length check.
 #[must_use = "handle the result"]
 #[expect(clippy::indexing_slicing, reason = "length is checked before slicing")]
 pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {

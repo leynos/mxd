@@ -77,13 +77,15 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Step "Implement the wireframe handshake".
 - [x] Task: Surface a streaming API for large payloads so file transfers and
   news posts can consume fragmented messages incrementally. Acceptance:
-  Integration tests stream upload and download payloads over multiple fragments
-  without buffer exhaustion. Status: Completed on 12 December 2025 by adding
+  Integration tests stream upload and download payloads across multiple
+  fragments, verify that reconstructed payloads exactly match the originals,
+  and keep peak memory usage below the configured streaming limit (no buffer
+  exhaustion). Status: Completed on 12 December 2025 by adding
   `TransactionStreamReader`, `StreamingTransaction`, and
   `TransactionWriter::write_streaming` with configurable total-size limits and
-  BDD coverage for multi-fragment streaming. Dependencies: Task “Build a
+  BDD coverage for multi-fragment streaming. Dependencies: Task "Build a
   `wireframe` codec that reads and writes the 20-byte transaction header and
-  payload framing described in `docs/protocol.md`.”
+  payload framing described in `docs/protocol.md`."
 - [ ] Task: Reuse existing parameter encoding helpers within the new codec to
   prevent duplicate implementations. Acceptance: All transactions built through
   the new codec match the byte-for- byte output of the existing encoder for

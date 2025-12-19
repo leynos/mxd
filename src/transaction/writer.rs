@@ -23,6 +23,18 @@ use super::{
     params::validate_payload,
 };
 
+/// Translate early EOF from a source stream into a semantic framing error.
+fn map_eof_to_size_mismatch(err: TransactionError) -> TransactionError {
+    if matches!(
+        &err,
+        TransactionError::Io(io) if io.kind() == std::io::ErrorKind::UnexpectedEof
+    ) {
+        TransactionError::SizeMismatch
+    } else {
+        err
+    }
+}
+
 /// Writer for sending transactions over a byte stream.
 pub struct TransactionWriter<W> {
     writer: W,
@@ -158,7 +170,9 @@ where
             let Some(chunk_buf) = buf.get_mut(..to_read) else {
                 return Err(TransactionError::PayloadTooLarge);
             };
-            read_stream_chunk(&mut source, chunk_buf, self.timeout).await?;
+            read_stream_chunk(&mut source, chunk_buf, self.timeout)
+                .await
+                .map_err(map_eof_to_size_mismatch)?;
             let Some(chunk) = buf.get(..to_read) else {
                 return Err(TransactionError::PayloadTooLarge);
             };
