@@ -36,8 +36,9 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   and records the negotiated sub-protocol ID and sub-version in per-connection
   state. The metadata stays available for the lifetime of the connection, so
   compatibility shims can branch on client quirks, and it is cleared during
-  teardown to avoid leaking between sessions. Codecs and routes remain pending,
-  so behaviour beyond handshake is unchanged.
+  teardown to avoid leaking between sessions. The transaction framing codec is
+  in place (including multi-fragment reassembly), but protocol routes remain
+  pending, so behaviour beyond handshake is unchanged.
 
 ## Selecting a runtime
 

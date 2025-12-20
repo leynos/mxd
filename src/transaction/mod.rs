@@ -33,6 +33,7 @@ pub use params::{
     required_param_i32,
     required_param_string,
     validate_payload,
+    validate_payload_parts,
 };
 pub use reader::{
     StreamingTransaction,
