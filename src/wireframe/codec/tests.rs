@@ -112,17 +112,7 @@ async fn rejects_invalid_flags() {
         total_size: 0,
         data_size: 0,
     };
-    let bytes = transaction_bytes(&header, &[]);
-    let mut reader = BufReader::new(Cursor::new(bytes));
-
-    let err = read_preamble::<_, HotlineTransaction>(&mut reader)
-        .await
-        .expect_err("decode must fail");
-
-    assert!(
-        err.to_string().contains("invalid flags"),
-        "expected 'invalid flags' in '{err}'"
-    );
+    assert_decode_error(header, vec![], "invalid flags").await;
 }
 
 #[tokio::test]

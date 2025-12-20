@@ -181,7 +181,8 @@ fn count_frames(bytes: &[u8]) -> Result<usize, String> {
 
 #[fixture]
 fn world() -> EncodingWorld {
-    EncodingWorld::new()
+    let world = EncodingWorld::new();
+    world
 }
 
 /// Test helper struct for setting up transaction headers.
@@ -214,11 +215,7 @@ impl TestHeaderParams {
     }
 }
 
-fn set_test_transaction(
-    world: &EncodingWorld,
-    header_params: TestHeaderParams,
-    payload: Vec<u8>,
-) {
+fn set_test_transaction(world: &EncodingWorld, header_params: TestHeaderParams, payload: Vec<u8>) {
     let header = FrameHeader {
         flags: header_params.flags,
         is_reply: header_params.is_reply,
