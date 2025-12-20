@@ -466,7 +466,7 @@ parameter block).
 
 **Testing strategy.** The codec is tested at four levels:
 
-1. **Unit tests** (`src/wireframe/codec/mod.rs`) use `rstest` to cover
+1. **Unit tests** (`src/wireframe/codec/tests.rs`) use `rstest` to cover
    single-frame and multi-fragment decoding with parametrised test cases, and
    to validate that outbound encoding emits the expected frame structure.
 2. **Behaviour-Driven Development (BDD) scenarios**

@@ -16,6 +16,32 @@ fn hotline_config() -> impl bincode::config::Config {
         .with_fixed_int_encoding()
 }
 
+/// Assert that encoding the given transaction fails with an error message
+/// containing the expected substring.
+fn assert_encode_error(tx: HotlineTransaction, expected_msg: &str) {
+    let err = encode_to_vec(&tx, hotline_config()).expect_err("encode must fail");
+    assert!(
+        err.to_string().contains(expected_msg),
+        "expected '{expected_msg}' in '{err}'"
+    );
+}
+
+/// Assert that decoding a transaction with the given header and payload fails
+/// with an error message containing the expected substring.
+async fn assert_decode_error(header: FrameHeader, payload: Vec<u8>, expected_msg: &str) {
+    let bytes = transaction_bytes(&header, &payload);
+    let mut reader = BufReader::new(Cursor::new(bytes));
+
+    let err = read_preamble::<_, HotlineTransaction>(&mut reader)
+        .await
+        .expect_err("decode must fail");
+
+    assert!(
+        err.to_string().contains(expected_msg),
+        "expected '{expected_msg}' in '{err}'"
+    );
+}
+
 #[rstest]
 #[case(20, 20)] // Single frame with payload
 #[case(0, 0)] // Empty payload
@@ -113,17 +139,7 @@ async fn rejects_oversized_total() {
         data_size: frame_data,
     };
     let payload = vec![0u8; MAX_FRAME_DATA];
-    let bytes = transaction_bytes(&header, &payload);
-    let mut reader = BufReader::new(Cursor::new(bytes));
-
-    let err = read_preamble::<_, HotlineTransaction>(&mut reader)
-        .await
-        .expect_err("decode must fail");
-
-    assert!(
-        err.to_string().contains("total size exceeds maximum"),
-        "expected 'total size exceeds maximum' in '{err}'"
-    );
+    assert_decode_error(header, payload, "total size exceeds maximum").await;
 }
 
 #[tokio::test]
@@ -139,17 +155,7 @@ async fn rejects_oversized_data() {
         data_size: oversized,
     };
     let payload = vec![0u8; MAX_FRAME_DATA + 1];
-    let bytes = transaction_bytes(&header, &payload);
-    let mut reader = BufReader::new(Cursor::new(bytes));
-
-    let err = read_preamble::<_, HotlineTransaction>(&mut reader)
-        .await
-        .expect_err("decode must fail");
-
-    assert!(
-        err.to_string().contains("data size exceeds maximum"),
-        "expected 'data size exceeds maximum' in '{err}'"
-    );
+    assert_decode_error(header, payload, "data size exceeds maximum").await;
 }
 
 #[rstest]
@@ -224,11 +230,7 @@ async fn encoding_rejects_size_mismatch() {
         payload: Vec::new(),
     };
 
-    let err = encode_to_vec(&tx, hotline_config()).expect_err("encode must fail");
-    assert!(
-        err.to_string().contains("size mismatch"),
-        "expected 'size mismatch' in '{err}'"
-    );
+    assert_encode_error(tx, "size mismatch");
 }
 
 #[tokio::test]
@@ -246,11 +248,7 @@ async fn encoding_rejects_invalid_flags() {
         payload: Vec::new(),
     };
 
-    let err = encode_to_vec(&tx, hotline_config()).expect_err("encode must fail");
-    assert!(
-        err.to_string().contains("invalid flags"),
-        "expected 'invalid flags' in '{err}'"
-    );
+    assert_encode_error(tx, "invalid flags");
 }
 
 #[tokio::test]
@@ -270,9 +268,5 @@ async fn encoding_rejects_oversized_payload() {
         payload,
     };
 
-    let err = encode_to_vec(&tx, hotline_config()).expect_err("encode must fail");
-    assert!(
-        err.to_string().contains("payload too large"),
-        "expected 'payload too large' in '{err}'"
-    );
+    assert_encode_error(tx, "payload too large");
 }

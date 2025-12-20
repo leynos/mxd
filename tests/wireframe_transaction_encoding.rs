@@ -179,20 +179,9 @@ fn count_frames(bytes: &[u8]) -> Result<usize, String> {
     Ok(count)
 }
 
-#[expect(
-    clippy::allow_attributes,
-    reason = "rstest-bdd macro expansion produces braces"
-)]
-#[allow(
-    unused_braces,
-    reason = "rustfmt requires braces for rstest-bdd fixtures"
-)]
 #[fixture]
 fn world() -> EncodingWorld {
-    #[allow(unused_braces, reason = "rustfmt requires braces")]
-    {
-        EncodingWorld::new()
-    }
+    EncodingWorld::new()
 }
 
 /// Test helper struct for setting up transaction headers.
@@ -253,9 +242,9 @@ fn given_parameter_transaction(world: &EncodingWorld, count: usize) {
     world.set_params(params);
 }
 
-#[given("a parameter transaction with a 40000-byte field value")]
-fn given_large_parameter_transaction(world: &EncodingWorld) {
-    world.set_params(vec![(FieldId::Other(999), vec![0u8; 40_000])]);
+#[given("a parameter transaction with a {size}-byte field value")]
+fn given_large_parameter_transaction(world: &EncodingWorld, size: usize) {
+    world.set_params(vec![(FieldId::Other(999), vec![0u8; size])]);
 }
 
 #[given("a transaction with mismatched header and payload sizes")]
@@ -358,34 +347,40 @@ fn fragmented_param_transaction(world: EncodingWorld) { let _ = world; }
     path = "tests/features/wireframe_transaction_encoding.feature",
     index = 3
 )]
-fn try_from_transaction_succeeds(world: EncodingWorld) { let _ = world; }
+fn three_frame_param_transaction(world: EncodingWorld) { let _ = world; }
 
 #[scenario(
     path = "tests/features/wireframe_transaction_encoding.feature",
     index = 4
 )]
-fn rejects_invalid_flags(world: EncodingWorld) { let _ = world; }
+fn try_from_transaction_succeeds(world: EncodingWorld) { let _ = world; }
 
 #[scenario(
     path = "tests/features/wireframe_transaction_encoding.feature",
     index = 5
 )]
-fn rejects_oversized_payload(world: EncodingWorld) { let _ = world; }
+fn rejects_invalid_flags(world: EncodingWorld) { let _ = world; }
 
 #[scenario(
     path = "tests/features/wireframe_transaction_encoding.feature",
     index = 6
 )]
-fn rejects_invalid_payload_structure(world: EncodingWorld) { let _ = world; }
+fn rejects_oversized_payload(world: EncodingWorld) { let _ = world; }
 
 #[scenario(
     path = "tests/features/wireframe_transaction_encoding.feature",
     index = 7
 )]
-fn rejects_oversized_params(world: EncodingWorld) { let _ = world; }
+fn rejects_invalid_payload_structure(world: EncodingWorld) { let _ = world; }
 
 #[scenario(
     path = "tests/features/wireframe_transaction_encoding.feature",
     index = 8
+)]
+fn rejects_oversized_params(world: EncodingWorld) { let _ = world; }
+
+#[scenario(
+    path = "tests/features/wireframe_transaction_encoding.feature",
+    index = 9
 )]
 fn rejects_size_mismatch(world: EncodingWorld) { let _ = world; }

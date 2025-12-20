@@ -22,6 +22,13 @@ Feature: Wireframe transaction encoding
     And the encoded bytes match the legacy encoder
     And the encoded transaction is fragmented into 2 frames
 
+  Scenario: Encodes a parameter transaction fragmented into 3 frames
+    Given a parameter transaction with a 65535-byte field value
+    When I encode the transaction
+    Then encoding succeeds
+    And the encoded bytes match the legacy encoder
+    And the encoded transaction is fragmented into 3 frames
+
   Scenario: Encodes a valid Transaction via TryFrom and matches legacy encoding
     Given a valid transaction with 1 field
     When I encode the transaction
