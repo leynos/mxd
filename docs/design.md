@@ -467,9 +467,8 @@ parameter block).
 **Testing strategy.** The codec is tested at four levels:
 
 1. **Unit tests** (`src/wireframe/codec/mod.rs`) use `rstest` to cover
-   single-frame
-   and multi-fragment decoding with parametrised test cases, and to validate
-   that outbound encoding emits the expected frame structure.
+   single-frame and multi-fragment decoding with parametrised test cases, and
+   to validate that outbound encoding emits the expected frame structure.
 2. **Behaviour-Driven Development (BDD) scenarios**
    (`tests/features/wireframe_transaction.feature`) express acceptance criteria
    in Gherkin syntax, with step definitions in `tests/wireframe_transaction.rs`.

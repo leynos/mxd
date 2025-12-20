@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use bincode::{config, encode_to_vec};
 use mxd::{
     field_id::FieldId,
-    transaction::{FrameHeader, Transaction, TransactionWriter, encode_params},
+    transaction::{FrameHeader, MAX_PAYLOAD_SIZE, Transaction, TransactionWriter, encode_params},
     wireframe::codec::HotlineTransaction,
 };
 use rstest::fixture;
@@ -71,9 +71,15 @@ impl EncodingWorld {
                 })
             },
             |tx| {
+                let legacy_tx = tx.clone();
                 let hotline = HotlineTransaction::try_from(tx).map_err(|e| e.to_string())?;
-                encode_to_vec(&hotline, hotline_config()).map_err(|e| e.to_string())?;
-                Err("expected encoding to fail but it succeeded".to_owned())
+                let wireframe_bytes =
+                    encode_to_vec(&hotline, hotline_config()).map_err(|e| e.to_string())?;
+                let legacy_bytes = self.rt.block_on(legacy_encode(&legacy_tx))?;
+                Ok(EncodingResult {
+                    wireframe_bytes,
+                    legacy_bytes,
+                })
             },
         );
         self.outcome.borrow_mut().replace(result);
@@ -113,6 +119,20 @@ fn legacy_transaction_from_params(
         data_size: u32::try_from(payload_len).expect("payload length fits u32"),
     };
     Ok(Transaction { header, payload })
+}
+
+fn oversized_params() -> Vec<(FieldId, Vec<u8>)> {
+    let per_param_len = u16::MAX as usize;
+    let per_param_total = 4usize + per_param_len;
+    let header_overhead = 2usize;
+    let target = MAX_PAYLOAD_SIZE + 1;
+    let params_needed = (target - header_overhead).div_ceil(per_param_total);
+    (0..params_needed)
+        .map(|idx| {
+            let field_id = FieldId::Other(u16::try_from(9000 + idx).expect("field id fits u16"));
+            (field_id, vec![0u8; per_param_len])
+        })
+        .collect()
 }
 
 async fn legacy_encode(tx: &Transaction) -> Result<Vec<u8>, String> {
@@ -207,6 +227,69 @@ fn given_mismatched_transaction(world: &EncodingWorld) {
     });
 }
 
+#[given("a valid transaction with {count} field")]
+fn given_valid_transaction(world: &EncodingWorld, count: usize) {
+    let params = match count {
+        0 => Vec::new(),
+        1 => vec![(FieldId::Login, b"alice".to_vec())],
+        _ => panic!("unsupported parameter count for scenario"),
+    };
+    let tx = legacy_transaction_from_params(107, 1, &params).expect("valid transaction");
+    world.set_transaction(tx);
+}
+
+#[given("a transaction with invalid flags")]
+fn given_transaction_with_invalid_flags(world: &EncodingWorld) {
+    let header = FrameHeader {
+        flags: 1,
+        is_reply: 0,
+        ty: 107,
+        id: 1,
+        error: 0,
+        total_size: 0,
+        data_size: 0,
+    };
+    world.set_transaction(Transaction {
+        header,
+        payload: Vec::new(),
+    });
+}
+
+#[given("a transaction with an oversized payload")]
+fn given_transaction_with_oversized_payload(world: &EncodingWorld) {
+    let payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 107,
+        id: 1,
+        error: 0,
+        total_size: 0,
+        data_size: 0,
+    };
+    world.set_transaction(Transaction { header, payload });
+}
+
+#[given("a transaction with an invalid parameter payload")]
+fn given_transaction_with_invalid_payload_structure(world: &EncodingWorld) {
+    let payload = vec![0u8; 1];
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 107,
+        id: 1,
+        error: 0,
+        total_size: 1,
+        data_size: 1,
+    };
+    world.set_transaction(Transaction { header, payload });
+}
+
+#[given("a parameter transaction that exceeds the maximum payload size")]
+fn given_oversized_parameter_transaction(world: &EncodingWorld) {
+    world.set_params(oversized_params());
+}
+
 #[when("I encode the transaction")]
 fn when_encode(world: &EncodingWorld) { world.encode(); }
 
@@ -266,5 +349,35 @@ fn fragmented_param_transaction(world: EncodingWorld) { let _ = world; }
 #[scenario(
     path = "tests/features/wireframe_transaction_encoding.feature",
     index = 3
+)]
+fn try_from_transaction_succeeds(world: EncodingWorld) { let _ = world; }
+
+#[scenario(
+    path = "tests/features/wireframe_transaction_encoding.feature",
+    index = 4
+)]
+fn rejects_invalid_flags(world: EncodingWorld) { let _ = world; }
+
+#[scenario(
+    path = "tests/features/wireframe_transaction_encoding.feature",
+    index = 5
+)]
+fn rejects_oversized_payload(world: EncodingWorld) { let _ = world; }
+
+#[scenario(
+    path = "tests/features/wireframe_transaction_encoding.feature",
+    index = 6
+)]
+fn rejects_invalid_payload_structure(world: EncodingWorld) { let _ = world; }
+
+#[scenario(
+    path = "tests/features/wireframe_transaction_encoding.feature",
+    index = 7
+)]
+fn rejects_oversized_params(world: EncodingWorld) { let _ = world; }
+
+#[scenario(
+    path = "tests/features/wireframe_transaction_encoding.feature",
+    index = 8
 )]
 fn rejects_size_mismatch(world: EncodingWorld) { let _ = world; }

@@ -156,6 +156,7 @@ async fn rejects_oversized_data() {
 #[case(0)]
 #[case(MAX_FRAME_DATA)]
 #[case(MAX_FRAME_DATA + 1)]
+#[case(2 * MAX_FRAME_DATA + 1)]
 fn encodes_payloads_with_legacy_framing(#[case] payload_len: usize) {
     let payload = vec![0u8; payload_len];
     let header = FrameHeader {
@@ -175,47 +176,37 @@ fn encodes_payloads_with_legacy_framing(#[case] payload_len: usize) {
 
     let bytes = encode_to_vec(&tx, hotline_config()).expect("encode");
 
-    let expected = if payload.is_empty() {
-        transaction_bytes(
-            &FrameHeader {
-                data_size: 0,
-                ..header
-            },
-            &[],
-        )
-    } else if payload.len() <= MAX_FRAME_DATA {
-        transaction_bytes(
-            &FrameHeader {
-                data_size: u32::try_from(payload.len()).expect("len fits u32"),
-                ..header
-            },
-            &payload,
-        )
-    } else {
-        let first_chunk = payload
-            .get(..MAX_FRAME_DATA)
-            .expect("payload length checked before slicing");
-        let second_chunk = payload
-            .get(MAX_FRAME_DATA..)
-            .expect("payload length checked before slicing");
-        let first = transaction_bytes(
-            &FrameHeader {
-                data_size: u32::try_from(MAX_FRAME_DATA).expect("len fits u32"),
-                ..header.clone()
-            },
-            first_chunk,
-        );
-        let rest = transaction_bytes(
-            &FrameHeader {
-                data_size: u32::try_from(payload.len() - MAX_FRAME_DATA).expect("len fits u32"),
-                ..header
-            },
-            second_chunk,
-        );
-        [first, rest].concat()
-    };
+    let expected = expected_framing_bytes(&header, &payload);
 
     assert_eq!(bytes, expected);
+}
+
+fn expected_framing_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
+    let mut expected = Vec::new();
+    if payload.is_empty() {
+        expected.extend(transaction_bytes(
+            &FrameHeader {
+                data_size: 0,
+                ..header.clone()
+            },
+            &[],
+        ));
+        return expected;
+    }
+
+    let mut offset = 0usize;
+    while offset < payload.len() {
+        let end = (offset + MAX_FRAME_DATA).min(payload.len());
+        let chunk = payload
+            .get(offset..end)
+            .expect("payload length checked before slicing");
+        let mut frame_header = header.clone();
+        frame_header.data_size = u32::try_from(chunk.len()).expect("chunk length fits u32");
+        expected.extend(transaction_bytes(&frame_header, chunk));
+        offset = end;
+    }
+
+    expected
 }
 
 #[tokio::test]
@@ -237,5 +228,51 @@ async fn encoding_rejects_size_mismatch() {
     assert!(
         err.to_string().contains("size mismatch"),
         "expected 'size mismatch' in '{err}'"
+    );
+}
+
+#[tokio::test]
+async fn encoding_rejects_invalid_flags() {
+    let tx = HotlineTransaction {
+        header: FrameHeader {
+            flags: 1,
+            is_reply: 0,
+            ty: 107,
+            id: 1,
+            error: 0,
+            total_size: 0,
+            data_size: 0,
+        },
+        payload: Vec::new(),
+    };
+
+    let err = encode_to_vec(&tx, hotline_config()).expect_err("encode must fail");
+    assert!(
+        err.to_string().contains("invalid flags"),
+        "expected 'invalid flags' in '{err}'"
+    );
+}
+
+#[tokio::test]
+async fn encoding_rejects_oversized_payload() {
+    let payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
+    let payload_len = payload.len();
+    let tx = HotlineTransaction {
+        header: FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 107,
+            id: 1,
+            error: 0,
+            total_size: u32::try_from(payload_len).expect("payload length fits u32"),
+            data_size: u32::try_from(payload_len).expect("payload length fits u32"),
+        },
+        payload,
+    };
+
+    let err = encode_to_vec(&tx, hotline_config()).expect_err("encode must fail");
+    assert!(
+        err.to_string().contains("payload too large"),
+        "expected 'payload too large' in '{err}'"
     );
 }
