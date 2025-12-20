@@ -195,6 +195,27 @@ fn world() -> EncodingWorld {
     }
 }
 
+fn set_test_transaction(
+    world: &EncodingWorld,
+    flags: u8,
+    is_reply: u8,
+    total_size: u32,
+    data_size: u32,
+    payload: Vec<u8>,
+) {
+    let header = FrameHeader {
+        flags,
+        is_reply,
+        ty: 107,
+        id: 1,
+        error: 0,
+        total_size,
+        data_size,
+    };
+
+    world.set_transaction(Transaction { header, payload });
+}
+
 #[given("a parameter transaction with {count} field")]
 fn given_parameter_transaction(world: &EncodingWorld, count: usize) {
     let params = match count {
@@ -212,19 +233,7 @@ fn given_large_parameter_transaction(world: &EncodingWorld) {
 
 #[given("a transaction with mismatched header and payload sizes")]
 fn given_mismatched_transaction(world: &EncodingWorld) {
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 107,
-        id: 1,
-        error: 0,
-        total_size: 2,
-        data_size: 2,
-    };
-    world.set_transaction(Transaction {
-        header,
-        payload: Vec::new(),
-    });
+    set_test_transaction(world, 0, 0, 2, 2, Vec::new());
 }
 
 #[given("a valid transaction with {count} field")]
@@ -240,49 +249,17 @@ fn given_valid_transaction(world: &EncodingWorld, count: usize) {
 
 #[given("a transaction with invalid flags")]
 fn given_transaction_with_invalid_flags(world: &EncodingWorld) {
-    let header = FrameHeader {
-        flags: 1,
-        is_reply: 0,
-        ty: 107,
-        id: 1,
-        error: 0,
-        total_size: 0,
-        data_size: 0,
-    };
-    world.set_transaction(Transaction {
-        header,
-        payload: Vec::new(),
-    });
+    set_test_transaction(world, 1, 0, 0, 0, Vec::new());
 }
 
 #[given("a transaction with an oversized payload")]
 fn given_transaction_with_oversized_payload(world: &EncodingWorld) {
-    let payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 107,
-        id: 1,
-        error: 0,
-        total_size: 0,
-        data_size: 0,
-    };
-    world.set_transaction(Transaction { header, payload });
+    set_test_transaction(world, 0, 0, 0, 0, vec![0u8; MAX_PAYLOAD_SIZE + 1]);
 }
 
 #[given("a transaction with an invalid parameter payload")]
 fn given_transaction_with_invalid_payload_structure(world: &EncodingWorld) {
-    let payload = vec![0u8; 1];
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 107,
-        id: 1,
-        error: 0,
-        total_size: 1,
-        data_size: 1,
-    };
-    world.set_transaction(Transaction { header, payload });
+    set_test_transaction(world, 0, 0, 1, 1, vec![0u8; 1]);
 }
 
 #[given("a parameter transaction that exceeds the maximum payload size")]

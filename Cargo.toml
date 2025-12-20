@@ -33,6 +33,21 @@ path = "src/bin/gen_corpus.rs"
 name = "mxd-wireframe-server"
 path = "src/bin/mxd_wireframe_server.rs"
 
+[[test]]
+name = "transaction_streaming"
+path = "tests/transaction_streaming.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "wireframe_handshake_metadata"
+path = "tests/wireframe_handshake_metadata.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "wireframe_transaction"
+path = "tests/wireframe_transaction.rs"
+required-features = ["test-support"]
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 diesel = { version = "2.3", default-features = false, features = ["chrono"] }
