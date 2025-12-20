@@ -18,8 +18,8 @@ fn hotline_config() -> impl bincode::config::Config {
 
 /// Assert that encoding the given transaction fails with an error message
 /// containing the expected substring.
-fn assert_encode_error(tx: HotlineTransaction, expected_msg: &str) {
-    let err = encode_to_vec(&tx, hotline_config()).expect_err("encode must fail");
+fn assert_encode_error(tx: &HotlineTransaction, expected_msg: &str) {
+    let err = encode_to_vec(tx, hotline_config()).expect_err("encode must fail");
     assert!(
         err.to_string().contains(expected_msg),
         "expected '{expected_msg}' in '{err}'"
@@ -88,22 +88,12 @@ async fn rejects_invalid_length_combinations(
         data_size: data,
     };
     let payload = vec![0u8; data as usize];
-    let bytes = transaction_bytes(&header, &payload);
-    let mut reader = BufReader::new(Cursor::new(bytes));
-
-    let err = read_preamble::<_, HotlineTransaction>(&mut reader)
-        .await
-        .expect_err("decode must fail");
-
-    assert!(
-        err.to_string().contains(expected_msg),
-        "expected '{expected_msg}' in '{err}'"
-    );
+    assert_decode_error(header, payload, expected_msg).await;
 }
 
-#[tokio::test]
-async fn rejects_invalid_flags() {
-    let header = FrameHeader {
+#[rstest]
+#[case::invalid_flags(
+    FrameHeader {
         flags: 1,
         is_reply: 0,
         ty: 107,
@@ -111,41 +101,43 @@ async fn rejects_invalid_flags() {
         error: 0,
         total_size: 0,
         data_size: 0,
-    };
-    assert_decode_error(header, vec![], "invalid flags").await;
-}
-
-#[tokio::test]
-async fn rejects_oversized_total() {
-    let oversized_total = u32::try_from(MAX_PAYLOAD_SIZE + 1).expect("test size fits in u32");
-    let frame_data = u32::try_from(MAX_FRAME_DATA).expect("frame data fits in u32");
-    let header = FrameHeader {
+    },
+    Vec::new(),
+    "invalid flags"
+)]
+#[case::oversized_total(
+    FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: 107,
         id: 1,
         error: 0,
-        total_size: oversized_total,
-        data_size: frame_data,
-    };
-    let payload = vec![0u8; MAX_FRAME_DATA];
-    assert_decode_error(header, payload, "total size exceeds maximum").await;
-}
-
-#[tokio::test]
-async fn rejects_oversized_data() {
-    let oversized = u32::try_from(MAX_FRAME_DATA + 1).expect("test size fits in u32");
-    let header = FrameHeader {
+        total_size: u32::try_from(MAX_PAYLOAD_SIZE + 1).expect("test size fits in u32"),
+        data_size: u32::try_from(MAX_FRAME_DATA).expect("frame data fits in u32"),
+    },
+    vec![0u8; MAX_FRAME_DATA],
+    "total size exceeds maximum"
+)]
+#[case::oversized_data(
+    FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: 107,
         id: 1,
         error: 0,
-        total_size: oversized,
-        data_size: oversized,
-    };
-    let payload = vec![0u8; MAX_FRAME_DATA + 1];
-    assert_decode_error(header, payload, "data size exceeds maximum").await;
+        total_size: u32::try_from(MAX_FRAME_DATA + 1).expect("test size fits in u32"),
+        data_size: u32::try_from(MAX_FRAME_DATA + 1).expect("test size fits in u32"),
+    },
+    vec![0u8; MAX_FRAME_DATA + 1],
+    "data size exceeds maximum"
+)]
+#[tokio::test]
+async fn rejects_invalid_headers(
+    #[case] header: FrameHeader,
+    #[case] payload: Vec<u8>,
+    #[case] expected_msg: &str,
+) {
+    assert_decode_error(header, payload, expected_msg).await;
 }
 
 #[rstest]
@@ -177,6 +169,11 @@ fn encodes_payloads_with_legacy_framing(#[case] payload_len: usize) {
     assert_eq!(bytes, expected);
 }
 
+/// Construct the expected wire framing for the given header and payload.
+///
+/// Mirrors the codec's framing behaviour by emitting a single header-only frame
+/// for an empty payload, or fragmenting non-empty payloads into chunks of
+/// `MAX_FRAME_DATA` and stamping each frame with the adjusted `data_size`.
 fn expected_framing_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
     let mut expected = Vec::new();
     if payload.is_empty() {
@@ -205,58 +202,51 @@ fn expected_framing_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
     expected
 }
 
-#[tokio::test]
-async fn encoding_rejects_size_mismatch() {
-    let tx = HotlineTransaction {
-        header: FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: 2,
-            data_size: 2,
-        },
-        payload: Vec::new(),
-    };
-
-    assert_encode_error(tx, "size mismatch");
-}
-
-#[tokio::test]
-async fn encoding_rejects_invalid_flags() {
-    let tx = HotlineTransaction {
-        header: FrameHeader {
-            flags: 1,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        },
-        payload: Vec::new(),
-    };
-
-    assert_encode_error(tx, "invalid flags");
-}
-
-#[tokio::test]
-async fn encoding_rejects_oversized_payload() {
-    let payload = vec![0u8; MAX_PAYLOAD_SIZE + 1];
-    let payload_len = payload.len();
-    let tx = HotlineTransaction {
-        header: FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: u32::try_from(payload_len).expect("payload length fits u32"),
-            data_size: u32::try_from(payload_len).expect("payload length fits u32"),
-        },
-        payload,
-    };
-
-    assert_encode_error(tx, "payload too large");
+#[rstest]
+#[case::size_mismatch(
+    FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 107,
+        id: 1,
+        error: 0,
+        total_size: 2,
+        data_size: 2,
+    },
+    Vec::new(),
+    "size mismatch"
+)]
+#[case::invalid_flags(
+    FrameHeader {
+        flags: 1,
+        is_reply: 0,
+        ty: 107,
+        id: 1,
+        error: 0,
+        total_size: 0,
+        data_size: 0,
+    },
+    Vec::new(),
+    "invalid flags"
+)]
+#[case::oversized_payload(
+    FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 107,
+        id: 1,
+        error: 0,
+        total_size: u32::try_from(MAX_PAYLOAD_SIZE + 1).expect("test size fits in u32"),
+        data_size: u32::try_from(MAX_PAYLOAD_SIZE + 1).expect("test size fits in u32"),
+    },
+    vec![0u8; MAX_PAYLOAD_SIZE + 1],
+    "payload too large"
+)]
+fn encoding_rejects_invalid_transactions(
+    #[case] header: FrameHeader,
+    #[case] payload: Vec<u8>,
+    #[case] expected_msg: &str,
+) {
+    let tx = HotlineTransaction { header, payload };
+    assert_encode_error(&tx, expected_msg);
 }

@@ -24,6 +24,7 @@ fn hotline_config() -> impl bincode::config::Config {
 struct EncodingWorld {
     params: RefCell<Vec<(FieldId, Vec<u8>)>>,
     transaction: RefCell<Option<Transaction>>,
+    setup_error: RefCell<Option<String>>,
     outcome: RefCell<Option<Result<EncodingResult, String>>>,
     rt: Runtime,
 }
@@ -39,22 +40,51 @@ impl EncodingWorld {
         Self {
             params: RefCell::new(Vec::new()),
             transaction: RefCell::new(None),
+            setup_error: RefCell::new(None),
             outcome: RefCell::new(None),
             rt,
         }
     }
 
     fn set_params(&self, params: Vec<(FieldId, Vec<u8>)>) {
+        self.setup_error.borrow_mut().take();
         *self.transaction.borrow_mut() = None;
         *self.params.borrow_mut() = params;
     }
 
     fn set_transaction(&self, tx: Transaction) {
+        self.setup_error.borrow_mut().take();
         self.params.borrow_mut().clear();
         *self.transaction.borrow_mut() = Some(tx);
     }
 
+    fn set_params_result(&self, params: Result<Vec<(FieldId, Vec<u8>)>, String>) {
+        match params {
+            Ok(parsed_params) => self.set_params(parsed_params),
+            Err(err) => {
+                *self.transaction.borrow_mut() = None;
+                self.params.borrow_mut().clear();
+                self.setup_error.borrow_mut().replace(err);
+            }
+        }
+    }
+
+    fn set_transaction_result(&self, tx: Result<Transaction, String>) {
+        match tx {
+            Ok(transaction) => self.set_transaction(transaction),
+            Err(err) => {
+                *self.transaction.borrow_mut() = None;
+                self.params.borrow_mut().clear();
+                self.setup_error.borrow_mut().replace(err);
+            }
+        }
+    }
+
     fn encode(&self) {
+        if let Some(err) = self.setup_error.borrow().clone() {
+            self.outcome.borrow_mut().replace(Err(err));
+            return;
+        }
         let params = self.params.borrow().clone();
         let maybe_tx = self.transaction.borrow().clone();
         let result: Result<EncodingResult, String> = maybe_tx.map_or_else(
@@ -109,19 +139,21 @@ fn legacy_transaction_from_params(
         encode_params(&param_slices).map_err(|e| e.to_string())?
     };
     let payload_len = payload.len();
+    let payload_len_u32 =
+        u32::try_from(payload_len).map_err(|_| "payload length fits u32".to_owned())?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty,
         id,
         error: 0,
-        total_size: u32::try_from(payload_len).expect("payload length fits u32"),
-        data_size: u32::try_from(payload_len).expect("payload length fits u32"),
+        total_size: payload_len_u32,
+        data_size: payload_len_u32,
     };
     Ok(Transaction { header, payload })
 }
 
-fn oversized_params() -> Vec<(FieldId, Vec<u8>)> {
+fn oversized_params() -> Result<Vec<(FieldId, Vec<u8>)>, String> {
     let per_param_len = u16::MAX as usize;
     let per_param_total = 4usize + per_param_len;
     let header_overhead = 2usize;
@@ -129,10 +161,10 @@ fn oversized_params() -> Vec<(FieldId, Vec<u8>)> {
     let params_needed = (target - header_overhead).div_ceil(per_param_total);
     (0..params_needed)
         .map(|idx| {
-            let field_id = FieldId::Other(u16::try_from(9000 + idx).expect("field id fits u16"));
-            (field_id, vec![0u8; per_param_len])
+            let raw = u16::try_from(9000 + idx).map_err(|_| "field id fits u16".to_owned())?;
+            Ok((FieldId::Other(raw), vec![0u8; per_param_len]))
         })
-        .collect()
+        .collect::<Result<Vec<_>, String>>()
 }
 
 async fn legacy_encode(tx: &Transaction) -> Result<Vec<u8>, String> {
@@ -181,11 +213,12 @@ fn count_frames(bytes: &[u8]) -> Result<usize, String> {
 
 #[fixture]
 fn world() -> EncodingWorld {
-    let world = EncodingWorld::new();
-    world
+    std::hint::black_box(());
+    EncodingWorld::new()
 }
 
 /// Test helper struct for setting up transaction headers.
+#[derive(Clone, Copy)]
 struct TestHeaderParams {
     flags: u8,
     is_reply: u8,
@@ -195,7 +228,7 @@ struct TestHeaderParams {
 
 impl TestHeaderParams {
     /// Creates header params with custom values.
-    fn new(flags: u8, is_reply: u8, total_size: u32, data_size: u32) -> Self {
+    const fn new(flags: u8, is_reply: u8, total_size: u32, data_size: u32) -> Self {
         Self {
             flags,
             is_reply,
@@ -205,7 +238,7 @@ impl TestHeaderParams {
     }
 
     /// Creates header params for a typical test case with zeros.
-    fn zeros() -> Self {
+    const fn zeros() -> Self {
         Self {
             flags: 0,
             is_reply: 0,
@@ -256,8 +289,7 @@ fn given_valid_transaction(world: &EncodingWorld, count: usize) {
         1 => vec![(FieldId::Login, b"alice".to_vec())],
         _ => panic!("unsupported parameter count for scenario"),
     };
-    let tx = legacy_transaction_from_params(107, 1, &params).expect("valid transaction");
-    world.set_transaction(tx);
+    world.set_transaction_result(legacy_transaction_from_params(107, 1, &params));
 }
 
 #[given("a transaction with invalid flags")]
@@ -281,7 +313,7 @@ fn given_transaction_with_invalid_payload_structure(world: &EncodingWorld) {
 
 #[given("a parameter transaction that exceeds the maximum payload size")]
 fn given_oversized_parameter_transaction(world: &EncodingWorld) {
-    world.set_params(oversized_params());
+    world.set_params_result(oversized_params());
 }
 
 #[when("I encode the transaction")]
