@@ -2230,7 +2230,7 @@ dependencies = [
  "test-util",
  "thiserror 2.0.17",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.7",
  "tracing",
  "uncased",
  "url",
