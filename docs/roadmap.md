@@ -98,12 +98,16 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### Step: Route transactions through wireframe
 
-- [ ] Task: Implement a domain-backed `WireframeProtocol` adapter registered
+- [x] Task: Implement a domain-backed `WireframeProtocol` adapter registered
   via `.with_protocol(...)`. Acceptance: The server initialisation builds the
   adapter described in
   `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`, and
   routing smoke tests exercise every handler through this port without invoking
-  legacy wiring. Dependencies: Step “Adopt wireframe transaction framing”.
+  legacy wiring. Status: Completed on 25 December 2025 by introducing
+  `HotlineProtocol` implementing `WireframeProtocol` with lifecycle hooks,
+  `RouteState` and `SessionState` for per-connection context, and BDD tests
+  covering protocol adapter registration, error routing, and transaction ID
+  preservation. Dependencies: Step "Adopt wireframe transaction framing".
 - [ ] Task: Map every implemented transaction ID to a `wireframe` route that
   delegates to the existing domain handlers. Acceptance: Login, news listing,
   and file listing integration tests run against the wireframe server without

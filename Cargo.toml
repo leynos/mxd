@@ -113,8 +113,8 @@ test-util = { path = "test-util", default-features = false }
 postgresql_embedded = { version = "0.20", features = ["tokio"] }
 temp-env = "0.3"
 rstest = "0.26"
-rstest-bdd = "0.2.0"
-rstest-bdd-macros = { version = "0.2.0", features = ["compile-time-validation"] }
+rstest-bdd = "0.3.0"
+rstest-bdd-macros = { version = "0.3.0", features = ["compile-time-validation"] }
 serial_test = "3.2.0"
 proptest = "1.4.0"
 tempfile = "3.23.0"

@@ -14,6 +14,7 @@ use crate::{
 };
 
 /// Per-connection context used by `handle_request`.
+#[derive(Clone)]
 pub struct Context {
     /// Remote peer socket address.
     pub peer: SocketAddr,
@@ -24,7 +25,7 @@ pub struct Context {
 }
 
 /// Session state for a single connection.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Session {
     /// Authenticated user identifier, if logged in.
     pub user_id: Option<i32>,
