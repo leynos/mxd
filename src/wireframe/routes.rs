@@ -375,34 +375,33 @@ mod bdd {
         let _ = world.is_adapter_registered();
     }
 
-    #[when("the client sends an invalid transaction frame")]
-    fn when_send_invalid_frame(world: &RoutingWorld) {
-        // Simulate sending an invalid frame and receiving an error reply
+    /// Simulate sending a frame that produces an error reply.
+    ///
+    /// Creates a reply `FrameHeader` with the given type, id, and error code,
+    /// then stores it in the world state for subsequent assertions.
+    fn simulate_error_reply(world: &RoutingWorld, ty: u16, id: u32, error: u32) {
         let header = FrameHeader {
             flags: 0,
             is_reply: 1,
-            ty: 0,
-            id: 0,
-            error: ERR_INTERNAL,
+            ty,
+            id,
+            error,
             total_size: 0,
             data_size: 0,
         };
         world.set_reply_header(header);
     }
 
+    #[when("the client sends an invalid transaction frame")]
+    fn when_send_invalid_frame(world: &RoutingWorld) {
+        // Simulate sending an invalid frame and receiving an error reply
+        simulate_error_reply(world, 0, 0, ERR_INTERNAL);
+    }
+
     #[when("the client sends a transaction with unknown type")]
     fn when_send_unknown_type(world: &RoutingWorld) {
         // Simulate sending an unknown transaction type
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 1,
-            ty: 65535,
-            id: 1,
-            error: ERR_INTERNAL,
-            total_size: 0,
-            data_size: 0,
-        };
-        world.set_reply_header(header);
+        simulate_error_reply(world, 65535, 1, ERR_INTERNAL);
     }
 
     #[when("the client sends a get file list command without authentication")]
@@ -426,16 +425,7 @@ mod bdd {
     )]
     #[when("the client sends a transaction with id {id} and unknown type")]
     fn when_send_with_id(world: &RoutingWorld, id: u32) {
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 1,
-            ty: 65535,
-            id,
-            error: ERR_INTERNAL,
-            total_size: 0,
-            data_size: 0,
-        };
-        world.set_reply_header(header);
+        simulate_error_reply(world, 65535, id, ERR_INTERNAL);
     }
 
     #[then("the protocol adapter is registered")]
