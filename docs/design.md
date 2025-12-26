@@ -461,13 +461,13 @@ by emitting one or more physical frames. Payloads larger than `MAX_FRAME_DATA`
 frame). Fragmentation happens after the full payload has been assembled; the
 codec does not stream or fragment during parameter serialisation.
 
-For parameter-centric payloads, the codec exposes constructor helpers that reuse
-`transaction::encode_params`, ensuring there is a single implementation of
-parameter serialisation. `encode_params` validates the per-field constraints of
-the parameter block (for example, counts and field lengths must fit into
-`u16`), while the codec validates overall payload size limits (`MAX_PAYLOAD_SIZE`
-for the assembled payload and `MAX_FRAME_DATA` per frame) before emitting wire
-frames.
+For parameter-centric payloads, the codec exposes constructor helpers that
+reuse `transaction::encode_params`, ensuring there is a single implementation
+of parameter serialisation. `encode_params` validates the per-field constraints
+of the parameter block (for example, counts and field lengths must fit into
+`u16`), while the codec validates overall payload size limits
+(`MAX_PAYLOAD_SIZE` for the assembled payload and `MAX_FRAME_DATA` per frame)
+before emitting wire frames.
 
 To match the legacy encoder for shared cases, an empty parameter list produces
 an empty payload (rather than a two-byte parameter block containing a zero

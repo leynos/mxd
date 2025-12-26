@@ -180,23 +180,19 @@ fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<
 
 /// Build an error reply as a `HotlineTransaction`.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if transaction creation fails for an empty payload, which should
-/// never occur in normal operation. Such failures indicate a bug in the
-/// codec implementation.
-#[must_use]
-pub fn error_reply(header: &FrameHeader, error_code: u32) -> HotlineTransaction {
+/// Returns a [`TransactionError`] if the codec fails to create the transaction.
+/// This is unexpected for empty payloads and would indicate a bug in the codec
+/// implementation.
+///
+/// [`TransactionError`]: crate::transaction::TransactionError
+pub fn error_reply(
+    header: &FrameHeader,
+    error_code: u32,
+) -> Result<HotlineTransaction, crate::transaction::TransactionError> {
     let tx = error_transaction(header, error_code);
-
-    // Conversion with an empty payload is expected to be infallible; a failure
-    // indicates a bug in the codec implementation.
-    HotlineTransaction::try_from(tx).unwrap_or_else(|e| {
-        panic!(
-            "HotlineTransaction::try_from failed for empty payload in error_reply; \
-             this indicates a bug in the codec implementation: {e}"
-        )
-    })
+    HotlineTransaction::try_from(tx)
 }
 
 #[cfg(test)]
@@ -244,7 +240,7 @@ mod tests {
             data_size: 0,
         };
 
-        let reply = error_reply(&header, 1);
+        let reply = error_reply(&header, 1).expect("error_reply should succeed for valid header");
 
         assert_eq!(reply.header().is_reply, 1);
         assert_eq!(reply.header().ty, 107);
@@ -265,179 +261,108 @@ mod tests {
             data_size: 0,
         };
 
-        let reply = error_reply(&header, ERR_INTERNAL);
+        let reply = error_reply(&header, ERR_INTERNAL)
+            .expect("error_reply should succeed for valid header");
 
         assert_eq!(reply.header().id, 99999);
         assert_eq!(reply.header().error, ERR_INTERNAL);
     }
 }
 
+/// Additional unit tests covering error reply scenarios.
+///
+/// These tests verify the behaviour of `error_reply` across various routing
+/// scenarios without the overhead of BDD scaffolding. The scenarios correspond
+/// to those previously defined in `tests/features/wireframe_protocol_routing.feature`.
 #[cfg(test)]
-mod bdd {
-    use std::cell::RefCell;
-
-    use rstest::fixture;
-    use rstest_bdd::assert_step_ok;
-    use rstest_bdd_macros::{given, scenario, then, when};
+mod error_reply_scenarios {
+    use rstest::rstest;
 
     use super::*;
-    use crate::transaction::FrameHeader;
 
-    /// World state for protocol routing BDD scenarios.
-    struct RoutingWorld {
-        /// Whether the protocol adapter was registered.
-        adapter_registered: RefCell<bool>,
-        /// The last reply header received.
-        reply_header: RefCell<Option<FrameHeader>>,
-    }
+    /// Error code indicating a permission failure.
+    const ERR_PERMISSION: u32 = 1;
 
-    impl RoutingWorld {
-        fn new() -> Self {
-            Self {
-                adapter_registered: RefCell::new(false),
-                reply_header: RefCell::new(None),
-            }
-        }
-
-        fn set_adapter_registered(&self, registered: bool) {
-            *self.adapter_registered.borrow_mut() = registered;
-        }
-
-        fn is_adapter_registered(&self) -> bool { *self.adapter_registered.borrow() }
-
-        fn set_reply_header(&self, header: FrameHeader) {
-            self.reply_header.borrow_mut().replace(header);
-        }
-
-        fn reply_header(&self) -> Option<FrameHeader> { self.reply_header.borrow().clone() }
-    }
-
-    #[expect(
-        unused_braces,
-        reason = "rstest-bdd macro expansion produces braces; FIXME: upstream rstest-bdd#42"
-    )]
-    #[fixture]
-    fn world() -> RoutingWorld { RoutingWorld::new() }
-
-    #[given("a wireframe server with the protocol adapter registered")]
-    fn given_server_with_adapter(world: &RoutingWorld) {
-        // Simulate protocol adapter being registered
-        world.set_adapter_registered(true);
-    }
-
-    #[given("a connected client")]
-    fn given_connected_client(world: &RoutingWorld) {
-        // Client connection is implied in the server setup
-        // Touch world to satisfy the borrow checker
-        let _ = world.is_adapter_registered();
-    }
-
-    #[when("I inspect the server configuration")]
-    fn when_inspect_config(world: &RoutingWorld) {
-        // No-op; the assertion happens in the then step
-        let _ = world.is_adapter_registered();
-    }
-
-    /// Simulate sending a frame that produces an error reply.
-    ///
-    /// Creates a reply `FrameHeader` with the given type, id, and error code,
-    /// then stores it in the world state for subsequent assertions.
-    fn simulate_error_reply(world: &RoutingWorld, ty: u16, id: u32, error: u32) {
+    #[rstest]
+    fn invalid_frame_returns_internal_error() {
+        // Simulates routing an unparseable frame: the router creates an error
+        // reply with the internal error code.
         let header = FrameHeader {
             flags: 0,
-            is_reply: 1,
-            ty,
-            id,
-            error,
+            is_reply: 0,
+            ty: 0,
+            id: 0,
+            error: 0,
             total_size: 0,
             data_size: 0,
         };
-        world.set_reply_header(header);
+
+        let reply = error_reply(&header, ERR_INTERNAL)
+            .expect("error_reply should succeed for valid header");
+
+        assert_eq!(reply.header().error, ERR_INTERNAL);
+        assert_eq!(reply.header().is_reply, 1);
     }
 
-    #[when("the client sends an invalid transaction frame")]
-    fn when_send_invalid_frame(world: &RoutingWorld) {
-        // Simulate sending an invalid frame and receiving an error reply
-        simulate_error_reply(world, 0, 0, ERR_INTERNAL);
-    }
-
-    #[when("the client sends a transaction with unknown type")]
-    fn when_send_unknown_type(world: &RoutingWorld) {
-        // Simulate sending an unknown transaction type
-        simulate_error_reply(world, 65535, 1, ERR_INTERNAL);
-    }
-
-    #[when("the client sends a get file list command without authentication")]
-    fn when_send_file_list_unauthenticated(world: &RoutingWorld) {
-        // File list without auth returns permission error (error code 1)
+    #[rstest]
+    fn unknown_type_returns_internal_error() {
+        // Simulates routing a transaction with an unrecognised command type.
         let header = FrameHeader {
             flags: 0,
-            is_reply: 1,
+            is_reply: 0,
+            ty: 65535, // Unknown type
+            id: 1,
+            error: 0,
+            total_size: 0,
+            data_size: 0,
+        };
+
+        let reply = error_reply(&header, ERR_INTERNAL)
+            .expect("error_reply should succeed for valid header");
+
+        assert_eq!(reply.header().error, ERR_INTERNAL);
+        assert_eq!(reply.header().is_reply, 1);
+        assert_eq!(reply.header().ty, 65535);
+    }
+
+    #[rstest]
+    fn permission_error_preserves_type() {
+        // Simulates an unauthenticated client sending a protected command.
+        let header = FrameHeader {
+            flags: 0,
+            is_reply: 0,
             ty: 200, // GetFileNameList
             id: 2,
-            error: 1, // Permission error
+            error: 0,
             total_size: 0,
             data_size: 0,
         };
-        world.set_reply_header(header);
+
+        let reply = error_reply(&header, ERR_PERMISSION)
+            .expect("error_reply should succeed for valid header");
+
+        assert_eq!(reply.header().error, ERR_PERMISSION);
+        assert_eq!(reply.header().is_reply, 1);
+        assert_eq!(reply.header().ty, 200);
     }
 
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "rstest-bdd step parameters must be owned"
-    )]
-    #[when("the client sends a transaction with id {id} and unknown type")]
-    fn when_send_with_id(world: &RoutingWorld, id: u32) {
-        simulate_error_reply(world, 65535, id, ERR_INTERNAL);
+    #[rstest]
+    fn error_reply_preserves_id_for_unknown_type() {
+        // Verifies transaction ID preservation for error replies.
+        let header = FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 65535,
+            id: 12345,
+            error: 0,
+            total_size: 0,
+            data_size: 0,
+        };
+
+        let reply = error_reply(&header, ERR_INTERNAL)
+            .expect("error_reply should succeed for valid header");
+
+        assert_eq!(reply.header().id, 12345);
+        assert_eq!(reply.header().error, ERR_INTERNAL);
     }
-
-    #[then("the protocol adapter is registered")]
-    fn then_adapter_registered(world: &RoutingWorld) {
-        assert!(
-            world.is_adapter_registered(),
-            "protocol adapter should be registered"
-        );
-    }
-
-    #[then("the reply indicates an internal error")]
-    fn then_internal_error(world: &RoutingWorld) {
-        let header = world.reply_header();
-        let header = assert_step_ok!(header.ok_or("missing reply header"));
-        assert_eq!(header.error, ERR_INTERNAL);
-        assert_eq!(header.is_reply, 1);
-    }
-
-    #[then("the reply indicates a permission error")]
-    fn then_permission_error(world: &RoutingWorld) {
-        let header = world.reply_header();
-        let header = assert_step_ok!(header.ok_or("missing reply header"));
-        assert_eq!(header.error, 1);
-        assert_eq!(header.is_reply, 1);
-    }
-
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "rstest-bdd step parameters must be owned"
-    )]
-    #[then("the reply transaction id is {id}")]
-    fn then_transaction_id(world: &RoutingWorld, id: u32) {
-        let header = world.reply_header();
-        let header = assert_step_ok!(header.ok_or("missing reply header"));
-        assert_eq!(header.id, id);
-    }
-
-    #[scenario(path = "tests/features/wireframe_protocol_routing.feature", index = 0)]
-    fn protocol_adapter_registered(world: RoutingWorld) { let _ = world; }
-
-    #[scenario(path = "tests/features/wireframe_protocol_routing.feature", index = 1)]
-    fn invalid_frame_returns_error(world: RoutingWorld) { let _ = world; }
-
-    #[scenario(path = "tests/features/wireframe_protocol_routing.feature", index = 2)]
-    fn unknown_type_returns_error(world: RoutingWorld) { let _ = world; }
-
-    #[scenario(path = "tests/features/wireframe_protocol_routing.feature", index = 3)]
-    fn unauthenticated_permission_error(world: RoutingWorld) { let _ = world; }
-
-    #[scenario(path = "tests/features/wireframe_protocol_routing.feature", index = 4)]
-    fn error_reply_preserves_id(world: RoutingWorld) { let _ = world; }
 }
