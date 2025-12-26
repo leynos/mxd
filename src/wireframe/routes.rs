@@ -133,6 +133,24 @@ pub async fn process_transaction_bytes(
     }
 }
 
+/// Convert a transaction to raw bytes.
+fn transaction_to_bytes(tx: &Transaction) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(crate::transaction::HEADER_LEN + tx.payload.len());
+    let mut header_buf = [0u8; crate::transaction::HEADER_LEN];
+    tx.header.write_bytes(&mut header_buf);
+    bytes.extend_from_slice(&header_buf);
+    bytes.extend_from_slice(&tx.payload);
+    bytes
+}
+
+/// Build an error reply transaction from a header and error code.
+fn error_transaction(header: &FrameHeader, error_code: u32) -> Transaction {
+    Transaction {
+        header: reply_header(header, error_code, 0),
+        payload: Vec::new(),
+    }
+}
+
 /// Handle transaction parse errors by returning an error reply.
 fn handle_parse_error(e: impl std::fmt::Display) -> Vec<u8> {
     warn!(error = %e, "failed to parse transaction from bytes");
@@ -145,39 +163,19 @@ fn handle_parse_error(e: impl std::fmt::Display) -> Vec<u8> {
         total_size: 0,
         data_size: 0,
     };
-    error_reply_bytes(&header, ERR_INTERNAL)
+    transaction_to_bytes(&error_transaction(&header, ERR_INTERNAL))
 }
 
 /// Handle command parsing errors by returning an error reply.
 fn handle_command_parse_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<u8> {
     warn!(error = %e, "failed to parse command from transaction");
-    error_reply_bytes(header, ERR_INTERNAL)
+    transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
 }
 
 /// Handle command processing errors by returning an error reply.
 fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<u8> {
     error!(error = %e, "command processing failed");
-    error_reply_bytes(header, ERR_INTERNAL)
-}
-
-/// Convert a transaction to raw bytes.
-fn transaction_to_bytes(tx: &Transaction) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(crate::transaction::HEADER_LEN + tx.payload.len());
-    let mut header_buf = [0u8; crate::transaction::HEADER_LEN];
-    tx.header.write_bytes(&mut header_buf);
-    bytes.extend_from_slice(&header_buf);
-    bytes.extend_from_slice(&tx.payload);
-    bytes
-}
-
-/// Build an error reply transaction as bytes.
-fn error_reply_bytes(header: &FrameHeader, error_code: u32) -> Vec<u8> {
-    let reply_hdr = reply_header(header, error_code, 0);
-    let tx = Transaction {
-        header: reply_hdr,
-        payload: Vec::new(),
-    };
-    transaction_to_bytes(&tx)
+    transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
 }
 
 /// Build an error reply as a `HotlineTransaction`.
@@ -189,58 +187,24 @@ fn error_reply_bytes(header: &FrameHeader, error_code: u32) -> Vec<u8> {
 /// codec implementation.
 #[must_use]
 pub fn error_reply(header: &FrameHeader, error_code: u32) -> HotlineTransaction {
-    let reply_hdr = reply_header(header, error_code, 0);
-    let tx = Transaction {
-        header: reply_hdr,
-        payload: Vec::new(),
-    };
-    // This conversion should not fail for empty payloads
-    HotlineTransaction::try_from(tx).unwrap_or_else(|_| {
-        // Fallback: create a minimal valid transaction
-        let hdr = FrameHeader {
-            flags: 0,
-            is_reply: 1,
-            ty: header.ty,
-            id: header.id,
-            error: error_code,
-            total_size: 0,
-            data_size: 0,
-        };
-        // Safe: empty payload always succeeds
-        HotlineTransaction::try_from(Transaction {
-            header: hdr,
-            payload: Vec::new(),
-        })
-        .unwrap_or_else(|e| {
-            // This should never happen, but log and create a truly minimal response
-            error!(error = %e, "failed to create error reply - this is a bug");
-            panic!("cannot create error reply: {e}");
-        })
+    let tx = error_transaction(header, error_code);
+
+    // Conversion with an empty payload is expected to be infallible; a failure
+    // indicates a bug in the codec implementation.
+    HotlineTransaction::try_from(tx).unwrap_or_else(|e| {
+        panic!(
+            "HotlineTransaction::try_from failed for empty payload in error_reply; \
+             this indicates a bug in the codec implementation: {e}"
+        )
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};
     use rstest::rstest;
 
     use super::*;
-    use crate::db::DbConnection;
-
-    fn dummy_pool() -> DbPool {
-        let manager = AsyncDieselConnectionManager::<DbConnection>::new(
-            "postgres://example.invalid/mxd-test",
-        );
-        Pool::builder()
-            .max_size(1)
-            .min_idle(Some(0))
-            .idle_timeout(None::<Duration>)
-            .max_lifetime(None::<Duration>)
-            .test_on_check_out(false)
-            .build_unchecked(manager)
-    }
+    use crate::wireframe::test_helpers::dummy_pool;
 
     #[rstest]
     fn route_state_can_be_created() {
@@ -349,10 +313,9 @@ mod bdd {
     }
 
     #[expect(
-        clippy::allow_attributes,
-        reason = "rustc compiler does not emit expected lint"
+        unused_braces,
+        reason = "rstest-bdd macro expansion produces braces; FIXME: upstream rstest-bdd#42"
     )]
-    #[allow(unused_braces, reason = "rstest-bdd macro expansion produces braces")]
     #[fixture]
     fn world() -> RoutingWorld { RoutingWorld::new() }
 

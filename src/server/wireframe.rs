@@ -201,31 +201,17 @@ fn resolve_hostname(target: &str) -> Result<SocketAddr> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};
     use rstest::{fixture, rstest};
     use serial_test::serial;
 
     use super::*;
     use crate::{
-        db::DbConnection,
         protocol::VERSION,
-        wireframe::connection::{clear_current_handshake, store_current_handshake},
+        wireframe::{
+            connection::{clear_current_handshake, store_current_handshake},
+            test_helpers::dummy_pool,
+        },
     };
-
-    fn dummy_pool() -> DbPool {
-        let manager = AsyncDieselConnectionManager::<DbConnection>::new(
-            "postgres://example.invalid/mxd-test",
-        );
-        Pool::builder()
-            .max_size(1)
-            .min_idle(Some(0))
-            .idle_timeout(None::<Duration>)
-            .max_lifetime(None::<Duration>)
-            .test_on_check_out(false)
-            .build_unchecked(manager)
-    }
 
     #[fixture]
     fn bound_config() -> AppConfig {
