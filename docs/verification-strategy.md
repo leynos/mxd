@@ -99,20 +99,20 @@ choosing TLA+/TLC, Stateright, or Kani for a new roadmap task.
 graph TD
   A[New roadmap task or subsystem] --> B{What is the primary risk?}
 
-  B -->|State machine progression or policy invariants| C[Use TLA_plus and TLC]
-  C --> C1[Write spec in crates_mxd_verification_tla]
+  B -->|State machine progression or policy invariants| C[Use TLA+ and TLC]
+  C --> C1["Write spec in crates/mxd-verification/tla"]
   C1 --> C2[Define invariants and bounds in cfg]
   C2 --> C3[Run TLC locally and in CI]
 
   B -->|Concurrency or ordering across clients| D[Use Stateright]
-  D --> D1[Model actors in mxd_verification crate]
+  D --> D1["Model actors in mxd-verification crate"]
   D1 --> D2[Call domain step function from model]
   D2 --> D3[Define safety and liveness properties]
   D3 --> D4[Run Stateright via cargo test]
 
   B -->|Local invariants or panic freedom in Rust code| E[Use Kani]
   E --> E1[Identify small pure functions or helpers]
-  E1 --> E2[Write Kani harnesses under cfg_kani]
+  E1 --> E2["Write Kani harnesses under #[cfg(kani)]"]
   E2 --> E3[Run cargo kani for selected harnesses]
 
   C3 --> F[Integrate verification status into roadmap acceptance criteria]

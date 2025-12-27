@@ -277,9 +277,10 @@ and explicit dependencies. Timeframes are intentionally omitted.
   repositories containing thousands of nodes. Dependencies: Task “Migrate
   existing file metadata into `FileNode` records without data loss.”
 - [ ] Task: Add Kani harnesses for permission bitsets and drop box predicates.
-  Acceptance: Kani proves ACL checks and drop box visibility rules for bounded
-  cases without panics. Dependencies: Task “Introduce the `FileNode` schema and
-  permission model described in `docs/file-sharing-design.md`.”
+  Acceptance: Kani proves access-control list (ACL) checks and drop box
+  visibility rules for bounded cases without panics. Dependencies: Task
+  “Introduce the `FileNode` schema and permission model described in
+  `docs/file-sharing-design.md`.”
 
 ### Step: Provide file listing and metadata transactions
 
