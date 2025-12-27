@@ -142,49 +142,37 @@ mod tests {
         assert!(Arc::ptr_eq(protocol.argon2(), &argon2_clone));
     }
 
-    #[rstest]
-    fn handle_error_does_not_panic() {
-        let pool = dummy_pool();
-        let argon2 = Arc::new(Argon2::default());
-        let protocol = HotlineProtocol::new(pool, argon2);
-        let mut ctx = ConnectionContext;
-
-        // Should not panic - error type is () so no detailed error info
-        protocol.handle_error((), &mut ctx);
+    /// Lifecycle hook identifiers for parameterized testing.
+    #[derive(Debug, Clone, Copy)]
+    enum LifecycleHook {
+        HandleError,
+        StreamEndFrame,
+        OnCommandEnd,
+        BeforeSend,
     }
 
     #[rstest]
-    fn stream_end_frame_returns_none() {
+    #[case::handle_error(LifecycleHook::HandleError)]
+    #[case::stream_end_frame(LifecycleHook::StreamEndFrame)]
+    #[case::on_command_end(LifecycleHook::OnCommandEnd)]
+    #[case::before_send(LifecycleHook::BeforeSend)]
+    fn lifecycle_hooks_do_not_panic(#[case] hook: LifecycleHook) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
         let protocol = HotlineProtocol::new(pool, argon2);
         let mut ctx = ConnectionContext;
 
-        let frame = protocol.stream_end_frame(&mut ctx);
-
-        assert!(frame.is_none());
-    }
-
-    #[rstest]
-    fn on_command_end_does_not_panic() {
-        let pool = dummy_pool();
-        let argon2 = Arc::new(Argon2::default());
-        let protocol = HotlineProtocol::new(pool, argon2);
-        let mut ctx = ConnectionContext;
-
-        // Should not panic
-        protocol.on_command_end(&mut ctx);
-    }
-
-    #[rstest]
-    fn before_send_does_not_panic() {
-        let pool = dummy_pool();
-        let argon2 = Arc::new(Argon2::default());
-        let protocol = HotlineProtocol::new(pool, argon2);
-        let mut ctx = ConnectionContext;
-        let mut frame = vec![0u8; 20];
-
-        // Should not panic
-        protocol.before_send(&mut frame, &mut ctx);
+        match hook {
+            LifecycleHook::HandleError => protocol.handle_error((), &mut ctx),
+            LifecycleHook::StreamEndFrame => {
+                let frame = protocol.stream_end_frame(&mut ctx);
+                assert!(frame.is_none());
+            }
+            LifecycleHook::OnCommandEnd => protocol.on_command_end(&mut ctx),
+            LifecycleHook::BeforeSend => {
+                let mut frame = vec![0u8; 20];
+                protocol.before_send(&mut frame, &mut ctx);
+            }
+        }
     }
 }

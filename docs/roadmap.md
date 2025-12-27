@@ -99,7 +99,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 ### Step: Route transactions through wireframe
 
 - [x] Task: Implement a domain-backed `WireframeProtocol` adapter registered
-  via `.with_protocol(...)`. Acceptance: The server initialisation builds the
+  via `.with_protocol(...)`. Acceptance: The server initialization builds the
   adapter described in
   `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`, and
   routing smoke tests exercise every handler through this port without invoking

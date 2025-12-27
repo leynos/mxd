@@ -228,141 +228,46 @@ mod tests {
         assert_eq!(state.session().user_id, Some(42));
     }
 
-    #[rstest]
-    fn error_reply_creates_valid_transaction() {
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 12345,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        };
-
-        let reply = error_reply(&header, 1).expect("error_reply should succeed for valid header");
-
-        assert_eq!(reply.header().is_reply, 1);
-        assert_eq!(reply.header().ty, 107);
-        assert_eq!(reply.header().id, 12345);
-        assert_eq!(reply.header().error, 1);
-        assert!(reply.payload().is_empty());
-    }
-
-    #[rstest]
-    fn error_reply_preserves_transaction_id() {
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 200,
-            id: 99999,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        };
-
-        let reply = error_reply(&header, ERR_INTERNAL)
-            .expect("error_reply should succeed for valid header");
-
-        assert_eq!(reply.header().id, 99999);
-        assert_eq!(reply.header().error, ERR_INTERNAL);
-    }
-}
-
-/// Additional unit tests covering error reply scenarios.
-///
-/// These tests verify the behaviour of `error_reply` across various routing
-/// scenarios without the overhead of BDD scaffolding. The scenarios correspond
-/// to those previously defined in `tests/features/wireframe_protocol_routing.feature`.
-#[cfg(test)]
-mod error_reply_scenarios {
-    use rstest::rstest;
-
-    use super::*;
-
     /// Error code indicating a permission failure.
     const ERR_PERMISSION: u32 = 1;
 
+    /// Parameterized test covering error reply scenarios.
+    ///
+    /// Each case verifies that `error_reply` correctly constructs a reply with:
+    /// - `is_reply` set to 1
+    /// - The original transaction type preserved
+    /// - The original transaction ID preserved
+    /// - The specified error code applied
+    /// - An empty payload
     #[rstest]
-    fn invalid_frame_returns_internal_error() {
-        // Simulates routing an unparseable frame: the router creates an error
-        // reply with the internal error code.
+    #[case::creates_valid_transaction(107, 12345, 1)]
+    #[case::preserves_transaction_id(200, 99999, ERR_INTERNAL)]
+    #[case::invalid_frame_returns_internal_error(0, 0, ERR_INTERNAL)]
+    #[case::unknown_type_returns_internal_error(65535, 1, ERR_INTERNAL)]
+    #[case::permission_error_preserves_type(200, 2, ERR_PERMISSION)]
+    #[case::preserves_id_for_unknown_type(65535, 12345, ERR_INTERNAL)]
+    fn error_reply_preserves_header_fields(
+        #[case] ty: u16,
+        #[case] id: u32,
+        #[case] error_code: u32,
+    ) {
         let header = FrameHeader {
             flags: 0,
             is_reply: 0,
-            ty: 0,
-            id: 0,
+            ty,
+            id,
             error: 0,
             total_size: 0,
             data_size: 0,
         };
 
-        let reply = error_reply(&header, ERR_INTERNAL)
-            .expect("error_reply should succeed for valid header");
+        let reply =
+            error_reply(&header, error_code).expect("error_reply should succeed for valid header");
 
-        assert_eq!(reply.header().error, ERR_INTERNAL);
         assert_eq!(reply.header().is_reply, 1);
-    }
-
-    #[rstest]
-    fn unknown_type_returns_internal_error() {
-        // Simulates routing a transaction with an unrecognised command type.
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 65535, // Unknown type
-            id: 1,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        };
-
-        let reply = error_reply(&header, ERR_INTERNAL)
-            .expect("error_reply should succeed for valid header");
-
-        assert_eq!(reply.header().error, ERR_INTERNAL);
-        assert_eq!(reply.header().is_reply, 1);
-        assert_eq!(reply.header().ty, 65535);
-    }
-
-    #[rstest]
-    fn permission_error_preserves_type() {
-        // Simulates an unauthenticated client sending a protected command.
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 200, // GetFileNameList
-            id: 2,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        };
-
-        let reply = error_reply(&header, ERR_PERMISSION)
-            .expect("error_reply should succeed for valid header");
-
-        assert_eq!(reply.header().error, ERR_PERMISSION);
-        assert_eq!(reply.header().is_reply, 1);
-        assert_eq!(reply.header().ty, 200);
-    }
-
-    #[rstest]
-    fn error_reply_preserves_id_for_unknown_type() {
-        // Verifies transaction ID preservation for error replies.
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 65535,
-            id: 12345,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        };
-
-        let reply = error_reply(&header, ERR_INTERNAL)
-            .expect("error_reply should succeed for valid header");
-
-        assert_eq!(reply.header().id, 12345);
-        assert_eq!(reply.header().error, ERR_INTERNAL);
+        assert_eq!(reply.header().ty, ty);
+        assert_eq!(reply.header().id, id);
+        assert_eq!(reply.header().error, error_code);
+        assert!(reply.payload().is_empty());
     }
 }
