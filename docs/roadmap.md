@@ -155,7 +155,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   fallbacks remain available. Acceptance: Compatibility tests prove Hotline
   1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange messages
   successfully. Dependencies: Task “Persist handshake metadata (sub-protocol
-  ID, sub- version) into per-connection state for later routing decisions.”
+  ID, sub-version) into per-connection state for later routing decisions.”
 - [ ] Task: Publish an internal compatibility matrix documenting supported
   clients, known deviations, and required toggles. Acceptance: The matrix lives
   in `docs/` and is referenced by release notes during QA sign-off.

@@ -25,10 +25,10 @@ Non-goals:
 Verification assumes the domain core is expressed as a deterministic transition
 system:
 
-- `DomainState` for server-wide and per-session state.
+- Server-wide and per-session state, captured in `DomainState`.
 - `DomainEvent` for semantic inputs.
-- `DomainEffect` for semantic outputs.
-- `step(state, event) -> (state', effects)` as a pure transition.
+- Semantic outputs represented by `DomainEffect`.
+- Pure transitions via `step(state, event) -> (state', effects)`.
 
 Adapters (wireframe framing, persistence, object storage) translate between I/O
 and the domain. This keeps verification focused on semantics rather than
