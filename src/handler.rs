@@ -14,6 +14,7 @@ use crate::{
 };
 
 /// Per-connection context used by `handle_request`.
+#[derive(Clone)]
 pub struct Context {
     /// Remote peer socket address.
     pub peer: SocketAddr,
@@ -24,7 +25,7 @@ pub struct Context {
 }
 
 /// Session state for a single connection.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Session {
     /// Authenticated user identifier, if logged in.
     pub user_id: Option<i32>,
@@ -60,25 +61,8 @@ pub async fn handle_request(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};
-
     use super::*;
-    use crate::db::DbConnection;
-
-    fn dummy_pool() -> DbPool {
-        let manager = AsyncDieselConnectionManager::<DbConnection>::new(
-            "postgres://example.invalid/mxd-test",
-        );
-        Pool::builder()
-            .max_size(1)
-            .min_idle(Some(0))
-            .idle_timeout(None::<Duration>)
-            .max_lifetime(None::<Duration>)
-            .test_on_check_out(false)
-            .build_unchecked(manager)
-    }
+    use crate::wireframe::test_helpers::dummy_pool;
 
     #[tokio::test]
     async fn context_carries_shared_argon2_reference() {

@@ -2,26 +2,13 @@
 
 #![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
-use std::time::Duration;
+use crate::{db::DbPool, protocol};
 
-use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8::Pool};
-
-use crate::{
-    db::{DbConnection, DbPool},
-    protocol,
-};
-
-pub(super) fn dummy_pool() -> DbPool {
-    let manager =
-        AsyncDieselConnectionManager::<DbConnection>::new("postgres://example.invalid/mxd-test");
-    Pool::builder()
-        .max_size(1)
-        .min_idle(Some(0))
-        .idle_timeout(None::<Duration>)
-        .max_lifetime(None::<Duration>)
-        .test_on_check_out(false)
-        .build_unchecked(manager)
-}
+/// Re-export the shared `dummy_pool` helper from `wireframe::test_helpers`.
+///
+/// This avoids duplication across test modules; all tests share the same pool
+/// configuration for consistency.
+pub(super) fn dummy_pool() -> DbPool { crate::wireframe::test_helpers::dummy_pool() }
 
 pub(super) fn handshake_frame() -> [u8; protocol::HANDSHAKE_LEN] {
     let mut buf = [0u8; protocol::HANDSHAKE_LEN];
