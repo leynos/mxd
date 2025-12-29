@@ -21,7 +21,11 @@
 //! the `WireframeApp`. The middleware intercepts all frames, processes them
 //! through the domain command dispatcher, and writes the reply bytes.
 
-use std::{convert::Infallible, sync::Arc};
+use std::{
+    convert::Infallible,
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 use argon2::Argon2;
 use async_trait::async_trait;
@@ -223,7 +227,10 @@ pub struct TransactionMiddleware {
 impl TransactionMiddleware {
     /// Create a new transaction middleware with the given pool and session.
     #[must_use]
-    pub fn new(pool: DbPool, session: Arc<tokio::sync::Mutex<crate::handler::Session>>) -> Self {
+    pub const fn new(
+        pool: DbPool,
+        session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    ) -> Self {
         Self { pool, session }
     }
 }
@@ -247,7 +254,7 @@ where
 
         let peer = current_peer().unwrap_or_else(|| {
             warn!("peer address missing in middleware; using default");
-            "0.0.0.0:0".parse().expect("valid fallback address")
+            SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0)
         });
 
         let frame = req.frame().to_vec();

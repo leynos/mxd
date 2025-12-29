@@ -31,7 +31,7 @@
 #[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 use std::{
-    net::{SocketAddr, ToSocketAddrs},
+    net::{Ipv4Addr, SocketAddr, ToSocketAddrs},
     sync::Arc,
 };
 
@@ -117,7 +117,7 @@ fn build_app(config: Arc<AppConfig>, pool: DbPool, argon2: Arc<Argon2<'static>>)
     });
     let _peer = current_peer().unwrap_or_else(|| {
         warn!("peer address missing; defaulting to unspecified");
-        "0.0.0.0:0".parse().expect("valid fallback address")
+        SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0)
     });
     #[cfg(test)]
     {
@@ -139,6 +139,14 @@ fn build_app(config: Arc<AppConfig>, pool: DbPool, argon2: Arc<Argon2<'static>>)
     // to work correctly with Tokio's work-stealing scheduler.
     let middleware = TransactionMiddleware::new(pool.clone(), Arc::clone(&session));
 
+    // These expect() calls are on infallible operations:
+    // - WireframeApp::new() only fails on internal errors
+    // - route(0, _) only fails for duplicate routes
+    // - wrap() middleware registration should not fail
+    #[expect(
+        clippy::expect_used,
+        reason = "wireframe builder operations are infallible for valid inputs"
+    )]
     let app = WireframeApp::new()
         .expect("WireframeApp creation should succeed")
         .with_protocol(protocol)
