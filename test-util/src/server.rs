@@ -157,17 +157,28 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     if let Some(out) = &mut child.stdout {
         let mut reader = BufReader::new(out);
         let mut line = String::new();
+        let mut lines_received: Vec<String> = Vec::new();
         let timeout = Duration::from_secs(10);
         let start = Instant::now();
         loop {
             line.clear();
             if reader.read_line(&mut line)? == 0 {
+                eprintln!(
+                    "[test-util] server exited early. Lines received: {:?}",
+                    lines_received
+                );
                 return Err("server exited before signalling readiness".into());
             }
+            lines_received.push(line.trim().to_string());
             if line.contains("listening on") {
                 break;
             }
             if start.elapsed() > timeout {
+                eprintln!(
+                    "[test-util] timeout after {:?}. Lines received: {:?}",
+                    start.elapsed(),
+                    lines_received
+                );
                 return Err("timeout waiting for server to signal readiness".into());
             }
         }
@@ -182,9 +193,20 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
 fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
     if let Some(bin) = std::env::var_os(SERVER_BINARY_ENV) {
         if Path::new(&bin).exists() {
+            eprintln!(
+                "[test-util] using prebuilt binary: {}",
+                bin.to_string_lossy()
+            );
             return server_binary_command(bin, port, db_url);
         }
+        eprintln!(
+            "[test-util] binary from env var does not exist: {}",
+            bin.to_string_lossy()
+        );
+    } else {
+        eprintln!("[test-util] {} env var not set", SERVER_BINARY_ENV);
     }
+    eprintln!("[test-util] falling back to cargo run");
     cargo_run_command(manifest_path, port, db_url)
 }
 

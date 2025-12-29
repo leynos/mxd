@@ -31,6 +31,7 @@
 #[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 use std::{
+    io::Write,
     net::{Ipv4Addr, SocketAddr, ToSocketAddrs},
     sync::Arc,
 };
@@ -214,6 +215,9 @@ impl WireframeBootstrap {
             .context("failed to bind Wireframe listener")?;
         if let Some(addr) = server.local_addr() {
             println!("mxd-wireframe-server listening on {addr}");
+            // Explicit flush ensures the message reaches piped stdout immediately,
+            // which is critical for test harness readiness detection.
+            std::io::stdout().flush().ok();
         }
         server
             .run()
