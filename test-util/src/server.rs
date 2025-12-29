@@ -181,7 +181,9 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
 /// requested manifest, bind port, and database URL, enabling the active backend.
 fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
     if let Some(bin) = std::env::var_os(SERVER_BINARY_ENV) {
-        return server_binary_command(bin, port, db_url);
+        if Path::new(&bin).exists() {
+            return server_binary_command(bin, port, db_url);
+        }
     }
     cargo_run_command(manifest_path, port, db_url)
 }
@@ -204,9 +206,12 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
     let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut cmd = Command::new(cargo);
     cmd.arg("run");
+    // Always use --no-default-features and explicitly specify required features
+    // to ensure the binary is built with the same feature set as the tests.
+    cmd.arg("--no-default-features");
     #[cfg(feature = "postgres")]
     {
-        cmd.args(["--no-default-features", "--features", "postgres"]);
+        cmd.args(["--features", "postgres"]);
     }
     #[cfg(feature = "sqlite")]
     {
