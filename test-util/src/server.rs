@@ -215,7 +215,7 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
     }
     #[cfg(feature = "sqlite")]
     {
-        cmd.args(["--features", "sqlite"]);
+        cmd.args(["--features", "sqlite,toml"]);
     }
     // Ensure the server binary matches the feature set used by tests so Cargo
     // does not trigger a costly rebuild when the harness falls back to
