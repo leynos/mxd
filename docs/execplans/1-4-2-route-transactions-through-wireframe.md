@@ -38,12 +38,13 @@ tests.
 
 ## Surprises & Discoveries
 
-- Observation: wireframe v0.1.0's `from_fn` middleware helper cannot be used with
-  `WireframeApp::wrap()` due to a type mismatch.
-  Evidence: `from_fn` produces `FnService<HandlerService<E>, F>` but
-  `Middleware<E>` requires `Transform<HandlerService<E>, Output = HandlerService<E>>`.
-  Resolution: Implemented custom `TransactionMiddleware` struct that implements
-  `Transform` directly and wraps output in `HandlerService::from_service()`.
+- Observation: wireframe v0.1.0's `from_fn` middleware helper cannot be used
+  with
+  `WireframeApp::wrap()` due to a type mismatch. Evidence: `from_fn` produces
+  `FnService<HandlerService<E>, F>` but `Middleware<E>` requires
+  `Transform<HandlerService<E>, Output = HandlerService<E>>`. Resolution:
+  Implemented custom `TransactionMiddleware` struct that implements `Transform`
+  directly and wraps output in `HandlerService::from_service()`.
 
 - Observation: Thread-local storage does not work with Tokio's work-stealing
   scheduler for passing connection state between `build_app()` and middleware.
@@ -60,10 +61,9 @@ tests.
   Date/Author: 2025-12-29 / User decision.
 
 - Decision: Unknown transaction types return ERR_INTERNAL (code 3) with warning
-  log.
-  Rationale: Consistent with existing error handling in `commands.rs`; provides
-  visibility into unsupported requests.
-  Date/Author: 2025-12-29 / User decision.
+  log. Rationale: Consistent with existing error handling in `commands.rs`;
+  provides visibility into unsupported requests. Date/Author: 2025-12-29 / User
+  decision.
 
 ## Outcomes & Retrospective
 
@@ -159,9 +159,9 @@ Add behavioural tests using rstest-bdd v0.3.2:
 
 ### Phase 4: Documentation
 
-Update `docs/design.md` with the routing architecture.
-Update `docs/users-guide.md` if any user-facing behaviour changes.
-Mark task 1.4.2 as done in `docs/roadmap.md`.
+Update `docs/design.md` with the routing architecture. Update
+`docs/users-guide.md` if any user-facing behaviour changes. Mark task 1.4.2 as
+done in `docs/roadmap.md`.
 
 ## Concrete Steps
 
@@ -250,7 +250,7 @@ Example handler signature from wireframe library:
 
 In `src/wireframe/routes.rs`, the following function will be added:
 
-    pub fn register_routes(app: WireframeApp, pool: DbPool, ...) -> WireframeApp
+    pub fn register_routes(app: WireframeApp, pool: DbPool, …) -> WireframeApp
 
 In `src/server/wireframe.rs`, `build_app()` will be updated to call
 `register_routes()` after `.with_protocol(protocol)`.

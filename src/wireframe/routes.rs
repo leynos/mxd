@@ -364,7 +364,10 @@ mod tests {
         let result = handle_parse_error("simulated parse error");
 
         // Should produce a valid transaction header + empty payload
-        assert!(result.len() >= HEADER_LEN, "response too short to contain header");
+        assert!(
+            result.len() >= HEADER_LEN,
+            "response too short to contain header"
+        );
 
         let reply_header = FrameHeader::from_bytes(
             result[..HEADER_LEN]
@@ -609,9 +612,7 @@ mod bdd {
     }
 
     #[when("I send a truncated frame of 10 bytes")]
-    fn when_truncated(world: &RoutingWorld) {
-        world.send_transaction(vec![0u8; 10]);
-    }
+    fn when_truncated(world: &RoutingWorld) { world.send_transaction(vec![0u8; 10]); }
 
     #[when("I send a transaction with unknown type 65535 and ID {id}")]
     fn when_unknown_with_id(world: &RoutingWorld, id: u32) {
