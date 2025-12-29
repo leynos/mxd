@@ -63,12 +63,18 @@ impl From<&Handshake> for HandshakeMetadata {
     reason = "RefCell initialisation cannot be const for thread locals"
 )]
 mod handshake_local {
-    use std::cell::RefCell;
+    use std::{cell::RefCell, net::SocketAddr, sync::Arc};
+
+    use tokio::sync::Mutex;
 
     use super::HandshakeMetadata;
+    use crate::{db::DbPool, handler::Session};
 
     thread_local! {
         pub static HANDSHAKE: RefCell<Option<HandshakeMetadata>> = RefCell::new(None);
+        pub static PEER_ADDR: RefCell<Option<SocketAddr>> = RefCell::new(None);
+        pub static CONNECTION_POOL: RefCell<Option<DbPool>> = RefCell::new(None);
+        pub static CONNECTION_SESSION: RefCell<Option<Arc<Mutex<Session>>>> = RefCell::new(None);
     }
 }
 
@@ -94,6 +100,76 @@ pub fn current_handshake() -> Option<HandshakeMetadata> {
 /// Remove the handshake metadata entry for the current Tokio task.
 pub fn clear_current_handshake() {
     handshake_local::HANDSHAKE.with(|cell| {
+        cell.borrow_mut().take();
+    });
+}
+
+/// Store peer address for the current Tokio task.
+///
+/// The peer address is stored in a thread-local alongside the handshake
+/// metadata so `build_app()` can retrieve it when constructing per-connection
+/// state.
+pub fn store_current_peer(addr: std::net::SocketAddr) {
+    handshake_local::PEER_ADDR.with(|cell| {
+        cell.borrow_mut().replace(addr);
+    });
+}
+
+/// Retrieve peer address for the current Tokio task, if present.
+#[must_use]
+pub fn current_peer() -> Option<std::net::SocketAddr> {
+    handshake_local::PEER_ADDR.with(|cell| *cell.borrow())
+}
+
+/// Remove the peer address entry for the current Tokio task.
+pub fn clear_current_peer() {
+    handshake_local::PEER_ADDR.with(|cell| {
+        cell.borrow_mut().take();
+    });
+}
+
+/// Store database pool for the current connection.
+///
+/// Call this during `build_app()` to make the pool available to middleware
+/// running on the same thread.
+pub fn store_current_pool(pool: crate::db::DbPool) {
+    handshake_local::CONNECTION_POOL.with(|cell| {
+        cell.borrow_mut().replace(pool);
+    });
+}
+
+/// Retrieve database pool for the current connection, if present.
+#[must_use]
+pub fn current_pool() -> Option<crate::db::DbPool> {
+    handshake_local::CONNECTION_POOL.with(|cell| cell.borrow().clone())
+}
+
+/// Remove the database pool entry for the current connection.
+pub fn clear_current_pool() {
+    handshake_local::CONNECTION_POOL.with(|cell| {
+        cell.borrow_mut().take();
+    });
+}
+
+/// Store session state for the current connection.
+///
+/// Call this during `build_app()` to make the session available to middleware
+/// running on the same thread.
+pub fn store_current_session(session: std::sync::Arc<tokio::sync::Mutex<crate::handler::Session>>) {
+    handshake_local::CONNECTION_SESSION.with(|cell| {
+        cell.borrow_mut().replace(session);
+    });
+}
+
+/// Retrieve session state for the current connection, if present.
+#[must_use]
+pub fn current_session() -> Option<std::sync::Arc<tokio::sync::Mutex<crate::handler::Session>>> {
+    handshake_local::CONNECTION_SESSION.with(|cell| cell.borrow().clone())
+}
+
+/// Remove the session state entry for the current connection.
+pub fn clear_current_session() {
+    handshake_local::CONNECTION_SESSION.with(|cell| {
         cell.borrow_mut().take();
     });
 }

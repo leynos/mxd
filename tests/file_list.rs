@@ -2,11 +2,6 @@
 //!
 //! Exercises the `GetFileNameList` transaction with ACL filtering and error
 //! handling scenarios.
-//!
-//! File list routing is exposed only via the legacy adapter until wireframe
-//! transaction mapping lands.
-
-#![cfg(feature = "legacy-networking")]
 #![allow(
     unfulfilled_lint_expectations,
     reason = "test lint expectations may not all trigger"

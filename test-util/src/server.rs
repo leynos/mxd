@@ -87,7 +87,17 @@ impl fmt::Display for DbUrl {
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-/// Ensure `CARGO_BIN_EXE_mxd` is populated from the provided compile-time path.
+/// Name of the server binary to use for integration tests.
+///
+/// The wireframe server (`mxd-wireframe-server`) is the default, as it provides
+/// the production-ready transport layer implementation.
+const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
+
+/// Environment variable name for the prebuilt server binary path.
+const SERVER_BINARY_ENV: &str = "CARGO_BIN_EXE_mxd-wireframe-server";
+
+/// Ensure the server binary environment variable is populated from the provided
+/// compile-time path.
 ///
 /// The mutation is guarded by a global mutex and the result is propagated so
 /// callers can handle synchronisation failures instead of panicking.
@@ -99,10 +109,10 @@ pub fn ensure_server_binary_env(bin_path: &str) -> Result<(), AnyError> {
     let _guard = ENV_LOCK
         .lock()
         .map_err(|_| io::Error::other("environment mutex poisoned"))?;
-    if std::env::var_os("CARGO_BIN_EXE_mxd").is_none() {
+    if std::env::var_os(SERVER_BINARY_ENV).is_none() {
         // SAFETY: Environment mutation is serialized by `ENV_LOCK`, ensuring no
         // concurrent readers/writers observe a partially updated state.
-        unsafe { std::env::set_var("CARGO_BIN_EXE_mxd", bin_path) };
+        unsafe { std::env::set_var(SERVER_BINARY_ENV, bin_path) };
     }
     Ok(())
 }
@@ -170,14 +180,14 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
 /// Constructs the base `cargo run` command for launching the server with the
 /// requested manifest, bind port, and database URL, enabling the active backend.
 fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
-    if let Some(bin) = std::env::var_os("CARGO_BIN_EXE_mxd") {
+    if let Some(bin) = std::env::var_os(SERVER_BINARY_ENV) {
         return server_binary_command(bin, port, db_url);
     }
     cargo_run_command(manifest_path, port, db_url)
 }
 
-/// Builds a command that executes an already-built `mxd` binary bound to the
-/// requested port and database URL, bypassing `cargo run` entirely.
+/// Builds a command that executes an already-built wireframe server binary bound
+/// to the requested port and database URL, bypassing `cargo run` entirely.
 fn server_binary_command(bin: OsString, port: u16, db_url: &DbUrl) -> Command {
     let mut cmd = Command::new(bin);
     cmd.arg("--bind");
@@ -204,11 +214,11 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
     }
     // Ensure the server binary matches the feature set used by tests so Cargo
     // does not trigger a costly rebuild when the harness falls back to
-    // `cargo run` (for example when `CARGO_BIN_EXE_mxd` is unavailable).
+    // `cargo run` (for example when the prebuilt binary is unavailable).
     cmd.args(["--features", "test-support"]);
     cmd.args([
         "--bin",
-        "mxd",
+        SERVER_BINARY_NAME,
         "--manifest-path",
         manifest_path.as_str(),
         "--quiet",

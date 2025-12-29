@@ -100,7 +100,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `RouteState` and `SessionState` for per-connection context, and unit tests
   covering protocol adapter registration, error routing, and transaction ID
   preservation. Dependencies: 1.3.
-- [ ] 1.4.2. Map every implemented transaction ID to a `wireframe` route that
+- [x] 1.4.2. Map every implemented transaction ID to a `wireframe` route that
   delegates to the existing domain handlers. Acceptance: Login, news listing,
   and file listing integration tests run against the wireframe server without
   code duplication. Dependencies: 1.4.1.

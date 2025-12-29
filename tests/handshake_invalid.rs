@@ -1,6 +1,4 @@
-//! Exercises the legacy TCP handshake with an invalid protocol preamble.
-//! Skipped when the `legacy-networking` feature is not compiled.
-#![cfg(feature = "legacy-networking")]
+//! Exercises the Hotline handshake with an invalid protocol preamble.
 
 use std::{
     io::{Read, Write},

@@ -9,8 +9,7 @@
 #![expect(clippy::big_endian_bytes, reason = "network protocol")]
 #![expect(clippy::let_underscore_must_use, reason = "test cleanup")]
 
-//! Legacy handshake integration covering unsupported protocol versions.
-#![cfg(feature = "legacy-networking")]
+//! Handshake integration tests covering unsupported protocol versions.
 
 use std::{
     io::{BufRead, BufReader, Read, Write},

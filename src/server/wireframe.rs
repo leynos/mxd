@@ -38,22 +38,28 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use argon2::Argon2;
 use clap::Parser;
+use tokio::sync::Mutex as TokioMutex;
 use tracing::warn;
 use wireframe::{
-    app::WireframeApp,
+    app::{Envelope, WireframeApp},
     server::{BackoffConfig, WireframeServer},
 };
 
 use super::{AppConfig, Cli};
 use crate::{
     db::{DbPool, establish_pool},
+    handler::Session,
     protocol,
     server::admin,
     wireframe::{
-        connection::{HandshakeMetadata, clear_current_handshake, current_handshake},
+        connection::{
+            HandshakeMetadata, clear_current_handshake, clear_current_peer, current_handshake,
+            current_peer,
+        },
         handshake,
         preamble::HotlinePreamble,
         protocol::HotlineProtocol,
+        routes::TransactionMiddleware,
     },
 };
 
@@ -106,6 +112,10 @@ fn build_app(config: Arc<AppConfig>, pool: DbPool, argon2: Arc<Argon2<'static>>)
         warn!("handshake metadata missing; defaulting to zeroed values");
         HandshakeMetadata::default()
     });
+    let _peer = current_peer().unwrap_or_else(|| {
+        warn!("peer address missing; defaulting to unspecified");
+        "0.0.0.0:0".parse().expect("valid fallback address")
+    });
     #[cfg(test)]
     {
         let last = LAST_HANDSHAKE.get_or_init(|| Mutex::new(None));
@@ -114,13 +124,31 @@ fn build_app(config: Arc<AppConfig>, pool: DbPool, argon2: Arc<Argon2<'static>>)
         }
     }
     let protocol = HotlineProtocol::new(pool.clone(), Arc::clone(&argon2));
-    let app = WireframeApp::default()
+    let session = Arc::new(TokioMutex::new(Session::default()));
+
+    // Register a dummy handler. Middleware intercepts all frames before routing,
+    // so this handler is never invoked. The wireframe library requires at least
+    // one route to be registered for the middleware infrastructure to work.
+    let dummy_handler: wireframe::app::Handler<Envelope> =
+        Arc::new(|_env: &Envelope| Box::pin(async {}));
+
+    // Create middleware with pool and session passed directly (not thread-local)
+    // to work correctly with Tokio's work-stealing scheduler.
+    let middleware = TransactionMiddleware::new(pool.clone(), Arc::clone(&session));
+
+    let app = WireframeApp::new()
+        .expect("WireframeApp creation should succeed")
         .with_protocol(protocol)
+        .route(0, dummy_handler)
+        .expect("dummy route registration should succeed")
+        .wrap(middleware)
+        .expect("middleware registration should succeed")
         .app_data(config)
         .app_data(handshake)
         .app_data(pool)
         .app_data(argon2);
     clear_current_handshake();
+    clear_current_peer();
     app
 }
 

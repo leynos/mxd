@@ -70,6 +70,7 @@ figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"
 anyhow = "1"
+async-trait = "0.1"
 bincode = "2.0.1"
 url = { version = "2", optional = true }
 figment-json5 = { version = "0.1", optional = true }
