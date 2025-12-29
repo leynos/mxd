@@ -39,9 +39,8 @@ tests.
 ## Surprises & Discoveries
 
 - Observation: wireframe v0.1.0's `from_fn` middleware helper cannot be used
-  with
-  `WireframeApp::wrap()` due to a type mismatch. Evidence: `from_fn` produces
-  `FnService<HandlerService<E>, F>` but `Middleware<E>` requires
+  with `WireframeApp::wrap()` due to a type mismatch. Evidence: `from_fn`
+  produces `FnService<HandlerService<E>, F>` but `Middleware<E>` requires
   `Transform<HandlerService<E>, Output = HandlerService<E>>`. Resolution:
   Implemented custom `TransactionMiddleware` struct that implements `Transform`
   directly and wraps output in `HandlerService::from_service()`.

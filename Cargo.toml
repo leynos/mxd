@@ -72,6 +72,8 @@ xdg = "3"
 anyhow = "1"
 async-trait = "0.1"
 bincode = "2.0.1"
+bytes = "1"
+tokio-util = { version = "0.7", features = ["codec"] }
 url = { version = "2", optional = true }
 figment-json5 = { version = "0.1", optional = true }
 serde_yaml = { version = "0.9", optional = true }

@@ -3,6 +3,12 @@
 //! This module implements `BorrowDecode` and `Encode` for transaction frames,
 //! enabling the wireframe transport to decode the 20-byte header, reassemble
 //! fragmented payloads, and emit outbound frames according to `docs/protocol.md`.
+//!
+//! The [`framed`] submodule provides a Tokio-compatible codec for use with
+//! [`tokio_util::codec::Framed`], enabling custom connection handling that
+//! bypasses the wireframe library's default length-delimited framing.
+
+mod framed;
 
 use bincode::{
     de::{BorrowDecode, BorrowDecoder, read::Reader},
@@ -10,6 +16,7 @@ use bincode::{
     error::{DecodeError, EncodeError},
 };
 
+pub use self::framed::HotlineCodec;
 use crate::{
     field_id::FieldId,
     transaction::{
@@ -128,6 +135,16 @@ impl HotlineTransaction {
     /// Consume self and return the inner header and payload.
     #[must_use]
     pub fn into_parts(self) -> (FrameHeader, Vec<u8>) { (self.header, self.payload) }
+
+    /// Construct a transaction from pre-assembled parts.
+    ///
+    /// This is primarily used by the Tokio codec for reassembled multi-fragment
+    /// transactions. The caller is responsible for ensuring header fields are
+    /// consistent with the payload.
+    #[must_use]
+    pub const fn from_parts(header: FrameHeader, payload: Vec<u8>) -> Self {
+        Self { header, payload }
+    }
 }
 
 impl TryFrom<Transaction> for HotlineTransaction {

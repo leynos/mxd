@@ -20,6 +20,7 @@ use nix::{
     unistd::Pid,
 };
 use tempfile::TempDir;
+use tracing::{debug, info, warn};
 
 use crate::AnyError;
 #[cfg(feature = "postgres")]
@@ -153,6 +154,10 @@ where
 
 /// Waits up to ten seconds for the child `mxd` process to announce readiness
 /// on stdout, returning an error if it exits early or never signals.
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "readiness polling loop with diagnostic logging has inherent complexity"
+)]
 fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     if let Some(out) = &mut child.stdout {
         let mut reader = BufReader::new(out);
@@ -163,21 +168,21 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
         loop {
             line.clear();
             if reader.read_line(&mut line)? == 0 {
-                eprintln!(
-                    "[test-util] server exited early. Lines received: {:?}",
-                    lines_received
+                warn!(
+                    lines_received = ?lines_received,
+                    "server exited before signalling readiness"
                 );
                 return Err("server exited before signalling readiness".into());
             }
-            lines_received.push(line.trim().to_string());
+            lines_received.push(line.trim().to_owned());
             if line.contains("listening on") {
                 break;
             }
             if start.elapsed() > timeout {
-                eprintln!(
-                    "[test-util] timeout after {:?}. Lines received: {:?}",
-                    start.elapsed(),
-                    lines_received
+                warn!(
+                    elapsed = ?start.elapsed(),
+                    lines_received = ?lines_received,
+                    "timeout waiting for server to signal readiness"
                 );
                 return Err("timeout waiting for server to signal readiness".into());
             }
@@ -190,23 +195,21 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
 
 /// Constructs the base `cargo run` command for launching the server with the
 /// requested manifest, bind port, and database URL, enabling the active backend.
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "binary path resolution with cfg-conditional fallback has inherent complexity"
+)]
 fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
     if let Some(bin) = std::env::var_os(SERVER_BINARY_ENV) {
         if Path::new(&bin).exists() {
-            eprintln!(
-                "[test-util] using prebuilt binary: {}",
-                bin.to_string_lossy()
-            );
+            debug!(binary = %bin.to_string_lossy(), "using prebuilt binary");
             return server_binary_command(bin, port, db_url);
         }
-        eprintln!(
-            "[test-util] binary from env var does not exist: {}",
-            bin.to_string_lossy()
-        );
+        debug!(binary = %bin.to_string_lossy(), "binary from env var does not exist");
     } else {
-        eprintln!("[test-util] {} env var not set", SERVER_BINARY_ENV);
+        debug!(env_var = SERVER_BINARY_ENV, "env var not set");
     }
-    eprintln!("[test-util] falling back to cargo run");
+    debug!("falling back to cargo run");
     cargo_run_command(manifest_path, port, db_url)
 }
 
@@ -263,6 +266,10 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
 /// Spawns the configured server process on an ephemeral port and waits for the
 /// readiness banner before returning the child handle and chosen port.
 #[expect(
+    clippy::cognitive_complexity,
+    reason = "process spawning with cleanup on failure has inherent complexity"
+)]
+#[expect(
     clippy::let_underscore_must_use,
     reason = "best-effort cleanup; error already being propagated"
 )]
@@ -274,12 +281,16 @@ fn launch_server_process(
     let port = socket.local_addr()?.port();
     drop(socket);
 
+    info!(port, db_url = %db_url, "launching server");
     let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
+    debug!("spawned server process, waiting for readiness");
     if let Err(e) = wait_for_server(&mut child) {
+        warn!(error = %e, "wait_for_server failed");
         let _ = child.kill();
         let _ = child.wait();
         return Err(e);
     }
+    info!(port, "server ready");
     Ok((child, port))
 }
 

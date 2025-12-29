@@ -22,6 +22,7 @@ use mxd::{
 };
 use rstest::{fixture, rstest};
 use test_util::{AnyError, TestServer, handshake, setup_files_db};
+use tracing::{debug, info};
 mod common;
 
 type TestResult<T> = Result<T, AnyError>;
@@ -132,11 +133,15 @@ fn test_stream(
         return Ok(None);
     };
     let port = server.port();
+    debug!(port, "connecting to server");
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    debug!("connected, setting timeouts");
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(Duration::from_secs(20)))?;
 
+    debug!("performing handshake");
     handshake(&mut stream)?;
+    info!("handshake complete");
     Ok(Some((server, stream)))
 }
 
@@ -153,8 +158,11 @@ fn list_files_acl(test_stream: TestResult<Option<(TestServer, TcpStream)>>) -> T
         return Ok(());
     };
     let _server = server;
+    debug!("performing login");
     perform_login(&mut stream, b"alice", b"secret")?;
+    debug!("login complete, getting file list");
     let names = get_file_list(&mut stream)?;
+    info!(files = ?names, "got file list");
     assert_eq!(names, vec!["fileA.txt", "fileC.txt"]);
     Ok(())
 }

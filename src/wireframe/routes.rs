@@ -365,7 +365,7 @@ mod tests {
         assert!(reply.payload().is_empty());
     }
 
-    /// Tests that malformed input returns an error with ERR_INTERNAL.
+    /// Tests that malformed input returns an error with `ERR_INTERNAL`.
     #[rstest]
     fn handle_parse_error_returns_internal_error() {
         let result = handle_parse_error("simulated parse error");
@@ -412,7 +412,7 @@ mod tests {
         assert_eq!(reply_header.error, ERR_INTERNAL);
     }
 
-    /// Tests that transaction_to_bytes correctly serializes a transaction.
+    /// Tests that `transaction_to_bytes` correctly serializes a transaction.
     #[rstest]
     fn transaction_to_bytes_roundtrip() {
         let tx = Transaction {
@@ -441,7 +441,7 @@ mod tests {
         assert_eq!(&bytes[HEADER_LEN..], b"hello");
     }
 
-    /// Tests that error_transaction produces correct header values.
+    /// Tests that `error_transaction` produces correct header values.
     #[rstest]
     fn error_transaction_sets_reply_flag() {
         let header = FrameHeader {
@@ -574,12 +574,12 @@ mod bdd {
             }
         }
 
-        fn send_transaction(&self, frame: Vec<u8>) {
+        fn send_transaction(&self, frame: &[u8]) {
             let peer = "127.0.0.1:12345".parse().expect("valid address");
             let pool = self.pool.clone();
             let reply = self.rt.block_on(async {
                 let mut session = Session::default();
-                process_transaction_bytes(&frame, peer, pool, &mut session).await
+                process_transaction_bytes(frame, peer, pool, &mut session).await
             });
             self.reply.borrow_mut().replace(reply);
         }
@@ -615,11 +615,11 @@ mod bdd {
             total_size: 0,
             data_size: 0,
         };
-        world.send_transaction(transaction_bytes(&header, &[]));
+        world.send_transaction(&transaction_bytes(&header, &[]));
     }
 
     #[when("I send a truncated frame of 10 bytes")]
-    fn when_truncated(world: &RoutingWorld) { world.send_transaction(vec![0u8; 10]); }
+    fn when_truncated(world: &RoutingWorld) { world.send_transaction(&[0u8; 10]); }
 
     #[when("I send a transaction with unknown type 65535 and ID {id}")]
     fn when_unknown_with_id(world: &RoutingWorld, id: u32) {
@@ -632,7 +632,7 @@ mod bdd {
             total_size: 0,
             data_size: 0,
         };
-        world.send_transaction(transaction_bytes(&header, &[]));
+        world.send_transaction(&transaction_bytes(&header, &[]));
     }
 
     #[then("the reply has error code {code}")]

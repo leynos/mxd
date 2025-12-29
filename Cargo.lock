@@ -2203,6 +2203,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "bincode",
+ "bytes",
  "cfg-if",
  "chrono",
  "clap",
@@ -2231,6 +2232,7 @@ dependencies = [
  "test-util",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-util",
  "toml 0.8.23",
  "tracing",
  "uncased",
@@ -4233,6 +4235,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
+ "tracing",
  "url",
  "uuid",
 ]

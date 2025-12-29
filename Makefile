@@ -20,7 +20,7 @@ TEST_POSTGRES_FEATURES := --no-default-features --features "postgres test-suppor
 WIREFRAME_ONLY_FEATURES := --no-default-features --features "sqlite toml test-support"
 POSTGRES_TARGET_DIR := target/postgres
 
-all: release ## Build release binaries for sqlite and postgres
+all: check-fmt lint test
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \
