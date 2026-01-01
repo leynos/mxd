@@ -27,7 +27,7 @@ use crate::{
         HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
         write_handshake_reply,
     },
-    wireframe::connection::{HandshakeMetadata, store_current_handshake},
+    wireframe::connection::{HandshakeMetadata, store_current_handshake, store_current_peer},
 };
 
 /// Attach Hotline handshake behaviour to a [`WireframeServer`].
@@ -56,6 +56,9 @@ fn success_handler()
 {
     move |preamble, stream| {
         store_current_handshake(HandshakeMetadata::from(preamble.handshake()));
+        if let Ok(peer) = stream.peer_addr() {
+            store_current_peer(peer);
+        }
         write_handshake_reply(stream, HANDSHAKE_OK).boxed()
     }
 }

@@ -584,6 +584,65 @@ scenarios in `tests/features/transaction_streaming.feature` bound through
 `rstest-bdd` v0.2.0. The scenarios cover successful multi-fragment streaming,
 limit enforcement, and header mismatch rejection.
 
+#### Transaction routing middleware (December 2025)
+
+The `src/wireframe/routes.rs` module implements the transaction routing
+middleware that bridges the wireframe transport to domain command handlers.
+Rather than registering individual routes for each transaction type, a
+`TransactionMiddleware` intercepts all incoming frames and dispatches them
+through the existing `Command` dispatcher.
+
+**Middleware architecture.** The `TransactionMiddleware` struct implements
+wireframe's `Transform<HandlerService<Envelope>>` trait, wrapping the inner
+handler service with transaction processing logic. This approach was chosen
+over `from_fn` middleware because wireframe's `wrap()` method requires
+`Output = HandlerService<E>`, not the `FnService` type that `from_fn` produces.
+
+The middleware holds:
+
+- `pool: DbPool` - The database connection pool for command handlers.
+- `session: Arc<tokio::sync::Mutex<Session>>` - Per-connection session state
+  tracking authentication and user context.
+
+**Processing pipeline.** When a frame arrives, the middleware:
+
+1. Extracts the peer address from connection-scoped thread-local storage.
+2. Copies the raw frame bytes from the request envelope.
+3. Acquires the session mutex and calls `process_transaction_bytes()`.
+4. Replaces the response frame with the reply bytes.
+
+The `process_transaction_bytes()` function implements the core routing logic:
+
+1. Parse raw bytes into a domain `Transaction` via `parse_transaction()`.
+2. Convert to a `Command` variant via `Command::from_transaction()`.
+3. Execute the command with `Command::process()`, passing peer, pool, and
+   session.
+4. Serialize the reply `Transaction` back to bytes.
+
+Parse failures at any stage produce an error reply with `ERR_INTERNAL` (3),
+while unknown transaction types return error code 1 (matching the existing
+`handle_unknown()` behaviour in `commands.rs`).
+
+**Session state management.** Unlike thread-local storage approaches, which
+fail under Tokio's work-stealing scheduler, the middleware passes the session
+`Arc<Mutex<Session>>` directly through its struct fields. This ensures the same
+session state is accessible regardless of which worker thread processes a given
+frame.
+
+**Testing strategy.** The routing middleware is tested at two levels:
+
+1. **Unit tests** (`src/wireframe/routes.rs`) use `rstest` to cover error reply
+   construction, header field preservation, truncated input handling, and
+   unknown transaction type responses.
+2. **BDD scenarios** (`tests/features/wireframe_routing.feature`) express
+   acceptance criteria for routing behaviour, with step definitions in the same
+   module's `bdd` submodule.
+
+Integration tests in `tests/file_list.rs`, `tests/news_categories.rs`, and
+`tests/news_articles.rs` exercise the full routing path through the wireframe
+server binary (`mxd-wireframe-server`), validating end-to-end transaction
+handling.
+
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
 Configuration management in MXD is handled by the **OrthoConfig** library,

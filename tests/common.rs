@@ -21,7 +21,7 @@ pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, AnyError>
 where
     F: FnOnce(&str) -> Result<(), AnyError>,
 {
-    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd"))?;
+    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server"))?;
     match TestServer::start_with_setup("./Cargo.toml", |db| setup(db.as_str())) {
         Ok(s) => Ok(Some(s)),
         Err(e) => {

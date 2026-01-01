@@ -126,6 +126,8 @@ impl MetadataWorld {
     )]
     fn connect_and_send(&self, bytes: &[u8], expect_recorded: bool) {
         let addr = self.addr.borrow().expect("server not started");
+        // Capture the current recorded value to detect changes
+        let previous = self.recorded();
         self.rt.block_on(async {
             let mut stream = TcpStream::connect(addr).await.expect("connect");
             stream.write_all(bytes).await.expect("write handshake");
@@ -134,13 +136,23 @@ impl MetadataWorld {
             drop(stream);
 
             for _ in 0..MAX_ATTEMPTS {
-                if self.recorded().is_some() || !expect_recorded {
+                let current = self.recorded();
+                // For expected recordings, wait for a DIFFERENT value (handles sequential calls)
+                // For unexpected recordings, just check it's still None
+                if expect_recorded {
+                    if current.is_some() && current != previous {
+                        return;
+                    }
+                } else if current.is_none() {
                     return;
                 }
                 sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
             }
 
-            panic!("handshake metadata was not recorded within the expected time");
+            assert!(
+                !expect_recorded,
+                "handshake metadata was not recorded within the expected time"
+            );
         });
     }
 

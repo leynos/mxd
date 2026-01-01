@@ -9,10 +9,8 @@
 #![expect(clippy::big_endian_bytes, reason = "network protocol")]
 #![expect(clippy::let_underscore_must_use, reason = "test cleanup")]
 
-//! Legacy TCP integration tests that reject malformed payloads for banner and
-//! user list transactions. Skipped when the `legacy-networking` feature is not
-//! compiled.
-#![cfg(feature = "legacy-networking")]
+//! Integration tests that reject malformed payloads for banner and
+//! user list transactions.
 
 use std::{
     convert::TryFrom,

@@ -1,8 +1,7 @@
-//! Legacy TCP integration tests covering news article flows. Exercises
-//! listing, posting, and fetching news articles through the legacy adapter.
-//! Skips when the `legacy-networking` feature is disabled because wireframe
-//! routing is not yet wired for these transactions.
-#![cfg(feature = "legacy-networking")]
+//! Integration tests covering news article flows.
+//!
+//! Exercises listing, posting, and fetching news articles through the
+//! wireframe transport.
 
 use std::{
     convert::TryFrom,
