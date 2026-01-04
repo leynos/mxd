@@ -21,7 +21,7 @@ tests.
 
 - [x] (2025-12-29) Create `docs/execplans/` directory and write this ExecPlan.
 - [x] (2025-12-29) Implement `TransactionMiddleware` struct in
-      `src/wireframe/routes.rs` that properly wraps `HandlerService`.
+      `src/wireframe/routes/mod.rs` that properly wraps `HandlerService`.
 - [x] (2025-12-29) Update `build_app()` in `src/server/wireframe.rs` to use
       `TransactionMiddleware` instead of `from_fn` (which had type mismatch).
 - [x] (2025-12-29) Refactor middleware to pass `DbPool` and `Session` directly
@@ -31,13 +31,20 @@ tests.
 - [x] (2026-01-04) Switch the wireframe server to `WireframeServer` with the
       `HotlineFrameCodec`, removing the bespoke accept loop and connection
       handler.
-- [ ] Remove `#[cfg(feature = "legacy-networking")]` gates from integration
-      tests.
-- [ ] Add rstest unit tests for route handlers.
-- [ ] Add rstest-bdd behavioural tests with feature file.
-- [ ] Add Postgres-backed tests using pg-embedded-setup-unpriv.
-- [ ] Update `docs/design.md` with routing architecture.
-- [ ] Mark task 1.4.2 as done in `docs/roadmap.md`.
+- [x] (2026-01-04) Remove `#[cfg(feature = "legacy-networking")]` gates from
+      wireframe integration tests (file list/news listings).
+- [x] (2026-01-04) Add rstest unit tests for route handlers, split into
+      `src/wireframe/routes/tests/` to keep files under 400 lines while
+      covering Login/File/News transaction routing.
+- [x] (2026-01-04) Add rstest-bdd behavioural tests in
+      `tests/wireframe_routing_bdd.rs` and extend
+      `tests/features/wireframe_routing.feature` with login/file/news
+      scenarios.
+- [x] (2026-01-04) Ensure Postgres-backed routing scenarios use the embedded
+      Postgres harness (`pg-embedded-setup-unpriv`) via `PostgresTestDb`.
+- [x] (2026-01-04) Update `docs/design.md` with routing architecture and
+      frame codec details.
+- [x] (2026-01-04) Mark task 1.4.2 as done in `docs/roadmap.md`.
 
 ## Surprises & Discoveries
 
@@ -69,6 +76,15 @@ tests.
   fallback route (0) so middleware can still emit error replies for unknown
   transactions.
 
+- Observation: the routing test module exceeded the 400-line file limit once
+  the per-transaction success cases were added. Resolution: split the tests
+  into `src/wireframe/routes/tests/error_cases.rs`,
+  `src/wireframe/routes/tests/routing_cases.rs`, and shared helpers.
+
+- Observation: the `self_named_module_files` lint rejects `routes.rs` once
+  submodules live under `src/wireframe/routes/`. Resolution: move the module
+  file to `src/wireframe/routes/mod.rs` so linting passes with nested tests.
+
 ## Decision Log
 
 - Decision: Tests run against wireframe server only.
@@ -91,10 +107,21 @@ tests.
   responses can be generated consistently. Date/Author: 2026-01-04 / Assistant
   implementation.
 
-- Decision: Unknown transaction types return ERR_INTERNAL (code 3) with warning
-  log. Rationale: Consistent with existing error handling in `commands.rs`;
-  provides visibility into unsupported requests. Date/Author: 2025-12-29 / User
-  decision.
+- Decision: Move routing BDD steps into `tests/wireframe_routing_bdd.rs` and
+  split routing unit tests into submodules under `src/wireframe/routes/tests/`.
+  Rationale: Keep behavioural tests in the integration suite and satisfy the
+  400-line file size requirement while adding per-transaction routing coverage.
+  Date/Author: 2026-01-04 / Assistant implementation.
+
+- Decision: Migrate `src/wireframe/routes.rs` to
+  `src/wireframe/routes/mod.rs`. Rationale: Required by the
+  `self_named_module_files` lint once the routing tests were split into
+  submodules. Date/Author: 2026-01-04 / Assistant implementation.
+
+- Decision: Unknown transaction types return ERR_UNKNOWN_TYPE (code 1) with
+  warning log. Rationale: Consistent with existing error handling in
+  `commands.rs`; provides visibility into unsupported requests. Date/Author:
+  2025-12-29 / User decision.
 
 - Decision: Implement custom `HotlineCodec` bypassing wireframe's routing.
   Rationale: wireframe v0.1.0 hardcodes `LengthDelimitedCodec` with 4-byte
@@ -125,7 +152,12 @@ tests.
 
 ## Outcomes & Retrospective
 
-(To be completed upon finishing implementation.)
+- Routing tests cover error handling and successful Login/File/News routing
+  paths for each supported transaction type.
+- Behavioural scenarios now include login, file listing, and news listing
+  coverage in the Gherkin feature file with dedicated step definitions.
+- Documentation and roadmap entries are updated to reflect the wireframe codec
+  integration and routing test coverage.
 
 ## Context and Orientation
 
@@ -139,7 +171,7 @@ Key files and their roles:
   `HotlineFrameCodec`, registers supported route IDs (plus the fallback route),
   and installs `TransactionMiddleware` for transaction processing.
 
-- `src/wireframe/routes.rs`: Contains `RouteState`, `SessionState`, and
+- `src/wireframe/routes/mod.rs`: Contains `RouteState`, `SessionState`, and
   `process_transaction_bytes()` which parses raw bytes, dispatches to
   `Command::process()`, and returns reply bytes. This function already
   implements the domain routing logic.
@@ -160,8 +192,8 @@ Key files and their roles:
   (Login, GetFileNameList, etc.) and the `process()` method that executes
   handlers.
 
-- `tests/file_list.rs`, `tests/news_categories.rs`: Integration tests currently
-  gated behind `#[cfg(feature = "legacy-networking")]`.
+- `tests/file_list.rs`, `tests/news_categories.rs`: Integration tests that
+  exercise the wireframe server (legacy networking gate removed).
 
 - `test-util/src/server.rs`: `TestServer` harness that starts the server binary
   for integration tests.
@@ -212,7 +244,7 @@ server.
 
 ### Phase 3: Testing
 
-Add unit tests in `src/wireframe/routes.rs` using rstest:
+Add unit tests in `src/wireframe/routes/tests/` using rstest:
 
 - Handler correctly parses valid transactions.
 - Handler returns error for malformed input.
@@ -279,7 +311,7 @@ Acceptance criteria:
    - `tests/file_list.rs`
    - `tests/news_categories.rs`
 
-3. New unit tests exist in `src/wireframe/routes.rs` covering:
+3. New unit tests exist in `src/wireframe/routes/tests/` covering:
    - Valid transaction routing for each type (107, 200, 370, 371, 400, 410).
    - Error handling for unknown transaction types.
 
@@ -317,7 +349,7 @@ Example handler signature from wireframe library:
 
 ## Interfaces and Dependencies
 
-In `src/wireframe/routes.rs`, the following function will be added:
+In `src/wireframe/routes/mod.rs`, the following function will be added:
 
     pub fn register_routes(app: WireframeApp, pool: DbPool, …) -> WireframeApp
 

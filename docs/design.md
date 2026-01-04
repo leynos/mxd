@@ -487,6 +487,12 @@ To match the legacy encoder for shared cases, an empty parameter list produces
 an empty payload (rather than a two-byte parameter block containing a zero
 parameter count).
 
+**Wireframe frame codec.** The `src/wireframe/codec/frame.rs` module provides a
+`HotlineFrameCodec` that implements wireframe's `FrameCodec` trait. The server
+configures `WireframeApp::with_codec` to use this framing, so the 20-byte
+Hotline header is handled inside the wireframe connection pipeline while
+preserving transaction type routing and payload validation.
+
 **Testing strategy.** The codec is tested at four levels:
 
 1. **Unit tests** (`src/wireframe/codec/tests.rs`) use `rstest` to cover
@@ -600,7 +606,7 @@ limit enforcement, and header mismatch rejection.
 
 #### Transaction routing middleware (December 2025)
 
-The `src/wireframe/routes.rs` module implements the transaction routing
+The `src/wireframe/routes/mod.rs` module implements the transaction routing
 middleware that bridges the wireframe transport to domain command handlers.
 Rather than registering individual routes for each transaction type, a
 `TransactionMiddleware` intercepts all incoming frames and dispatches them
@@ -617,11 +623,13 @@ The middleware holds:
 - `pool: DbPool` - The database connection pool for command handlers.
 - `session: Arc<tokio::sync::Mutex<Session>>` - Per-connection session state
   tracking authentication and user context.
+- `peer: SocketAddr` - The remote peer address captured during connection
+  setup.
 
 **Processing pipeline.** When a frame arrives, the middleware:
 
-1. Extracts the peer address from connection-scoped thread-local storage.
-2. Copies the raw frame bytes from the request envelope.
+1. Copies the raw frame bytes from the request envelope.
+2. Uses the peer address captured during connection setup.
 3. Acquires the session mutex and calls `process_transaction_bytes()`.
 4. Replaces the response frame with the reply bytes.
 
@@ -645,12 +653,13 @@ frame.
 
 **Testing strategy.** The routing middleware is tested at two levels:
 
-1. **Unit tests** (`src/wireframe/routes.rs`) use `rstest` to cover error reply
-   construction, header field preservation, truncated input handling, and
-   unknown transaction type responses.
+1. **Unit tests** (`src/wireframe/routes/tests`) use `rstest` to cover error
+   reply construction, header field preservation, truncated input handling,
+   unknown transaction type responses, and successful routing for the supported
+   transaction types.
 2. **BDD scenarios** (`tests/features/wireframe_routing.feature`) express
-   acceptance criteria for routing behaviour, with step definitions in the same
-   module's `bdd` submodule.
+   acceptance criteria for routing behaviour, with step definitions in
+   `tests/wireframe_routing_bdd.rs`.
 
 Integration tests in `tests/file_list.rs`, `tests/news_categories.rs`, and
 `tests/news_articles.rs` exercise the full routing path through the wireframe

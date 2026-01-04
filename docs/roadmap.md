@@ -115,7 +115,10 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [x] 1.4.2. Map every implemented transaction ID to a `wireframe` route that
   delegates to the existing domain handlers. Acceptance: Login, news listing,
   and file listing integration tests run against the wireframe server without
-  code duplication. Dependencies: 1.4.1.
+  code duplication. Status: Completed on 4 January 2026 by routing transactions
+  through `mxd-wireframe-server` with the `HotlineFrameCodec`, adding routing
+  unit/BDD coverage, and migrating the file/news integration tests.
+  Dependencies: 1.4.1.
 - [ ] 1.4.3. Introduce a shared session context that tracks the authenticated
   user, privileges, and connection flags. Acceptance: Session state survives
   across handlers and enforces privilege checks defined in `docs/protocol.md`.

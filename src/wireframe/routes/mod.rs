@@ -1,0 +1,288 @@
+//! Route handlers for Hotline transaction routing.
+//!
+//! This module provides route handler functions that bridge incoming
+//! [`HotlineTransaction`] frames to the domain [`Command`] dispatcher.
+//! Each handler extracts the transaction from raw bytes, converts it to
+//! a domain command, processes it, and returns the reply.
+//!
+//! # Architecture
+//!
+//! Route handlers follow a consistent pattern:
+//!
+//! 1. Parse raw bytes into `HotlineTransaction`
+//! 2. Convert to domain `Transaction` via `From` impl
+//! 3. Parse into `Command` via `Command::from_transaction()`
+//! 4. Execute via `Command::process()` with context and session
+//! 5. Convert reply `Transaction` to bytes
+//!
+//! # Registration
+//!
+//! Transaction processing is integrated through middleware registered on
+//! the `WireframeApp`. The middleware intercepts all frames, processes them
+//! through the domain command dispatcher, and writes the reply bytes.
+
+use std::{convert::Infallible, net::SocketAddr, sync::Arc};
+
+use argon2::Argon2;
+use async_trait::async_trait;
+use tracing::{error, warn};
+use wireframe::{
+    app::Envelope,
+    middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform},
+};
+
+use crate::{
+    commands::Command,
+    db::DbPool,
+    handler::Session,
+    header_util::reply_header,
+    transaction::{FrameHeader, Transaction, parse_transaction},
+    wireframe::{codec::HotlineTransaction, connection::HandshakeMetadata},
+};
+
+/// Error code for internal server failures.
+const ERR_INTERNAL: u32 = 3;
+
+/// Shared state passed to route handlers via app data.
+///
+/// This struct aggregates the shared resources needed by transaction handlers,
+/// extracted from `WireframeApp` data during request processing.
+#[derive(Clone)]
+pub struct RouteState {
+    /// Database connection pool.
+    pub pool: DbPool,
+    /// Shared Argon2 instance for password hashing.
+    pub argon2: Arc<Argon2<'static>>,
+    /// Handshake metadata for the connection.
+    pub handshake: HandshakeMetadata,
+}
+
+impl RouteState {
+    /// Create a new route state from app data components.
+    #[must_use]
+    pub const fn new(
+        pool: DbPool,
+        argon2: Arc<Argon2<'static>>,
+        handshake: HandshakeMetadata,
+    ) -> Self {
+        Self {
+            pool,
+            argon2,
+            handshake,
+        }
+    }
+}
+
+/// Per-connection mutable state for session tracking.
+///
+/// This wrapper holds the session state that is mutated across transactions
+/// within a single connection. It is stored in app data and passed to handlers.
+#[derive(Clone, Default)]
+pub struct SessionState {
+    /// Domain session tracking authentication state.
+    session: Session,
+}
+
+impl SessionState {
+    /// Create a new session state with default (unauthenticated) session.
+    #[must_use]
+    pub fn new() -> Self { Self::default() }
+
+    /// Return a reference to the session.
+    #[must_use]
+    pub const fn session(&self) -> &Session { &self.session }
+
+    /// Return a mutable reference to the session.
+    pub const fn session_mut(&mut self) -> &mut Session { &mut self.session }
+}
+
+/// Process a Hotline transaction from raw bytes and return the reply bytes.
+///
+/// This function implements the core routing logic. It parses the raw bytes
+/// into a domain transaction, dispatches to the appropriate command handler,
+/// and returns the reply as raw bytes.
+///
+/// # Arguments
+///
+/// * `frame` - Raw transaction bytes (header + payload).
+/// * `peer` - The remote peer socket address.
+/// * `pool` - Database connection pool.
+/// * `session` - Mutable session state for the connection.
+///
+/// # Returns
+///
+/// Raw bytes containing the reply transaction, or an error transaction if
+/// processing fails.
+pub async fn process_transaction_bytes(
+    frame: &[u8],
+    peer: std::net::SocketAddr,
+    pool: DbPool,
+    session: &mut Session,
+) -> Vec<u8> {
+    // Parse the frame as a domain Transaction
+    let tx = match parse_transaction(frame) {
+        Ok(tx) => tx,
+        Err(e) => return handle_parse_error(e),
+    };
+
+    let header = tx.header.clone();
+
+    // Parse into Command and process
+    let cmd = match Command::from_transaction(tx) {
+        Ok(cmd) => cmd,
+        Err(e) => return handle_command_parse_error(e, &header),
+    };
+
+    match cmd.process(peer, pool, session).await {
+        Ok(reply) => transaction_to_bytes(&reply),
+        Err(e) => handle_process_error(e, &header),
+    }
+}
+
+/// Convert a transaction to raw bytes.
+fn transaction_to_bytes(tx: &Transaction) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(crate::transaction::HEADER_LEN + tx.payload.len());
+    let mut header_buf = [0u8; crate::transaction::HEADER_LEN];
+    tx.header.write_bytes(&mut header_buf);
+    bytes.extend_from_slice(&header_buf);
+    bytes.extend_from_slice(&tx.payload);
+    bytes
+}
+
+/// Build an error reply transaction from a header and error code.
+fn error_transaction(header: &FrameHeader, error_code: u32) -> Transaction {
+    Transaction {
+        header: reply_header(header, error_code, 0),
+        payload: Vec::new(),
+    }
+}
+
+/// Handle transaction parse errors by returning an error reply.
+fn handle_parse_error(e: impl std::fmt::Display) -> Vec<u8> {
+    warn!(error = %e, "failed to parse transaction from bytes");
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 1,
+        ty: 0,
+        id: 0,
+        error: ERR_INTERNAL,
+        total_size: 0,
+        data_size: 0,
+    };
+    transaction_to_bytes(&error_transaction(&header, ERR_INTERNAL))
+}
+
+/// Handle command parsing errors by returning an error reply.
+fn handle_command_parse_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<u8> {
+    warn!(error = %e, "failed to parse command from transaction");
+    transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
+}
+
+/// Handle command processing errors by returning an error reply.
+fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<u8> {
+    error!(error = %e, "command processing failed");
+    transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
+}
+
+/// Build an error reply as a `HotlineTransaction`.
+///
+/// # Errors
+///
+/// Returns a [`TransactionError`] if the codec fails to create the transaction.
+/// This is unexpected for empty payloads and would indicate a bug in the codec
+/// implementation.
+///
+/// [`TransactionError`]: crate::transaction::TransactionError
+pub fn error_reply(
+    header: &FrameHeader,
+    error_code: u32,
+) -> Result<HotlineTransaction, crate::transaction::TransactionError> {
+    let tx = error_transaction(header, error_code);
+    HotlineTransaction::try_from(tx)
+}
+
+/// Middleware for processing Hotline transactions.
+///
+/// This middleware intercepts all incoming frames, processes them through the
+/// domain command dispatcher, and writes the reply bytes to the response. It
+/// holds the database pool, peer address, and session state directly rather
+/// than using thread-local storage.
+///
+/// # Wireframe Integration
+///
+/// Unlike `from_fn` middleware, this struct implements `Transform` with
+/// `Output = HandlerService<E>`, making it compatible with `WireframeApp::wrap()`.
+/// The wrapped service processes transactions and returns the transformed
+/// `HandlerService` expected by the middleware pipeline.
+#[derive(Clone)]
+pub struct TransactionMiddleware {
+    pool: DbPool,
+    session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    peer: SocketAddr,
+}
+
+impl TransactionMiddleware {
+    /// Create a new transaction middleware with the given pool and session.
+    #[must_use]
+    pub const fn new(
+        pool: DbPool,
+        session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+        peer: SocketAddr,
+    ) -> Self {
+        Self {
+            pool,
+            session,
+            peer,
+        }
+    }
+}
+
+/// Inner service that processes transactions with the pool and session passed in.
+struct TransactionService<S> {
+    inner: S,
+    pool: DbPool,
+    session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    peer: SocketAddr,
+}
+
+#[async_trait]
+impl<S> Service for TransactionService<S>
+where
+    S: Service<Error = Infallible> + Send + Sync,
+{
+    type Error = Infallible;
+
+    async fn call(&self, req: ServiceRequest) -> Result<ServiceResponse, Self::Error> {
+        let frame = req.frame().to_vec();
+        let reply_bytes = {
+            let mut session_guard = self.session.lock().await;
+            process_transaction_bytes(&frame, self.peer, self.pool.clone(), &mut session_guard)
+                .await
+        };
+
+        // Call inner service to propagate through the chain, then replace the response frame
+        let mut response = self.inner.call(req).await?;
+        response.frame_mut().clear();
+        response.frame_mut().extend_from_slice(&reply_bytes);
+        Ok(response)
+    }
+}
+
+#[async_trait]
+impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
+    type Output = HandlerService<Envelope>;
+
+    async fn transform(&self, service: HandlerService<Envelope>) -> Self::Output {
+        let id = service.id();
+        let wrapped = TransactionService {
+            inner: service,
+            pool: self.pool.clone(),
+            session: Arc::clone(&self.session),
+            peer: self.peer,
+        };
+        HandlerService::from_service(id, wrapped)
+    }
+}
+
+#[cfg(test)]
+mod tests;
