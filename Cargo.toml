@@ -65,7 +65,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 diesel-cte-ext = { workspace = true }
 futures-util = "0.3"
 tracing = "0.1"
-wireframe = "0.1.0"
+wireframe = "0.2.0"
 figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"

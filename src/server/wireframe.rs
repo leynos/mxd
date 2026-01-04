@@ -1,9 +1,9 @@
 //! Wireframe-based server runtime.
 //!
-//! This module bootstraps the Hotline protocol server using a custom TCP accept
-//! loop with Hotline-specific frame handling. The wireframe library is used only
-//! for preamble (handshake) handling, while the connection handler uses
-//! [`HotlineCodec`] for proper 20-byte header framing.
+//! This module bootstraps the Hotline protocol server using wireframe's
+//! connection handling with a custom `HotlineFrameCodec` for the 20-byte
+//! header framing. Routing is handled by middleware that dispatches Hotline
+//! transactions to domain commands.
 //!
 //! # Architecture
 //!
@@ -11,16 +11,11 @@
 //!
 //! 1. Establishes a database connection pool
 //! 2. Creates a shared Argon2 instance for password hashing
-//! 3. Binds to the configured address
-//! 4. Accepts connections and handles preamble (handshake) using wireframe
-//! 5. Routes transactions through [`connection_handler`] with Hotline framing
+//! 3. Builds a `WireframeServer` with Hotline preamble hooks
+//! 4. Registers the Hotline frame codec and routes
+//! 5. Binds and runs the server
 //!
-//! This implementation fulfils the roadmap task "Route transactions through
-//! wireframe" by using custom frame handling as described in
-//! `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`.
-//!
-//! [`HotlineCodec`]: crate::wireframe::codec::HotlineCodec
-//! [`connection_handler`]: crate::wireframe::connection_handler
+//! [`HotlineFrameCodec`]: crate::wireframe::codec::HotlineFrameCodec
 
 #![expect(
     clippy::shadow_reuse,
@@ -31,42 +26,47 @@
     reason = "intentional console output for server status"
 )]
 
-#[cfg(test)]
-use std::sync::{Mutex, OnceLock};
 use std::{
     io::{self, Write},
-    net::{SocketAddr, ToSocketAddrs},
+    net::{Ipv4Addr, SocketAddr, ToSocketAddrs},
     sync::Arc,
 };
 
 use anyhow::{Context, Result, anyhow};
+use argon2::Argon2;
 use clap::Parser;
-use tokio::{net::TcpListener, sync::Mutex as TokioMutex, time::timeout};
-use tracing::{error, info, warn};
-use wireframe::{preamble::read_preamble, rewind_stream::RewindStream};
+use tokio::sync::Mutex as TokioMutex;
+use tracing::{error, warn};
+use wireframe::{
+    app::{Envelope, Handler, WireframeApp},
+    serializer::BincodeSerializer,
+    server::WireframeServer,
+};
 
 use super::{AppConfig, Cli};
-#[cfg(test)]
-use crate::wireframe::connection::HandshakeMetadata;
 use crate::{
     db::{DbPool, establish_pool},
     handler::Session,
-    protocol::{
-        self,
-        HANDSHAKE_ERR_INVALID,
-        HANDSHAKE_ERR_TIMEOUT,
-        HANDSHAKE_ERR_UNSUPPORTED_VERSION,
-        HANDSHAKE_INVALID_PROTOCOL_TOKEN,
-        HANDSHAKE_OK,
-        HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
-        write_handshake_reply,
-    },
+    protocol,
     server::admin,
-    wireframe::{connection_handler, preamble::HotlinePreamble},
+    wireframe::{
+        codec::HotlineFrameCodec,
+        connection::{
+            HandshakeMetadata,
+            clear_current_handshake,
+            clear_current_peer,
+            current_handshake,
+            current_peer,
+        },
+        handshake,
+        preamble::HotlinePreamble,
+        protocol::HotlineProtocol,
+        route_ids::{FALLBACK_ROUTE_ID, ROUTE_IDS},
+        routes::{RouteState, TransactionMiddleware},
+    },
 };
 
-#[cfg(test)]
-static LAST_HANDSHAKE: OnceLock<Mutex<Option<HandshakeMetadata>>> = OnceLock::new();
+type HotlineApp = WireframeApp<BincodeSerializer, (), Envelope, HotlineFrameCodec>;
 
 /// Parse CLI arguments and start the Wireframe runtime.
 ///
@@ -113,153 +113,91 @@ impl WireframeBootstrap {
         })
     }
 
-    #[expect(
-        clippy::cognitive_complexity,
-        reason = "server bootstrap has inherent complexity from multiple initialization steps"
-    )]
     async fn run(self) -> Result<()> {
         let Self { bind_addr, config } = self;
         println!("mxd-wireframe-server using database {}", config.database);
         println!("mxd-wireframe-server binding to {}", config.bind);
 
-        // Establish the database connection pool
         let pool = establish_pool(&config.database)
             .await
             .context("failed to establish database pool")?;
+        let argon2 = Arc::new(admin::argon2_from_config(&config)?);
 
-        // Bind the TCP listener
-        let listener = TcpListener::bind(bind_addr)
-            .await
-            .context("failed to bind TCP listener")?;
-        let addr = listener
+        let app_factory = {
+            let pool = pool.clone();
+            let argon2 = Arc::clone(&argon2);
+            move || build_app_for_connection(pool.clone(), Arc::clone(&argon2))
+        };
+
+        let server = WireframeServer::new(app_factory).with_preamble::<HotlinePreamble>();
+        let server = handshake::install(server, protocol::HANDSHAKE_TIMEOUT);
+        let server = server
+            .bind(bind_addr)
+            .context("failed to bind wireframe server")?;
+        let addr = server
             .local_addr()
-            .context("failed to get local address")?;
+            .ok_or_else(|| anyhow!("failed to get local address"))?;
 
         println!("mxd-wireframe-server listening on {addr}");
         // Explicit flush ensures the message reaches piped stdout immediately,
         // which is critical for test harness readiness detection.
-        std::io::stdout().flush().ok();
+        io::stdout().flush().ok();
 
-        // Accept loop
-        loop {
-            match listener.accept().await {
-                Ok((stream, peer)) => {
-                    let pool = pool.clone();
-                    tokio::spawn(spawn_connection_task(stream, peer, pool));
-                }
-                Err(e) => {
-                    warn!(error = %e, "accept failed");
-                    // Continue accepting; transient failures shouldn't stop the server
-                }
-            }
+        server.run().await.context("wireframe server terminated")?;
+        Ok(())
+    }
+}
+
+fn build_app_for_connection(pool: DbPool, argon2: Arc<Argon2<'static>>) -> HotlineApp {
+    let handshake = current_handshake().unwrap_or_default();
+    let peer = current_peer().unwrap_or_else(|| {
+        warn!("peer address missing in app factory; using default");
+        default_peer()
+    });
+    clear_current_handshake();
+    clear_current_peer();
+    match build_app(pool, argon2, handshake, peer) {
+        Ok(app) => app,
+        Err(err) => {
+            error!(error = %err, "failed to build wireframe application");
+            HotlineApp::default().fragmentation(None)
         }
     }
 }
 
-/// Spawn a connection handler task, logging any errors.
-async fn spawn_connection_task(stream: tokio::net::TcpStream, peer: SocketAddr, pool: DbPool) {
-    if let Err(e) = handle_client(stream, peer, pool).await {
-        error!(peer = %peer, error = %e, "connection handler failed");
-    }
-}
-
-/// Handle a single client connection.
-///
-/// This function:
-/// 1. Reads and validates the preamble (handshake)
-/// 2. Sends the handshake reply
-/// 3. Processes transactions using the custom connection handler
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "connection handling with error branching has inherent complexity"
-)]
-async fn handle_client(
-    mut stream: tokio::net::TcpStream,
-    peer: SocketAddr,
+fn build_app(
     pool: DbPool,
-) -> Result<()> {
-    info!(peer = %peer, "accepted connection");
-
-    // Read preamble with timeout
-    let preamble_result = timeout(
-        protocol::HANDSHAKE_TIMEOUT,
-        read_preamble::<_, HotlinePreamble>(&mut stream),
-    )
-    .await;
-
-    let (preamble, leftover) = match preamble_result {
-        Ok(Ok((preamble, leftover))) => (preamble, leftover),
-        Ok(Err(e)) => {
-            // Decode error - determine error code
-            let code = error_code_for_decode(&e);
-            if let Some(code) = code {
-                write_handshake_reply(&mut stream, code).await.ok();
-            }
-            return Err(anyhow!("preamble decode failed: {e}"));
-        }
-        Err(_) => {
-            // Timeout
-            write_handshake_reply(&mut stream, HANDSHAKE_ERR_TIMEOUT)
-                .await
-                .ok();
-            return Err(anyhow!("preamble read timed out"));
-        }
-    };
-
-    // Store handshake metadata for test assertions
-    #[cfg(test)]
-    {
-        let handshake_meta = HandshakeMetadata::from(preamble.handshake());
-        let last = LAST_HANDSHAKE.get_or_init(|| Mutex::new(None));
-        if let Ok(mut guard) = last.lock() {
-            guard.replace(handshake_meta);
-        }
-    }
-
-    // Suppress unused variable warning in non-test builds
-    #[cfg(not(test))]
-    let _ = preamble;
-
-    // Send success reply
-    write_handshake_reply(&mut stream, HANDSHAKE_OK)
-        .await
-        .map_err(|e| anyhow!("failed to send handshake reply: {e}"))?;
-
-    info!(peer = %peer, "handshake complete");
-
-    // Wrap stream with leftover bytes and handle transactions
-    let rewind_stream = RewindStream::new(leftover, stream);
+    argon2: Arc<Argon2<'static>>,
+    handshake: HandshakeMetadata,
+    peer: SocketAddr,
+) -> wireframe::app::Result<HotlineApp> {
     let session = Arc::new(TokioMutex::new(Session::default()));
+    let protocol = HotlineProtocol::new(pool.clone(), Arc::clone(&argon2));
 
-    connection_handler::handle_connection(rewind_stream, peer, pool, session)
-        .await
-        .map_err(|e| anyhow!("connection handler error: {e}"))
+    let app = HotlineApp::default()
+        .fragmentation(None)
+        .with_protocol(protocol)
+        .wrap(TransactionMiddleware::new(
+            pool.clone(),
+            Arc::clone(&session),
+            peer,
+        ))?
+        .app_data(RouteState::new(pool, argon2, handshake));
+
+    register_routes(app)
 }
 
-/// Determine the Hotline error code for a decode error.
-fn error_code_for_decode(err: &bincode::error::DecodeError) -> Option<u32> {
-    use bincode::error::DecodeError;
-
-    match err {
-        DecodeError::OtherString(text) => error_code_from_str(text),
-        DecodeError::Other(text) => error_code_from_str(text),
-        DecodeError::Io { inner, .. } if inner.kind() == io::ErrorKind::TimedOut => {
-            Some(HANDSHAKE_ERR_TIMEOUT)
-        }
-        _ => None,
-    }
+fn register_routes(app: HotlineApp) -> wireframe::app::Result<HotlineApp> {
+    let handler = noop_handler();
+    let app = app.route(FALLBACK_ROUTE_ID, handler.clone())?;
+    ROUTE_IDS
+        .iter()
+        .try_fold(app, |app, id| app.route(*id, handler.clone()))
 }
 
-/// Check error message for known Hotline error tokens.
-fn error_code_from_str(text: &str) -> Option<u32> {
-    if text.starts_with(HANDSHAKE_INVALID_PROTOCOL_TOKEN) {
-        Some(HANDSHAKE_ERR_INVALID)
-    } else if text.starts_with(HANDSHAKE_UNSUPPORTED_VERSION_TOKEN) {
-        Some(HANDSHAKE_ERR_UNSUPPORTED_VERSION)
-    } else {
-        None
-    }
-}
+fn noop_handler() -> Handler<Envelope> { Arc::new(|_: &Envelope| Box::pin(async {})) }
+
+fn default_peer() -> SocketAddr { SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0) }
 
 fn parse_bind_addr(target: &str) -> Result<SocketAddr> {
     target

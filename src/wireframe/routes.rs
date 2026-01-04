@@ -21,11 +21,7 @@
 //! the `WireframeApp`. The middleware intercepts all frames, processes them
 //! through the domain command dispatcher, and writes the reply bytes.
 
-use std::{
-    convert::Infallible,
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
+use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
 use argon2::Argon2;
 use async_trait::async_trait;
@@ -209,8 +205,8 @@ pub fn error_reply(
 ///
 /// This middleware intercepts all incoming frames, processes them through the
 /// domain command dispatcher, and writes the reply bytes to the response. It
-/// holds the database pool and session state directly rather than using
-/// thread-local storage.
+/// holds the database pool, peer address, and session state directly rather
+/// than using thread-local storage.
 ///
 /// # Wireframe Integration
 ///
@@ -222,6 +218,7 @@ pub fn error_reply(
 pub struct TransactionMiddleware {
     pool: DbPool,
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    peer: SocketAddr,
 }
 
 impl TransactionMiddleware {
@@ -230,8 +227,13 @@ impl TransactionMiddleware {
     pub const fn new(
         pool: DbPool,
         session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+        peer: SocketAddr,
     ) -> Self {
-        Self { pool, session }
+        Self {
+            pool,
+            session,
+            peer,
+        }
     }
 }
 
@@ -240,6 +242,7 @@ struct TransactionService<S> {
     inner: S,
     pool: DbPool,
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    peer: SocketAddr,
 }
 
 #[async_trait]
@@ -250,17 +253,11 @@ where
     type Error = Infallible;
 
     async fn call(&self, req: ServiceRequest) -> Result<ServiceResponse, Self::Error> {
-        use crate::wireframe::connection::current_peer;
-
-        let peer = current_peer().unwrap_or_else(|| {
-            warn!("peer address missing in middleware; using default");
-            SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0)
-        });
-
         let frame = req.frame().to_vec();
         let reply_bytes = {
             let mut session_guard = self.session.lock().await;
-            process_transaction_bytes(&frame, peer, self.pool.clone(), &mut session_guard).await
+            process_transaction_bytes(&frame, self.peer, self.pool.clone(), &mut session_guard)
+                .await
         };
 
         // Call inner service to propagate through the chain, then replace the response frame
@@ -281,6 +278,7 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
             inner: service,
             pool: self.pool.clone(),
             session: Arc::clone(&self.session),
+            peer: self.peer,
         };
         HandlerService::from_service(id, wrapped)
     }
@@ -527,8 +525,9 @@ mod tests {
     fn transaction_middleware_can_be_created() {
         let pool = dummy_pool();
         let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
+        let peer = "127.0.0.1:12345".parse().expect("peer addr");
 
-        let middleware = TransactionMiddleware::new(pool, session);
+        let middleware = TransactionMiddleware::new(pool, session, peer);
 
         // Just verify it can be cloned (required for middleware usage)
         let _cloned = middleware.clone();

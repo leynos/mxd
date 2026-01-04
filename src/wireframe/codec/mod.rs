@@ -4,10 +4,11 @@
 //! enabling the wireframe transport to decode the 20-byte header, reassemble
 //! fragmented payloads, and emit outbound frames according to `docs/protocol.md`.
 //!
-//! The [`framed`] submodule provides a Tokio-compatible codec for use with
-//! [`tokio_util::codec::Framed`], enabling custom connection handling that
-//! bypasses the wireframe library's default length-delimited framing.
+//! The [`framed`] submodule provides a Tokio-compatible codec, while
+//! [`frame`] exposes a wireframe `FrameCodec` wrapper for the same Hotline
+//! framing rules.
 
+mod frame;
 mod framed;
 
 use bincode::{
@@ -16,7 +17,7 @@ use bincode::{
     error::{DecodeError, EncodeError},
 };
 
-pub use self::framed::HotlineCodec;
+pub use self::{frame::HotlineFrameCodec, framed::HotlineCodec};
 use crate::{
     field_id::FieldId,
     transaction::{

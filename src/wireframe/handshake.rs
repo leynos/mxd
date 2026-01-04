@@ -12,7 +12,9 @@ use bincode::error::DecodeError;
 use futures_util::{FutureExt, future::BoxFuture};
 use tokio::net::TcpStream;
 use wireframe::{
-    app::WireframeApp,
+    app::{Packet, WireframeApp},
+    codec::FrameCodec,
+    serializer::Serializer,
     server::{ServerState, WireframeServer},
 };
 
@@ -37,13 +39,17 @@ use crate::{
 /// `timeout`. Tests may call this with a shorter duration to avoid slow
 /// sleeps, while production code should use [`crate::protocol::HANDSHAKE_TIMEOUT`].
 #[must_use]
-pub fn install<F, S>(
-    server: WireframeServer<F, HotlinePreamble, S>,
+pub fn install<F, S, Ser, Ctx, E, Codec>(
+    server: WireframeServer<F, HotlinePreamble, S, Ser, Ctx, E, Codec>,
     timeout: Duration,
-) -> WireframeServer<F, HotlinePreamble, S>
+) -> WireframeServer<F, HotlinePreamble, S, Ser, Ctx, E, Codec>
 where
-    F: Fn() -> WireframeApp + Send + Sync + Clone + 'static,
+    F: Fn() -> WireframeApp<Ser, Ctx, E, Codec> + Send + Sync + Clone + 'static,
     S: ServerState,
+    Ser: Serializer + Send + Sync,
+    Ctx: Send + 'static,
+    E: Packet,
+    Codec: FrameCodec,
 {
     server
         .on_preamble_decode_success(success_handler())
@@ -110,7 +116,11 @@ mod tests {
 
     use rstest::rstest;
     use tokio::{io::AsyncWriteExt, net::TcpStream, sync::oneshot, time::timeout};
-    use wireframe::{app::WireframeApp, server::WireframeServer};
+    use wireframe::{
+        BincodeSerializer,
+        app::{Envelope, WireframeApp},
+        server::WireframeServer,
+    };
 
     use super::HotlinePreamble;
     use crate::{
@@ -132,7 +142,8 @@ mod tests {
     pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
         let server = WireframeServer::new(|| {
             let handshake = current_handshake().unwrap_or_default();
-            let app = WireframeApp::default().app_data(handshake);
+            let app =
+                WireframeApp::<BincodeSerializer, (), Envelope>::default().app_data(handshake);
             clear_current_handshake();
             app
         })

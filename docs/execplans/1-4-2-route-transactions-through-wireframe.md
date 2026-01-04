@@ -28,6 +28,9 @@ tests.
       (not via thread-locals) to work with Tokio's work-stealing scheduler.
 - [x] (2025-12-29) Update `TestServer` in `test-util/src/server.rs` to launch
       `mxd-wireframe-server` binary; all postgres tests pass.
+- [x] (2026-01-04) Switch the wireframe server to `WireframeServer` with the
+      `HotlineFrameCodec`, removing the bespoke accept loop and connection
+      handler.
 - [ ] Remove `#[cfg(feature = "legacy-networking")]` gates from integration
       tests.
 - [ ] Add rstest unit tests for route handlers.
@@ -60,6 +63,12 @@ tests.
   wireframe's built-in connection handling again and retire the custom
   Tokio-based codec and accept loop.
 
+- Observation: wireframe routing requires a registered handler for each route
+  ID, so unknown Hotline transaction types must be mapped to a fallback route
+  when using `FrameCodec`. Resolution: introduce route ID helpers and a
+  fallback route (0) so middleware can still emit error replies for unknown
+  transactions.
+
 ## Decision Log
 
 - Decision: Tests run against wireframe server only.
@@ -74,6 +83,13 @@ tests.
   handled within wireframe's standard connection pipeline, keeping routing and
   middleware intact without custom TCP plumbing. Date/Author: 2025-12-30 /
   User-driven investigation.
+
+- Decision: Implement an in-tree `HotlineFrameCodec` that wraps bincode
+  `Envelope` payloads and map unknown transaction types to fallback route ID
+  0. Rationale: The wireframe server needs a handler for each route ID; mapping
+  unknown types to a known fallback keeps middleware routing in place so error
+  responses can be generated consistently. Date/Author: 2026-01-04 / Assistant
+  implementation.
 
 - Decision: Unknown transaction types return ERR_INTERNAL (code 3) with warning
   log. Rationale: Consistent with existing error handling in `commands.rs`;
@@ -94,8 +110,8 @@ tests.
   Rationale: wireframe's `handle_connection()` function wraps the stream with
   `LengthDelimitedCodec` internally, which cannot be overridden. To use our
   custom `HotlineCodec`, we must bypass wireframe's connection handling
-  entirely. The server now uses: (1) wireframe's `read_preamble()` for
-  handshake parsing, (2) custom `connection_handler::handle_connection()` with
+  entirely. The server used: (1) wireframe's `read_preamble()` for handshake
+  parsing, (2) a bespoke connection handler with
   `Framed<RewindStream, HotlineCodec>` for transaction processing. Status:
   Superseded by the 2025-12-30 decision to use `FrameCodec`. Date/Author:
   2025-12-29 / Implementation discovery.
@@ -119,20 +135,23 @@ architecture. The transport layer is migrating from a bespoke TCP loop
 
 Key files and their roles:
 
-- `src/server/wireframe.rs` (lines 104-125): `build_app()` creates a
-  `WireframeApp` with the `HotlineProtocol` adapter via `.with_protocol()`. It
-  currently attaches app data (config, pool, argon2, handshake) but does not
-  register routes.
+- `src/server/wireframe.rs`: Builds a `WireframeServer` with
+  `HotlineFrameCodec`, registers supported route IDs (plus the fallback route),
+  and installs `TransactionMiddleware` for transaction processing.
 
 - `src/wireframe/routes.rs`: Contains `RouteState`, `SessionState`, and
   `process_transaction_bytes()` which parses raw bytes, dispatches to
   `Command::process()`, and returns reply bytes. This function already
   implements the domain routing logic.
 
-- `src/wireframe/codec/framed.rs` and `src/wireframe/connection_handler.rs`:
-  Current branch-specific Tokio codec and custom accept loop for 20-byte
-  Hotline framing. These are candidates for removal if we switch to wireframe's
-  `FrameCodec` integration.
+- `src/wireframe/codec/frame.rs`: `HotlineFrameCodec` maps Hotline transactions
+  into bincode `Envelope` payloads for wireframe routing.
+
+- `src/wireframe/codec/framed.rs`: Tokio `HotlineCodec` used by the frame codec
+  to decode and encode the 20-byte Hotline headers.
+
+- `src/wireframe/route_ids.rs`: Route ID mapping (including the fallback
+  handler).
 
 - `src/wireframe/protocol.rs`: `HotlineProtocol` implements `WireframeProtocol`
   with lifecycle hooks (`on_connection_setup`, `before_send`, etc.).
@@ -165,26 +184,21 @@ The implementation proceeds in four phases:
 
 ### Phase 1: Route registration infrastructure
 
-In `src/wireframe/routes.rs`, add a route handler function that wraps
-`process_transaction_bytes`. The handler extracts the frame bytes, peer
-address, database pool, and session state from wireframe's app data and
-envelope, then delegates to the existing processing logic.
+In `src/server/wireframe.rs`, register no-op handlers for each implemented
+transaction type (107, 200, 370, 371, 400, 410) plus a fallback route (0).
+Routing remains in `TransactionMiddleware`, which processes raw transaction
+bytes and emits replies.
 
-Add a `register_routes()` function that chains `.route()` calls for each
-implemented transaction type (107, 200, 370, 371, 400, 410). Add a fallback
-route or error handler for unknown types that returns `ERR_INTERNAL` with a
-warning log.
-
-In `src/server/wireframe.rs`, update `build_app()` to call `register_routes()`
-after registering the protocol adapter.
+Use `src/wireframe/route_ids.rs` helpers to map transaction types to route IDs
+and keep the fallback mapping in one place.
 
 ### Phase 1.5: Replace bespoke framing with `FrameCodec`
 
 Replace the Tokio `HotlineCodec` and custom accept loop with wireframe's
-`FrameCodec` support. Use `WireframeApp::with_codec` and either the upstream
-`wireframe::codec::examples::HotlineFrameCodec` or a local implementation that
-matches the 20-byte Hotline header. Remove `connection_handler` if we can route
-through `WireframeServer::run()` again.
+`FrameCodec` support. Use `WireframeApp::with_codec` and a local
+`HotlineFrameCodec` implementation that matches the 20-byte Hotline header.
+Remove the bespoke connection handler once routing is handled by
+`WireframeServer::run()`.
 
 ### Phase 2: Test infrastructure migration
 
