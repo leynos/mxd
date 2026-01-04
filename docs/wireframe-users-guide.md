@@ -12,7 +12,7 @@ as an `Arc` pointing to an async function that receives a packet reference and
 returns `()`. The builder caches these registrations until `handle_connection`
 constructs the middleware chain for an accepted stream.[^2]
 
-```rust
+```no_run
 use std::sync::Arc;
 use wireframe::app::{Envelope, Handler, WireframeApp};
 
@@ -35,7 +35,7 @@ fn build_app() -> wireframe::Result<WireframeApp> {
 ```
 
 The snippet below wires the builder into a Tokio runtime, decodes inbound
-payloads, and emits a serialized response. It showcases the typical `main`
+payloads, and emits a serialised response. It showcases the typical `main`
 function for a microservice that listens on localhost and responds to a `Ping`
 message with a `Pong` payload.[^2][^10][^15]
 
@@ -99,20 +99,68 @@ async fn main() -> Result<(), ServerError> {
 ```
 
 Route identifiers must be unique; the builder returns
-`WireframeError::DuplicateRoute` when a handler is registered twice for the
-same route, keeping the dispatch table unambiguous.[^2][^5] New applications
-default to the bundled bincode serializer, a 1024-byte frame buffer, and a 100
-ms read timeout. Clamp these limits with `buffer_capacity` and
-`read_timeout_ms`, or swap the serializer with `with_serializer` when a
-different encoding strategy is required.[^3][^4]
+`WireframeError::DuplicateRoute` when a handler is registered twice, keeping
+the dispatch table unambiguous.[^2][^5] New applications default to the bundled
+bincode serializer, a length-delimited codec capped at 1024 bytes per frame,
+and a 100 ms read timeout. Clamp the length-delimited limit with
+`buffer_capacity` (length-delimited only), swap codecs with `with_codec`, and
+override the serializer with `with_serializer` when a different encoding
+strategy is required.[^3][^4] Custom protocols implement `FrameCodec` to
+describe their framing rules.
 
 Once a stream is accepted—either from a manual accept loop or via
 `WireframeServer`—`handle_connection(stream)` builds (or reuses) the middleware
-chain, wraps the transport in a length-delimited codec, enforces per-frame read
-timeouts, and writes responses. Serialization helpers `send_response` and
-`send_response_framed` return typed `SendError` variants when encoding or
-input/output (I/O) fails, and the connection closes after ten consecutive
-deserialization errors.[^6][^7]
+chain, wraps the transport in the configured frame codec (length-delimited by
+default), enforces per-frame read timeouts, and writes responses. Serialization
+helpers `send_response` and `send_response_framed` (or
+`send_response_framed_with_codec` for custom codecs) return typed `SendError`
+variants when encoding or I/O fails, and the connection closes after ten
+consecutive deserialization errors.[^6][^7]
+
+### Custom frame codecs
+
+Custom protocols supply a `FrameCodec` implementation to describe their framing
+rules. The codec owns the Tokio `Decoder` and `Encoder` types, while Wireframe
+uses the trait surface to map frames to payload bytes and correlation data.
+
+A codec implementation must:
+
+- Define a `Frame` type and paired decoder/encoder implementations that return
+  `std::io::Error` on failure.
+- Return only the logical payload bytes from `frame_payload` so metadata parsing
+  and deserialisation run against the right buffer.
+- Wrap outbound payloads with `wrap_payload`, adding any protocol headers or
+  metadata required by the wire format.
+- Provide `correlation_id` when the protocol stores it outside the payload;
+  Wireframe only uses this hook when the deserialized envelope is missing a
+  correlation identifier.
+- Report `max_frame_length`, which clamps inbound frames and seeds default
+  fragmentation limits.
+
+Install a custom codec with `with_codec`. The builder resets fragmentation to
+the codec-derived defaults, so override fragmentation afterwards if the
+protocol uses a different budget. When a framed stream is already available,
+use `send_response_framed_with_codec`, so responses pass through
+`FrameCodec::wrap_payload`.
+
+Assume `MyCodec` implements `FrameCodec`:
+
+```rust,no_run
+use std::sync::Arc;
+
+use wireframe::app::{Envelope, Handler, WireframeApp};
+
+struct MyCodec;
+
+let handler: Handler<Envelope> = Arc::new(|_: &Envelope| Box::pin(async {}));
+
+let app = WireframeApp::new()?
+    .with_codec(MyCodec)
+    .route(1, handler)?;
+```
+
+See `examples/hotline_codec.rs` and `examples/mysql_codec.rs` for complete
+implementations.
 
 ## Packets, payloads, and serialization
 
@@ -152,12 +200,12 @@ The standalone `Fragmenter` helper now slices oversized payloads into capped
 fragments while stamping the shared `MessageId` and sequential `FragmentIndex`.
 Each call returns a `FragmentBatch` that reports whether the message required
 fragmentation and yields individual `FragmentFrame` values for serialization or
-logging. This keeps transport experiments lightweight while the full adapter
+logging. This keeps transport experiments lightweight while the full adaptor
 layer evolves. The helper is fallible—`FragmentationError` surfaces encoding
 failures or index overflows—so production code should bubble the error up or
 log it rather than unwrapping.
 
-```rust
+```no_run
 use std::num::NonZeroUsize;
 use wireframe::fragment::Fragmenter;
 
@@ -203,6 +251,110 @@ let complete = reassembler
 // Decode when ready:
 // let message: MyType = complete.decode().expect("decode");
 ```
+
+### Request parts and streaming bodies
+
+`wireframe::request` exposes `RequestParts` to separate routing metadata from
+streaming request payloads.[^45]
+
+- `RequestParts::id()` returns the message identifier for routing.
+- `RequestParts::correlation_id()` returns the optional correlation identifier.
+- `RequestParts::metadata()` returns protocol-defined header bytes.
+
+This type pairs with `RequestBodyStream` for incremental consumption of large
+request payloads. Handlers can choose between buffered (existing) and streaming
+consumption; the streaming path is opt-in.
+
+```rust
+use wireframe::request::RequestParts;
+
+let parts = RequestParts::new(42, Some(123), vec![0x01, 0x02]);
+assert_eq!(parts.id(), 42);
+assert_eq!(parts.correlation_id(), Some(123));
+assert_eq!(parts.metadata(), &[0x01, 0x02]);
+```
+
+Unlike `PacketParts` (which carries the raw payload for envelope
+reconstruction), `RequestParts` carries only protocol-defined metadata required
+to interpret the streaming body. The body itself is consumed through a separate
+stream, enabling back-pressure and incremental processing.[^46]
+
+### Streaming request body consumption
+
+Handlers can opt into streaming request bodies using the `StreamingBody`
+extractor or by accepting a `RequestBodyStream` directly. The framework creates
+a bounded channel and forwards body chunks as they arrive; back-pressure
+propagates automatically when the handler consumes slower than the network
+delivers.
+
+```rust,no_run
+use tokio::io::AsyncReadExt;
+use wireframe::request::{RequestBodyReader, RequestBodyStream, RequestParts};
+
+async fn handle_upload(parts: RequestParts, body: RequestBodyStream) {
+    let mut reader = RequestBodyReader::new(body);
+    let mut buf = Vec::new();
+    reader.read_to_end(&mut buf).await.expect("read body");
+
+    log::info!(
+        "received {} bytes for request {}",
+        buf.len(),
+        parts.id()
+    );
+}
+```
+
+The `RequestBodyReader` adaptor implements `AsyncRead`, allowing protocol
+crates to reuse existing parsers. For raw stream access, use the
+`RequestBodyStream` directly with `StreamExt` methods:
+
+```rust,no_run
+use bytes::Bytes;
+use futures::StreamExt;
+use wireframe::request::{RequestBodyStream, RequestParts};
+
+async fn handle_stream(parts: RequestParts, mut body: RequestBodyStream) {
+    while let Some(result) = body.next().await {
+        match result {
+            Ok(chunk) => log::debug!("received {} bytes", chunk.len()),
+            Err(e) => log::error!("stream error: {e}"),
+        }
+    }
+}
+```
+
+The `StreamingBody` extractor wraps the stream with convenience methods:
+
+```rust,no_run
+use wireframe::{
+    extractor::StreamingBody,
+    request::RequestParts,
+};
+
+async fn with_extractor(parts: RequestParts, body: StreamingBody) {
+    // Convert to AsyncRead
+    let reader = body.into_reader();
+
+    // Or access the raw stream
+    // let stream = body.into_stream();
+}
+```
+
+Back-pressure is enforced via bounded channels: when the internal buffer fills,
+the framework pauses reading from the socket until the handler drains pending
+chunks. This prevents memory exhaustion under slow consumer conditions. The
+`body_channel` helper creates channels with configurable capacity:
+
+```rust
+use wireframe::request::body_channel;
+
+// Create a channel with capacity for 8 chunks
+let (tx, rx) = body_channel(8);
+// tx: connection sends chunks
+// rx: handler consumes via RequestBodyStream
+```
+
+See [ADR 0002][adr-0002-ref] for the complete design rationale.
 
 ## Working with requests and middleware
 
@@ -309,11 +461,12 @@ async fn main() -> Result<(), SendError> {
 ## Message fragmentation
 
 `WireframeApp` now fragments oversized payloads automatically. The builder
-derives a `FragmentationConfig` from `buffer_capacity`: any payload that will
-not fit into a single frame is split into fragments carrying a `FragmentHeader`
-(`message_id`, `fragment_index`, `is_last_fragment`) wrapped with the `FRAG`
-marker. The connection reassembles fragments before invoking handlers, so
-handlers continue to work with complete `Envelope` values.[^6]
+derives a `FragmentationConfig` from the active frame codec's maximum frame
+length (the default length-delimited codec uses `buffer_capacity`): any payload
+that will not fit into a single frame is split into fragments carrying a
+`FragmentHeader` (`message_id`, `fragment_index`, `is_last_fragment`) wrapped
+with the `FRAG` marker. The connection reassembles fragments before invoking
+handlers, so handlers continue to work with complete `Envelope` values.[^6]
 
 Fragmented messages enforce two guards: `max_message_size` caps the total
 reassembled payload, and `reassembly_timeout` evicts stale partial messages.
@@ -357,11 +510,11 @@ or emit errors.[^14]
 ## Running servers
 
 `WireframeServer::new` clones the application factory per worker, defaults the
-worker count to the host central processing unit (CPU) total (never below one),
-supports a readiness signal, and normalizes accept-loop backoff settings
-through `accept_backoff`.[^15][^16] Servers start in an unbound state; call
-`bind` or `bind_existing_listener` to transition into the `Bound` typestate,
-inspect the bound address, or rebind later.[^17]
+worker count to the host CPU total (never below one), supports a readiness
+signal, and normalizes accept-loop backoff settings through
+`accept_backoff`.[^15][^16] Servers start in an unbound state; call `bind` or
+`bind_existing_listener` to transition into the `Bound` typestate, inspect the
+bound address, or rebind later.[^17]
 
 `run` awaits Ctrl+C, while `run_with_shutdown` cancels all worker tasks when
 the supplied future resolves.[^18] Each worker runs `accept_loop`, which clones
@@ -376,7 +529,117 @@ the failure callback path.[^20]
 `spawn_connection_task` wraps each accepted stream in `read_preamble` and
 `RewindStream`, records connection panics, and logs failures without crashing
 worker tasks.[^20][^37][^38] `ServerError` surfaces bind and accept failures as
-typed errors, so callers can react appropriately.[^21]
+typed errors so callers can react appropriately.[^21]
+
+## Client runtime
+
+`WireframeClient` provides a first-class client runtime that mirrors the
+server's framing and serialization layers, with a builder that configures the
+serializer, codec settings, and socket options before connecting.[^44] Use
+`ClientCodecConfig` to align `max_frame_length` with the server's
+`buffer_capacity`, and apply `SocketOptions` when TCP tuning is required, such
+as `TCP_NODELAY` or buffer size adjustments.
+
+```rust
+use std::{net::SocketAddr, time::Duration};
+
+use wireframe::{
+    client::{ClientCodecConfig, SocketOptions},
+    WireframeClient,
+};
+
+#[derive(bincode::Encode, bincode::BorrowDecode)]
+struct Login {
+    username: String,
+}
+
+#[derive(bincode::Encode, bincode::BorrowDecode, Debug, PartialEq)]
+struct LoginAck {
+    ok: bool,
+}
+
+let addr: SocketAddr = "127.0.0.1:7878".parse().expect("valid socket address");
+let codec = ClientCodecConfig::default().max_frame_length(2048);
+let socket = SocketOptions::default()
+    .nodelay(true)
+    .keepalive(Some(Duration::from_secs(30)));
+
+let mut client = WireframeClient::builder()
+    .codec_config(codec)
+    .socket_options(socket)
+    .connect(addr)
+    .await?;
+
+let login = Login {
+    username: "guest".to_string(),
+};
+let ack: LoginAck = client.call(&login).await?;
+assert!(ack.ok);
+```
+
+### Client preamble exchange
+
+The client builder supports an optional preamble exchange before framing
+begins. Use `with_preamble` to send a preamble immediately after TCP connect,
+and register callbacks for success or failure scenarios.[^45]
+
+```rust
+use std::{net::SocketAddr, time::Duration};
+
+use futures::FutureExt;
+use wireframe::{
+    preamble::read_preamble,
+    WireframeClient,
+};
+
+#[derive(bincode::Encode, bincode::BorrowDecode)]
+struct ClientHello {
+    version: u16,
+}
+
+#[derive(bincode::BorrowDecode)]
+struct ServerAck {
+    accepted: bool,
+}
+
+let addr: SocketAddr = "127.0.0.1:7878".parse().expect("valid socket address");
+
+let client = WireframeClient::builder()
+    .with_preamble(ClientHello { version: 1 })
+    .preamble_timeout(Duration::from_secs(5))
+    .on_preamble_success(|_preamble, stream| {
+        async move {
+            // Read server acknowledgement
+            let (ack, leftover) = read_preamble::<_, ServerAck>(stream)
+                .await
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+            if !ack.accepted {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionRefused,
+                    "server rejected preamble",
+                ));
+            }
+            Ok(leftover) // Return any leftover bytes for framing layer
+        }
+        .boxed()
+    })
+    .on_preamble_failure(|err, _stream| {
+        async move {
+            eprintln!("Preamble exchange failed: {err}");
+            Ok(())
+        }
+        .boxed()
+    })
+    .connect(addr)
+    .await?;
+```
+
+The success callback receives the sent preamble and a mutable reference to the
+TCP stream, enabling bidirectional preamble negotiation. Any bytes read beyond
+the server's response must be returned as "leftover" bytes so they can be
+replayed before the framing layer begins. The failure callback runs when the
+preamble exchange fails (timeout, I/O error, or encode error) and can log
+diagnostics or send an error response before the connection closes.
 
 ## Push queues and connection actors
 
@@ -420,7 +683,7 @@ to enumerate active sessions.[^40]
 The `Response` enum models several reply styles: a single frame, a vector of
 frames, a streamed response, a channel-backed multi-packet response, or an
 empty reply. `into_stream` converts any variant into a boxed `FrameStream`,
-ready to install on a connection actor with `set_response`, so streaming output
+ready to install on a connection actor with `set_response` so streaming output
 can be interleaved with push traffic. `WireframeError` distinguishes transport
 failures from protocol-level errors emitted by streaming
 responses.[^34][^35][^31]
@@ -451,9 +714,9 @@ the receiving half of a `tokio::sync::mpsc` channel to the connection actor,
 retain the sender, and push frames whenever back-pressure allows. The
 `Response::with_channel` helper constructs the pair and returns the sender
 alongside a `Response::MultiPacket`, making the ergonomic tuple pattern
-documented in Architecture Decision Record (ADR) 0001 trivial to adopt. The
-library awaits channel capacity before accepting each frame, so producers can
-rely on the `send().await` future to coordinate flow control with the peer.
+documented in ADR 0001 trivial to adopt. The library awaits channel capacity
+before accepting each frame, so producers can rely on the `send().await` future
+to coordinate flow control with the peer.
 
 ```rust
 use tokio::spawn;
@@ -487,7 +750,7 @@ Multi-packet responders rely on the protocol hook `stream_end_frame` to emit a
 terminator when the producer side of the channel closes naturally. The
 connection actor records why the channel ended (`drained`, `disconnected`, or
 `shutdown`), stamps the stored `correlation_id` on the terminator frame, and
-routes it through the standard `before_send` instrumentation, so telemetry and
+routes it through the standard `before_send` instrumentation so telemetry and
 higher-level lifecycle hooks observe a consistent end-of-stream signal.
 Dropping all senders closes the channel; the actor logs the termination reason
 and forwards the terminator through the same hooks used for regular frames so
@@ -499,10 +762,10 @@ Phase out older message versions without breaking clients:
 
 - Accept versions N and N-1 on ingress; rewrite legacy payloads in middleware so
   downstream handlers see the current schema.[^10][^12]
-- Emit version N on egress, so clients observe a single schema.
+- Emit version N on egress so clients observe a single schema.
 - Publish metrics and logs describing legacy usage to support operator
   dashboards.[^33][^8]
-- Remove adapters once the sunset window ends.
+- Remove adaptors once the sunset window ends.
 
 ```rust
 use std::sync::Arc;
@@ -567,13 +830,13 @@ fn build_app() -> Result<WireframeApp> {
 When the optional `metrics` feature is enabled, Wireframe updates the
 `wireframe_connections_active` gauge, frame counters tagged by direction, error
 counters tagged by kind, and a counter for panicking connection tasks. All
-helpers become no-ops when the feature is disabled, so instrumentation can stay
+helpers become no-ops when the feature is disabled so instrumentation can stay
 in place.[^33] `handle_connection`, the connection actor, and the panic wrapper
 call these helpers to maintain consistent telemetry.[^6][^7][^31][^20]
 
 ## Additional utilities
 
-- `read_preamble` decodes up to 1 kibibyte (KiB) using bincode, returning the
+- `read_preamble` decodes up to 1 KiB using bincode, returning the decoded
   value plus any leftover bytes that must be replayed before normal frame
   processing.[^37]
 - `RewindStream` replays leftover bytes before delegating reads and writes to
@@ -623,3 +886,10 @@ call these helpers to maintain consistent telemetry.[^6][^7][^31][^20]
 [^41]: Implemented in `src/fragment/mod.rs` and supporting submodules.
 [^42]: Exercised in `tests/features/fragment.feature`.
 [^43]: Step definitions in `tests/steps/fragment_steps.rs`.
+[^44]: Implemented in `src/client/runtime.rs`, `src/client/builder.rs`,
+    `src/client/config.rs`, and `src/client/error.rs`.
+[^45]: Implemented in `src/request.rs`.
+[^46]: See ADR 0002 for design rationale:
+    `docs/adr/0002-streaming-requests-and-shared-message-assembly.md`.
+
+[adr-0002-ref]: adr/0002-streaming-requests-and-shared-message-assembly.md

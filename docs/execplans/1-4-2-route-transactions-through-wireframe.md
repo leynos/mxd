@@ -53,16 +53,59 @@ tests.
   struct fields; the middleware receives them in `new()` and clones into the
   inner `TransactionService` during `transform()`.
 
+- Observation: wireframe v0.2.0 adds `FrameCodec` support, allowing custom
+  framing to be installed with `WireframeApp::with_codec`. The worked example
+  in `../wireframe/examples/hotline_codec.rs` shows a `HotlineFrameCodec`
+  implementation that wraps the 20-byte header framing. This means we can use
+  wireframe's built-in connection handling again and retire the custom
+  Tokio-based codec and accept loop.
+
 ## Decision Log
 
 - Decision: Tests run against wireframe server only.
   Rationale: Simplifies test maintenance; legacy networking is deprecated.
   Date/Author: 2025-12-29 / User decision.
 
+- Decision: Replace the bespoke Tokio `HotlineCodec` and manual accept loop
+  with wireframe's `FrameCodec` integration, using
+  `wireframe::codec::examples::HotlineFrameCodec` (or an equivalent in-tree
+  implementation) via `WireframeApp::with_codec`. Rationale: Wireframe v0.2.0
+  now supports custom frame codecs, so the 20-byte Hotline header can be
+  handled within wireframe's standard connection pipeline, keeping routing and
+  middleware intact without custom TCP plumbing. Date/Author: 2025-12-30 /
+  User-driven investigation.
+
 - Decision: Unknown transaction types return ERR_INTERNAL (code 3) with warning
   log. Rationale: Consistent with existing error handling in `commands.rs`;
   provides visibility into unsupported requests. Date/Author: 2025-12-29 / User
   decision.
+
+- Decision: Implement custom `HotlineCodec` bypassing wireframe's routing.
+  Rationale: wireframe v0.1.0 hardcodes `LengthDelimitedCodec` with 4-byte
+  length prefix framing at `src/app/connection.rs:47`. Hotline uses 20-byte
+  header framing which is incompatible. No extension point exists in wireframe
+  for custom codecs. The custom codec implements Tokio's `Decoder`/`Encoder`
+  traits directly, enabling proper transaction framing while still using
+  wireframe for preamble (handshake) handling. Status: Superseded by the
+  2025-12-30 decision to use `FrameCodec`. Date/Author: 2025-12-29 /
+  Implementation discovery.
+
+- Decision: Use custom TCP accept loop instead of `WireframeServer::run()`.
+  Rationale: wireframe's `handle_connection()` function wraps the stream with
+  `LengthDelimitedCodec` internally, which cannot be overridden. To use our
+  custom `HotlineCodec`, we must bypass wireframe's connection handling
+  entirely. The server now uses: (1) wireframe's `read_preamble()` for
+  handshake parsing, (2) custom `connection_handler::handle_connection()` with
+  `Framed<RewindStream, HotlineCodec>` for transaction processing. Status:
+  Superseded by the 2025-12-30 decision to use `FrameCodec`. Date/Author:
+  2025-12-29 / Implementation discovery.
+
+- Decision: Name codec module `framed.rs` instead of `tokio.rs`. Rationale:
+  Avoid name collision with the `tokio` crate which would cause confusing
+  import paths and potential shadowing issues. The name `framed` reflects the
+  module's purpose (providing `Framed`-compatible codec) without conflicting
+  with external crate names. Status: Superseded by the 2025-12-30 decision to
+  use `FrameCodec`. Date/Author: 2025-12-29 / Implementation decision.
 
 ## Outcomes & Retrospective
 
@@ -85,6 +128,11 @@ Key files and their roles:
   `process_transaction_bytes()` which parses raw bytes, dispatches to
   `Command::process()`, and returns reply bytes. This function already
   implements the domain routing logic.
+
+- `src/wireframe/codec/framed.rs` and `src/wireframe/connection_handler.rs`:
+  Current branch-specific Tokio codec and custom accept loop for 20-byte
+  Hotline framing. These are candidates for removal if we switch to wireframe's
+  `FrameCodec` integration.
 
 - `src/wireframe/protocol.rs`: `HotlineProtocol` implements `WireframeProtocol`
   with lifecycle hooks (`on_connection_setup`, `before_send`, etc.).
@@ -129,6 +177,14 @@ warning log.
 
 In `src/server/wireframe.rs`, update `build_app()` to call `register_routes()`
 after registering the protocol adapter.
+
+### Phase 1.5: Replace bespoke framing with `FrameCodec`
+
+Replace the Tokio `HotlineCodec` and custom accept loop with wireframe's
+`FrameCodec` support. Use `WireframeApp::with_codec` and either the upstream
+`wireframe::codec::examples::HotlineFrameCodec` or a local implementation that
+matches the 20-byte Hotline header. Remove `connection_handler` if we can route
+through `WireframeServer::run()` again.
 
 ### Phase 2: Test infrastructure migration
 
