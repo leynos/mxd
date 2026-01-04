@@ -4,6 +4,10 @@ This ExecPlan is a living document. The sections `Progress`,
 `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must
 be kept up to date as work proceeds.
 
+Status: COMPLETE
+
+No `PLANS.md` exists in this repository.
+
 ## Purpose / Big Picture
 
 After this change, the wireframe server routes incoming Hotline transactions
@@ -16,6 +20,40 @@ Observable outcome: running `make test` exercises Login, news listing, and file
 listing through the wireframe transport, with all tests passing. The
 `legacy-networking` feature gate is no longer required for these integration
 tests.
+
+## Constraints
+
+- Files must stay under 400 lines; every Rust module starts with a `//!`
+  module-level comment.
+- Routing behaviour for Login, file listing, and news listing must not change.
+- Validation must use Makefile targets (`make check-fmt`, `make lint`,
+  `make test`, `make markdownlint`).
+- Documentation uses en-GB-oxendict spelling and wraps paragraphs at 80
+  columns.
+- No new dependencies without explicit approval.
+
+## Tolerances (Exception Triggers)
+
+- Scope: if more than 20 files or 600 net lines are required, stop and
+  escalate.
+- Interfaces: if public APIs in `src/server/wireframe.rs` or
+  `src/wireframe/routes/mod.rs` must change, stop and escalate.
+- Dependencies: if any new crate is required, stop and escalate.
+- Tests: if tests fail after two iterations of fixes, stop and escalate.
+- Ambiguity: if multiple valid interpretations of routing behaviour exist,
+  stop and present options with trade-offs.
+
+## Risks
+
+- Risk: Frame codec framing could diverge from Hotline header expectations.
+  Severity: high. Likelihood: low. Mitigation: keep the codec backed by the
+  shared transaction parser and verify framing in unit tests.
+- Risk: Behavioural tests depend on the embedded Postgres harness and may be
+  flaky under load. Severity: medium. Likelihood: medium. Mitigation: keep
+  timeouts explicit and avoid shared state across scenarios.
+- Risk: Unknown route IDs might bypass error reporting. Severity: medium.
+  Likelihood: low. Mitigation: maintain fallback route registration and assert
+  ERR_UNKNOWN_TYPE in tests.
 
 ## Progress
 
@@ -45,6 +83,8 @@ tests.
 - [x] (2026-01-04) Update `docs/design.md` with routing architecture and
       frame codec details.
 - [x] (2026-01-04) Mark task 1.4.2 as done in `docs/roadmap.md`.
+- [x] (2026-01-04) Confirm `HotlineFrameCodec` is wired into
+      `src/server/wireframe.rs` and replaces the bespoke Tokio codec.
 
 ## Surprises & Discoveries
 
@@ -158,6 +198,8 @@ tests.
   coverage in the Gherkin feature file with dedicated step definitions.
 - Documentation and roadmap entries are updated to reflect the wireframe codec
   integration and routing test coverage.
+- Wireframe's `FrameCodec` integration now handles Hotline framing without the
+  bespoke Tokio accept loop.
 
 ## Context and Orientation
 
@@ -266,7 +308,7 @@ done in `docs/roadmap.md`.
 
 ## Concrete Steps
 
-All commands run from the repository root `/mnt/home/leynos/Projects/mxd`.
+All commands run from the repository root `/data/leynos/Projects/mxd`.
 
 1. Create the execplans directory and write this file:
 
@@ -279,23 +321,26 @@ All commands run from the repository root `/mnt/home/leynos/Projects/mxd`.
 
    Expected: Build succeeds with no errors.
 
-3. Run the test suite:
+3. Run the test suite (use `tee` to capture full output):
 
-       make test
+       set -o pipefail
+       make test | tee /tmp/mxd-make-test.log
 
    Expected: All tests pass. Login, file listing, and news listing tests
    exercise the wireframe server.
 
 4. Run linting and formatting checks:
 
-       make check-fmt
-       make lint
+       set -o pipefail
+       make check-fmt | tee /tmp/mxd-make-check-fmt.log
+       make lint | tee /tmp/mxd-make-lint.log
 
    Expected: No warnings or errors.
 
 5. Run Markdown validation:
 
-       make markdownlint
+       set -o pipefail
+       make markdownlint | tee /tmp/mxd-make-markdownlint.log
 
    Expected: All documentation passes linting.
 
@@ -324,10 +369,9 @@ Acceptance criteria:
 
 ## Idempotence and Recovery
 
-All steps are safe to repeat. If a step fails partway through:
-
-- Discard uncommitted changes with `git checkout .`.
-- Re-run from the beginning of the failing phase.
+All steps are safe to repeat. If a step fails partway through, re-run the
+failing phase after correcting the error. Avoid destructive commands unless
+explicitly approved.
 
 Commits should be atomic and focused. If a commit introduces a regression, it
 can be reverted independently.
@@ -362,3 +406,10 @@ Dependencies:
 - `rstest` v0.26 (already in dev-dependencies)
 - `rstest-bdd` v0.3.2 (update from v0.3.0)
 - `pg-embedded-setup-unpriv` (already in dev-dependencies)
+
+## Revision Note
+
+Updated the ExecPlan to include status, constraints, tolerances, and risks;
+documented the FrameCodec confirmation; refreshed validation commands to use
+`tee`; and aligned paths with the current workspace root. This does not change
+remaining work because the task is complete.
