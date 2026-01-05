@@ -11,6 +11,7 @@ use std::{io, time::Duration};
 use bincode::error::DecodeError;
 use futures_util::{FutureExt, future::BoxFuture};
 use tokio::net::TcpStream;
+use tracing::warn;
 use wireframe::{
     app::{Packet, WireframeApp},
     codec::FrameCodec,
@@ -61,12 +62,21 @@ fn success_handler()
 -> impl for<'a> Fn(&'a HotlinePreamble, &'a mut TcpStream) -> BoxFuture<'a, io::Result<()>> + Send + Sync
 {
     move |preamble, stream| {
-        let mut context = ConnectionContext::new(HandshakeMetadata::from(preamble.handshake()));
-        if let Ok(peer) = stream.peer_addr() {
+        async move {
+            let mut context = ConnectionContext::new(HandshakeMetadata::from(preamble.handshake()));
+            let peer = match stream.peer_addr() {
+                Ok(peer) => peer,
+                Err(error) => {
+                    warn!(%error, "failed to retrieve peer address during handshake");
+                    return Err(error);
+                }
+            };
             context = context.with_peer(peer);
+            store_current_context(context);
+            write_handshake_reply(stream, HANDSHAKE_OK).await?;
+            Ok(())
         }
-        store_current_context(context);
-        write_handshake_reply(stream, HANDSHAKE_OK).boxed()
+        .boxed()
     }
 }
 

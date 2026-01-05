@@ -31,13 +31,15 @@ use wireframe::{
     middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform},
 };
 
+#[cfg(test)]
+use crate::wireframe::codec::HotlineTransaction;
 use crate::{
     commands::Command,
     db::DbPool,
     handler::Session,
     header_util::reply_header,
     transaction::{FrameHeader, Transaction, parse_transaction},
-    wireframe::{codec::HotlineTransaction, connection::HandshakeMetadata},
+    wireframe::connection::HandshakeMetadata,
 };
 
 /// Error code for internal server failures.
@@ -161,6 +163,7 @@ fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<
     transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
 }
 
+#[cfg(test)]
 /// Build an error reply as a `HotlineTransaction`.
 ///
 /// # Errors
@@ -170,7 +173,7 @@ fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<
 /// implementation.
 ///
 /// [`TransactionError`]: crate::transaction::TransactionError
-pub fn error_reply(
+fn error_reply(
     header: &FrameHeader,
     error_code: u32,
 ) -> Result<HotlineTransaction, crate::transaction::TransactionError> {

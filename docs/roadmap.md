@@ -153,7 +153,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   clients, known deviations, and required toggles. Acceptance: The matrix lives
   in `docs/` and is referenced by release notes during QA sign-off.
   Dependencies: 1.5.2.
-- [ ] 1.5.4 Verify XOR and sub-version compatibility logic with Kani.
+- [ ] 1.5.4. Verify XOR and sub-version compatibility logic with Kani.
   Acceptance: Kani harnesses show XOR encode/decode round-trips and version
   gating for bounded inputs without panics. Dependencies: Task “Gate protocol
   quirks on the handshake sub-version so Hotline 1.9 fallbacks remain

@@ -5,7 +5,7 @@ Feature: Wireframe transaction routing
   Scenario: Routes unknown transaction type to error handler
     Given a wireframe server handling transactions
     When I send a transaction with unknown type 65535
-    Then the reply has error code 1
+    Then the reply has error code 3
 
   Scenario: Routes truncated frame to error handler
     Given a wireframe server handling transactions

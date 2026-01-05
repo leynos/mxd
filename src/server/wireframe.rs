@@ -28,7 +28,7 @@
 
 use std::{
     io::{self, Write},
-    net::{Ipv4Addr, SocketAddr, ToSocketAddrs},
+    net::{SocketAddr, ToSocketAddrs},
     sync::Arc,
 };
 
@@ -132,30 +132,38 @@ impl WireframeBootstrap {
             .local_addr()
             .ok_or_else(|| anyhow!("failed to get local address"))?;
 
-        println!("mxd-wireframe-server listening on {addr}");
-        // Explicit flush ensures the message reaches piped stdout immediately,
-        // which is critical for test harness readiness detection.
-        io::stdout().flush().ok();
+        announce_listening(addr);
 
         server.run().await.context("wireframe server terminated")?;
         Ok(())
     }
 }
 
+fn announce_listening(addr: SocketAddr) {
+    println!("mxd-wireframe-server listening on {addr}");
+    // Explicit flush ensures the message reaches piped stdout immediately,
+    // which is critical for test harness readiness detection.
+    if let Err(error) = io::stdout().flush() {
+        warn!(%error, "failed to flush stdout");
+    }
+}
+
 fn build_app_for_connection(pool: DbPool, argon2: Arc<Argon2<'static>>) -> HotlineApp {
-    let context = take_current_context().unwrap_or_default();
+    // Missing connection context indicates handshake setup failed; abort the
+    // connection rather than running without routing state.
+    let context = take_current_context().unwrap_or_else(|| {
+        error!("missing handshake context in app factory");
+        panic!("missing handshake context in app factory");
+    });
     let (handshake, peer) = context.into_parts();
     let peer = peer.unwrap_or_else(|| {
-        warn!("peer address missing in app factory; using default");
-        default_peer()
+        error!("peer address missing in app factory");
+        panic!("peer address missing in app factory");
     });
-    match build_app(pool, argon2, handshake, peer) {
-        Ok(app) => app,
-        Err(err) => {
-            error!(error = %err, "failed to build wireframe application");
-            HotlineApp::default().fragmentation(None)
-        }
-    }
+    build_app(pool, argon2, handshake, peer).unwrap_or_else(|err| {
+        error!(error = %err, "failed to build wireframe application");
+        panic!("failed to build wireframe application: {err}");
+    })
 }
 
 fn build_app(
@@ -188,8 +196,6 @@ fn routing_placeholder_handler() -> Handler<Envelope> {
     // Wireframe requires a handler per route; transaction middleware owns replies.
     Arc::new(|_: &Envelope| Box::pin(async {}))
 }
-
-fn default_peer() -> SocketAddr { SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0) }
 
 fn parse_bind_addr(target: &str) -> Result<SocketAddr> {
     target

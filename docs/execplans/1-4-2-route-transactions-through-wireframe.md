@@ -53,7 +53,7 @@ tests.
   timeouts explicit and avoid shared state across scenarios.
 - Risk: Unknown route IDs might bypass error reporting. Severity: medium.
   Likelihood: low. Mitigation: maintain fallback route registration and assert
-  ERR_UNKNOWN_TYPE in tests.
+  ERR_INTERNAL in tests.
 
 ## Progress
 
@@ -91,6 +91,12 @@ tests.
       service plumbing and frame copies.
 - [x] (2026-01-05) Remove unused `SessionState` wrapper and align tests with
       the production session handling.
+- [x] (2026-01-06) Gate `error_reply` to test builds and align unknown-type
+      error codes with ERR_INTERNAL.
+- [x] (2026-01-06) Bound readiness diagnostics in the test server harness and
+      surface stdout flush failures.
+- [x] (2026-01-06) Require handshake context/peer in the app factory and log
+      peer address lookup failures.
 
 ## Surprises & Discoveries
 
@@ -164,10 +170,9 @@ tests.
   `self_named_module_files` lint once the routing tests were split into
   submodules. Date/Author: 2026-01-04 / Assistant implementation.
 
-- Decision: Unknown transaction types return ERR_UNKNOWN_TYPE (code 1) with
-  warning log. Rationale: Consistent with existing error handling in
-  `commands.rs`; provides visibility into unsupported requests. Date/Author:
-  2025-12-29 / User decision.
+- Decision: Unknown transaction types return ERR_INTERNAL (code 3) with warning
+  log. Rationale: Aligns routing behaviour with the postmortem spec and avoids
+  ambiguous error codes. Date/Author: 2025-12-29 / User decision.
 
 - Decision: Implement custom `HotlineCodec` bypassing wireframe's routing.
   Rationale: wireframe v0.1.0 hardcodes `LengthDelimitedCodec` with 4-byte
@@ -206,6 +211,11 @@ tests.
   `mem::take` to avoid per-request copies. Rationale: Reduces allocation and
   simplifies middleware internals while preserving handler pipeline behaviour.
   Date/Author: 2026-01-05 / Assistant implementation.
+
+- Decision: Treat missing handshake context/peer or app-construction failures
+  as fatal for the connection. Rationale: Running without peer metadata or
+  routes would hide faults and silently break routing, so connections should
+  fail fast instead. Date/Author: 2026-01-06 / Assistant implementation.
 
 ## Outcomes & Retrospective
 
@@ -311,9 +321,9 @@ Add unit tests in `src/wireframe/routes/tests/` using rstest:
 - Handler correctly parses valid transactions.
 - Handler returns error for malformed input.
 - Handler preserves transaction ID in reply.
-- Unknown transaction type returns ERR_UNKNOWN_TYPE.
+- Unknown transaction type returns ERR_INTERNAL.
 
-Add behavioural tests using rstest-bdd v0.3.2:
+Add behavioural tests using rstest-bdd v0.3.0:
 
 - Create `tests/features/wireframe_routing.feature` with scenarios for Login,
   file listing, and news listing.
@@ -420,7 +430,7 @@ Dependencies:
 
 - `wireframe` crate (already in use)
 - `rstest` v0.26 (already in dev-dependencies)
-- `rstest-bdd` v0.3.2 (update from v0.3.0)
+- `rstest-bdd` v0.3.0
 - `pg-embedded-setup-unpriv` (already in dev-dependencies)
 
 ## Revision Note
@@ -429,6 +439,8 @@ Updated the ExecPlan to include status, constraints, tolerances, and risks;
 documented the FrameCodec confirmation; refreshed validation commands to use
 `tee`; aligned paths with the current workspace root; corrected the unknown
 type error code; documented the connection context consolidation and middleware
-simplification; removed the unused `SessionState` wrapper; and updated the
-interface summary to match the current route registration flow. This does not
-change remaining work because the task is complete.
+simplification; recorded readiness diagnostics and app factory failure
+handling; removed the unused `SessionState` wrapper; clarified the rstest-bdd
+version to match Cargo.toml; and updated the interface summary to match the
+current route registration flow. This does not change remaining work because
+the task is complete.

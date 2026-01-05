@@ -4,12 +4,13 @@
 //! `PostgreSQL` backend, monitor readiness, and tear it down once tests complete.
 
 use std::{
+    collections::VecDeque,
     ffi::OsString,
     fmt,
     io::{self, BufRead, BufReader},
     net::TcpListener,
     path::Path,
-    process::{Child, Command, Stdio},
+    process::{Child, ChildStdout, Command, Stdio},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -152,42 +153,47 @@ where
     Ok(url)
 }
 
+fn collect_stdout_for_diagnostics(
+    reader: &mut BufReader<&mut ChildStdout>,
+    max_lines: usize,
+    timeout: Duration,
+) -> Result<(Vec<String>, bool), AnyError> {
+    let mut lines = VecDeque::with_capacity(max_lines);
+    let mut line = String::new();
+    let start = Instant::now();
+    loop {
+        line.clear();
+        if reader.read_line(&mut line)? == 0 {
+            return Ok((lines.into_iter().collect(), false));
+        }
+        if max_lines > 0 {
+            if lines.len() == max_lines {
+                lines.pop_front();
+            }
+            lines.push_back(line.trim().to_owned());
+        }
+        if line.contains("listening on") {
+            return Ok((lines.into_iter().collect(), true));
+        }
+        if start.elapsed() > timeout {
+            return Ok((lines.into_iter().collect(), false));
+        }
+    }
+}
+
 /// Waits up to ten seconds for the child `mxd` process to announce readiness
 /// on stdout, returning an error if it exits early or never signals.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "readiness polling loop with diagnostic logging has inherent complexity"
-)]
 fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     if let Some(out) = &mut child.stdout {
         let mut reader = BufReader::new(out);
-        let mut line = String::new();
-        let mut lines_received: Vec<String> = Vec::new();
         let timeout = Duration::from_secs(10);
-        let start = Instant::now();
-        loop {
-            line.clear();
-            if reader.read_line(&mut line)? == 0 {
-                warn!(
-                    lines_received = ?lines_received,
-                    "server exited before signalling readiness"
-                );
-                return Err("server exited before signalling readiness".into());
-            }
-            lines_received.push(line.trim().to_owned());
-            if line.contains("listening on") {
-                break;
-            }
-            if start.elapsed() > timeout {
-                warn!(
-                    elapsed = ?start.elapsed(),
-                    lines_received = ?lines_received,
-                    "timeout waiting for server to signal readiness"
-                );
-                return Err("timeout waiting for server to signal readiness".into());
-            }
+        let (lines_received, ready) = collect_stdout_for_diagnostics(&mut reader, 50, timeout)?;
+        if ready {
+            Ok(())
+        } else {
+            warn!(lines_received = ?lines_received, "server did not signal readiness");
+            Err("server failed to signal readiness".into())
         }
-        Ok(())
     } else {
         Err("missing stdout from server".into())
     }

@@ -29,8 +29,8 @@ use crate::{
 const ERR_PERMISSION: u32 = 1;
 /// Error code for internal failures (mirrors the route module constant).
 const ERR_INTERNAL: u32 = 3;
-/// Error code returned for unknown transaction types.
-const ERR_UNKNOWN_TYPE: u32 = 1;
+/// Error code returned for unknown transaction types (per spec: `ERR_INTERNAL`).
+const ERR_UNKNOWN_TYPE: u32 = 3;
 
 /// Parameterized test covering error reply scenarios.
 ///
@@ -199,7 +199,7 @@ async fn process_transaction_bytes_truncated_input() {
     assert_eq!(reply_header.error, ERR_INTERNAL);
 }
 
-/// Tests that unknown transaction type returns error code 1.
+/// Tests that unknown transaction type returns error code 3.
 #[rstest]
 #[tokio::test]
 async fn process_transaction_bytes_unknown_type() {

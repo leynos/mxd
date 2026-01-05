@@ -381,6 +381,7 @@ fn then_articles(world: &RoutingWorld, first: String, second: String) {
 }
 
 #[scenario(path = "tests/features/wireframe_routing.feature", index = 0)]
+// Unknown-type routing returns ERR_INTERNAL (3) per spec.
 fn routes_unknown_type(world: RoutingWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/wireframe_routing.feature", index = 1)]
