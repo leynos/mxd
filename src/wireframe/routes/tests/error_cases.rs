@@ -9,7 +9,6 @@ use rstest::rstest;
 
 use super::super::{
     RouteState,
-    SessionState,
     TransactionMiddleware,
     error_reply,
     error_transaction,
@@ -78,21 +77,6 @@ fn route_state_can_be_created() {
     let state = RouteState::new(pool, argon2, handshake);
 
     assert!(Arc::strong_count(&state.argon2) >= 1);
-}
-
-#[rstest]
-fn session_state_starts_unauthenticated() {
-    let state = SessionState::new();
-
-    assert!(state.session().user_id.is_none());
-}
-
-#[rstest]
-fn session_state_can_be_mutated() {
-    let mut state = SessionState::new();
-    state.session_mut().user_id = Some(42);
-
-    assert_eq!(state.session().user_id, Some(42));
 }
 
 /// Tests that malformed input returns an error with `ERR_INTERNAL`.

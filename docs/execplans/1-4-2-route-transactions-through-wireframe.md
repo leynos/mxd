@@ -85,6 +85,12 @@ tests.
 - [x] (2026-01-04) Mark task 1.4.2 as done in `docs/roadmap.md`.
 - [x] (2026-01-04) Confirm `HotlineFrameCodec` is wired into
       `src/server/wireframe.rs` and replaces the bespoke Tokio codec.
+- [x] (2026-01-05) Consolidate connection-scoped thread-local state into a
+      `ConnectionContext` and remove unused pool/session helpers.
+- [x] (2026-01-05) Simplify transaction routing middleware to avoid generic
+      service plumbing and frame copies.
+- [x] (2026-01-05) Remove unused `SessionState` wrapper and align tests with
+      the production session handling.
 
 ## Surprises & Discoveries
 
@@ -190,6 +196,17 @@ tests.
   with external crate names. Status: Superseded by the 2025-12-30 decision to
   use `FrameCodec`. Date/Author: 2025-12-29 / Implementation decision.
 
+- Decision: Consolidate connection-scoped thread-local data into
+  `ConnectionContext`, removing unused pool/session storage helpers. Rationale:
+  The middleware now carries pool/session directly, making the extra thread
+  locals dead code; a single context reduces helper count and simplifies
+  access. Date/Author: 2026-01-05 / Assistant implementation.
+
+- Decision: Use a concrete `TransactionHandler` and restore request frames via
+  `mem::take` to avoid per-request copies. Rationale: Reduces allocation and
+  simplifies middleware internals while preserving handler pipeline behaviour.
+  Date/Author: 2026-01-05 / Assistant implementation.
+
 ## Outcomes & Retrospective
 
 - Routing tests cover error handling and successful Login/File/News routing
@@ -200,6 +217,9 @@ tests.
   integration and routing test coverage.
 - Wireframe's `FrameCodec` integration now handles Hotline framing without the
   bespoke Tokio accept loop.
+- Connection-scoped state uses a single thread-local context, and transaction
+  middleware avoids redundant frame copies.
+- The routing layer no longer carries an unused `SessionState` wrapper.
 
 ## Context and Orientation
 
@@ -213,7 +233,7 @@ Key files and their roles:
   `HotlineFrameCodec`, registers supported route IDs (plus the fallback route),
   and installs `TransactionMiddleware` for transaction processing.
 
-- `src/wireframe/routes/mod.rs`: Contains `RouteState`, `SessionState`, and
+- `src/wireframe/routes/mod.rs`: Contains `RouteState` and
   `process_transaction_bytes()` which parses raw bytes, dispatches to
   `Command::process()`, and returns reply bytes. This function already
   implements the domain routing logic.
@@ -291,7 +311,7 @@ Add unit tests in `src/wireframe/routes/tests/` using rstest:
 - Handler correctly parses valid transactions.
 - Handler returns error for malformed input.
 - Handler preserves transaction ID in reply.
-- Unknown transaction type returns ERR_INTERNAL.
+- Unknown transaction type returns ERR_UNKNOWN_TYPE.
 
 Add behavioural tests using rstest-bdd v0.3.2:
 
@@ -393,12 +413,8 @@ Example handler signature from wireframe library:
 
 ## Interfaces and Dependencies
 
-In `src/wireframe/routes/mod.rs`, the following function will be added:
-
-    pub fn register_routes(app: WireframeApp, pool: DbPool, …) -> WireframeApp
-
-In `src/server/wireframe.rs`, `build_app()` will be updated to call
-`register_routes()` after `.with_protocol(protocol)`.
+In `src/server/wireframe.rs`, `build_app()` registers the fallback route and
+the supported route IDs after wiring the transaction middleware and app data.
 
 Dependencies:
 
@@ -411,5 +427,8 @@ Dependencies:
 
 Updated the ExecPlan to include status, constraints, tolerances, and risks;
 documented the FrameCodec confirmation; refreshed validation commands to use
-`tee`; and aligned paths with the current workspace root. This does not change
-remaining work because the task is complete.
+`tee`; aligned paths with the current workspace root; corrected the unknown
+type error code; documented the connection context consolidation and middleware
+simplification; removed the unused `SessionState` wrapper; and updated the
+interface summary to match the current route registration flow. This does not
+change remaining work because the task is complete.

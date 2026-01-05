@@ -22,7 +22,7 @@ use std::{
 use mxd::{
     protocol::{PROTOCOL_ID, REPLY_LEN, VERSION},
     wireframe::{
-        connection::{HandshakeMetadata, clear_current_handshake, current_handshake, registry_len},
+        connection::{HandshakeMetadata, registry_len, take_current_context},
         handshake,
         preamble::HotlinePreamble,
         test_helpers::preamble_bytes,
@@ -71,9 +71,11 @@ impl MetadataWorld {
         let recorded = Arc::clone(&self.recorded);
         let (addr, shutdown_tx) = self.rt.block_on(async move {
             let server = WireframeServer::new(move || {
-                let handshake = current_handshake().unwrap_or_default();
+                let handshake = take_current_context()
+                    .map(|context| context.handshake().clone())
+                    .unwrap_or_default();
                 let recorded = Arc::clone(&recorded);
-                let app = WireframeApp::<
+                WireframeApp::<
                     wireframe::serializer::BincodeSerializer,
                     (),
                     wireframe::app::Envelope,
@@ -87,12 +89,9 @@ impl MetadataWorld {
                             .lock()
                             .expect("recorded handshake lock")
                             .replace(handshake_for_state.clone());
-                        clear_current_handshake();
                     }
                 })
-                .expect("install connection setup");
-                clear_current_handshake();
-                app
+                .expect("install connection setup")
             })
             .workers(1)
             .with_preamble::<HotlinePreamble>();

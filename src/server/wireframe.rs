@@ -51,13 +51,7 @@ use crate::{
     server::admin,
     wireframe::{
         codec::HotlineFrameCodec,
-        connection::{
-            HandshakeMetadata,
-            clear_current_handshake,
-            clear_current_peer,
-            current_handshake,
-            current_peer,
-        },
+        connection::{HandshakeMetadata, take_current_context},
         handshake,
         preamble::HotlinePreamble,
         protocol::HotlineProtocol,
@@ -149,13 +143,12 @@ impl WireframeBootstrap {
 }
 
 fn build_app_for_connection(pool: DbPool, argon2: Arc<Argon2<'static>>) -> HotlineApp {
-    let handshake = current_handshake().unwrap_or_default();
-    let peer = current_peer().unwrap_or_else(|| {
+    let context = take_current_context().unwrap_or_default();
+    let (handshake, peer) = context.into_parts();
+    let peer = peer.unwrap_or_else(|| {
         warn!("peer address missing in app factory; using default");
         default_peer()
     });
-    clear_current_handshake();
-    clear_current_peer();
     match build_app(pool, argon2, handshake, peer) {
         Ok(app) => app,
         Err(err) => {
@@ -184,18 +177,17 @@ fn build_app(
         ))?
         .app_data(RouteState::new(pool, argon2, handshake));
 
-    register_routes(app)
-}
-
-fn register_routes(app: HotlineApp) -> wireframe::app::Result<HotlineApp> {
-    let handler = noop_handler();
+    let handler = routing_placeholder_handler();
     let app = app.route(FALLBACK_ROUTE_ID, handler.clone())?;
     ROUTE_IDS
         .iter()
         .try_fold(app, |app, id| app.route(*id, handler.clone()))
 }
 
-fn noop_handler() -> Handler<Envelope> { Arc::new(|_: &Envelope| Box::pin(async {})) }
+fn routing_placeholder_handler() -> Handler<Envelope> {
+    // Wireframe requires a handler per route; transaction middleware owns replies.
+    Arc::new(|_: &Envelope| Box::pin(async {}))
+}
 
 fn default_peer() -> SocketAddr { SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0) }
 

@@ -29,7 +29,7 @@ use crate::{
         HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
         write_handshake_reply,
     },
-    wireframe::connection::{HandshakeMetadata, store_current_handshake, store_current_peer},
+    wireframe::connection::{ConnectionContext, HandshakeMetadata, store_current_context},
 };
 
 /// Attach Hotline handshake behaviour to a [`WireframeServer`].
@@ -61,10 +61,11 @@ fn success_handler()
 -> impl for<'a> Fn(&'a HotlinePreamble, &'a mut TcpStream) -> BoxFuture<'a, io::Result<()>> + Send + Sync
 {
     move |preamble, stream| {
-        store_current_handshake(HandshakeMetadata::from(preamble.handshake()));
+        let mut context = ConnectionContext::new(HandshakeMetadata::from(preamble.handshake()));
         if let Ok(peer) = stream.peer_addr() {
-            store_current_peer(peer);
+            context = context.with_peer(peer);
         }
+        store_current_context(context);
         write_handshake_reply(stream, HANDSHAKE_OK).boxed()
     }
 }
@@ -134,18 +135,17 @@ mod tests {
             VERSION,
         },
         wireframe::{
-            connection::{clear_current_handshake, current_handshake},
+            connection::take_current_context,
             test_helpers::{preamble_bytes, recv_reply},
         },
     };
 
     pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
         let server = WireframeServer::new(|| {
-            let handshake = current_handshake().unwrap_or_default();
-            let app =
-                WireframeApp::<BincodeSerializer, (), Envelope>::default().app_data(handshake);
-            clear_current_handshake();
-            app
+            let handshake = take_current_context()
+                .map(|context| context.into_parts().0)
+                .unwrap_or_default();
+            WireframeApp::<BincodeSerializer, (), Envelope>::default().app_data(handshake)
         })
         .workers(1)
         .with_preamble::<HotlinePreamble>();

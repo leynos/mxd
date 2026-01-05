@@ -109,8 +109,8 @@ and explicit dependencies. Timeframes are intentionally omitted.
   routing smoke tests exercise every handler through this port without invoking
   legacy wiring. Status: Completed on 25 December 2025 by introducing
   `HotlineProtocol` implementing `WireframeProtocol` with lifecycle hooks,
-  `RouteState` and `SessionState` for per-connection context, and unit tests
-  covering protocol adapter registration, error routing, and transaction ID
+  `RouteState` plus connection context metadata, and unit tests covering
+  protocol adapter registration, error routing, and transaction ID
   preservation. Dependencies: 1.3.
 - [x] 1.4.2. Map every implemented transaction ID to a `wireframe` route that
   delegates to the existing domain handlers. Acceptance: Login, news listing,

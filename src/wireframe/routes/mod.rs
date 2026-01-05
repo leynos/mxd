@@ -73,29 +73,6 @@ impl RouteState {
     }
 }
 
-/// Per-connection mutable state for session tracking.
-///
-/// This wrapper holds the session state that is mutated across transactions
-/// within a single connection. It is stored in app data and passed to handlers.
-#[derive(Clone, Default)]
-pub struct SessionState {
-    /// Domain session tracking authentication state.
-    session: Session,
-}
-
-impl SessionState {
-    /// Create a new session state with default (unauthenticated) session.
-    #[must_use]
-    pub fn new() -> Self { Self::default() }
-
-    /// Return a reference to the session.
-    #[must_use]
-    pub const fn session(&self) -> &Session { &self.session }
-
-    /// Return a mutable reference to the session.
-    pub const fn session_mut(&mut self) -> &mut Session { &mut self.session }
-}
-
 /// Process a Hotline transaction from raw bytes and return the reply bytes.
 ///
 /// This function implements the core routing logic. It parses the raw bytes
@@ -238,28 +215,27 @@ impl TransactionMiddleware {
 }
 
 /// Inner service that processes transactions with the pool and session passed in.
-struct TransactionService<S> {
-    inner: S,
+struct TransactionHandler {
+    inner: HandlerService<Envelope>,
     pool: DbPool,
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
 }
 
 #[async_trait]
-impl<S> Service for TransactionService<S>
-where
-    S: Service<Error = Infallible> + Send + Sync,
-{
+impl Service for TransactionHandler {
     type Error = Infallible;
 
     async fn call(&self, req: ServiceRequest) -> Result<ServiceResponse, Self::Error> {
-        let frame = req.frame().to_vec();
+        let mut req = req;
+        let frame = std::mem::take(req.frame_mut());
         let reply_bytes = {
             let mut session_guard = self.session.lock().await;
             process_transaction_bytes(&frame, self.peer, self.pool.clone(), &mut session_guard)
                 .await
         };
 
+        *req.frame_mut() = frame;
         // Call inner service to propagate through the chain, then replace the response frame
         let mut response = self.inner.call(req).await?;
         response.frame_mut().clear();
@@ -274,7 +250,7 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
 
     async fn transform(&self, service: HandlerService<Envelope>) -> Self::Output {
         let id = service.id();
-        let wrapped = TransactionService {
+        let wrapped = TransactionHandler {
             inner: service,
             pool: self.pool.clone(),
             session: Arc::clone(&self.session),
