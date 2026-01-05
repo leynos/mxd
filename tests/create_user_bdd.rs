@@ -1,13 +1,3 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
-#![expect(missing_docs, reason = "test file")]
-#![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#![expect(clippy::let_underscore_must_use, reason = "test cleanup")]
-
 //! BDD-style integration tests for the create-user command.
 //!
 //! These tests exercise the CLI-driven create-user workflow against a temporary
@@ -17,7 +7,7 @@
 
 use std::cell::RefCell;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use argon2::Params;
 use diesel_async::AsyncConnection;
 use mxd::{
@@ -86,7 +76,11 @@ impl CreateUserWorld {
                 .context("failed to query user")
         })?;
         let found = fetched.map(|u| u.username);
-        assert_eq!(found.as_deref(), Some(username));
+        if found.as_deref() != Some(username) {
+            return Err(anyhow!(
+                "expected user '{username}' to exist, found {found:?}"
+            ));
+        }
         Ok(())
     }
 
@@ -106,7 +100,9 @@ impl CreateUserWorld {
 
 #[fixture]
 fn world() -> CreateUserWorld {
-    let world = CreateUserWorld::new().expect("failed to create test world");
+    let world = CreateUserWorld::new().unwrap_or_else(|err| {
+        panic!("failed to create test world: {err}");
+    });
     // Sanity-check fixture invariants so step definitions can rely on the DB path shape.
     assert!(
         world.config.borrow().database.ends_with("bdd.mxd.db"),
@@ -153,16 +149,14 @@ fn then_success(world: &CreateUserWorld) {
 
 #[then("the database contains a user named \"{username}\"")]
 fn then_user_exists(world: &CreateUserWorld, username: String) {
-    world
-        .assert_user_exists(&username)
-        .expect("user existence check failed");
-    drop(username); // rstest_bdd provides owned strings, so consume them to silence needless-pass-by-value.
+    if let Err(err) = world.assert_user_exists(&username) {
+        panic!("user existence check failed: {err}");
+    }
 }
 
 #[then("the command fails with message \"{message}\"")]
 fn then_failure(world: &CreateUserWorld, message: String) {
     world.assert_failure_contains(&message);
-    drop(message); // Consume owned placeholder to avoid needless-pass-by-value false positives.
 }
 
 #[scenario(path = "tests/features/create_user_command.feature", index = 0)]

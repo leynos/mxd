@@ -97,6 +97,7 @@ const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
 
 /// Environment variable name for the prebuilt server binary path.
 const SERVER_BINARY_ENV: &str = "CARGO_BIN_EXE_mxd-wireframe-server";
+/// Marker emitted on stdout to signal that the server is ready.
 const READY_MARKER: &str = "listening on";
 
 /// Ensure the server binary environment variable is populated from the provided

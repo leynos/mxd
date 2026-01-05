@@ -4,6 +4,9 @@
 //! when the `postgres` feature is enabled, manage embedded `PostgreSQL`
 //! instances. It is used by integration tests in the main crate.
 
+#[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))]
+compile_error!("Choose either sqlite or postgres, not both");
+
 /// A boxed error type for test functions.
 pub type AnyError = Box<dyn std::error::Error + Send + Sync>;
 

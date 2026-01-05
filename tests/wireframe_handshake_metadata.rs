@@ -1,12 +1,4 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
-#![expect(missing_docs, reason = "test file")]
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#![expect(clippy::big_endian_bytes, reason = "network protocol")]
 #![expect(clippy::let_underscore_must_use, reason = "test cleanup")]
 #![expect(clippy::shadow_reuse, reason = "test code")]
 
@@ -176,10 +168,6 @@ fn world() -> MetadataWorld {
 fn given_server(world: &MetadataWorld) { world.start_server(); }
 
 #[when("I complete a Hotline handshake with sub-protocol \"{tag}\" and sub-version {sub_version}")]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "rstest-bdd step parameters must currently own their captured strings"
-)]
 fn when_valid_handshake(world: &MetadataWorld, tag: String, sub_version: u16) {
     let mut sub_protocol = [0u8; 4];
     sub_protocol.copy_from_slice(tag.as_bytes());
@@ -188,10 +176,6 @@ fn when_valid_handshake(world: &MetadataWorld, tag: String, sub_version: u16) {
 }
 
 #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "rstest-bdd step parameters must currently own their captured strings"
-)]
 fn when_invalid_handshake(world: &MetadataWorld, tag: String, version: u16) {
     let mut protocol = [0u8; 4];
     protocol.copy_from_slice(tag.as_bytes());
@@ -200,10 +184,6 @@ fn when_invalid_handshake(world: &MetadataWorld, tag: String, version: u16) {
 }
 
 #[then("the recorded handshake sub-protocol is \"{tag}\"")]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "rstest-bdd step parameters must currently own their captured strings"
-)]
 fn then_sub_protocol(world: &MetadataWorld, tag: String) {
     let recorded = world.recorded().expect("handshake not recorded");
     let mut expected = [0u8; 4];

@@ -1,12 +1,4 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
 #![expect(missing_docs, reason = "test file")]
-#![expect(clippy::print_stderr, reason = "test diagnostics")]
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#![expect(clippy::string_slice, reason = "test string manipulation")]
-
 #[cfg(feature = "postgres")]
 use temp_env::with_var;
 #[cfg(feature = "postgres")]
@@ -16,21 +8,31 @@ use test_util::{AnyError, PostgresTestDb, postgres::PostgresTestDbError};
 #[test]
 fn external_postgres_is_used() -> Result<(), AnyError> {
     let base = std::env::var("POSTGRES_TEST_URL")
-        .unwrap_or_else(|_| String::from("postgres://postgres:password@localhost/test"));
-    let idx = base.rfind('/').expect("url has path");
-    let prefix = &base[..=idx];
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost/test".to_owned());
+    let idx = base
+        .rfind('/')
+        .ok_or_else(|| -> AnyError { "POSTGRES_TEST_URL missing path".into() })?;
+    let prefix = base
+        .get(..=idx)
+        .ok_or_else(|| -> AnyError { "POSTGRES_TEST_URL prefix invalid".into() })?;
     with_var(
         "POSTGRES_TEST_URL",
         Some(&base),
         || match PostgresTestDb::new() {
             Ok(db) => {
-                assert!(!db.uses_embedded());
-                assert!(db.url.starts_with(prefix));
-                assert_ne!(db.url.as_ref(), base);
+                if db.uses_embedded() {
+                    return Err("expected external PostgreSQL instance".into());
+                }
+                if !db.url.starts_with(prefix) {
+                    return Err(format!("expected url with prefix {prefix}").into());
+                }
+                if db.url.as_ref() == base {
+                    return Err("expected database url to be updated".into());
+                }
                 Ok::<_, AnyError>(())
             }
             Err(PostgresTestDbError::Unavailable(_)) => {
-                eprintln!("skipping test: PostgreSQL unavailable");
+                tracing::warn!("skipping test: PostgreSQL unavailable");
                 Ok(())
             }
             Err(e) => Err(Box::new(e) as AnyError),

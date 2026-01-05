@@ -99,7 +99,8 @@ impl Decoder for HotlineCodec {
         );
 
         // Validate header
-        validate_header(&header)?;
+        super::validate_header(&header)
+            .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
 
         // Check if we have the full frame
         let frame_len = HEADER_LEN + header.data_size as usize;
@@ -118,7 +119,8 @@ impl Decoder for HotlineCodec {
         // Handle reassembly
         if let Some(ref mut state) = self.reassembly {
             // Validate fragment consistency
-            validate_fragment_consistency(&state.first_header, &header)?;
+            super::validate_fragment_consistency(&state.first_header, &header)
+                .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
 
             // Validate continuation fragment
             if header.data_size == 0 {
@@ -169,6 +171,19 @@ impl Decoder for HotlineCodec {
         let tx = HotlineTransaction::from_parts(final_header, payload_data)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
         Ok(Some(tx))
+    }
+
+    fn decode_eof(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if let Some(item) = self.decode(src)? {
+            return Ok(Some(item));
+        }
+        if self.reassembly.is_some() || !src.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "incomplete transaction frame",
+            ));
+        }
+        Ok(None)
     }
 }
 
@@ -232,88 +247,17 @@ impl Encoder<HotlineTransaction> for HotlineCodec {
     }
 }
 
-/// Validate a frame header against protocol constraints.
-fn validate_header(hdr: &FrameHeader) -> Result<(), io::Error> {
-    if hdr.flags != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid flags: must be 0 for v1.8.5",
-        ));
-    }
-    if hdr.total_size as usize > MAX_PAYLOAD_SIZE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "total size exceeds maximum (1 MiB)",
-        ));
-    }
-    if hdr.data_size as usize > MAX_FRAME_DATA {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "data size exceeds maximum (32 KiB)",
-        ));
-    }
-    if hdr.data_size > hdr.total_size {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "data size exceeds total size",
-        ));
-    }
-    if hdr.data_size == 0 && hdr.total_size > 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "data size is zero but total size is non-zero",
-        ));
-    }
-    Ok(())
-}
-
-/// Validate that a continuation fragment has consistent header fields.
-fn validate_fragment_consistency(first: &FrameHeader, next: &FrameHeader) -> Result<(), io::Error> {
-    if next.flags != first.flags {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "header mismatch: 'flags' changed between fragments",
-        ));
-    }
-    if next.is_reply != first.is_reply {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "header mismatch: 'is_reply' changed between fragments",
-        ));
-    }
-    if next.ty != first.ty {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "header mismatch: 'type' changed between fragments",
-        ));
-    }
-    if next.id != first.id {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "header mismatch: 'id' changed between fragments",
-        ));
-    }
-    if next.error != first.error {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "header mismatch: 'error' changed between fragments",
-        ));
-    }
-    if next.total_size != first.total_size {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "header mismatch: 'total_size' changed between fragments",
-        ));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
+    //! Tests for the Hotline Tokio codec.
+
     use rstest::rstest;
 
     use super::*;
-    use crate::{field_id::FieldId, wireframe::test_helpers::transaction_bytes};
+    use crate::{
+        field_id::FieldId,
+        wireframe::test_helpers::{fragmented_transaction_bytes, transaction_bytes},
+    };
 
     #[rstest]
     #[case::single_frame(
@@ -457,5 +401,88 @@ mod tests {
         let err = codec.decode(&mut buf).expect_err("decode should fail");
 
         assert!(err.to_string().contains("invalid flags"));
+    }
+
+    #[rstest]
+    fn reassembles_two_fragments() {
+        let mut codec = HotlineCodec::new();
+        let tx = HotlineTransaction::request_from_params(
+            107,
+            7,
+            &[(FieldId::Login, b"alice".as_slice())],
+        )
+        .expect("transaction");
+        let (header, payload) = tx.into_parts();
+        let fragments = fragmented_transaction_bytes(&header, &payload, 6).expect("fragments");
+        let mut buf = BytesMut::from(&fragments[0][..]);
+
+        let first = codec.decode(&mut buf).expect("decode should succeed");
+
+        assert!(first.is_none());
+        buf.extend_from_slice(&fragments[1]);
+        let decoded = codec
+            .decode(&mut buf)
+            .expect("decode should succeed")
+            .expect("transaction");
+        assert_eq!(decoded.payload(), payload.as_slice());
+    }
+
+    #[rstest]
+    fn rejects_fragment_exceeding_remaining() {
+        let mut codec = HotlineCodec::new();
+        let header = FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 107,
+            id: 10,
+            error: 0,
+            total_size: 10,
+            data_size: 6,
+        };
+        let first = transaction_bytes(&header, &[0u8; 6]);
+        let mut buf = BytesMut::from(&first[..]);
+
+        let first_result = codec.decode(&mut buf).expect("decode should succeed");
+
+        assert!(first_result.is_none());
+        let mut second_header = header.clone();
+        second_header.data_size = 6;
+        let second = transaction_bytes(&second_header, &[0u8; 6]);
+        buf.extend_from_slice(&second);
+        let err = codec.decode(&mut buf).expect_err("decode should fail");
+
+        assert!(
+            err.to_string()
+                .contains("fragment exceeds remaining payload size")
+        );
+    }
+
+    #[rstest]
+    fn rejects_incomplete_reassembly_at_eof() {
+        let mut codec = HotlineCodec::new();
+        let header = FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 107,
+            id: 11,
+            error: 0,
+            total_size: 10,
+            data_size: 4,
+        };
+        let first = transaction_bytes(&header, &[0u8; 4]);
+        let mut buf = BytesMut::from(&first[..]);
+
+        let first_result = codec.decode(&mut buf).expect("decode should succeed");
+
+        assert!(first_result.is_none());
+        let mut second_header = header.clone();
+        second_header.data_size = 4;
+        let second = transaction_bytes(&second_header, &[0u8; 4]);
+        buf.extend_from_slice(&second);
+        let second_result = codec.decode(&mut buf).expect("decode should succeed");
+        assert!(second_result.is_none());
+        let err = codec.decode_eof(&mut buf).expect_err("decode should fail");
+
+        assert!(err.to_string().contains("incomplete transaction frame"));
     }
 }

@@ -14,7 +14,6 @@
     test,
     expect(clippy::indexing_slicing, reason = "test code with known bounds")
 )]
-#![cfg_attr(test, expect(clippy::panic_in_result_fn, reason = "test assertions"))]
 #![cfg_attr(test, expect(clippy::shadow_reuse, reason = "test code shadowing"))]
 #![cfg_attr(
     test,
@@ -23,13 +22,6 @@
 #![cfg_attr(
     test,
     expect(clippy::unneeded_field_pattern, reason = "test pattern matching")
-)]
-#![cfg_attr(
-    test,
-    allow(
-        unfulfilled_lint_expectations,
-        reason = "test functions may not trigger all expectations"
-    )
 )]
 
 cfg_if::cfg_if! {

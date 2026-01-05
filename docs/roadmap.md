@@ -123,7 +123,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   user, privileges, and connection flags. Acceptance: Session state survives
   across handlers and enforces privilege checks defined in `docs/protocol.md`.
   Dependencies: 1.4.2.
-- [ ] 1.4.4. Provide outbound transport and messaging traits so domain code can
+- [ ] 1.4.4. Provide outbound transport and messaging traits, so domain code can
   respond without depending on `wireframe` types. Acceptance: Domain modules
   interact with adapter traits defined alongside the server boundary, and the
   crate continues compiling with no direct `wireframe` imports, matching
@@ -145,7 +145,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   or encode responses when required. Acceptance: SynHX parity tests cover
   password, message, and news bodies with the XOR toggle enabled. Dependencies:
   1.2.
-- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version so Hotline 1.9
+- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version, so Hotline 1.9
   fallbacks remain available. Acceptance: Compatibility tests prove Hotline
   1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange messages
   successfully. Dependencies: 1.2.3.
@@ -199,13 +199,13 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 2.2. Implement private messaging workflows
 
-- [ ] 2.2.1. Support Send Instant Message (108) and Server Message (104)
+- [ ] 2.2.1. Support Send Instant Message (108) and Server Message (104),
   transactions including quoting and automatic responses. Acceptance: Unit
   tests validate option codes 1–4 and quoted replies defined in
   `docs/protocol.md`. Dependencies: 2.1.
 - [ ] 2.2.2. Enforce privilege code 19 (Send Private Message) and refusal flags
   surfaced by Set Client User Info (304). Acceptance: Users without privilege
-  receive error replies and refusal flags block delivery in integration tests.
+  receive error replies, and refusal flags block delivery in integration tests.
   Dependencies: 2.2.1.
 - [ ] 2.2.3. Log private message metadata (sender, recipient, timestamp, option)
   for auditing without storing message bodies. Acceptance: Audit records
@@ -341,7 +341,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   prev, next) and remain addressable by GUID. Dependencies: 4.1.1.
 - [ ] 4.1.3. Seed the permissions catalogue with the 38 news privilege codes
   documented in `docs/protocol.md`. Acceptance: Users acquire news privileges
-  via `user_permissions` entries and transactions honour those flags.
+  via `user_permissions` entries, and transactions honour those flags.
   Dependencies: 4.1.1.
 - [ ] 4.1.4. Specify news threading invariants in TLA+ and check with TLC.
   Acceptance: The spec models parent, prev, next, and first-child links and
@@ -357,7 +357,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Dependencies: 4.1.
 - [ ] 4.2.2. Implement news search and filtering (by poster, date range,
   headline) using Diesel query helpers. Acceptance: Search queries return
-  results within 200 ms for typical data sets and support CTE-backed recursive
+  results within 200 ms for typical data sets, and support CTE-backed recursive
   traversal where needed. Dependencies: 4.2.1.
 - [ ] 4.2.3. Cache frequently accessed bundles and article headers.
   Acceptance: Cache hit rates exceed 90% for popular bundles without stale data
@@ -379,7 +379,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Dependencies: 4.3.1.
 - [ ] 4.3.3. Provide moderation tooling for locking threads, pinning articles,
   and escalating reports. Acceptance: Moderators can lock or pin via the CLI or
-  administrative transactions and clients reflect the state in listings.
+  administrative transactions, and clients reflect the state in listings.
   Dependencies: 4.3.1.
 - [ ] 4.3.4. Model concurrent news edits and moderation in Stateright.
   Acceptance: Stateright explores post, reply, edit, delete, and lock ordering
@@ -398,7 +398,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 5.1.2. Enforce privilege codes 14–18 and 22–32 across administrative
   handlers. Acceptance: Privilege violations return protocol error codes and
   are logged with user context. Dependencies: 5.1.1.
-- [ ] 5.1.3. Provide audit logs summarising administrative actions with before/
+- [ ] 5.1.3. Provide audit logs summarizing administrative actions with before/
   after snapshots where applicable. Acceptance: Audit entries include actor,
   target, action, and rationale fields and feed compliance reporting.
   Dependencies: 5.1.2.
@@ -410,7 +410,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 5.2. Harden database backends and query tooling
 
-- [ ] 5.2.1. Finalise PostgreSQL support, ensuring migrations, Diesel builders,
+- [ ] 5.2.1. Finalize PostgreSQL support, ensuring migrations, Diesel builders,
   and tests run against PostgreSQL 14+. Acceptance: CI runs the full
   integration suite on SQLite and PostgreSQL backends with identical behaviour.
   Dependencies: 3.
@@ -419,7 +419,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   exposes builders validated by unit tests and example code mirroring
   `docs/cte-extension-design.md`. Dependencies: 5.2.1.
 - [ ] 5.2.3. Publish API documentation and upgrade guides for `diesel_cte_ext`.
-  Acceptance: `cargo doc` renders examples explaining recursive usage and the
+  Acceptance: `cargo doc` renders examples explaining recursive usage, and the
   roadmap references the crate for hierarchical queries. Dependencies: 5.2.2.
 - [ ] 5.2.4. Add Kani harnesses for `diesel_cte_ext` query builders.
   Acceptance: Kani verifies recursive CTE builders handle empty inputs and
@@ -453,7 +453,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Dependencies: 6.2.1.
 - [ ] 6.2.3. Monitor protocol metrics (error codes, fragment counts, retries) to
   catch regressions quickly. Acceptance: Alerts fire when error rates exceed
-  thresholds and dashboards expose trend data for release readiness.
+  thresholds, and dashboards expose trend data for release readiness.
   Dependencies: 6.2.2.
 
 ### 6.3. Maintain documentation accuracy

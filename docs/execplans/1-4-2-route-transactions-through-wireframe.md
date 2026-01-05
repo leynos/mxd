@@ -106,10 +106,13 @@ tests.
       BDD scenarios share one implementation without type mismatches.
 - [x] (2026-01-05) Validate reassembled transactions in `HotlineTransaction`
       and guard framed decoding against oversized fragments.
-- [x] (2026-01-05) Serialise the middleware routing test and remove redundant
+- [x] (2026-01-05) Serialize the middleware routing test and remove redundant
       drops in wireframe server BDD helpers.
 - [x] (2026-01-05) Refactor `HotlineTransaction::from_parts` conditionals to
       keep codec validation readable and within complexity thresholds.
+- [x] (2026-01-05) Address PR review feedback by tightening codec tests,
+      adding build-frame unit coverage, and aligning documentation grammar
+      with Oxford spelling conventions.
 
 ## Surprises & Discoveries
 
@@ -152,7 +155,7 @@ tests.
 
 - Observation: routing BDD and unit tests duplicated database, frame, and
   parameter helper logic, and sharing helpers through `test-util` caused type
-  mismatches due to duplicate `mxd` crates. Resolution: centralise
+  mismatches due to duplicate `mxd` crates. Resolution: centralize
   `build_frame`/`collect_strings` in `wireframe::test_helpers` and re-export
   them from `test-util` while keeping DB setup in `test-util`.
 

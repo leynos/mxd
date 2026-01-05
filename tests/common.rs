@@ -1,9 +1,4 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
-#![expect(missing_docs, reason = "test helpers")]
-#![expect(clippy::print_stderr, reason = "test diagnostics")]
+//! Shared helpers for integration tests.
 
 #[cfg(feature = "postgres")]
 use test_util::postgres::PostgresTestDbError;
@@ -29,7 +24,7 @@ where
             if e.downcast_ref::<PostgresTestDbError>()
                 .is_some_and(PostgresTestDbError::is_unavailable)
             {
-                eprintln!("skipping test: {e}");
+                tracing::warn!("skipping test: {e}");
                 return Ok(None);
             }
             Err(e)

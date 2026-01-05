@@ -1,7 +1,5 @@
 //! Unit tests covering routing error paths and state scaffolding.
 
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 use std::{
     collections::{HashMap, HashSet},
     sync::{

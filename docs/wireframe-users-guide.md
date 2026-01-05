@@ -529,7 +529,7 @@ the failure callback path.[^20]
 `spawn_connection_task` wraps each accepted stream in `read_preamble` and
 `RewindStream`, records connection panics, and logs failures without crashing
 worker tasks.[^20][^37][^38] `ServerError` surfaces bind and accept failures as
-typed errors so callers can react appropriately.[^21]
+typed errors, so callers can react appropriately.[^21]
 
 ## Client runtime
 

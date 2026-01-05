@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use argon2::Argon2;
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use rstest::rstest;
@@ -53,7 +53,13 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
     );
 
     // Spawned task receives a clone of resources, adding one more reference.
-    assert_eq!(Arc::strong_count(&argon2), after_resources + 1);
+    let expected_after_spawn = after_resources + 1;
+    let actual_after_spawn = Arc::strong_count(&argon2);
+    if actual_after_spawn != expected_after_spawn {
+        return Err(anyhow!(
+            "expected {expected_after_spawn} argon2 refs, got {actual_after_spawn}"
+        ));
+    }
 
     client.write_all(&test_helpers::handshake_frame()).await?;
     let mut reply = [0u8; protocol::REPLY_LEN];
@@ -62,14 +68,20 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
 
     shutdown_tx
         .send(true)
-        .expect("shutdown receivers should remain until broadcast");
+        .map_err(|_| anyhow!("shutdown receivers should remain until broadcast"))?;
 
     while let Some(result) = join_set.join_next().await {
-        result.expect("client handler task");
+        result.map_err(|err| anyhow!("client handler task failed: {err}"))?;
     }
 
     // After task completes, only the original and resources clone remain.
-    assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
+    let expected_after_join = strong_before + 1;
+    let actual_after_join = Arc::strong_count(&argon2);
+    if actual_after_join != expected_after_join {
+        return Err(anyhow!(
+            "expected {expected_after_join} argon2 refs, got {actual_after_join}"
+        ));
+    }
 
     Ok(())
 }

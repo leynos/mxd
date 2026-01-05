@@ -365,11 +365,6 @@ mod bdd {
         world.connect_and_maybe_send(Some(bytes.to_vec()));
     }
 
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "rstest-bdd step parameters must be owned; keep String until macro supports &str \
-                  captures"
-    )]
     #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
     fn when_custom(world: &HandshakeWorld, tag: String, version: u16) {
         let mut protocol = [0u8; 4];

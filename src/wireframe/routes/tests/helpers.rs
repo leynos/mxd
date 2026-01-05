@@ -22,7 +22,6 @@ pub(super) struct RouteTestContext {
 }
 
 impl RouteTestContext {
-    #[expect(clippy::expect_used, reason = "test setup")]
     pub(super) fn new(pool: DbPool) -> Self {
         let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
         Self {
@@ -46,7 +45,6 @@ impl RouteTestContext {
     }
 }
 
-#[expect(clippy::expect_used, reason = "test runtime setup")]
 pub(super) fn runtime() -> Runtime {
     Builder::new_current_thread()
         .enable_all()
@@ -65,9 +63,10 @@ pub(super) fn find_string(
     let data = params
         .iter()
         .find(|(id, _)| id == &field_id)
-        .map(|(_, data)| data)
+        .map(|(_, data)| data.as_slice())
         .ok_or_else(|| -> AnyError { format!("missing {field_id:?} field").into() })?;
-    Ok(String::from_utf8(data.clone())?)
+    let text = std::str::from_utf8(data)?;
+    Ok(text.to_owned())
 }
 
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]

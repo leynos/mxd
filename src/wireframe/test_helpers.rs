@@ -91,10 +91,10 @@ pub fn transaction_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
 /// the protocol limits.
 ///
 /// # Examples
-/// ```
-/// # use crate::field_id::FieldId;
-/// # use crate::transaction_type::TransactionType;
-/// # use crate::wireframe::test_helpers::build_frame;
+/// ```ignore
+/// # use mxd::field_id::FieldId;
+/// # use mxd::transaction_type::TransactionType;
+/// # use mxd::wireframe::test_helpers::build_frame;
 /// let frame = build_frame(
 ///     TransactionType::Login,
 ///     1,
@@ -134,9 +134,9 @@ pub fn build_frame(
 /// Returns an error if any parameter value is not valid UTF-8.
 ///
 /// # Examples
-/// ```
-/// # use crate::field_id::FieldId;
-/// # use crate::wireframe::test_helpers::collect_strings;
+/// ```ignore
+/// # use mxd::field_id::FieldId;
+/// # use mxd::wireframe::test_helpers::collect_strings;
 /// let params = vec![(FieldId::FileName, b"alpha.txt".to_vec())];
 /// let names = collect_strings(&params, FieldId::FileName).expect("strings");
 /// assert_eq!(names, vec!["alpha.txt"]);
@@ -278,4 +278,64 @@ pub fn mismatched_continuation_bytes() -> Result<Vec<u8>, FragmentError> {
     bytes.extend(transaction_bytes(&second_header, second_slice));
 
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for wireframe test helpers.
+
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::login(
+        TransactionType::Login,
+        42,
+        vec![(FieldId::Login, b"alice".to_vec()), (FieldId::Password, b"secret".to_vec())],
+    )]
+    #[case::file_list(TransactionType::GetFileNameList, 7, Vec::new())]
+    fn build_frame_sets_header_and_payload(
+        #[case] ty: TransactionType,
+        #[case] id: u32,
+        #[case] params: Vec<(FieldId, Vec<u8>)>,
+    ) {
+        let params_ref: Vec<(FieldId, &[u8])> = params
+            .iter()
+            .map(|(field_id, data)| (*field_id, data.as_slice()))
+            .collect();
+        let frame = build_frame(ty, id, &params_ref).expect("frame");
+        let header = FrameHeader::from_bytes(
+            frame[..HEADER_LEN]
+                .try_into()
+                .expect("header slice should be exact size"),
+        );
+        let payload = &frame[HEADER_LEN..];
+
+        assert_eq!(header.flags, 0);
+        assert_eq!(header.is_reply, 0);
+        assert_eq!(header.ty, u16::from(ty));
+        assert_eq!(header.id, id);
+        assert_eq!(header.error, 0);
+        assert_eq!(header.total_size as usize, payload.len());
+        assert_eq!(header.data_size as usize, payload.len());
+
+        let expected_payload = if params_ref.is_empty() {
+            Vec::new()
+        } else {
+            encode_params(&params_ref).expect("payload")
+        };
+        assert_eq!(payload, expected_payload.as_slice());
+    }
+
+    #[rstest]
+    fn build_frame_rejects_oversized_payload() {
+        let oversized = vec![0u8; usize::from(u16::MAX) + 1];
+        let params = vec![(FieldId::Login, oversized.as_slice())];
+
+        let err = build_frame(TransactionType::Login, 1, &params)
+            .expect_err("oversized payload should fail");
+
+        assert!(matches!(err, TransactionError::PayloadTooLarge));
+    }
 }

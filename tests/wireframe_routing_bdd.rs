@@ -114,15 +114,11 @@ impl RoutingWorld {
 }
 
 #[fixture]
-#[expect(
-    clippy::allow_attributes,
-    reason = "rstest fixtures need a scoped allow for macro-generated braces"
-)]
-#[allow(
-    unused_braces,
-    reason = "rstest fixture expansion triggers unused_braces"
-)]
-fn world() -> RoutingWorld { RoutingWorld::new() }
+fn world() -> RoutingWorld {
+    let world = RoutingWorld::new();
+    debug_assert!(!world.is_skipped(), "world starts active");
+    world
+}
 
 #[given("a wireframe server handling transactions")]
 fn given_server(world: &RoutingWorld) {
@@ -261,8 +257,7 @@ fn then_categories(world: &RoutingWorld, one: String, two: String, three: String
             collect_strings(&params, FieldId::NewsCategory).map_err(|e| e.to_string())
         );
         names.sort_unstable();
-        let mut expected = vec![one, two, three];
-        expected.sort_unstable();
+        let expected = vec![one, two, three];
         assert_eq!(names, expected);
     });
 }
