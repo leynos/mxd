@@ -155,8 +155,9 @@ impl HotlineTransaction {
         {
             return Err(TransactionError::PayloadTooLarge);
         }
-        if header.data_size > header.total_size || (header.data_size == 0 && header.total_size > 0)
-        {
+        let has_data_size_overflow = header.data_size > header.total_size;
+        let has_inconsistent_empty_frame = header.data_size == 0 && header.total_size > 0;
+        if has_data_size_overflow || has_inconsistent_empty_frame {
             return Err(TransactionError::SizeMismatch);
         }
         validate_payload_parts(&header, &payload)?;

@@ -108,6 +108,8 @@ tests.
       and guard framed decoding against oversized fragments.
 - [x] (2026-01-05) Serialise the middleware routing test and remove redundant
       drops in wireframe server BDD helpers.
+- [x] (2026-01-05) Refactor `HotlineTransaction::from_parts` conditionals to
+      keep codec validation readable and within complexity thresholds.
 
 ## Surprises & Discoveries
 
