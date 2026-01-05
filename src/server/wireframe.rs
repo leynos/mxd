@@ -319,7 +319,6 @@ mod bdd {
         };
         let bootstrap = assert_step_ok!(outcome.as_ref().map_err(ToString::to_string));
         assert_eq!(bootstrap.bind_addr.to_string(), bind);
-        drop(bind);
     }
 
     #[then("bootstrap fails with message \"{message}\"")]
@@ -333,7 +332,6 @@ mod bdd {
             text.contains(&message),
             "expected '{text}' to contain '{message}'"
         );
-        drop(message);
     }
 
     #[scenario(path = "tests/features/wireframe_server.feature", index = 0)]

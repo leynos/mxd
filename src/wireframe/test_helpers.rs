@@ -6,7 +6,7 @@
 //! This module is only available when running tests or when the `test-support`
 //! feature is enabled.
 
-#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 use std::time::Duration;
 

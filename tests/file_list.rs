@@ -2,10 +2,6 @@
 //!
 //! Exercises the `GetFileNameList` transaction with ACL filtering and error
 //! handling scenarios.
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::panic_in_result_fn, reason = "test assertions")]
 

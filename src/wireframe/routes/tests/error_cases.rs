@@ -12,6 +12,7 @@ use std::{
 
 use async_trait::async_trait;
 use rstest::rstest;
+use serial_test::serial;
 use test_util::{AnyError, build_test_db, setup_files_db, setup_news_db};
 use wireframe::middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform};
 
@@ -232,6 +233,7 @@ async fn process_transaction_bytes_unknown_type() {
 
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
+#[serial]
 fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     let rt = runtime();
     let Some(test_db) = build_test_db(&rt, setup_full_db)? else {

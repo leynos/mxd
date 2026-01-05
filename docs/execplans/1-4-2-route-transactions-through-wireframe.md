@@ -106,6 +106,8 @@ tests.
       BDD scenarios share one implementation without type mismatches.
 - [x] (2026-01-05) Validate reassembled transactions in `HotlineTransaction`
       and guard framed decoding against oversized fragments.
+- [x] (2026-01-05) Serialise the middleware routing test and remove redundant
+      drops in wireframe server BDD helpers.
 
 ## Surprises & Discoveries
 
