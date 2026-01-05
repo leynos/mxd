@@ -2,9 +2,12 @@
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use async_trait::async_trait;
@@ -254,8 +257,24 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     }
 
     let records = dispatch_spy::take();
-    assert_eq!(records.len(), cases.len());
-    for (record, case) in records.iter().zip(cases.iter()) {
+    let expected_ids: HashSet<u32> = cases.iter().map(|case| case.id).collect();
+    let mut records_by_id = HashMap::new();
+    for record in records
+        .into_iter()
+        .filter(|record| expected_ids.contains(&record.id))
+    {
+        let record_id = record.id;
+        let replaced = records_by_id.insert(record_id, record);
+        assert!(
+            replaced.is_none(),
+            "duplicate dispatch record for id {record_id}"
+        );
+    }
+    assert_eq!(records_by_id.len(), cases.len());
+    for case in &cases {
+        let record = records_by_id
+            .get(&case.id)
+            .expect("missing dispatch record");
         assert_eq!(record.peer, peer, "case {} peer mismatch", case.label);
         assert_eq!(
             record.ty,
@@ -283,7 +302,7 @@ fn build_middleware_cases() -> Vec<MiddlewareCase> {
         MiddlewareCase {
             label: "login",
             ty: TransactionType::Login,
-            id: 1,
+            id: 901_001,
             params: vec![
                 (FieldId::Login, b"alice".to_vec()),
                 (FieldId::Password, b"secret".to_vec()),
@@ -292,25 +311,25 @@ fn build_middleware_cases() -> Vec<MiddlewareCase> {
         MiddlewareCase {
             label: "file_list",
             ty: TransactionType::GetFileNameList,
-            id: 2,
+            id: 901_002,
             params: Vec::new(),
         },
         MiddlewareCase {
             label: "news_category_list",
             ty: TransactionType::NewsCategoryNameList,
-            id: 3,
+            id: 901_003,
             params: Vec::new(),
         },
         MiddlewareCase {
             label: "news_article_list",
             ty: TransactionType::NewsArticleNameList,
-            id: 4,
+            id: 901_004,
             params: vec![(FieldId::NewsPath, b"General".to_vec())],
         },
         MiddlewareCase {
             label: "news_article_data",
             ty: TransactionType::NewsArticleData,
-            id: 5,
+            id: 901_005,
             params: vec![
                 (FieldId::NewsPath, b"General".to_vec()),
                 (FieldId::NewsArticleId, article_id),
@@ -319,7 +338,7 @@ fn build_middleware_cases() -> Vec<MiddlewareCase> {
         MiddlewareCase {
             label: "post_news_article",
             ty: TransactionType::PostNewsArticle,
-            id: 6,
+            id: 901_006,
             params: vec![
                 (FieldId::NewsPath, b"General".to_vec()),
                 (FieldId::NewsTitle, b"Third".to_vec()),

@@ -99,6 +99,8 @@ tests.
       peer address lookup failures.
 - [x] (2026-01-05) Add dispatch spy coverage for middleware routing and
       simplify test server binary resolution for integration runs.
+- [x] (2026-01-05) Harden middleware routing spy assertions to ignore
+      unrelated dispatches during coverage runs.
 
 ## Surprises & Discoveries
 
