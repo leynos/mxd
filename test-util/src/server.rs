@@ -97,6 +97,7 @@ const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
 
 /// Environment variable name for the prebuilt server binary path.
 const SERVER_BINARY_ENV: &str = "CARGO_BIN_EXE_mxd-wireframe-server";
+const READY_MARKER: &str = "listening on";
 
 /// Ensure the server binary environment variable is populated from the provided
 /// compile-time path.
@@ -166,19 +167,24 @@ fn collect_stdout_for_diagnostics(
         if reader.read_line(&mut line)? == 0 {
             return Ok((lines.into_iter().collect(), false));
         }
-        if max_lines > 0 {
-            if lines.len() == max_lines {
-                lines.pop_front();
-            }
-            lines.push_back(line.trim().to_owned());
-        }
-        if line.contains("listening on") {
+        record_diagnostic_line(&mut lines, max_lines, line.trim());
+        if line.contains(READY_MARKER) {
             return Ok((lines.into_iter().collect(), true));
         }
         if start.elapsed() > timeout {
             return Ok((lines.into_iter().collect(), false));
         }
     }
+}
+
+fn record_diagnostic_line(lines: &mut VecDeque<String>, max_lines: usize, line: &str) {
+    if max_lines == 0 {
+        return;
+    }
+    if lines.len() == max_lines {
+        lines.pop_front();
+    }
+    lines.push_back(line.to_owned());
 }
 
 /// Waits up to ten seconds for the child `mxd` process to announce readiness

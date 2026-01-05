@@ -1,11 +1,16 @@
 //! Unit tests covering successful transaction routing.
 
 use rstest::rstest;
-use test_util::{AnyError, setup_files_db, setup_news_categories_root_db, setup_news_db};
+use test_util::{
+    AnyError,
+    build_test_db,
+    setup_files_db,
+    setup_news_categories_root_db,
+    setup_news_db,
+};
 
 use super::helpers::{
     RouteTestContext,
-    build_test_db,
     collect_strings,
     decode_reply_params,
     find_i32,

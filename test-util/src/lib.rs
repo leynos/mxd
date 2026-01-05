@@ -10,10 +10,12 @@ pub type AnyError = Box<dyn std::error::Error + Send + Sync>;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
+mod bdd_helpers;
 mod fixtures;
 mod protocol;
 mod server;
 
+pub use bdd_helpers::{SetupFn, TestDb, build_test_db};
 pub use fixtures::{
     setup_files_db,
     setup_news_categories_nested_db,
@@ -22,6 +24,7 @@ pub use fixtures::{
     setup_news_db,
     with_db,
 };
+pub use mxd::wireframe::test_helpers::{build_frame, collect_strings};
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresTestDb, postgres_db};
 pub use protocol::handshake;

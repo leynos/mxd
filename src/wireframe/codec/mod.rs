@@ -140,11 +140,27 @@ impl HotlineTransaction {
     /// Construct a transaction from pre-assembled parts.
     ///
     /// This is primarily used by the Tokio codec for reassembled multi-fragment
-    /// transactions. The caller is responsible for ensuring header fields are
-    /// consistent with the payload.
-    #[must_use]
-    pub const fn from_parts(header: FrameHeader, payload: Vec<u8>) -> Self {
-        Self { header, payload }
+    /// transactions. Header invariants are validated to prevent malformed
+    /// frames from entering the routing pipeline.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the header or payload violates protocol constraints.
+    pub fn from_parts(header: FrameHeader, payload: Vec<u8>) -> Result<Self, TransactionError> {
+        if header.flags != 0 {
+            return Err(TransactionError::InvalidFlags);
+        }
+        if header.total_size as usize > MAX_PAYLOAD_SIZE
+            || header.data_size as usize > MAX_FRAME_DATA
+        {
+            return Err(TransactionError::PayloadTooLarge);
+        }
+        if header.data_size > header.total_size || (header.data_size == 0 && header.total_size > 0)
+        {
+            return Err(TransactionError::SizeMismatch);
+        }
+        validate_payload_parts(&header, &payload)?;
+        Ok(Self { header, payload })
     }
 }
 

@@ -1,8 +1,3 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
-#![expect(missing_docs, reason = "test file")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 //! Behavioural tests for wireframe transaction routing.
@@ -13,44 +8,27 @@ use std::{
 };
 
 use mxd::{
-    db::{DbPool, establish_pool},
+    db::DbPool,
     field_id::FieldId,
     handler::Session,
-    transaction::{
-        FrameHeader,
-        HEADER_LEN,
-        Transaction,
-        decode_params,
-        encode_params,
-        parse_transaction,
-    },
+    transaction::{FrameHeader, HEADER_LEN, Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{routes::process_transaction_bytes, test_helpers::dummy_pool},
 };
 use rstest::fixture;
 use rstest_bdd::assert_step_ok;
 use rstest_bdd_macros::{given, scenario, then, when};
-#[cfg(feature = "sqlite")]
-use tempfile::TempDir;
-#[cfg(feature = "postgres")]
-use test_util::postgres::PostgresTestDb;
-use test_util::{AnyError, setup_files_db, setup_news_categories_root_db, setup_news_db};
+use test_util::{
+    SetupFn,
+    TestDb,
+    build_frame,
+    build_test_db,
+    collect_strings,
+    setup_files_db,
+    setup_news_categories_root_db,
+    setup_news_db,
+};
 use tokio::runtime::Runtime;
-
-/// Fixture database setup function signature.
-type SetupFn = fn(&str) -> Result<(), AnyError>;
-
-struct TestDb {
-    pool: DbPool,
-    #[cfg(feature = "sqlite")]
-    _temp_dir: TempDir,
-    #[cfg(feature = "postgres")]
-    _postgres: PostgresTestDb,
-}
-
-impl TestDb {
-    fn pool(&self) -> DbPool { self.pool.clone() }
-}
 
 struct RoutingWorld {
     rt: Runtime,
@@ -136,94 +114,15 @@ impl RoutingWorld {
 }
 
 #[fixture]
-fn world() -> RoutingWorld {
-    #[expect(
-        clippy::allow_attributes,
-        reason = "rstest-bdd fixture pattern requires scoped allow"
-    )]
-    #[allow(unused_braces, reason = "rstest-bdd macro expansion produces braces")]
-    {
-        RoutingWorld::new()
-    }
-}
-
-fn build_frame(
-    ty: TransactionType,
-    id: u32,
-    params: &[(FieldId, &[u8])],
-) -> Result<Vec<u8>, AnyError> {
-    let payload = if params.is_empty() {
-        Vec::new()
-    } else {
-        encode_params(params)?
-    };
-    let payload_size = u32::try_from(payload.len())?;
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: ty.into(),
-        id,
-        error: 0,
-        total_size: payload_size,
-        data_size: payload_size,
-    };
-    let mut bytes = Vec::with_capacity(HEADER_LEN + payload.len());
-    let mut header_buf = [0u8; HEADER_LEN];
-    header.write_bytes(&mut header_buf);
-    bytes.extend_from_slice(&header_buf);
-    bytes.extend_from_slice(&payload);
-    Ok(bytes)
-}
-
-fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    #[cfg(feature = "sqlite")]
-    {
-        let temp_dir = TempDir::new()?;
-        let path = temp_dir.path().join("mxd.db");
-        let db_url = path
-            .to_str()
-            .ok_or_else(|| "database path is not valid UTF-8".to_owned())?;
-        setup(db_url)?;
-        let pool = rt.block_on(establish_pool(db_url))?;
-        Ok(Some(TestDb {
-            pool,
-            _temp_dir: temp_dir,
-        }))
-    }
-
-    #[cfg(feature = "postgres")]
-    {
-        let db = match PostgresTestDb::new() {
-            Ok(db) => db,
-            Err(err) if err.is_unavailable() => return Ok(None),
-            Err(err) => return Err(err.into()),
-        };
-        let db_url = db.url.as_ref();
-        setup(db_url)?;
-        let pool = rt.block_on(establish_pool(db_url))?;
-        Ok(Some(TestDb {
-            pool,
-            _postgres: db,
-        }))
-    }
-
-    #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
-    {
-        let _ = (rt, setup);
-        Ok(None)
-    }
-}
-
-fn collect_strings(
-    params: &[(FieldId, Vec<u8>)],
-    field_id: FieldId,
-) -> Result<Vec<String>, String> {
-    params
-        .iter()
-        .filter(|(id, _)| id == &field_id)
-        .map(|(_, data)| String::from_utf8(data.clone()).map_err(|e| e.to_string()))
-        .collect()
-}
+#[expect(
+    clippy::allow_attributes,
+    reason = "rstest fixtures need a scoped allow for macro-generated braces"
+)]
+#[allow(
+    unused_braces,
+    reason = "rstest fixture expansion triggers unused_braces"
+)]
+fn world() -> RoutingWorld { RoutingWorld::new() }
 
 #[given("a wireframe server handling transactions")]
 fn given_server(world: &RoutingWorld) {
@@ -280,8 +179,6 @@ fn when_login(world: &RoutingWorld, username: String, password: String) {
             (FieldId::Password, password.as_bytes()),
         ],
     );
-    drop(username);
-    drop(password);
 }
 
 #[when("I request the file name list")]
@@ -299,7 +196,6 @@ fn when_news_articles(world: &RoutingWorld, path: String) {
         13,
         &[(FieldId::NewsPath, path.as_bytes())],
     );
-    drop(path);
 }
 
 #[then("the reply has error code {code}")]
@@ -348,7 +244,8 @@ fn then_files(world: &RoutingWorld, first: String, second: String) {
     }
     world.with_reply(|tx| {
         let params = assert_step_ok!(decode_params(&tx.payload).map_err(|e| e.to_string()));
-        let names = assert_step_ok!(collect_strings(&params, FieldId::FileName));
+        let names =
+            assert_step_ok!(collect_strings(&params, FieldId::FileName).map_err(|e| e.to_string()));
         assert_eq!(names, vec![first, second]);
     });
 }
@@ -360,7 +257,9 @@ fn then_categories(world: &RoutingWorld, one: String, two: String, three: String
     }
     world.with_reply(|tx| {
         let params = assert_step_ok!(decode_params(&tx.payload).map_err(|e| e.to_string()));
-        let mut names = assert_step_ok!(collect_strings(&params, FieldId::NewsCategory));
+        let mut names = assert_step_ok!(
+            collect_strings(&params, FieldId::NewsCategory).map_err(|e| e.to_string())
+        );
         names.sort_unstable();
         let mut expected = vec![one, two, three];
         expected.sort_unstable();
@@ -375,7 +274,9 @@ fn then_articles(world: &RoutingWorld, first: String, second: String) {
     }
     world.with_reply(|tx| {
         let params = assert_step_ok!(decode_params(&tx.payload).map_err(|e| e.to_string()));
-        let names = assert_step_ok!(collect_strings(&params, FieldId::NewsArticle));
+        let names = assert_step_ok!(
+            collect_strings(&params, FieldId::NewsArticle).map_err(|e| e.to_string())
+        );
         assert_eq!(names, vec![first, second]);
     });
 }

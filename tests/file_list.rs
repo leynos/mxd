@@ -175,7 +175,7 @@ fn list_files_reject_payload(
         return Ok(());
     };
     let _server = server;
-    // send GetFileNameList with bogus payload
+    debug!("sending invalid file list payload");
     let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())])?;
     let params_len =
         u32::try_from(params.len()).expect("parameter block length fits within the header field");
@@ -193,9 +193,11 @@ fn list_files_reject_payload(
         payload: params,
     };
     stream.write_all(&tx.to_bytes())?;
+    debug!("awaiting file list error reply");
     let mut buf = [0u8; 20];
     stream.read_exact(&mut buf)?;
     let hdr = FrameHeader::from_bytes(&buf);
+    info!(error = hdr.error, "file list reply received");
     assert_eq!(hdr.error, mxd::commands::ERR_INVALID_PAYLOAD);
     assert_eq!(hdr.data_size, 0);
     Ok(())

@@ -101,6 +101,11 @@ tests.
       simplify test server binary resolution for integration runs.
 - [x] (2026-01-05) Harden middleware routing spy assertions to ignore
       unrelated dispatches during coverage runs.
+- [x] (2026-01-05) Extract shared routing test helpers into
+      `wireframe::test_helpers` and re-export them via `test-util` so unit and
+      BDD scenarios share one implementation without type mismatches.
+- [x] (2026-01-05) Validate reassembled transactions in `HotlineTransaction`
+      and guard framed decoding against oversized fragments.
 
 ## Surprises & Discoveries
 
@@ -141,6 +146,12 @@ tests.
   submodules live under `src/wireframe/routes/`. Resolution: move the module
   file to `src/wireframe/routes/mod.rs` so linting passes with nested tests.
 
+- Observation: routing BDD and unit tests duplicated database, frame, and
+  parameter helper logic, and sharing helpers through `test-util` caused type
+  mismatches due to duplicate `mxd` crates. Resolution: centralise
+  `build_frame`/`collect_strings` in `wireframe::test_helpers` and re-export
+  them from `test-util` while keeping DB setup in `test-util`.
+
 ## Decision Log
 
 - Decision: Tests run against wireframe server only.
@@ -159,7 +170,7 @@ tests.
 - Decision: Implement an in-tree `HotlineFrameCodec` that wraps bincode
   `Envelope` payloads and map unknown transaction types to fallback route ID
   0. Rationale: The wireframe server needs a handler for each route ID; mapping
-  unknown types to a known fallback keeps middleware routing in place so error
+  unknown types to a known fallback keeps middleware routing in place, so error
   responses can be generated consistently. Date/Author: 2026-01-04 / Assistant
   implementation.
 
@@ -168,6 +179,13 @@ tests.
   Rationale: Keep behavioural tests in the integration suite and satisfy the
   400-line file size requirement while adding per-transaction routing coverage.
   Date/Author: 2026-01-04 / Assistant implementation.
+
+- Decision: Host shared frame/parameter helpers in
+  `wireframe::test_helpers` and re-export them from `test-util`. Rationale:
+  Sharing helpers through `test-util` alone introduced duplicate `mxd` crate
+  types in unit tests; placing helpers in the main crate keeps types aligned
+  while still de-duplicating logic. Date/Author: 2026-01-05 / Assistant
+  implementation.
 
 - Decision: Migrate `src/wireframe/routes.rs` to
   `src/wireframe/routes/mod.rs`. Rationale: Required by the
@@ -181,7 +199,7 @@ tests.
 - Decision: Implement custom `HotlineCodec` bypassing wireframe's routing.
   Rationale: wireframe v0.1.0 hardcodes `LengthDelimitedCodec` with 4-byte
   length prefix framing at `src/app/connection.rs:47`. Hotline uses 20-byte
-  header framing which is incompatible. No extension point exists in wireframe
+  header framing, which is incompatible. No extension point exists in wireframe
   for custom codecs. The custom codec implements Tokio's `Decoder`/`Encoder`
   traits directly, enabling proper transaction framing while still using
   wireframe for preamble (handshake) handling. Status: Superseded by the
@@ -199,7 +217,7 @@ tests.
   2025-12-29 / Implementation discovery.
 
 - Decision: Name codec module `framed.rs` instead of `tokio.rs`. Rationale:
-  Avoid name collision with the `tokio` crate which would cause confusing
+  Avoid name collision with the `tokio` crate, which would cause confusing
   import paths and potential shadowing issues. The name `framed` reflects the
   module's purpose (providing `Framed`-compatible codec) without conflicting
   with external crate names. Status: Superseded by the 2025-12-30 decision to
@@ -211,10 +229,11 @@ tests.
   locals dead code; a single context reduces helper count and simplifies
   access. Date/Author: 2026-01-05 / Assistant implementation.
 
-- Decision: Use a concrete `TransactionHandler` and restore request frames via
-  `mem::take` to avoid per-request copies. Rationale: Reduces allocation and
-  simplifies middleware internals while preserving handler pipeline behaviour.
-  Date/Author: 2026-01-05 / Assistant implementation.
+- Decision: Use a concrete `TransactionHandler` and pass frame slices directly
+  into `process_transaction_bytes` to avoid per-request copies. Rationale:
+  Reduces allocation and simplifies middleware internals while preserving
+  handler pipeline behaviour. Date/Author: 2026-01-05 / Assistant
+  implementation.
 
 - Decision: Treat missing handshake context/peer or app-construction failures
   as fatal for the connection. Rationale: Running without peer metadata or
@@ -233,7 +252,12 @@ tests.
   bespoke Tokio accept loop.
 - Connection-scoped state uses a single thread-local context, and transaction
   middleware avoids redundant frame copies.
-- The routing layer no longer carries an unused `SessionState` wrapper.
+- The routing layer no longer carries unused `RouteState` or `SessionState`
+  wrappers.
+- Routing test helpers now live in `wireframe::test_helpers` and are
+  re-exported from `test-util`, reducing duplication between unit and
+  behavioural suites.
+- Framed decoding validates fragment sizing before building a transaction.
 
 ## Context and Orientation
 
@@ -247,10 +271,9 @@ Key files and their roles:
   `HotlineFrameCodec`, registers supported route IDs (plus the fallback route),
   and installs `TransactionMiddleware` for transaction processing.
 
-- `src/wireframe/routes/mod.rs`: Contains `RouteState` and
-  `process_transaction_bytes()` which parses raw bytes, dispatches to
-  `Command::process()`, and returns reply bytes. This function already
-  implements the domain routing logic.
+- `src/wireframe/routes/mod.rs`: Contains `process_transaction_bytes()` which
+  parses raw bytes, dispatches to `Command::process()`, and returns reply
+  bytes. This function already implements the domain routing logic.
 
 - `src/wireframe/codec/frame.rs`: `HotlineFrameCodec` maps Hotline transactions
   into bincode `Envelope` payloads for wireframe routing.
@@ -322,9 +345,9 @@ server.
 
 Add unit tests in `src/wireframe/routes/tests/` using rstest:
 
-- Parses valid transactions correctly.
-- Returns an error for malformed input.
-- Preserves the transaction ID in the reply.
+- Parse valid transactions correctly.
+- Return an error for malformed input.
+- Preserve the transaction ID in the reply.
 - Unknown transaction type returns ERR_INTERNAL.
 
 Add behavioural tests using rstest-bdd v0.3.0:
@@ -428,7 +451,7 @@ Example handler signature from wireframe library:
 ## Interfaces and Dependencies
 
 In `src/server/wireframe.rs`, `build_app()` registers the fallback route and
-the supported route IDs after wiring the transaction middleware and app data.
+the supported route IDs after wiring the transaction middleware.
 
 Dependencies:
 
@@ -444,7 +467,9 @@ documented the FrameCodec confirmation; refreshed validation commands to use
 `tee`; aligned paths with the current workspace root; corrected the unknown
 type error code; documented the connection context consolidation and middleware
 simplification; recorded readiness diagnostics and app factory failure
-handling; removed the unused `SessionState` wrapper; clarified the rstest-bdd
-version to match Cargo.toml; and updated the interface summary to match the
-current route registration flow. This does not change remaining work because
-the task is complete.
+handling; removed the unused `RouteState` and `SessionState` wrappers;
+clarified the rstest-bdd version to match Cargo.toml; noted the shared routing
+test helpers in `wireframe::test_helpers` (re-exported via `test-util`);
+tightened framed decoding validation; and updated the interface summary to
+match the current route registration flow. This does not change remaining work
+because the task is complete.

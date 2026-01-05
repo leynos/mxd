@@ -128,18 +128,25 @@ impl Decoder for HotlineCodec {
                 ));
             }
 
+            let remaining = state.first_header.total_size as usize - state.payload.len();
+            if header.data_size as usize > remaining {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "fragment exceeds remaining payload size",
+                ));
+            }
+
             // Append to accumulated payload
             state.payload.extend_from_slice(&payload_data);
 
             // Check if complete
-            if state.payload.len() >= state.first_header.total_size as usize {
+            if state.payload.len() == state.first_header.total_size as usize {
                 let completed = self.reassembly.take().expect("state exists");
                 let mut final_header = completed.first_header;
                 final_header.data_size = final_header.total_size;
-                return Ok(Some(HotlineTransaction::from_parts(
-                    final_header,
-                    completed.payload,
-                )));
+                let tx = HotlineTransaction::from_parts(final_header, completed.payload)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
+                return Ok(Some(tx));
             }
 
             // Need more fragments
@@ -159,10 +166,9 @@ impl Decoder for HotlineCodec {
         // Single-frame transaction
         let mut final_header = header;
         final_header.data_size = final_header.total_size;
-        Ok(Some(HotlineTransaction::from_parts(
-            final_header,
-            payload_data,
-        )))
+        let tx = HotlineTransaction::from_parts(final_header, payload_data)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
+        Ok(Some(tx))
     }
 }
 
@@ -307,48 +313,55 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::wireframe::test_helpers::transaction_bytes;
+    use crate::{field_id::FieldId, wireframe::test_helpers::transaction_bytes};
 
     #[rstest]
-    fn decodes_single_frame() {
+    #[case::single_frame(
+        HotlineTransaction::request_from_params(
+            107,
+            1,
+            &[
+                (FieldId::Login, b"alice".as_slice()),
+                (FieldId::Password, b"secret".as_slice()),
+            ],
+        )
+        .expect("request tx"),
+        107,
+        0,
+    )]
+    #[case::empty_frame(
+        HotlineTransaction::reply_from_params(
+            &FrameHeader {
+                flags: 0,
+                is_reply: 0,
+                ty: 200,
+                id: 42,
+                error: 0,
+                total_size: 0,
+                data_size: 0,
+            },
+            0,
+            &[] as &[(FieldId, &[u8])],
+        )
+        .expect("reply tx"),
+        200,
+        1,
+    )]
+    fn decodes_frame(
+        #[case] tx: HotlineTransaction,
+        #[case] expected_ty: u16,
+        #[case] expected_is_reply: u8,
+    ) {
         let mut codec = HotlineCodec::new();
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 1,
-            error: 0,
-            total_size: 5,
-            data_size: 5,
-        };
-        let mut buf = BytesMut::from(&transaction_bytes(&header, b"hello")[..]);
+        let (header, payload) = tx.into_parts();
+        let mut buf = BytesMut::from(&transaction_bytes(&header, &payload)[..]);
 
         let result = codec.decode(&mut buf).expect("decode should succeed");
 
-        let tx = result.expect("should produce transaction");
-        assert_eq!(tx.header().ty, 107);
-        assert_eq!(tx.payload(), b"hello");
-    }
-
-    #[rstest]
-    fn decodes_empty_frame() {
-        let mut codec = HotlineCodec::new();
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 1,
-            ty: 200,
-            id: 42,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        };
-        let mut buf = BytesMut::from(&transaction_bytes(&header, &[])[..]);
-
-        let result = codec.decode(&mut buf).expect("decode should succeed");
-
-        let tx = result.expect("should produce transaction");
-        assert_eq!(tx.header().is_reply, 1);
-        assert!(tx.payload().is_empty());
+        let decoded = result.expect("should produce transaction");
+        assert_eq!(decoded.header().ty, expected_ty);
+        assert_eq!(decoded.header().is_reply, expected_is_reply);
+        assert_eq!(decoded.payload(), payload.as_slice());
     }
 
     #[rstest]
@@ -387,30 +400,21 @@ mod tests {
     #[rstest]
     fn encodes_single_frame() {
         let mut codec = HotlineCodec::new();
-        let tx = HotlineTransaction::from_parts(
-            FrameHeader {
-                flags: 0,
-                is_reply: 1,
-                ty: 107,
-                id: 99,
-                error: 0,
-                total_size: 4,
-                data_size: 4,
-            },
-            b"test".to_vec(),
-        );
+        let tx = HotlineTransaction::request_from_params(107, 99, &[(FieldId::Login, b"alice")])
+            .expect("transaction");
+        let payload = tx.payload().to_vec();
         let mut buf = BytesMut::new();
 
         codec.encode(tx, &mut buf).expect("encode should succeed");
 
-        assert_eq!(buf.len(), HEADER_LEN + 4);
+        assert_eq!(buf.len(), HEADER_LEN + payload.len());
         let decoded_header = FrameHeader::from_bytes(
             buf[..HEADER_LEN]
                 .try_into()
                 .expect("header slice correct size"),
         );
         assert_eq!(decoded_header.ty, 107);
-        assert_eq!(&buf[HEADER_LEN..], b"test");
+        assert_eq!(&buf[HEADER_LEN..], payload.as_slice());
     }
 
     #[rstest]
@@ -427,7 +431,8 @@ mod tests {
                 data_size: 0,
             },
             Vec::new(),
-        );
+        )
+        .expect("transaction");
         let mut buf = BytesMut::new();
 
         codec.encode(tx, &mut buf).expect("encode should succeed");

@@ -12,7 +12,7 @@ use std::{
 
 use async_trait::async_trait;
 use rstest::rstest;
-use test_util::{AnyError, setup_files_db, setup_news_db};
+use test_util::{AnyError, build_test_db, setup_files_db, setup_news_db};
 use wireframe::middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform};
 
 use super::{
@@ -25,12 +25,12 @@ use super::{
         handle_parse_error,
         process_transaction_bytes,
     },
-    helpers::{build_test_db, runtime},
+    helpers::{build_frame, runtime},
 };
 use crate::{
     field_id::FieldId,
     handler::Session,
-    transaction::{FrameHeader, HEADER_LEN, Transaction, encode_params, parse_transaction},
+    transaction::{FrameHeader, HEADER_LEN, Transaction, parse_transaction},
     transaction_type::TransactionType,
     wireframe::test_helpers::{dummy_pool, transaction_bytes},
 };
@@ -250,7 +250,12 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     dispatch_spy::clear();
     let cases = build_middleware_cases();
     for case in &cases {
-        let frame = build_frame(case.ty, case.id, &case.params)?;
+        let params: Vec<(FieldId, &[u8])> = case
+            .params
+            .iter()
+            .map(|(field_id, data)| (*field_id, data.as_slice()))
+            .collect();
+        let frame = build_frame(case.ty, case.id, &params)?;
         let response = rt.block_on(wrapped.call(ServiceRequest::new(frame, None)))?;
         let reply = parse_transaction(response.frame())?;
         assert_eq!(reply.header.error, 0, "case {} failed", case.label);
@@ -348,33 +353,6 @@ fn build_middleware_cases() -> Vec<MiddlewareCase> {
             ],
         },
     ]
-}
-
-fn build_frame(
-    ty: TransactionType,
-    id: u32,
-    params: &[(FieldId, Vec<u8>)],
-) -> Result<Vec<u8>, AnyError> {
-    let slice_params: Vec<(FieldId, &[u8])> = params
-        .iter()
-        .map(|(field_id, data)| (*field_id, data.as_slice()))
-        .collect();
-    let payload = if slice_params.is_empty() {
-        Vec::new()
-    } else {
-        encode_params(&slice_params)?
-    };
-    let payload_size = u32::try_from(payload.len())?;
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: ty.into(),
-        id,
-        error: 0,
-        total_size: payload_size,
-        data_size: payload_size,
-    };
-    Ok(transaction_bytes(&header, &payload))
 }
 
 fn setup_full_db(db: &str) -> Result<(), AnyError> {

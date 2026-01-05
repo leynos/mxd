@@ -23,7 +23,6 @@
 
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
-use argon2::Argon2;
 use async_trait::async_trait;
 use tracing::{error, warn};
 use wireframe::{
@@ -39,7 +38,6 @@ use crate::{
     handler::Session,
     header_util::reply_header,
     transaction::{FrameHeader, Transaction, parse_transaction},
-    wireframe::connection::HandshakeMetadata,
 };
 
 /// Error code for internal server failures.
@@ -49,10 +47,7 @@ const ERR_INTERNAL: u32 = 3;
 mod dispatch_spy {
     //! Captures dispatch details for transaction routing tests.
 
-    use std::{
-        net::SocketAddr,
-        sync::{Mutex, OnceLock},
-    };
+    use std::{cell::RefCell, net::SocketAddr};
 
     use crate::transaction::FrameHeader;
 
@@ -63,65 +58,25 @@ mod dispatch_spy {
         pub(super) id: u32,
     }
 
-    fn records() -> &'static Mutex<Vec<DispatchRecord>> {
-        static RECORDS: OnceLock<Mutex<Vec<DispatchRecord>>> = OnceLock::new();
-        RECORDS.get_or_init(|| Mutex::new(Vec::new()))
+    thread_local! {
+        static RECORDS: RefCell<Vec<DispatchRecord>> = const { RefCell::new(Vec::new()) };
     }
 
     pub(super) fn record(peer: SocketAddr, header: &FrameHeader) {
-        let mut records = records()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        records.push(DispatchRecord {
-            peer,
-            ty: header.ty,
-            id: header.id,
+        RECORDS.with(|records| {
+            records.borrow_mut().push(DispatchRecord {
+                peer,
+                ty: header.ty,
+                id: header.id,
+            });
         });
     }
 
     pub(super) fn take() -> Vec<DispatchRecord> {
-        let mut records = records()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        std::mem::take(&mut *records)
+        RECORDS.with(|records| std::mem::take(&mut *records.borrow_mut()))
     }
 
-    pub(super) fn clear() {
-        let mut records = records()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        records.clear();
-    }
-}
-
-/// Shared state passed to route handlers via app data.
-///
-/// This struct aggregates the shared resources needed by transaction handlers,
-/// extracted from `WireframeApp` data during request processing.
-#[derive(Clone)]
-pub struct RouteState {
-    /// Database connection pool.
-    pub pool: DbPool,
-    /// Shared Argon2 instance for password hashing.
-    pub argon2: Arc<Argon2<'static>>,
-    /// Handshake metadata for the connection.
-    pub handshake: HandshakeMetadata,
-}
-
-impl RouteState {
-    /// Create a new route state from app data components.
-    #[must_use]
-    pub const fn new(
-        pool: DbPool,
-        argon2: Arc<Argon2<'static>>,
-        handshake: HandshakeMetadata,
-    ) -> Self {
-        Self {
-            pool,
-            argon2,
-            handshake,
-        }
-    }
+    pub(super) fn clear() { RECORDS.with(|records| records.borrow_mut().clear()); }
 }
 
 /// Process a Hotline transaction from raw bytes and return the reply bytes.
@@ -282,15 +237,17 @@ impl Service for TransactionHandler {
     type Error = Infallible;
 
     async fn call(&self, req: ServiceRequest) -> Result<ServiceResponse, Self::Error> {
-        let mut req = req;
-        let frame = std::mem::take(req.frame_mut());
         let reply_bytes = {
             let mut session_guard = self.session.lock().await;
-            process_transaction_bytes(&frame, self.peer, self.pool.clone(), &mut session_guard)
-                .await
+            process_transaction_bytes(
+                req.frame(),
+                self.peer,
+                self.pool.clone(),
+                &mut session_guard,
+            )
+            .await
         };
 
-        *req.frame_mut() = frame;
         // Call inner service to propagate through the chain, then replace the response frame
         let mut response = self.inner.call(req).await?;
         response.frame_mut().clear();

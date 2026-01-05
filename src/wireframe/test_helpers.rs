@@ -15,8 +15,10 @@ use tokio::io::AsyncReadExt;
 
 use crate::{
     db::{DbConnection, DbPool},
+    field_id::FieldId,
     protocol::{HANDSHAKE_LEN, REPLY_LEN},
-    transaction::{FrameHeader, HEADER_LEN},
+    transaction::{FrameHeader, HEADER_LEN, TransactionError, encode_params},
+    transaction_type::TransactionType,
 };
 
 /// Create a lightweight database pool for tests that don't require real
@@ -79,6 +81,75 @@ pub fn transaction_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
     buf.extend_from_slice(&hdr_buf);
     buf.extend_from_slice(payload);
     buf
+}
+
+/// Build a transaction frame buffer from typed parameters.
+///
+/// # Errors
+///
+/// Returns an error if parameter encoding fails or the payload size exceeds
+/// the protocol limits.
+///
+/// # Examples
+/// ```
+/// # use crate::field_id::FieldId;
+/// # use crate::transaction_type::TransactionType;
+/// # use crate::wireframe::test_helpers::build_frame;
+/// let frame = build_frame(
+///     TransactionType::Login,
+///     1,
+///     &[(FieldId::Login, b"alice"), (FieldId::Password, b"secret")],
+/// )
+/// .expect("frame");
+/// assert!(!frame.is_empty());
+/// ```
+pub fn build_frame(
+    ty: TransactionType,
+    id: u32,
+    params: &[(FieldId, &[u8])],
+) -> Result<Vec<u8>, TransactionError> {
+    let payload = if params.is_empty() {
+        Vec::new()
+    } else {
+        encode_params(params)?
+    };
+    let payload_size =
+        u32::try_from(payload.len()).map_err(|_| TransactionError::PayloadTooLarge)?;
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: ty.into(),
+        id,
+        error: 0,
+        total_size: payload_size,
+        data_size: payload_size,
+    };
+    Ok(transaction_bytes(&header, &payload))
+}
+
+/// Collect UTF-8 strings for a field from decoded parameters.
+///
+/// # Errors
+///
+/// Returns an error if any parameter value is not valid UTF-8.
+///
+/// # Examples
+/// ```
+/// # use crate::field_id::FieldId;
+/// # use crate::wireframe::test_helpers::collect_strings;
+/// let params = vec![(FieldId::FileName, b"alpha.txt".to_vec())];
+/// let names = collect_strings(&params, FieldId::FileName).expect("strings");
+/// assert_eq!(names, vec!["alpha.txt"]);
+/// ```
+pub fn collect_strings(
+    params: &[(FieldId, Vec<u8>)],
+    field_id: FieldId,
+) -> Result<Vec<String>, std::string::FromUtf8Error> {
+    params
+        .iter()
+        .filter(|(id, _)| id == &field_id)
+        .map(|(_, data)| String::from_utf8(data.clone()))
+        .collect()
 }
 
 /// Build fragmented transaction frames from a header and payload.

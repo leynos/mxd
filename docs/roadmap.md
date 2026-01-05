@@ -108,10 +108,10 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`, and
   routing smoke tests exercise every handler through this port without invoking
   legacy wiring. Status: Completed on 25 December 2025 by introducing
-  `HotlineProtocol` implementing `WireframeProtocol` with lifecycle hooks,
-  `RouteState` plus connection context metadata, and unit tests covering
-  protocol adapter registration, error routing, and transaction ID
-  preservation. Dependencies: 1.3.
+  `HotlineProtocol` implementing `WireframeProtocol` with lifecycle hooks and
+  connection context metadata, plus unit tests covering protocol adapter
+  registration, error routing, and transaction ID preservation. Dependencies:
+  1.3.
 - [x] 1.4.2. Map every implemented transaction ID to a `wireframe` route that
   delegates to the existing domain handlers. Acceptance: Login, news listing,
   and file listing integration tests run against the wireframe server without
@@ -273,7 +273,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   administrative transactions with immediate effect. Dependencies: 3.2.2.
 - [ ] 3.2.4. Model file listing visibility in Stateright. Acceptance:
   Stateright models include admin and non-admin clients and prove drop box
-  contents never leak to unauthorised users, matching
+  contents never leak to unauthorized users, matching
   `docs/file-sharing-design.md`. Dependencies: Task “Implement Set File Info
   (207) for renames, comments, and drop box flags with privilege enforcement.”
 
