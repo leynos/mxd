@@ -2,27 +2,34 @@
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
-use argon2::Argon2;
+use async_trait::async_trait;
 use rstest::rstest;
+use test_util::{AnyError, setup_files_db, setup_news_db};
+use wireframe::middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform};
 
-use super::super::{
-    RouteState,
-    TransactionMiddleware,
-    error_reply,
-    error_transaction,
-    handle_command_parse_error,
-    handle_parse_error,
-    process_transaction_bytes,
+use super::{
+    super::{
+        TransactionMiddleware,
+        dispatch_spy,
+        error_reply,
+        error_transaction,
+        handle_command_parse_error,
+        handle_parse_error,
+        process_transaction_bytes,
+    },
+    helpers::{build_test_db, runtime},
 };
 use crate::{
+    field_id::FieldId,
     handler::Session,
-    transaction::{FrameHeader, HEADER_LEN, Transaction},
-    wireframe::{
-        connection::HandshakeMetadata,
-        test_helpers::{dummy_pool, transaction_bytes},
-    },
+    transaction::{FrameHeader, HEADER_LEN, Transaction, encode_params, parse_transaction},
+    transaction_type::TransactionType,
+    wireframe::test_helpers::{dummy_pool, transaction_bytes},
 };
 
 /// Error code indicating a permission failure.
@@ -66,17 +73,6 @@ fn error_reply_preserves_header_fields(#[case] ty: u16, #[case] id: u32, #[case]
     assert_eq!(reply.header().id, id);
     assert_eq!(reply.header().error, error_code);
     assert!(reply.payload().is_empty());
-}
-
-#[rstest]
-fn route_state_can_be_created() {
-    let pool = dummy_pool();
-    let argon2 = Arc::new(Argon2::default());
-    let handshake = HandshakeMetadata::default();
-
-    let state = RouteState::new(pool, argon2, handshake);
-
-    assert!(Arc::strong_count(&state.argon2) >= 1);
 }
 
 /// Tests that malformed input returns an error with `ERR_INTERNAL`.
@@ -231,15 +227,160 @@ async fn process_transaction_bytes_unknown_type() {
     assert_eq!(reply_header.error, ERR_UNKNOWN_TYPE);
 }
 
-/// Tests that middleware can be created with pool and session.
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
-fn transaction_middleware_can_be_created() {
-    let pool = dummy_pool();
+fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
+    let rt = runtime();
+    let Some(test_db) = build_test_db(&rt, setup_full_db)? else {
+        return Ok(());
+    };
+    let pool = test_db.pool();
     let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
     let peer = "127.0.0.1:12345".parse().expect("peer addr");
+    let middleware = TransactionMiddleware::new(pool, Arc::clone(&session), peer);
 
-    let middleware = TransactionMiddleware::new(pool, session, peer);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let spy = SpyService::new(Arc::clone(&calls));
+    let service = HandlerService::from_service(0, spy);
+    let wrapped = rt.block_on(middleware.transform(service));
 
-    // Verify it can be cloned (required for middleware usage).
-    let _cloned = middleware.clone();
+    dispatch_spy::clear();
+    let cases = build_middleware_cases();
+    for case in &cases {
+        let frame = build_frame(case.ty, case.id, &case.params)?;
+        let response = rt.block_on(wrapped.call(ServiceRequest::new(frame, None)))?;
+        let reply = parse_transaction(response.frame())?;
+        assert_eq!(reply.header.error, 0, "case {} failed", case.label);
+    }
+
+    let records = dispatch_spy::take();
+    assert_eq!(records.len(), cases.len());
+    for (record, case) in records.iter().zip(cases.iter()) {
+        assert_eq!(record.peer, peer, "case {} peer mismatch", case.label);
+        assert_eq!(
+            record.ty,
+            u16::from(case.ty),
+            "case {} ty mismatch",
+            case.label
+        );
+        assert_eq!(record.id, case.id, "case {} id mismatch", case.label);
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), cases.len());
+    Ok(())
+}
+
+struct MiddlewareCase {
+    label: &'static str,
+    ty: TransactionType,
+    id: u32,
+    params: Vec<(FieldId, Vec<u8>)>,
+}
+
+fn build_middleware_cases() -> Vec<MiddlewareCase> {
+    let article_id = 1i32.to_be_bytes().to_vec();
+    let flags = 0i32.to_be_bytes().to_vec();
+    vec![
+        MiddlewareCase {
+            label: "login",
+            ty: TransactionType::Login,
+            id: 1,
+            params: vec![
+                (FieldId::Login, b"alice".to_vec()),
+                (FieldId::Password, b"secret".to_vec()),
+            ],
+        },
+        MiddlewareCase {
+            label: "file_list",
+            ty: TransactionType::GetFileNameList,
+            id: 2,
+            params: Vec::new(),
+        },
+        MiddlewareCase {
+            label: "news_category_list",
+            ty: TransactionType::NewsCategoryNameList,
+            id: 3,
+            params: Vec::new(),
+        },
+        MiddlewareCase {
+            label: "news_article_list",
+            ty: TransactionType::NewsArticleNameList,
+            id: 4,
+            params: vec![(FieldId::NewsPath, b"General".to_vec())],
+        },
+        MiddlewareCase {
+            label: "news_article_data",
+            ty: TransactionType::NewsArticleData,
+            id: 5,
+            params: vec![
+                (FieldId::NewsPath, b"General".to_vec()),
+                (FieldId::NewsArticleId, article_id),
+            ],
+        },
+        MiddlewareCase {
+            label: "post_news_article",
+            ty: TransactionType::PostNewsArticle,
+            id: 6,
+            params: vec![
+                (FieldId::NewsPath, b"General".to_vec()),
+                (FieldId::NewsTitle, b"Third".to_vec()),
+                (FieldId::NewsArticleFlags, flags),
+                (FieldId::NewsDataFlavor, b"text/plain".to_vec()),
+                (FieldId::NewsArticleData, b"hello".to_vec()),
+            ],
+        },
+    ]
+}
+
+fn build_frame(
+    ty: TransactionType,
+    id: u32,
+    params: &[(FieldId, Vec<u8>)],
+) -> Result<Vec<u8>, AnyError> {
+    let slice_params: Vec<(FieldId, &[u8])> = params
+        .iter()
+        .map(|(field_id, data)| (*field_id, data.as_slice()))
+        .collect();
+    let payload = if slice_params.is_empty() {
+        Vec::new()
+    } else {
+        encode_params(&slice_params)?
+    };
+    let payload_size = u32::try_from(payload.len())?;
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: ty.into(),
+        id,
+        error: 0,
+        total_size: payload_size,
+        data_size: payload_size,
+    };
+    Ok(transaction_bytes(&header, &payload))
+}
+
+fn setup_full_db(db: &str) -> Result<(), AnyError> {
+    setup_files_db(db)?;
+    setup_news_db(db)?;
+    Ok(())
+}
+
+struct SpyService {
+    calls: Arc<AtomicUsize>,
+}
+
+impl SpyService {
+    fn new(calls: Arc<AtomicUsize>) -> Self { Self { calls } }
+}
+
+#[async_trait]
+impl Service for SpyService {
+    type Error = std::convert::Infallible;
+
+    async fn call(&self, req: ServiceRequest) -> Result<ServiceResponse, Self::Error> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(ServiceResponse::new(
+            req.frame().to_vec(),
+            req.correlation_id(),
+        ))
+    }
 }

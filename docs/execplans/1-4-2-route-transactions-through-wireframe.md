@@ -91,12 +91,14 @@ tests.
       service plumbing and frame copies.
 - [x] (2026-01-05) Remove unused `SessionState` wrapper and align tests with
       the production session handling.
-- [x] (2026-01-06) Gate `error_reply` to test builds and align unknown-type
+- [x] (2026-01-05) Gate `error_reply` to test builds and align unknown-type
       error codes with ERR_INTERNAL.
-- [x] (2026-01-06) Bound readiness diagnostics in the test server harness and
+- [x] (2026-01-05) Bound readiness diagnostics in the test server harness and
       surface stdout flush failures.
-- [x] (2026-01-06) Require handshake context/peer in the app factory and log
+- [x] (2026-01-05) Require handshake context/peer in the app factory and log
       peer address lookup failures.
+- [x] (2026-01-05) Add dispatch spy coverage for middleware routing and
+      simplify test server binary resolution for integration runs.
 
 ## Surprises & Discoveries
 
@@ -318,9 +320,9 @@ server.
 
 Add unit tests in `src/wireframe/routes/tests/` using rstest:
 
-- Handler correctly parses valid transactions.
-- Handler returns error for malformed input.
-- Handler preserves transaction ID in reply.
+- Parses valid transactions correctly.
+- Returns an error for malformed input.
+- Preserves the transaction ID in the reply.
 - Unknown transaction type returns ERR_INTERNAL.
 
 Add behavioural tests using rstest-bdd v0.3.0:
@@ -338,7 +340,7 @@ done in `docs/roadmap.md`.
 
 ## Concrete Steps
 
-All commands run from the repository root `/data/leynos/Projects/mxd`.
+All commands run from the repository root `<repo-root>`.
 
 1. Create the execplans directory and write this file:
 

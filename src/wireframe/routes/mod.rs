@@ -45,6 +45,55 @@ use crate::{
 /// Error code for internal server failures.
 const ERR_INTERNAL: u32 = 3;
 
+#[cfg(test)]
+mod dispatch_spy {
+    //! Captures dispatch details for transaction routing tests.
+
+    use std::{
+        net::SocketAddr,
+        sync::{Mutex, OnceLock},
+    };
+
+    use crate::transaction::FrameHeader;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(super) struct DispatchRecord {
+        pub(super) peer: SocketAddr,
+        pub(super) ty: u16,
+        pub(super) id: u32,
+    }
+
+    fn records() -> &'static Mutex<Vec<DispatchRecord>> {
+        static RECORDS: OnceLock<Mutex<Vec<DispatchRecord>>> = OnceLock::new();
+        RECORDS.get_or_init(|| Mutex::new(Vec::new()))
+    }
+
+    pub(super) fn record(peer: SocketAddr, header: &FrameHeader) {
+        let mut records = records()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        records.push(DispatchRecord {
+            peer,
+            ty: header.ty,
+            id: header.id,
+        });
+    }
+
+    pub(super) fn take() -> Vec<DispatchRecord> {
+        let mut records = records()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        std::mem::take(&mut *records)
+    }
+
+    pub(super) fn clear() {
+        let mut records = records()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        records.clear();
+    }
+}
+
 /// Shared state passed to route handlers via app data.
 ///
 /// This struct aggregates the shared resources needed by transaction handlers,
@@ -112,6 +161,9 @@ pub async fn process_transaction_bytes(
         Err(e) => return handle_command_parse_error(e, &header),
     };
 
+    #[cfg(test)]
+    dispatch_spy::record(peer, &header);
+
     match cmd.process(peer, pool, session).await {
         Ok(reply) => transaction_to_bytes(&reply),
         Err(e) => handle_process_error(e, &header),
@@ -163,7 +215,6 @@ fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<
     transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
 }
 
-#[cfg(test)]
 /// Build an error reply as a `HotlineTransaction`.
 ///
 /// # Errors
@@ -173,6 +224,7 @@ fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<
 /// implementation.
 ///
 /// [`TransactionError`]: crate::transaction::TransactionError
+#[cfg(test)]
 fn error_reply(
     header: &FrameHeader,
     error_code: u32,

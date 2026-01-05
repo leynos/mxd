@@ -9,7 +9,7 @@ use std::{
     fmt,
     io::{self, BufRead, BufReader},
     net::TcpListener,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, ChildStdout, Command, Stdio},
     sync::Mutex,
     time::{Duration, Instant},
@@ -199,21 +199,58 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     }
 }
 
+fn resolve_server_binary() -> Option<PathBuf> {
+    let resolution =
+        std::env::var_os(SERVER_BINARY_ENV).map_or(ServerBinaryResolution::EnvMissing, |bin| {
+            let path = PathBuf::from(bin);
+            if path.exists() {
+                ServerBinaryResolution::Found(path)
+            } else {
+                ServerBinaryResolution::Missing(path)
+            }
+        });
+    resolution.log();
+    resolution.into_option()
+}
+
+enum ServerBinaryResolution {
+    EnvMissing,
+    Found(PathBuf),
+    Missing(PathBuf),
+}
+
+impl ServerBinaryResolution {
+    fn log(&self) {
+        let (message, binary) = match self {
+            Self::EnvMissing => ("env var not set", None),
+            Self::Found(path) => ("using prebuilt binary", Some(path.as_path())),
+            Self::Missing(path) => ("binary from env var does not exist", Some(path.as_path())),
+        };
+        log_server_binary_resolution(message, binary);
+    }
+
+    fn into_option(self) -> Option<PathBuf> {
+        match self {
+            Self::Found(path) => Some(path),
+            Self::EnvMissing | Self::Missing(_) => None,
+        }
+    }
+}
+
+fn log_server_binary_resolution(message: &'static str, binary: Option<&Path>) {
+    let binary_display = binary.map(|path| path.display().to_string());
+    debug!(
+        env_var = SERVER_BINARY_ENV,
+        binary = ?binary_display,
+        "{message}"
+    );
+}
+
 /// Constructs the base `cargo run` command for launching the server with the
 /// requested manifest, bind port, and database URL, enabling the active backend.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "binary path resolution with cfg-conditional fallback has inherent complexity"
-)]
 fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
-    if let Some(bin) = std::env::var_os(SERVER_BINARY_ENV) {
-        if Path::new(&bin).exists() {
-            debug!(binary = %bin.to_string_lossy(), "using prebuilt binary");
-            return server_binary_command(bin, port, db_url);
-        }
-        debug!(binary = %bin.to_string_lossy(), "binary from env var does not exist");
-    } else {
-        debug!(env_var = SERVER_BINARY_ENV, "env var not set");
+    if let Some(bin) = resolve_server_binary() {
+        return server_binary_command(bin, port, db_url);
     }
     debug!("falling back to cargo run");
     cargo_run_command(manifest_path, port, db_url)
@@ -221,7 +258,7 @@ fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl)
 
 /// Builds a command that executes an already-built wireframe server binary bound
 /// to the requested port and database URL, bypassing `cargo run` entirely.
-fn server_binary_command(bin: OsString, port: u16, db_url: &DbUrl) -> Command {
+fn server_binary_command(bin: PathBuf, port: u16, db_url: &DbUrl) -> Command {
     let mut cmd = Command::new(bin);
     cmd.arg("--bind");
     cmd.arg(format!("127.0.0.1:{port}"));
