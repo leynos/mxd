@@ -1,5 +1,7 @@
 //! Helpers for wireframe routing BDD integration tests.
 
+use std::io;
+
 // The lint feature enables combined sqlite/postgres builds for full static
 // analysis coverage, so only enforce exclusivity outside lint runs.
 #[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))]
@@ -43,8 +45,12 @@ pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, Any
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path().join("mxd.db");
         let db_url = path.to_str().ok_or("database path is not valid UTF-8")?;
-        setup(db_url)?;
-        let pool = rt.block_on(establish_pool(db_url))?;
+        setup(db_url).map_err(|err| {
+            io::Error::other(format!("failed to run SQLite test database setup: {err}"))
+        })?;
+        let pool = rt.block_on(establish_pool(db_url)).map_err(|err| {
+            io::Error::other(format!("failed to establish SQLite connection pool: {err}"))
+        })?;
         Ok(Some(TestDb {
             pool,
             _temp_dir: temp_dir,
@@ -59,8 +65,14 @@ pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, Any
             Err(err) => return Err(err.into()),
         };
         let db_url = db.url.as_ref();
-        setup(db_url)?;
-        let pool = rt.block_on(establish_pool(db_url))?;
+        setup(db_url).map_err(|err| {
+            io::Error::other(format!("failed to run Postgres test database setup: {err}"))
+        })?;
+        let pool = rt.block_on(establish_pool(db_url)).map_err(|err| {
+            io::Error::other(format!(
+                "failed to establish Postgres connection pool: {err}"
+            ))
+        })?;
         Ok(Some(TestDb {
             pool,
             _postgres: db,

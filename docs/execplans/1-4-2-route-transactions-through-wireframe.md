@@ -118,6 +118,8 @@ tests.
       and enforcing sqlite/postgres exclusivity in `test-util`.
 - [x] (2026-01-06) Reformat key file notes as a definition list and align
       documentation language with adaptor terminology guidance.
+- [x] (2026-01-06) Add backend-specific error context for test database setup
+      and connection pool creation in `test-util` helpers.
 
 ## Surprises & Discoveries
 
