@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 tempfile = "3"
 nix = { version = "0.28", default-features = false, features = ["signal", "user", "fs"] }
-mxd = { path = "..", default-features = false }
+mxd = { path = "..", default-features = false, features = ["test-support"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 diesel = { version = "2.3", default-features = false, features = ["chrono"] }
 diesel-async = { version = "0.7", default-features = false, features = ["sync-connection-wrapper"] }
@@ -16,6 +16,8 @@ argon2 = { version = "0.5", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
 rstest = "0.18"
+tracing = "0.1"
+anyhow = "1"
 postgres = { version = "0.19", optional = true }
 uuid = { version = "1", features = ["v7"], optional = true }
 url = { version = "2", optional = true }

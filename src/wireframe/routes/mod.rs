@@ -17,77 +17,66 @@
 //!
 //! # Registration
 //!
-//! Transaction processing is integrated through the protocol adapter's
-//! lifecycle hooks and the server's frame handling loop.
+//! Transaction processing is integrated through middleware registered on
+//! the `WireframeApp`. The middleware intercepts all frames, processes them
+//! through the domain command dispatcher, and writes the reply bytes.
 
-use std::sync::Arc;
+use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
-use argon2::Argon2;
+use async_trait::async_trait;
 use tracing::{error, warn};
+use wireframe::{
+    app::Envelope,
+    middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform},
+};
 
+#[cfg(test)]
+use crate::wireframe::codec::HotlineTransaction;
 use crate::{
     commands::Command,
     db::DbPool,
     handler::Session,
     header_util::reply_header,
     transaction::{FrameHeader, Transaction, parse_transaction},
-    wireframe::{codec::HotlineTransaction, connection::HandshakeMetadata},
 };
 
 /// Error code for internal server failures.
 const ERR_INTERNAL: u32 = 3;
 
-/// Shared state passed to route handlers via app data.
-///
-/// This struct aggregates the shared resources needed by transaction handlers,
-/// extracted from `WireframeApp` data during request processing.
-#[derive(Clone)]
-pub struct RouteState {
-    /// Database connection pool.
-    pub pool: DbPool,
-    /// Shared Argon2 instance for password hashing.
-    pub argon2: Arc<Argon2<'static>>,
-    /// Handshake metadata for the connection.
-    pub handshake: HandshakeMetadata,
-}
+#[cfg(test)]
+mod dispatch_spy {
+    //! Captures dispatch details for transaction routing tests.
 
-impl RouteState {
-    /// Create a new route state from app data components.
-    #[must_use]
-    pub const fn new(
-        pool: DbPool,
-        argon2: Arc<Argon2<'static>>,
-        handshake: HandshakeMetadata,
-    ) -> Self {
-        Self {
-            pool,
-            argon2,
-            handshake,
-        }
+    use std::{cell::RefCell, net::SocketAddr};
+
+    use crate::transaction::FrameHeader;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(super) struct DispatchRecord {
+        pub(super) peer: SocketAddr,
+        pub(super) ty: u16,
+        pub(super) id: u32,
     }
-}
 
-/// Per-connection mutable state for session tracking.
-///
-/// This wrapper holds the session state that is mutated across transactions
-/// within a single connection. It is stored in app data and passed to handlers.
-#[derive(Clone, Default)]
-pub struct SessionState {
-    /// Domain session tracking authentication state.
-    session: Session,
-}
+    thread_local! {
+        static RECORDS: RefCell<Vec<DispatchRecord>> = const { RefCell::new(Vec::new()) };
+    }
 
-impl SessionState {
-    /// Create a new session state with default (unauthenticated) session.
-    #[must_use]
-    pub fn new() -> Self { Self::default() }
+    pub(super) fn record(peer: SocketAddr, header: &FrameHeader) {
+        RECORDS.with(|records| {
+            records.borrow_mut().push(DispatchRecord {
+                peer,
+                ty: header.ty,
+                id: header.id,
+            });
+        });
+    }
 
-    /// Return a reference to the session.
-    #[must_use]
-    pub const fn session(&self) -> &Session { &self.session }
+    pub(super) fn take() -> Vec<DispatchRecord> {
+        RECORDS.with(|records| std::mem::take(&mut *records.borrow_mut()))
+    }
 
-    /// Return a mutable reference to the session.
-    pub const fn session_mut(&mut self) -> &mut Session { &mut self.session }
+    pub(super) fn clear() { RECORDS.with(|records| records.borrow_mut().clear()); }
 }
 
 /// Process a Hotline transaction from raw bytes and return the reply bytes.
@@ -126,6 +115,9 @@ pub async fn process_transaction_bytes(
         Ok(cmd) => cmd,
         Err(e) => return handle_command_parse_error(e, &header),
     };
+
+    #[cfg(test)]
+    dispatch_spy::record(peer, &header);
 
     match cmd.process(peer, pool, session).await {
         Ok(reply) => transaction_to_bytes(&reply),
@@ -187,7 +179,8 @@ fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<
 /// implementation.
 ///
 /// [`TransactionError`]: crate::transaction::TransactionError
-pub fn error_reply(
+#[cfg(test)]
+fn error_reply(
     header: &FrameHeader,
     error_code: u32,
 ) -> Result<HotlineTransaction, crate::transaction::TransactionError> {
@@ -195,79 +188,89 @@ pub fn error_reply(
     HotlineTransaction::try_from(tx)
 }
 
-#[cfg(test)]
-mod tests {
-    use rstest::rstest;
+/// Middleware for processing Hotline transactions.
+///
+/// This middleware intercepts all incoming frames, processes them through the
+/// domain command dispatcher, and writes the reply bytes to the response. It
+/// holds the database pool, peer address, and session state directly rather
+/// than using thread-local storage.
+///
+/// # Wireframe Integration
+///
+/// Unlike `from_fn` middleware, this struct implements `Transform` with
+/// `Output = HandlerService<E>`, making it compatible with `WireframeApp::wrap()`.
+/// The wrapped service processes transactions and returns the transformed
+/// `HandlerService` expected by the middleware pipeline.
+#[derive(Clone)]
+pub struct TransactionMiddleware {
+    pool: DbPool,
+    session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    peer: SocketAddr,
+}
 
-    use super::*;
-    use crate::wireframe::test_helpers::dummy_pool;
-
-    #[rstest]
-    fn route_state_can_be_created() {
-        let pool = dummy_pool();
-        let argon2 = Arc::new(Argon2::default());
-        let handshake = HandshakeMetadata::default();
-
-        let state = RouteState::new(pool, argon2, handshake);
-
-        assert!(Arc::strong_count(&state.argon2) >= 1);
-    }
-
-    #[rstest]
-    fn session_state_starts_unauthenticated() {
-        let state = SessionState::new();
-
-        assert!(state.session().user_id.is_none());
-    }
-
-    #[rstest]
-    fn session_state_can_be_mutated() {
-        let mut state = SessionState::new();
-        state.session_mut().user_id = Some(42);
-
-        assert_eq!(state.session().user_id, Some(42));
-    }
-
-    /// Error code indicating a permission failure.
-    const ERR_PERMISSION: u32 = 1;
-
-    /// Parameterized test covering error reply scenarios.
-    ///
-    /// Each case verifies that `error_reply` correctly constructs a reply with:
-    /// - `is_reply` set to 1
-    /// - The original transaction type preserved
-    /// - The original transaction ID preserved
-    /// - The specified error code applied
-    /// - An empty payload
-    #[rstest]
-    #[case::creates_valid_transaction(107, 12345, 1)]
-    #[case::preserves_transaction_id(200, 99999, ERR_INTERNAL)]
-    #[case::invalid_frame_returns_internal_error(0, 0, ERR_INTERNAL)]
-    #[case::unknown_type_returns_internal_error(65535, 1, ERR_INTERNAL)]
-    #[case::permission_error_preserves_type(200, 2, ERR_PERMISSION)]
-    #[case::preserves_id_for_unknown_type(65535, 12345, ERR_INTERNAL)]
-    fn error_reply_preserves_header_fields(
-        #[case] ty: u16,
-        #[case] id: u32,
-        #[case] error_code: u32,
-    ) {
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty,
-            id,
-            error: 0,
-            total_size: 0,
-            data_size: 0,
-        };
-
-        let reply =
-            error_reply(&header, error_code).expect("error_reply should succeed for valid header");
-
-        assert_eq!(reply.header().is_reply, 1);
-        assert_eq!(reply.header().ty, ty);
-        assert_eq!(reply.header().id, id);
-        assert_eq!(reply.header().error, error_code);
-        assert!(reply.payload().is_empty());
+impl TransactionMiddleware {
+    /// Create a new transaction middleware with the given pool and session.
+    #[must_use]
+    pub const fn new(
+        pool: DbPool,
+        session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+        peer: SocketAddr,
+    ) -> Self {
+        Self {
+            pool,
+            session,
+            peer,
+        }
     }
 }
+
+/// Inner service that processes transactions with the pool and session passed in.
+struct TransactionHandler {
+    inner: HandlerService<Envelope>,
+    pool: DbPool,
+    session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    peer: SocketAddr,
+}
+
+#[async_trait]
+impl Service for TransactionHandler {
+    type Error = Infallible;
+
+    async fn call(&self, req: ServiceRequest) -> Result<ServiceResponse, Self::Error> {
+        let reply_bytes = {
+            let mut session_guard = self.session.lock().await;
+            process_transaction_bytes(
+                req.frame(),
+                self.peer,
+                self.pool.clone(),
+                &mut session_guard,
+            )
+            .await
+        };
+
+        // Call inner service to propagate through the chain, then replace the response frame
+        let mut response = self.inner.call(req).await?;
+        response.frame_mut().clear();
+        response.frame_mut().extend_from_slice(&reply_bytes);
+        Ok(response)
+    }
+}
+
+#[async_trait]
+impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
+    type Output = HandlerService<Envelope>;
+
+    async fn transform(&self, service: HandlerService<Envelope>) -> Self::Output {
+        let id = service.id();
+        let wrapped = TransactionHandler {
+            inner: service,
+            pool: self.pool.clone(),
+            session: Arc::clone(&self.session),
+            peer: self.peer,
+        };
+        HandlerService::from_service(id, wrapped)
+    }
+}
+
+#[cfg(test)]
+mod tests;

@@ -4,12 +4,13 @@
 //! `PostgreSQL` backend, monitor readiness, and tear it down once tests complete.
 
 use std::{
+    collections::VecDeque,
     ffi::OsString,
     fmt,
     io::{self, BufRead, BufReader},
     net::TcpListener,
-    path::Path,
-    process::{Child, Command, Stdio},
+    path::{Path, PathBuf},
+    process::{Child, ChildStdout, Command, Stdio},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -20,6 +21,7 @@ use nix::{
     unistd::Pid,
 };
 use tempfile::TempDir;
+use tracing::{debug, info, warn};
 
 use crate::AnyError;
 #[cfg(feature = "postgres")]
@@ -87,7 +89,19 @@ impl fmt::Display for DbUrl {
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-/// Ensure `CARGO_BIN_EXE_mxd` is populated from the provided compile-time path.
+/// Name of the server binary to use for integration tests.
+///
+/// The wireframe server (`mxd-wireframe-server`) is the default, as it provides
+/// the production-ready transport layer implementation.
+const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
+
+/// Environment variable name for the prebuilt server binary path.
+const SERVER_BINARY_ENV: &str = "CARGO_BIN_EXE_mxd-wireframe-server";
+/// Marker emitted on stdout to signal that the server is ready.
+const READY_MARKER: &str = "listening on";
+
+/// Ensure the server binary environment variable is populated from the provided
+/// compile-time path.
 ///
 /// The mutation is guarded by a global mutex and the result is propagated so
 /// callers can handle synchronisation failures instead of panicking.
@@ -99,12 +113,68 @@ pub fn ensure_server_binary_env(bin_path: &str) -> Result<(), AnyError> {
     let _guard = ENV_LOCK
         .lock()
         .map_err(|_| io::Error::other("environment mutex poisoned"))?;
-    if std::env::var_os("CARGO_BIN_EXE_mxd").is_none() {
+    if std::env::var_os(SERVER_BINARY_ENV).is_none() {
         // SAFETY: Environment mutation is serialized by `ENV_LOCK`, ensuring no
         // concurrent readers/writers observe a partially updated state.
-        unsafe { std::env::set_var("CARGO_BIN_EXE_mxd", bin_path) };
+        unsafe { std::env::set_var(SERVER_BINARY_ENV, bin_path) };
     }
     Ok(())
+}
+
+struct EnvVarGuard {
+    key: String,
+    previous: Option<OsString>,
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => {
+                // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
+                unsafe { std::env::set_var(&self.key, value) };
+            }
+            None => {
+                // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
+                unsafe { std::env::remove_var(&self.key) };
+            }
+        }
+    }
+}
+
+/// Temporarily sets an environment variable for the duration of a closure.
+///
+/// The mutation is guarded by a global mutex and is restored after the closure
+/// returns, even when it returns an error.
+///
+/// # Errors
+///
+/// Returns an error if the environment mutex is poisoned or the closure fails.
+pub fn with_env_var<T>(
+    key: &str,
+    value: Option<&str>,
+    f: impl FnOnce() -> Result<T, AnyError>,
+) -> Result<T, AnyError> {
+    let _guard = ENV_LOCK
+        .lock()
+        .map_err(|_| io::Error::other("environment mutex poisoned"))?;
+    let previous = std::env::var_os(key);
+    match value {
+        Some(env_value) => {
+            // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
+            unsafe { std::env::set_var(key, env_value) };
+        }
+        None => {
+            // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
+            unsafe { std::env::remove_var(key) };
+        }
+    }
+    let restore = EnvVarGuard {
+        key: key.to_owned(),
+        previous,
+    };
+    let result = f();
+    drop(restore);
+    result
 }
 
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
@@ -135,10 +205,43 @@ where
     let path = temp.path().join("mxd.db");
     let path_str = path
         .to_str()
-        .ok_or_else(|| "database path is not valid UTF-8".to_owned())?;
+        .ok_or_else(|| anyhow::anyhow!("database path is not valid UTF-8"))?;
     let url = DbUrl::from(path_str);
     setup(&url)?;
     Ok(url)
+}
+
+fn collect_stdout_for_diagnostics(
+    reader: &mut BufReader<&mut ChildStdout>,
+    max_lines: usize,
+    timeout: Duration,
+) -> Result<(Vec<String>, bool), AnyError> {
+    let mut lines = VecDeque::with_capacity(max_lines);
+    let mut line = String::new();
+    let start = Instant::now();
+    loop {
+        line.clear();
+        if reader.read_line(&mut line)? == 0 {
+            return Ok((lines.into_iter().collect(), false));
+        }
+        record_diagnostic_line(&mut lines, max_lines, line.trim());
+        if line.contains(READY_MARKER) {
+            return Ok((lines.into_iter().collect(), true));
+        }
+        if start.elapsed() > timeout {
+            return Ok((lines.into_iter().collect(), false));
+        }
+    }
+}
+
+fn record_diagnostic_line(lines: &mut VecDeque<String>, max_lines: usize, line: &str) {
+    if max_lines == 0 {
+        return;
+    }
+    if lines.len() == max_lines {
+        lines.pop_front();
+    }
+    lines.push_back(line.to_owned());
 }
 
 /// Waits up to ten seconds for the child `mxd` process to announce readiness
@@ -146,39 +249,79 @@ where
 fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
     if let Some(out) = &mut child.stdout {
         let mut reader = BufReader::new(out);
-        let mut line = String::new();
         let timeout = Duration::from_secs(10);
-        let start = Instant::now();
-        loop {
-            line.clear();
-            if reader.read_line(&mut line)? == 0 {
-                return Err("server exited before signalling readiness".into());
-            }
-            if line.contains("listening on") {
-                break;
-            }
-            if start.elapsed() > timeout {
-                return Err("timeout waiting for server to signal readiness".into());
-            }
+        let (lines_received, ready) = collect_stdout_for_diagnostics(&mut reader, 50, timeout)?;
+        if ready {
+            Ok(())
+        } else {
+            warn!(lines_received = ?lines_received, "server did not signal readiness");
+            Err(anyhow::anyhow!("server failed to signal readiness"))
         }
-        Ok(())
     } else {
-        Err("missing stdout from server".into())
+        Err(anyhow::anyhow!("missing stdout from server"))
     }
+}
+
+fn resolve_server_binary() -> Option<PathBuf> {
+    let resolution =
+        std::env::var_os(SERVER_BINARY_ENV).map_or(ServerBinaryResolution::EnvMissing, |bin| {
+            let path = PathBuf::from(bin);
+            if path.exists() {
+                ServerBinaryResolution::Found(path)
+            } else {
+                ServerBinaryResolution::Missing(path)
+            }
+        });
+    resolution.log();
+    resolution.into_option()
+}
+
+enum ServerBinaryResolution {
+    EnvMissing,
+    Found(PathBuf),
+    Missing(PathBuf),
+}
+
+impl ServerBinaryResolution {
+    fn log(&self) {
+        let (message, binary) = match self {
+            Self::EnvMissing => ("env var not set", None),
+            Self::Found(path) => ("using prebuilt binary", Some(path.as_path())),
+            Self::Missing(path) => ("binary from env var does not exist", Some(path.as_path())),
+        };
+        log_server_binary_resolution(message, binary);
+    }
+
+    fn into_option(self) -> Option<PathBuf> {
+        match self {
+            Self::Found(path) => Some(path),
+            Self::EnvMissing | Self::Missing(_) => None,
+        }
+    }
+}
+
+fn log_server_binary_resolution(message: &'static str, binary: Option<&Path>) {
+    let binary_display = binary.map(|path| path.display().to_string());
+    debug!(
+        env_var = SERVER_BINARY_ENV,
+        binary = ?binary_display,
+        "{message}"
+    );
 }
 
 /// Constructs the base `cargo run` command for launching the server with the
 /// requested manifest, bind port, and database URL, enabling the active backend.
 fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
-    if let Some(bin) = std::env::var_os("CARGO_BIN_EXE_mxd") {
+    if let Some(bin) = resolve_server_binary() {
         return server_binary_command(bin, port, db_url);
     }
+    debug!("falling back to cargo run");
     cargo_run_command(manifest_path, port, db_url)
 }
 
-/// Builds a command that executes an already-built `mxd` binary bound to the
-/// requested port and database URL, bypassing `cargo run` entirely.
-fn server_binary_command(bin: OsString, port: u16, db_url: &DbUrl) -> Command {
+/// Builds a command that executes an already-built wireframe server binary bound
+/// to the requested port and database URL, bypassing `cargo run` entirely.
+fn server_binary_command(bin: PathBuf, port: u16, db_url: &DbUrl) -> Command {
     let mut cmd = Command::new(bin);
     cmd.arg("--bind");
     cmd.arg(format!("127.0.0.1:{port}"));
@@ -194,21 +337,27 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
     let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut cmd = Command::new(cargo);
     cmd.arg("run");
+    // Always use --no-default-features and explicitly specify required features
+    // to ensure the binary is built with the same feature set as the tests.
+    cmd.arg("--no-default-features");
     #[cfg(feature = "postgres")]
     {
-        cmd.args(["--no-default-features", "--features", "postgres"]);
+        cmd.args(["--features", "postgres"]);
     }
     #[cfg(feature = "sqlite")]
     {
-        cmd.args(["--features", "sqlite"]);
+        // Keep sqlite builds aligned with default features: Cargo.toml defines
+        // `toml` (figment/toml + dep:toml) for configuration/fixture parsing,
+        // so we pass `--features sqlite,toml` to ensure compilation matches.
+        cmd.args(["--features", "sqlite,toml"]);
     }
     // Ensure the server binary matches the feature set used by tests so Cargo
     // does not trigger a costly rebuild when the harness falls back to
-    // `cargo run` (for example when `CARGO_BIN_EXE_mxd` is unavailable).
+    // `cargo run` (for example when the prebuilt binary is unavailable).
     cmd.args(["--features", "test-support"]);
     cmd.args([
         "--bin",
-        "mxd",
+        SERVER_BINARY_NAME,
         "--manifest-path",
         manifest_path.as_str(),
         "--quiet",
@@ -226,6 +375,10 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
 /// Spawns the configured server process on an ephemeral port and waits for the
 /// readiness banner before returning the child handle and chosen port.
 #[expect(
+    clippy::cognitive_complexity,
+    reason = "process spawning with cleanup on failure has inherent complexity"
+)]
+#[expect(
     clippy::let_underscore_must_use,
     reason = "best-effort cleanup; error already being propagated"
 )]
@@ -237,12 +390,16 @@ fn launch_server_process(
     let port = socket.local_addr()?.port();
     drop(socket);
 
+    info!(port, db_url = %db_url, "launching server");
     let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
+    debug!("spawned server process, waiting for readiness");
     if let Err(e) = wait_for_server(&mut child) {
+        warn!(error = %e, "wait_for_server failed");
         let _ = child.kill();
         let _ = child.wait();
         return Err(e);
     }
+    info!(port, "server ready");
     Ok((child, port))
 }
 

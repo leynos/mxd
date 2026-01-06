@@ -6,7 +6,7 @@
 //! This module is only available when running tests or when the `test-support`
 //! feature is enabled.
 
-#![allow(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 use std::time::Duration;
 
@@ -15,8 +15,10 @@ use tokio::io::AsyncReadExt;
 
 use crate::{
     db::{DbConnection, DbPool},
+    field_id::FieldId,
     protocol::{HANDSHAKE_LEN, REPLY_LEN},
-    transaction::{FrameHeader, HEADER_LEN},
+    transaction::{FrameHeader, HEADER_LEN, TransactionError, encode_params},
+    transaction_type::TransactionType,
 };
 
 /// Create a lightweight database pool for tests that don't require real
@@ -79,6 +81,76 @@ pub fn transaction_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
     buf.extend_from_slice(&hdr_buf);
     buf.extend_from_slice(payload);
     buf
+}
+
+/// Build a transaction frame buffer from typed parameters.
+///
+/// # Errors
+///
+/// Returns an error if parameter encoding fails or the payload size exceeds
+/// the protocol limits.
+///
+/// # Examples
+/// ```ignore
+/// # use mxd::field_id::FieldId;
+/// # use mxd::transaction_type::TransactionType;
+/// # use mxd::wireframe::test_helpers::build_frame;
+/// let frame = build_frame(
+///     TransactionType::Login,
+///     1,
+///     &[(FieldId::Login, b"alice"), (FieldId::Password, b"secret")],
+/// )
+/// .expect("frame");
+/// assert!(!frame.is_empty());
+/// ```
+pub fn build_frame(
+    ty: TransactionType,
+    id: u32,
+    params: &[(FieldId, &[u8])],
+) -> Result<Vec<u8>, TransactionError> {
+    let payload = if params.is_empty() {
+        Vec::new()
+    } else {
+        encode_params(params)?
+    };
+    let payload_size =
+        u32::try_from(payload.len()).map_err(|_| TransactionError::PayloadTooLarge)?;
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: ty.into(),
+        id,
+        error: 0,
+        total_size: payload_size,
+        data_size: payload_size,
+    };
+    Ok(transaction_bytes(&header, &payload))
+}
+
+/// Collect UTF-8 strings for a field from decoded parameters without
+/// allocating new buffers.
+///
+/// # Errors
+///
+/// Returns an error if any parameter value is not valid UTF-8.
+///
+/// # Examples
+/// ```ignore
+/// # use mxd::field_id::FieldId;
+/// # use mxd::wireframe::test_helpers::collect_strings;
+/// let params = vec![(FieldId::FileName, b"alpha.txt".to_vec())];
+/// let names = collect_strings(&params, FieldId::FileName).expect("strings");
+/// assert_eq!(names, vec!["alpha.txt"]);
+/// ```
+pub fn collect_strings(
+    params: &[(FieldId, Vec<u8>)],
+    field_id: FieldId,
+) -> Result<Vec<&str>, std::str::Utf8Error> {
+    params
+        .iter()
+        .filter(|(id, _)| id == &field_id)
+        .map(|(_, data)| std::str::from_utf8(data))
+        .collect()
 }
 
 /// Build fragmented transaction frames from a header and payload.
@@ -207,4 +279,64 @@ pub fn mismatched_continuation_bytes() -> Result<Vec<u8>, FragmentError> {
     bytes.extend(transaction_bytes(&second_header, second_slice));
 
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for wireframe test helpers.
+
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::login(
+        TransactionType::Login,
+        42,
+        vec![(FieldId::Login, b"alice".to_vec()), (FieldId::Password, b"secret".to_vec())],
+    )]
+    #[case::file_list(TransactionType::GetFileNameList, 7, Vec::new())]
+    fn build_frame_sets_header_and_payload(
+        #[case] ty: TransactionType,
+        #[case] id: u32,
+        #[case] params: Vec<(FieldId, Vec<u8>)>,
+    ) {
+        let params_ref: Vec<(FieldId, &[u8])> = params
+            .iter()
+            .map(|(field_id, data)| (*field_id, data.as_slice()))
+            .collect();
+        let frame = build_frame(ty, id, &params_ref).expect("frame");
+        let header = FrameHeader::from_bytes(
+            frame[..HEADER_LEN]
+                .try_into()
+                .expect("header slice should be exact size"),
+        );
+        let payload = &frame[HEADER_LEN..];
+
+        assert_eq!(header.flags, 0);
+        assert_eq!(header.is_reply, 0);
+        assert_eq!(header.ty, u16::from(ty));
+        assert_eq!(header.id, id);
+        assert_eq!(header.error, 0);
+        assert_eq!(header.total_size as usize, payload.len());
+        assert_eq!(header.data_size as usize, payload.len());
+
+        let expected_payload = if params_ref.is_empty() {
+            Vec::new()
+        } else {
+            encode_params(&params_ref).expect("payload")
+        };
+        assert_eq!(payload, expected_payload.as_slice());
+    }
+
+    #[rstest]
+    fn build_frame_rejects_oversized_payload() {
+        let oversized = vec![0u8; usize::from(u16::MAX) + 1];
+        let params = vec![(FieldId::Login, oversized.as_slice())];
+
+        let err = build_frame(TransactionType::Login, 1, &params)
+            .expect_err("oversized payload should fail");
+
+        assert!(matches!(err, TransactionError::PayloadTooLarge));
+    }
 }

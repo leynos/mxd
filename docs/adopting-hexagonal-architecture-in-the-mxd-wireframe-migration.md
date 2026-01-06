@@ -113,7 +113,9 @@ part of the core domain logic:
   via a custom serializer (codec). The migration plan calls for implementing a
   **`wireframe::Serializer`** that knows how to parse the 20-byte transaction
   header and reassemble
-  fragments([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L96-L104))([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L107-L114)).
+  fragments([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L96-L104)
+   )(
+  [1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L107-L114)).
    This serializer is a classic example of an Infrastructure Adapter: it
   translates raw byte streams into higher-level message objects (and vice
   versa) for the domain. The domain logic should not manually parse byte
@@ -175,10 +177,12 @@ is explicitly designed to handle *“manual data serialization and
 deserialization, intricate framing logic, stateful connection management, and
 the dispatch of messages to handlers”*, all of which are described as
 *“low-level concerns” that would otherwise *“obscure the core application
-logic”*([4](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/rust-binary-router-library-design.md#L5-L13)).
+logic”*(
+[4](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/rust-binary-router-library-design.md#L5-L13)).
+
  By offloading these concerns to `wireframe`, the migration ensures that mxd’s
-core logic can operate at the level of parsed messages and domain concepts
-(users, files, chats) rather than byte streams and socket states.
+ core logic can operate at the level of parsed messages and domain concepts
+ (users, files, chats) rather than byte streams and socket states.
 
 ## Ports vs. Application Core in the Wireframe Integration
 
@@ -212,18 +216,16 @@ server behavior. This includes things like validating a user’s credentials,
 looking up files in the database, updating news posts, enforcing permissions,
 etc. The migration plan makes it clear that these routines (e.g.
 `handle_login`, `list_files_for_user`, etc.) should remain in the mxd library
-and be *reused* by the new
-handlers([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L164-L168)).
- Thus, when a `Login` message comes in through the port (wireframe route), the
-handler will *“bridge to the existing mxd
-logic”*([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L164-L168))
- – effectively invoking the core application logic to do the work. The core
-returns a result (e.g. login success or failure, plus any data), and the
-handler then wraps that into a response object. By structuring it this way,
-**the domain logic is invoked via an interface (the handler/port) and does not
-itself depend on the transport**. The domain doesn’t know or care that the
-request came from a TCP socket or that the response will be encoded in a
-certain binary format – those details are abstracted by the port adapter.
+and be *reused* by the new handlers.[^migration-plan-bridge] Thus, when a
+`Login` message comes in through the port (wireframe route), the handler will
+*“bridge to the existing mxd logic”*.[^migration-plan-bridge] – effectively
+invoking the core application logic to do the work. The core returns a result
+(e.g. login success or failure, plus any data), and the handler then wraps that
+into a response object. By structuring it this way, **the domain logic is
+invoked via an interface (the handler/port) and does not itself depend on the
+transport**. The domain doesn’t know or care that the request came from a TCP
+socket or that the response will be encoded in a certain binary format – those
+details are abstracted by the port adapter.
 
 **Outbound Ports (Driven)**: The server may also need to initiate actions
 toward clients asynchronously (for example, broadcasting a “user X has logged
@@ -231,7 +233,9 @@ in” notification to others, or pushing periodic heartbeats). In Hexagonal
 terms, this is an outbound port: the core needs a way to send messages out. The
 `wireframe` library provides a mechanism for this via its **push API and
 session registry** (for finding
-connections)([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L40-L43))([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L42-L43)).
+connections)([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L40-L43)
+ )(
+[2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L42-L43)).
  Conceptually, we can model this as a port interface like “ClientNotifier” with
 methods to deliver certain events (e.g. `notifyUserJoined(sessionInfo)` or more
 generically `pushMessage(connectionId, frame)`). The implementation of this
@@ -337,7 +341,9 @@ concerns:
   call something like `SessionManager.notifyAll(event)` – an interface that is
   implemented in the outer layer using `wireframe` push mechanisms. The
   roadmap’s introduction of a shared session context and push
-  API([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L80-L88))([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L40-L43))
+  API([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L80-L88)
+   )(
+  [2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L40-L43))
    hints at how to do this cleanly. By storing a `PushHandle` or connection
   reference in the session context (attached via `WireframeProtocol` when a
   user
@@ -358,7 +364,8 @@ concerns:
   internals to get session info*. This should be avoided by designing a clean
   interface for session access. The migration suggests implementing connection
   initialization via `WireframeProtocol` to attach a `Session` object to each
-  connection([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L176-L184)).
+  connection(
+  [1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L176-L184)).
    That `Session` struct is a domain construct (carrying user ID, etc.), but it
   can be stored in a way that handlers can retrieve it easily (for example,
   `wireframe` could provide a method to get the session for the current
@@ -378,7 +385,9 @@ concerns:
   version-specific behaviors and encoding quirks. The plan addresses these by
   gating them on the handshake metadata (sub-version) and performing
   adjustments at the
-  edges([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L99-L103))([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L214-L222)).
+  edges([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L99-L103)
+   )(
+  [1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L214-L222)).
    A potential mistake would be implementing these conditions deep in the
   domain logic in scattered places, which can clutter core code with
   protocol-version checks. Instead, these should be handled either in a
@@ -389,19 +398,19 @@ concerns:
   reply). If an older client doesn’t support a new field, the adapter could
   strip or translate that field on output. The roadmap explicitly says to
   *“detect clients that XOR-encode text fields and transparently decode or
-  encode responses when
-  required”*([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L95-L103))
-   – the word *“transparently”* underscores that the domain use-case (say,
-  setting a password) shouldn’t need an `if client_version < X { ... }` inside
-  it. The transparency is achieved by the adapter doing the encoding/decoding
-  around the core. By following those guidelines, the implementation remains
-  compliant with Hexagonal Architecture: new client variations are handled by
-  adapter strategies, and the domain logic stays consistent and focused on core
-  behavior.
+  encode responses when required”*.[^roadmap-xor] – the word *“transparently”*
+  underscores that the domain use-case (say, setting a password) shouldn’t need
+  an `if client_version < X { ... }` inside it. The transparency is achieved by
+  the adapter doing the encoding/decoding around the core. By following those
+  guidelines, the implementation remains compliant with Hexagonal Architecture:
+  new client variations are handled by adapter strategies, and the domain logic
+  stays consistent and focused on core behavior.
 
 - **Testing and Temporary Duality:** During migration, there may be a period
   where both the old path and new path exist (controlled by feature
-  flags)([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L40-L43))([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L25-L29)).
+  flags)([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L40-L43)
+   )(
+  [3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L25-L29)).
    It’s important that this transitional state does not introduce hidden
   coupling. For instance, tests might run through the old path and new path and
   compare results. As long as the domain logic is singular (extracted to the
@@ -421,7 +430,8 @@ a red flag. The remedy is always to introduce an intermediary boundary: a
 function call, a trait, a context object, etc., that cleanly separates the
 concern. The mxd-wireframe migration plan is cognizant of this – it repeatedly
 emphasizes reusing domain handlers and keeping the new framework code at the
-edges([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L164-L171)).
+edges(
+[1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L164-L171)).
  By continuing to enforce a one-way dependency (wireframe depends on domain
 library; domain logic does not depend on wireframe), the project will adhere to
 Hexagonal Architecture. Any deviations (like a domain function manipulating a
@@ -431,4 +441,11 @@ interface. This disciplined approach will result in a **clean
 Ports-and-Adapters structure**: the Hotline server’s core logic will be
 isolated and testable, and all interactions with networks, clients, and
 databases will happen through well-defined ports and adapter
-implementations([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L28-L31))([4](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/rust-binary-router-library-design.md#L5-L13)).
+implementations([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L28-L31)
+ )(
+[4](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/rust-binary-router-library-design.md#L5-L13)).
+
+[^migration-plan-bridge]:
+  migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L164-L168
+[^roadmap-xor]:
+  roadmap.md#L95-L103

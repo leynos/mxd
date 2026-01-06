@@ -2201,7 +2201,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argon2",
+ "async-trait",
  "bincode",
+ "bytes",
  "cfg-if",
  "chrono",
  "clap",
@@ -2225,11 +2227,11 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "serial_test",
- "temp-env",
  "tempfile",
  "test-util",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-util",
  "toml 0.8.23",
  "tracing",
  "uncased",
@@ -4218,6 +4220,7 @@ dependencies = [
 name = "test-util"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "argon2",
  "chrono",
  "diesel",
@@ -4232,6 +4235,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
+ "tracing",
  "url",
  "uuid",
 ]
@@ -5582,9 +5586,9 @@ dependencies = [
 
 [[package]]
 name = "wireframe"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43a4d5e09348179793884ebb7dfa373c2e0f630877f9e304dc0102f0e6b488a2"
+checksum = "6a74f8d429b888f695b9a5e3e0c322dc56abb5b103f59169c4370e35641d05bc"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5592,12 +5596,14 @@ dependencies = [
  "dashmap",
  "derive_more 2.0.1",
  "futures",
+ "itoa",
  "leaky-bucket",
  "log",
  "loom",
  "metrics",
  "metrics-exporter-prometheus",
  "serde",
+ "socket2",
  "static_assertions",
  "thiserror 2.0.17",
  "tokio",

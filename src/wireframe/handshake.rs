@@ -11,8 +11,11 @@ use std::{io, time::Duration};
 use bincode::error::DecodeError;
 use futures_util::{FutureExt, future::BoxFuture};
 use tokio::net::TcpStream;
+use tracing::warn;
 use wireframe::{
-    app::WireframeApp,
+    app::{Packet, WireframeApp},
+    codec::FrameCodec,
+    serializer::Serializer,
     server::{ServerState, WireframeServer},
 };
 
@@ -27,7 +30,7 @@ use crate::{
         HANDSHAKE_UNSUPPORTED_VERSION_TOKEN,
         write_handshake_reply,
     },
-    wireframe::connection::{HandshakeMetadata, store_current_handshake},
+    wireframe::connection::{ConnectionContext, HandshakeMetadata, store_current_context},
 };
 
 /// Attach Hotline handshake behaviour to a [`WireframeServer`].
@@ -37,13 +40,17 @@ use crate::{
 /// `timeout`. Tests may call this with a shorter duration to avoid slow
 /// sleeps, while production code should use [`crate::protocol::HANDSHAKE_TIMEOUT`].
 #[must_use]
-pub fn install<F, S>(
-    server: WireframeServer<F, HotlinePreamble, S>,
+pub fn install<F, S, Ser, Ctx, E, Codec>(
+    server: WireframeServer<F, HotlinePreamble, S, Ser, Ctx, E, Codec>,
     timeout: Duration,
-) -> WireframeServer<F, HotlinePreamble, S>
+) -> WireframeServer<F, HotlinePreamble, S, Ser, Ctx, E, Codec>
 where
-    F: Fn() -> WireframeApp + Send + Sync + Clone + 'static,
+    F: Fn() -> WireframeApp<Ser, Ctx, E, Codec> + Send + Sync + Clone + 'static,
     S: ServerState,
+    Ser: Serializer + Send + Sync,
+    Ctx: Send + 'static,
+    E: Packet,
+    Codec: FrameCodec,
 {
     server
         .on_preamble_decode_success(success_handler())
@@ -55,8 +62,21 @@ fn success_handler()
 -> impl for<'a> Fn(&'a HotlinePreamble, &'a mut TcpStream) -> BoxFuture<'a, io::Result<()>> + Send + Sync
 {
     move |preamble, stream| {
-        store_current_handshake(HandshakeMetadata::from(preamble.handshake()));
-        write_handshake_reply(stream, HANDSHAKE_OK).boxed()
+        async move {
+            let mut context = ConnectionContext::new(HandshakeMetadata::from(preamble.handshake()));
+            let peer = match stream.peer_addr() {
+                Ok(peer) => peer,
+                Err(error) => {
+                    warn!(%error, "failed to retrieve peer address during handshake");
+                    return Err(error);
+                }
+            };
+            context = context.with_peer(peer);
+            store_current_context(context);
+            write_handshake_reply(stream, HANDSHAKE_OK).await?;
+            Ok(())
+        }
+        .boxed()
     }
 }
 
@@ -107,7 +127,11 @@ mod tests {
 
     use rstest::rstest;
     use tokio::{io::AsyncWriteExt, net::TcpStream, sync::oneshot, time::timeout};
-    use wireframe::{app::WireframeApp, server::WireframeServer};
+    use wireframe::{
+        BincodeSerializer,
+        app::{Envelope, WireframeApp},
+        server::WireframeServer,
+    };
 
     use super::HotlinePreamble;
     use crate::{
@@ -121,17 +145,17 @@ mod tests {
             VERSION,
         },
         wireframe::{
-            connection::{clear_current_handshake, current_handshake},
+            connection::take_current_context,
             test_helpers::{preamble_bytes, recv_reply},
         },
     };
 
     pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
         let server = WireframeServer::new(|| {
-            let handshake = current_handshake().unwrap_or_default();
-            let app = WireframeApp::default().app_data(handshake);
-            clear_current_handshake();
-            app
+            let handshake = take_current_context()
+                .map(|context| context.into_parts().0)
+                .unwrap_or_default();
+            WireframeApp::<BincodeSerializer, (), Envelope>::default().app_data(handshake)
         })
         .workers(1)
         .with_preamble::<HotlinePreamble>();
@@ -341,11 +365,6 @@ mod bdd {
         world.connect_and_maybe_send(Some(bytes.to_vec()));
     }
 
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "rstest-bdd step parameters must be owned; keep String until macro supports &str \
-                  captures"
-    )]
     #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
     fn when_custom(world: &HandshakeWorld, tag: String, version: u16) {
         let mut protocol = [0u8; 4];

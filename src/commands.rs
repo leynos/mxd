@@ -544,7 +544,7 @@ fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
             is_reply: 1,
             ty: header.ty,
             id: header.id,
-            error: 1,
+            error: ERR_INTERNAL_SERVER,
             total_size: 0,
             data_size: 0,
         },

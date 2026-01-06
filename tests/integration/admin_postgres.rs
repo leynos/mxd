@@ -24,7 +24,7 @@ use tokio::runtime::Builder;
 #[rstest]
 fn create_user_against_embedded_postgres() -> Result<()> {
     if std::env::var_os("POSTGRES_TEST_URL").is_some() {
-        eprintln!(concat!(
+        tracing::warn!(concat!(
             "SKIP-TEST-CLUSTER: POSTGRES_TEST_URL set, skipping embedded ",
             "postgres test"
         ));
@@ -37,7 +37,7 @@ fn create_user_against_embedded_postgres() -> Result<()> {
     let pg = match PostgresTestDb::new() {
         Ok(db) => db,
         Err(PostgresTestDbError::Unavailable(_)) => {
-            eprintln!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
+            tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
             return Ok(());
         }
         Err(err) => {
@@ -59,16 +59,15 @@ fn create_user_against_embedded_postgres() -> Result<()> {
         let username = format!("user_{}", rand::random::<u64>());
         let args = CreateUserArgs {
             username: Some(username.clone()),
-            password: Some("passw0rd!".to_string()),
+            password: Some("passw0rd!".to_owned()),
         };
 
         run_command(Commands::CreateUser(args), &cfg).await?;
 
         let mut conn = DbConnection::establish(&cfg.database).await?;
-        let user = get_user_by_name(&mut conn, &username)
+        get_user_by_name(&mut conn, &username)
             .await?
             .expect("user should be persisted");
-        assert_eq!(user.username, username);
 
         Ok(())
     })

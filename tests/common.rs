@@ -1,9 +1,4 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
-#![expect(missing_docs, reason = "test helpers")]
-#![expect(clippy::print_stderr, reason = "test diagnostics")]
+//! Shared helpers for integration tests.
 
 #[cfg(feature = "postgres")]
 use test_util::postgres::PostgresTestDbError;
@@ -21,7 +16,7 @@ pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, AnyError>
 where
     F: FnOnce(&str) -> Result<(), AnyError>,
 {
-    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd"))?;
+    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server"))?;
     match TestServer::start_with_setup("./Cargo.toml", |db| setup(db.as_str())) {
         Ok(s) => Ok(Some(s)),
         Err(e) => {
@@ -29,7 +24,7 @@ where
             if e.downcast_ref::<PostgresTestDbError>()
                 .is_some_and(PostgresTestDbError::is_unavailable)
             {
-                eprintln!("skipping test: {e}");
+                tracing::warn!("skipping test: {e}");
                 return Ok(None);
             }
             Err(e)

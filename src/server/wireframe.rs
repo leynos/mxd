@@ -1,9 +1,9 @@
 //! Wireframe-based server runtime.
 //!
-//! This module bootstraps the Wireframe transport adapter with the
-//! [`HotlineProtocol`] registered via `.with_protocol(...)`. The adapter
-//! routes incoming Hotline transactions to domain handlers while maintaining
-//! per-connection session state.
+//! This module bootstraps the Hotline protocol server using wireframe's
+//! connection handling with a custom `HotlineFrameCodec` for the 20-byte
+//! header framing. Routing is handled by middleware that dispatches Hotline
+//! transactions to domain commands.
 //!
 //! # Architecture
 //!
@@ -11,13 +11,11 @@
 //!
 //! 1. Establishes a database connection pool
 //! 2. Creates a shared Argon2 instance for password hashing
-//! 3. Registers the `HotlineProtocol` adapter with the wireframe server
-//! 4. Installs the Hotline preamble decoder and handshake hooks
-//! 5. Binds to the configured address and starts accepting connections
+//! 3. Builds a `WireframeServer` with Hotline preamble hooks
+//! 4. Registers the Hotline frame codec and routes
+//! 5. Binds and runs the server
 //!
-//! This implementation fulfils the roadmap task "Route transactions through
-//! wireframe" by integrating the protocol adapter described in
-//! `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`.
+//! [`HotlineFrameCodec`]: crate::wireframe::codec::HotlineFrameCodec
 
 #![expect(
     clippy::shadow_reuse,
@@ -28,9 +26,8 @@
     reason = "intentional console output for server status"
 )]
 
-#[cfg(test)]
-use std::sync::{Mutex, OnceLock};
 use std::{
+    io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
     sync::Arc,
 };
@@ -38,27 +35,32 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use argon2::Argon2;
 use clap::Parser;
-use tracing::warn;
+use tokio::sync::Mutex as TokioMutex;
+use tracing::{error, warn};
 use wireframe::{
-    app::WireframeApp,
-    server::{BackoffConfig, WireframeServer},
+    app::{Envelope, Handler, WireframeApp},
+    serializer::BincodeSerializer,
+    server::WireframeServer,
 };
 
 use super::{AppConfig, Cli};
 use crate::{
     db::{DbPool, establish_pool},
+    handler::Session,
     protocol,
     server::admin,
     wireframe::{
-        connection::{HandshakeMetadata, clear_current_handshake, current_handshake},
+        codec::HotlineFrameCodec,
+        connection::take_current_context,
         handshake,
         preamble::HotlinePreamble,
         protocol::HotlineProtocol,
+        route_ids::{FALLBACK_ROUTE_ID, ROUTE_IDS},
+        routes::TransactionMiddleware,
     },
 };
 
-#[cfg(test)]
-static LAST_HANDSHAKE: OnceLock<Mutex<Option<HandshakeMetadata>>> = OnceLock::new();
+type HotlineApp = WireframeApp<BincodeSerializer, (), Envelope, HotlineFrameCodec>;
 
 /// Parse CLI arguments and start the Wireframe runtime.
 ///
@@ -90,45 +92,10 @@ async fn run_daemon(config: AppConfig) -> Result<()> {
     bootstrap.run().await
 }
 
-/// Build a `WireframeApp` for a single connection using the current handshake
-/// metadata.
-///
-/// Reads handshake metadata captured during preamble handling, attaches it to
-/// app data alongside the shared configuration, database pool, and Argon2
-/// instance. The handshake metadata is cleared after capture to prevent leakage
-/// into subsequent connections. Call this exactly once per accepted connection
-/// after the handshake completes.
-///
-/// The `HotlineProtocol` adapter is registered via `.with_protocol()`,
-/// providing connection lifecycle hooks for the Hotline protocol.
-fn build_app(config: Arc<AppConfig>, pool: DbPool, argon2: Arc<Argon2<'static>>) -> WireframeApp {
-    let handshake = current_handshake().unwrap_or_else(|| {
-        warn!("handshake metadata missing; defaulting to zeroed values");
-        HandshakeMetadata::default()
-    });
-    #[cfg(test)]
-    {
-        let last = LAST_HANDSHAKE.get_or_init(|| Mutex::new(None));
-        if let Ok(mut guard) = last.lock() {
-            guard.replace(handshake.clone());
-        }
-    }
-    let protocol = HotlineProtocol::new(pool.clone(), Arc::clone(&argon2));
-    let app = WireframeApp::default()
-        .with_protocol(protocol)
-        .app_data(config)
-        .app_data(handshake)
-        .app_data(pool)
-        .app_data(argon2);
-    clear_current_handshake();
-    app
-}
-
 #[derive(Clone, Debug)]
 struct WireframeBootstrap {
     bind_addr: SocketAddr,
     config: Arc<AppConfig>,
-    backoff: BackoffConfig,
 }
 
 impl WireframeBootstrap {
@@ -137,50 +104,96 @@ impl WireframeBootstrap {
         Ok(Self {
             bind_addr,
             config: Arc::new(config),
-            backoff: BackoffConfig::default(),
         })
     }
 
     async fn run(self) -> Result<()> {
-        let Self {
-            bind_addr,
-            config,
-            backoff,
-        } = self;
+        let Self { bind_addr, config } = self;
         println!("mxd-wireframe-server using database {}", config.database);
         println!("mxd-wireframe-server binding to {}", config.bind);
 
-        // Establish the database connection pool
         let pool = establish_pool(&config.database)
             .await
             .context("failed to establish database pool")?;
+        let argon2 = Arc::new(admin::argon2_from_config(&config)?);
 
-        // Create a shared Argon2 instance for password hashing
-        let argon2 =
-            Arc::new(admin::argon2_from_config(&config).context("failed to configure Argon2")?);
+        let app_factory = {
+            let pool = pool.clone();
+            let argon2 = Arc::clone(&argon2);
+            move || build_app_for_connection(&pool, &argon2)
+        };
 
-        let config_for_app = Arc::clone(&config);
-        let server = WireframeServer::new(move || {
-            build_app(
-                Arc::clone(&config_for_app),
-                pool.clone(),
-                Arc::clone(&argon2),
-            )
-        })
-        .with_preamble::<HotlinePreamble>();
-        let server =
-            handshake::install(server, protocol::HANDSHAKE_TIMEOUT).accept_backoff(backoff);
+        let server = WireframeServer::new(app_factory).with_preamble::<HotlinePreamble>();
+        let server = handshake::install(server, protocol::HANDSHAKE_TIMEOUT);
         let server = server
             .bind(bind_addr)
-            .context("failed to bind Wireframe listener")?;
-        if let Some(addr) = server.local_addr() {
-            println!("mxd-wireframe-server listening on {addr}");
-        }
-        server
-            .run()
-            .await
-            .context("wireframe server runtime exited with error")
+            .context("failed to bind wireframe server")?;
+        let addr = server
+            .local_addr()
+            .ok_or_else(|| anyhow!("failed to get local address"))?;
+
+        announce_listening(addr);
+
+        server.run().await.context("wireframe server terminated")?;
+        Ok(())
     }
+}
+
+fn announce_listening(addr: SocketAddr) {
+    println!("mxd-wireframe-server listening on {addr}");
+    // Explicit flush ensures the message reaches piped stdout immediately,
+    // which is critical for test harness readiness detection.
+    if let Err(error) = io::stdout().flush() {
+        warn!(%error, "failed to flush stdout");
+    }
+}
+
+fn build_app_for_connection(pool: &DbPool, argon2: &Arc<Argon2<'static>>) -> HotlineApp {
+    // Missing connection context indicates handshake setup failed; abort the
+    // connection rather than running without routing state. Returning a
+    // degraded app would accept traffic with broken routing and state.
+    let context = take_current_context().unwrap_or_else(|| {
+        error!("missing handshake context in app factory");
+        panic!("missing handshake context in app factory");
+    });
+    let (_handshake, peer) = context.into_parts();
+    let peer = peer.unwrap_or_else(|| {
+        error!("peer address missing in app factory");
+        panic!("peer address missing in app factory");
+    });
+    build_app(pool, argon2, peer).unwrap_or_else(|err| {
+        error!(error = %err, "failed to build wireframe application");
+        panic!("failed to build wireframe application: {err}");
+    })
+}
+
+fn build_app(
+    pool: &DbPool,
+    argon2: &Arc<Argon2<'static>>,
+    peer: SocketAddr,
+) -> wireframe::app::Result<HotlineApp> {
+    let session = Arc::new(TokioMutex::new(Session::default()));
+    let protocol = HotlineProtocol::new(pool.clone(), Arc::clone(argon2));
+
+    let app = HotlineApp::default()
+        .fragmentation(None)
+        .with_protocol(protocol)
+        .wrap(TransactionMiddleware::new(
+            pool.clone(),
+            Arc::clone(&session),
+            peer,
+        ))?;
+
+    let handler = routing_placeholder_handler();
+    let app = app.route(FALLBACK_ROUTE_ID, handler.clone())?;
+    ROUTE_IDS
+        .iter()
+        .try_fold(app, |app, id| app.route(*id, handler.clone()))
+}
+
+fn routing_placeholder_handler() -> Handler<Envelope> {
+    // Wireframe requires a handler per route; transaction middleware owns replies.
+    Arc::new(|_: &Envelope| Box::pin(async {}))
 }
 
 fn parse_bind_addr(target: &str) -> Result<SocketAddr> {
@@ -202,16 +215,8 @@ fn resolve_hostname(target: &str) -> Result<SocketAddr> {
 #[cfg(test)]
 mod tests {
     use rstest::{fixture, rstest};
-    use serial_test::serial;
 
     use super::*;
-    use crate::{
-        protocol::VERSION,
-        wireframe::{
-            connection::{clear_current_handshake, store_current_handshake},
-            test_helpers::dummy_pool,
-        },
-    };
 
     #[fixture]
     fn bound_config() -> AppConfig {
@@ -249,65 +254,6 @@ mod tests {
         let bootstrap = WireframeBootstrap::prepare(bound_config).expect("bootstrap");
         assert_eq!(bootstrap.bind_addr, "127.0.0.1:7777".parse().unwrap());
         assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
-    }
-
-    fn take_last_handshake() -> Option<HandshakeMetadata> {
-        LAST_HANDSHAKE
-            .get_or_init(|| Mutex::new(None))
-            .lock()
-            .ok()
-            .and_then(|mut guard| guard.take())
-    }
-
-    #[rstest]
-    #[serial]
-    fn build_app_uses_current_handshake(bound_config: AppConfig) {
-        let meta = HandshakeMetadata {
-            sub_protocol: u32::from_be_bytes(*b"CHAT"),
-            version: VERSION,
-            sub_version: 7,
-        };
-        store_current_handshake(meta.clone());
-
-        let pool = dummy_pool();
-        let argon2 = Arc::new(Argon2::default());
-        let _app = build_app(Arc::new(bound_config), pool, argon2);
-
-        assert!(current_handshake().is_none(), "handshake should be cleared");
-        let recorded = take_last_handshake().expect("handshake recorded");
-        assert_eq!(recorded, meta);
-    }
-
-    #[rstest]
-    #[serial]
-    fn build_app_defaults_when_missing(bound_config: AppConfig) {
-        clear_current_handshake();
-
-        let pool = dummy_pool();
-        let argon2 = Arc::new(Argon2::default());
-        let _app = build_app(Arc::new(bound_config), pool, argon2);
-
-        assert!(current_handshake().is_none(), "handshake should be cleared");
-        let recorded = take_last_handshake().expect("handshake recorded");
-        assert_eq!(recorded, HandshakeMetadata::default());
-    }
-
-    #[rstest]
-    #[serial]
-    fn build_app_registers_protocol(bound_config: AppConfig) {
-        clear_current_handshake();
-
-        let pool = dummy_pool();
-        let argon2 = Arc::new(Argon2::default());
-        let app = build_app(Arc::new(bound_config), pool, argon2);
-
-        // Verify the protocol was registered by checking protocol_hooks exist
-        let hooks = app.protocol_hooks();
-        // The hooks struct should have callbacks registered
-        assert!(
-            hooks.before_send.is_some() || hooks.on_connection_setup.is_some(),
-            "protocol should be registered with hooks"
-        );
     }
 }
 
@@ -373,7 +319,6 @@ mod bdd {
         };
         let bootstrap = assert_step_ok!(outcome.as_ref().map_err(ToString::to_string));
         assert_eq!(bootstrap.bind_addr.to_string(), bind);
-        drop(bind);
     }
 
     #[then("bootstrap fails with message \"{message}\"")]
@@ -387,7 +332,6 @@ mod bdd {
             text.contains(&message),
             "expected '{text}' to contain '{message}'"
         );
-        drop(message);
     }
 
     #[scenario(path = "tests/features/wireframe_server.feature", index = 0)]

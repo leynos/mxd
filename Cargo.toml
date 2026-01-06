@@ -65,12 +65,15 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 diesel-cte-ext = { workspace = true }
 futures-util = "0.3"
 tracing = "0.1"
-wireframe = "0.1.0"
+wireframe = "0.2.0"
 figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"
 anyhow = "1"
+async-trait = "0.1"
 bincode = "2.0.1"
+bytes = "1"
+tokio-util = { version = "0.7", features = ["codec"] }
 url = { version = "2", optional = true }
 figment-json5 = { version = "0.1", optional = true }
 serde_yaml = { version = "0.9", optional = true }
@@ -111,11 +114,10 @@ workspace = true
 [dev-dependencies]
 test-util = { path = "test-util", default-features = false }
 postgresql_embedded = { version = "0.20", features = ["tokio"] }
-temp-env = "0.3"
 rstest = "0.26"
 rstest-bdd = "0.3.0"
 rstest-bdd-macros = { version = "0.3.0", features = ["compile-time-validation"] }
-serial_test = "3.2.0"
+serial_test = "3"
 proptest = "1.4.0"
 tempfile = "3.23.0"
 paste = "1.0.15"

@@ -1,7 +1,3 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
 #![expect(missing_docs, reason = "test file")]
 #![expect(clippy::unwrap_used, reason = "test code can panic")]
 #![expect(clippy::expect_used, reason = "test code can panic")]

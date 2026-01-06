@@ -30,3 +30,6 @@ mxd.db
 recipe.json
 # Fuzzing corpus binaries
 fuzz/corpus/*.bin
+
+# Debugging plan drafts
+debugging-plan-*.md

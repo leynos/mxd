@@ -6,13 +6,14 @@
 //!
 //! # Module Structure
 //!
-//! - [`codec`]: Transaction framing codec (`HotlineTransaction`)
+//! - [`codec`]: Transaction framing codec (`HotlineTransaction`, `HotlineCodec`)
 //! - [`connection`]: Handshake metadata storage
 //! - [`context`]: Per-connection state management
 //! - [`handshake`]: Preamble success/failure hooks
 //! - [`preamble`]: 12-byte handshake decoder
 //! - [`protocol`]: `WireframeProtocol` adapter implementation
 //! - [`routes`]: Transaction route handlers
+//! - [`route_ids`]: Route identifiers for transaction types
 
 pub mod codec;
 pub mod connection;
@@ -20,6 +21,7 @@ pub mod context;
 pub mod handshake;
 pub mod preamble;
 pub mod protocol;
+pub mod route_ids;
 pub mod routes;
 
 #[cfg(any(test, feature = "test-support"))]

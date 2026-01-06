@@ -11,10 +11,6 @@
     missing_docs,
     reason = "OrthoConfig and Clap derive macros generate items that cannot be documented"
 )]
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "derive macros conditionally generate items"
-)]
 
 use argon2::Params;
 use clap::{Args, Parser, Subcommand};

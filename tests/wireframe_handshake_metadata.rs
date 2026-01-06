@@ -1,12 +1,4 @@
-#![allow(
-    unfulfilled_lint_expectations,
-    reason = "test lint expectations may not all trigger"
-)]
-#![expect(missing_docs, reason = "test file")]
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#![expect(clippy::big_endian_bytes, reason = "network protocol")]
 #![expect(clippy::let_underscore_must_use, reason = "test cleanup")]
 #![expect(clippy::shadow_reuse, reason = "test code")]
 
@@ -22,7 +14,7 @@ use std::{
 use mxd::{
     protocol::{PROTOCOL_ID, REPLY_LEN, VERSION},
     wireframe::{
-        connection::{HandshakeMetadata, clear_current_handshake, current_handshake, registry_len},
+        connection::{HandshakeMetadata, registry_len, take_current_context},
         handshake,
         preamble::HotlinePreamble,
         test_helpers::preamble_bytes,
@@ -71,9 +63,11 @@ impl MetadataWorld {
         let recorded = Arc::clone(&self.recorded);
         let (addr, shutdown_tx) = self.rt.block_on(async move {
             let server = WireframeServer::new(move || {
-                let handshake = current_handshake().unwrap_or_default();
+                let handshake = take_current_context()
+                    .map(|context| context.handshake().clone())
+                    .unwrap_or_default();
                 let recorded = Arc::clone(&recorded);
-                let app = WireframeApp::<
+                WireframeApp::<
                     wireframe::serializer::BincodeSerializer,
                     (),
                     wireframe::app::Envelope,
@@ -87,12 +81,9 @@ impl MetadataWorld {
                             .lock()
                             .expect("recorded handshake lock")
                             .replace(handshake_for_state.clone());
-                        clear_current_handshake();
                     }
                 })
-                .expect("install connection setup");
-                clear_current_handshake();
-                app
+                .expect("install connection setup")
             })
             .workers(1)
             .with_preamble::<HotlinePreamble>();
@@ -126,6 +117,8 @@ impl MetadataWorld {
     )]
     fn connect_and_send(&self, bytes: &[u8], expect_recorded: bool) {
         let addr = self.addr.borrow().expect("server not started");
+        // Capture the current recorded value to detect changes
+        let previous = self.recorded();
         self.rt.block_on(async {
             let mut stream = TcpStream::connect(addr).await.expect("connect");
             stream.write_all(bytes).await.expect("write handshake");
@@ -134,13 +127,23 @@ impl MetadataWorld {
             drop(stream);
 
             for _ in 0..MAX_ATTEMPTS {
-                if self.recorded().is_some() || !expect_recorded {
+                let current = self.recorded();
+                // For expected recordings, wait for a DIFFERENT value (handles sequential calls)
+                // For unexpected recordings, just check it's still None
+                if expect_recorded {
+                    if current.is_some() && current != previous {
+                        return;
+                    }
+                } else if current.is_none() {
                     return;
                 }
                 sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
             }
 
-            panic!("handshake metadata was not recorded within the expected time");
+            assert!(
+                !expect_recorded,
+                "handshake metadata was not recorded within the expected time"
+            );
         });
     }
 
@@ -165,10 +168,6 @@ fn world() -> MetadataWorld {
 fn given_server(world: &MetadataWorld) { world.start_server(); }
 
 #[when("I complete a Hotline handshake with sub-protocol \"{tag}\" and sub-version {sub_version}")]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "rstest-bdd step parameters must currently own their captured strings"
-)]
 fn when_valid_handshake(world: &MetadataWorld, tag: String, sub_version: u16) {
     let mut sub_protocol = [0u8; 4];
     sub_protocol.copy_from_slice(tag.as_bytes());
@@ -177,10 +176,6 @@ fn when_valid_handshake(world: &MetadataWorld, tag: String, sub_version: u16) {
 }
 
 #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "rstest-bdd step parameters must currently own their captured strings"
-)]
 fn when_invalid_handshake(world: &MetadataWorld, tag: String, version: u16) {
     let mut protocol = [0u8; 4];
     protocol.copy_from_slice(tag.as_bytes());
@@ -189,10 +184,6 @@ fn when_invalid_handshake(world: &MetadataWorld, tag: String, version: u16) {
 }
 
 #[then("the recorded handshake sub-protocol is \"{tag}\"")]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "rstest-bdd step parameters must currently own their captured strings"
-)]
 fn then_sub_protocol(world: &MetadataWorld, tag: String) {
     let recorded = world.recorded().expect("handshake not recorded");
     let mut expected = [0u8; 4];

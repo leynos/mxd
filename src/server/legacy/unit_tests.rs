@@ -26,6 +26,7 @@ fn postgres_url_detection(#[case] url: &str, #[case] expected: bool) {
     assert_eq!(super::is_postgres_url(url), expected);
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[tokio::test]
 async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
     let pool = test_helpers::dummy_pool();

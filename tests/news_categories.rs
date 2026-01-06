@@ -4,8 +4,6 @@
 //! paths (root, nested bundles, trailing slashes) and handles edge cases such
 //! as invalid paths and empty databases.
 
-#![cfg(feature = "legacy-networking")]
-
 use std::{
     convert::TryFrom,
     io::{Read, Write},

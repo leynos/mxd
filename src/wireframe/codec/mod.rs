@@ -3,6 +3,13 @@
 //! This module implements `BorrowDecode` and `Encode` for transaction frames,
 //! enabling the wireframe transport to decode the 20-byte header, reassemble
 //! fragmented payloads, and emit outbound frames according to `docs/protocol.md`.
+//!
+//! The [`framed`] submodule provides a Tokio-compatible codec, while
+//! [`frame`] exposes a wireframe `FrameCodec` wrapper for the same Hotline
+//! framing rules.
+
+mod frame;
+mod framed;
 
 use bincode::{
     de::{BorrowDecode, BorrowDecoder, read::Reader},
@@ -10,6 +17,7 @@ use bincode::{
     error::{DecodeError, EncodeError},
 };
 
+pub use self::{frame::HotlineFrameCodec, framed::HotlineCodec};
 use crate::{
     field_id::FieldId,
     transaction::{
@@ -128,6 +136,33 @@ impl HotlineTransaction {
     /// Consume self and return the inner header and payload.
     #[must_use]
     pub fn into_parts(self) -> (FrameHeader, Vec<u8>) { (self.header, self.payload) }
+
+    /// Construct a transaction from pre-assembled parts.
+    ///
+    /// This is primarily used by the Tokio codec for reassembled multi-fragment
+    /// transactions. Header invariants are validated to prevent malformed
+    /// frames from entering the routing pipeline.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the header or payload violates protocol constraints.
+    pub fn from_parts(header: FrameHeader, payload: Vec<u8>) -> Result<Self, TransactionError> {
+        if header.flags != 0 {
+            return Err(TransactionError::InvalidFlags);
+        }
+        if header.total_size as usize > MAX_PAYLOAD_SIZE
+            || header.data_size as usize > MAX_FRAME_DATA
+        {
+            return Err(TransactionError::PayloadTooLarge);
+        }
+        let has_data_size_overflow = header.data_size > header.total_size;
+        let has_inconsistent_empty_frame = header.data_size == 0 && header.total_size > 0;
+        if has_data_size_overflow || has_inconsistent_empty_frame {
+            return Err(TransactionError::SizeMismatch);
+        }
+        validate_payload_parts(&header, &payload)?;
+        Ok(Self { header, payload })
+    }
 }
 
 impl TryFrom<Transaction> for HotlineTransaction {
