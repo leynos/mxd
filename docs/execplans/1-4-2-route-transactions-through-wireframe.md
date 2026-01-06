@@ -126,6 +126,8 @@ tests.
       `anyhow::Context` composes cleanly with fallible helper calls.
 - [x] (2026-01-06) Replace string-to-error `.into()` conversions in tests and
       helpers with `anyhow::anyhow!` so `AnyError` remains consistent.
+- [x] (2026-01-06) Add a shared `with_env_var` guard and update the PostgreSQL
+      environment test to use the global mutex pattern.
 
 ## Surprises & Discoveries
 

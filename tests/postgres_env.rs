@@ -1,8 +1,6 @@
-#![expect(missing_docs, reason = "test file")]
+//! Integration tests verifying external `PostgreSQL` test database configuration.
 #[cfg(feature = "postgres")]
-use temp_env::with_var;
-#[cfg(feature = "postgres")]
-use test_util::{AnyError, PostgresTestDb, postgres::PostgresTestDbError};
+use test_util::{AnyError, PostgresTestDb, postgres::PostgresTestDbError, with_env_var};
 
 #[cfg(feature = "postgres")]
 #[test]
@@ -15,7 +13,7 @@ fn external_postgres_is_used() -> Result<(), AnyError> {
     let prefix = base
         .get(..=idx)
         .ok_or_else(|| anyhow::anyhow!("POSTGRES_TEST_URL prefix invalid"))?;
-    with_var(
+    with_env_var(
         "POSTGRES_TEST_URL",
         Some(&base),
         || match PostgresTestDb::new() {

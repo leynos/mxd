@@ -2227,7 +2227,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "serial_test",
- "temp-env",
  "tempfile",
  "test-util",
  "thiserror 2.0.17",

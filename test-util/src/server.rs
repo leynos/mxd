@@ -121,6 +121,62 @@ pub fn ensure_server_binary_env(bin_path: &str) -> Result<(), AnyError> {
     Ok(())
 }
 
+struct EnvVarGuard {
+    key: String,
+    previous: Option<OsString>,
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => {
+                // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
+                unsafe { std::env::set_var(&self.key, value) };
+            }
+            None => {
+                // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
+                unsafe { std::env::remove_var(&self.key) };
+            }
+        }
+    }
+}
+
+/// Temporarily sets an environment variable for the duration of a closure.
+///
+/// The mutation is guarded by a global mutex and is restored after the closure
+/// returns, even when it returns an error.
+///
+/// # Errors
+///
+/// Returns an error if the environment mutex is poisoned or the closure fails.
+pub fn with_env_var<T>(
+    key: &str,
+    value: Option<&str>,
+    f: impl FnOnce() -> Result<T, AnyError>,
+) -> Result<T, AnyError> {
+    let _guard = ENV_LOCK
+        .lock()
+        .map_err(|_| io::Error::other("environment mutex poisoned"))?;
+    let previous = std::env::var_os(key);
+    match value {
+        Some(env_value) => {
+            // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
+            unsafe { std::env::set_var(key, env_value) };
+        }
+        None => {
+            // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
+            unsafe { std::env::remove_var(key) };
+        }
+    }
+    let restore = EnvVarGuard {
+        key: key.to_owned(),
+        previous,
+    };
+    let result = f();
+    drop(restore);
+    result
+}
+
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
 
