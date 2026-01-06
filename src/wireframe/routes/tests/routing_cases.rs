@@ -22,11 +22,11 @@ use crate::{field_id::FieldId, transaction_type::TransactionType};
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 fn process_transaction_bytes_login_success() -> Result<(), AnyError> {
-    let rt = runtime();
+    let rt = runtime()?;
     let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
         return Ok(());
     };
-    let mut ctx = RouteTestContext::new(test_db.pool());
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
 
     let reply = rt.block_on(ctx.send(
         TransactionType::Login,
@@ -43,11 +43,11 @@ fn process_transaction_bytes_login_success() -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 fn process_transaction_bytes_file_list_success() -> Result<(), AnyError> {
-    let rt = runtime();
+    let rt = runtime()?;
     let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
         return Ok(());
     };
-    let mut ctx = RouteTestContext::new(test_db.pool());
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
 
     let login = rt.block_on(ctx.send(
         TransactionType::Login,
@@ -69,11 +69,11 @@ fn process_transaction_bytes_file_list_success() -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 fn process_transaction_bytes_news_category_list_success() -> Result<(), AnyError> {
-    let rt = runtime();
+    let rt = runtime()?;
     let Some(test_db) = build_test_db(&rt, setup_news_categories_root_db)? else {
         return Ok(());
     };
-    let mut ctx = RouteTestContext::new(test_db.pool());
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
 
     let reply = rt.block_on(ctx.send(TransactionType::NewsCategoryNameList, 3, &[]))?;
     assert_eq!(reply.header.error, 0);
@@ -82,8 +82,7 @@ fn process_transaction_bytes_news_category_list_success() -> Result<(), AnyError
     let params = decode_reply_params(&reply)?;
     let mut names = collect_strings(&params, FieldId::NewsCategory)?;
     names.sort_unstable();
-    let mut expected = vec!["Bundle", "General", "Updates"];
-    expected.sort_unstable();
+    let expected = vec!["Bundle", "General", "Updates"];
     assert_eq!(names, expected);
     Ok(())
 }
@@ -91,11 +90,11 @@ fn process_transaction_bytes_news_category_list_success() -> Result<(), AnyError
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 fn process_transaction_bytes_news_article_list_success() -> Result<(), AnyError> {
-    let rt = runtime();
+    let rt = runtime()?;
     let Some(test_db) = build_test_db(&rt, setup_news_db)? else {
         return Ok(());
     };
-    let mut ctx = RouteTestContext::new(test_db.pool());
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
 
     let reply = rt.block_on(ctx.send(
         TransactionType::NewsArticleNameList,
@@ -115,11 +114,11 @@ fn process_transaction_bytes_news_article_list_success() -> Result<(), AnyError>
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 fn process_transaction_bytes_news_article_data_success() -> Result<(), AnyError> {
-    let rt = runtime();
+    let rt = runtime()?;
     let Some(test_db) = build_test_db(&rt, setup_news_db)? else {
         return Ok(());
     };
-    let mut ctx = RouteTestContext::new(test_db.pool());
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
 
     let article_id = 1i32.to_be_bytes();
     let reply = rt.block_on(ctx.send(
@@ -143,11 +142,11 @@ fn process_transaction_bytes_news_article_data_success() -> Result<(), AnyError>
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 fn process_transaction_bytes_post_news_article_success() -> Result<(), AnyError> {
-    let rt = runtime();
+    let rt = runtime()?;
     let Some(test_db) = build_test_db(&rt, setup_news_db)? else {
         return Ok(());
     };
-    let mut ctx = RouteTestContext::new(test_db.pool());
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
 
     let flags = 0i32.to_be_bytes();
     let reply = rt.block_on(ctx.send(

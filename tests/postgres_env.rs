@@ -11,10 +11,10 @@ fn external_postgres_is_used() -> Result<(), AnyError> {
         .unwrap_or_else(|_| "postgres://postgres:password@localhost/test".to_owned());
     let idx = base
         .rfind('/')
-        .ok_or_else(|| -> AnyError { "POSTGRES_TEST_URL missing path".into() })?;
+        .ok_or_else(|| anyhow::anyhow!("POSTGRES_TEST_URL missing path"))?;
     let prefix = base
         .get(..=idx)
-        .ok_or_else(|| -> AnyError { "POSTGRES_TEST_URL prefix invalid".into() })?;
+        .ok_or_else(|| anyhow::anyhow!("POSTGRES_TEST_URL prefix invalid"))?;
     with_var(
         "POSTGRES_TEST_URL",
         Some(&base),

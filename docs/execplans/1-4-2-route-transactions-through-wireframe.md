@@ -113,6 +113,9 @@ tests.
 - [x] (2026-01-05) Address PR review feedback by tightening codec tests,
       adding build-frame unit coverage, and aligning documentation grammar
       with Oxford spelling conventions.
+- [x] (2026-01-06) Address follow-up review notes by splitting Hotline codec
+      tests into `framed_tests.rs`, returning `Result` from routing helpers,
+      and enforcing sqlite/postgres exclusivity in `test-util`.
 
 ## Surprises & Discoveries
 

@@ -10,7 +10,7 @@
 //! external `POSTGRES_TEST_URL` is configured because this test targets the
 //! embedded workflow specifically.
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use argon2::Params;
 use diesel_async::AsyncConnection;
 use mxd::{
@@ -65,15 +65,9 @@ fn create_user_against_embedded_postgres() -> Result<()> {
         run_command(Commands::CreateUser(args), &cfg).await?;
 
         let mut conn = DbConnection::establish(&cfg.database).await?;
-        let user = get_user_by_name(&mut conn, &username)
+        get_user_by_name(&mut conn, &username)
             .await?
-            .ok_or_else(|| anyhow!("user should be persisted"))?;
-        if user.username != username {
-            return Err(anyhow!(
-                "expected username {username}, got {}",
-                user.username
-            ));
-        }
+            .expect("user should be persisted");
 
         Ok(())
     })

@@ -22,13 +22,13 @@ pub(super) struct RouteTestContext {
 }
 
 impl RouteTestContext {
-    pub(super) fn new(pool: DbPool) -> Self {
-        let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
-        Self {
+    pub(super) fn new(pool: DbPool) -> Result<Self, AnyError> {
+        let peer = "127.0.0.1:12345".parse()?;
+        Ok(Self {
             pool,
             session: Session::default(),
             peer,
-        }
+        })
     }
 
     pub(super) async fn send(
@@ -45,11 +45,8 @@ impl RouteTestContext {
     }
 }
 
-pub(super) fn runtime() -> Runtime {
-    Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("runtime")
+pub(super) fn runtime() -> Result<Runtime, AnyError> {
+    Ok(Builder::new_current_thread().enable_all().build()?)
 }
 
 pub(super) fn decode_reply_params(tx: &Transaction) -> Result<Vec<(FieldId, Vec<u8>)>, AnyError> {

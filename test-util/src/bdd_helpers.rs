@@ -1,5 +1,8 @@
 //! Helpers for wireframe routing BDD integration tests.
 
+#[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))]
+compile_error!("Choose either sqlite or postgres, not both");
+
 use mxd::db::{DbPool, establish_pool};
 #[cfg(feature = "sqlite")]
 use tempfile::TempDir;
@@ -33,7 +36,7 @@ impl TestDb {
 ///
 /// Returns any error raised while creating the database or connection pool.
 pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    #[cfg(feature = "sqlite")]
+    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
     {
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path().join("mxd.db");
@@ -48,7 +51,7 @@ pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, Any
         }))
     }
 
-    #[cfg(feature = "postgres")]
+    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
         let db = match PostgresTestDb::new() {
             Ok(db) => db,

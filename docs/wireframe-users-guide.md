@@ -257,9 +257,10 @@ let complete = reassembler
 `wireframe::request` exposes `RequestParts` to separate routing metadata from
 streaming request payloads.[^45]
 
-- `RequestParts::id()` returns the message identifier for routing.
-- `RequestParts::correlation_id()` returns the optional correlation identifier.
-- `RequestParts::metadata()` returns protocol-defined header bytes.
+- Use `RequestParts::id()` to read the message identifier for routing.
+- The `correlation_id()` accessor returns the optional correlation
+  identifier.
+- Protocol-defined header bytes are exposed via `RequestParts::metadata()`.
 
 This type pairs with `RequestBodyStream` for incremental consumption of large
 request payloads. Handlers can choose between buffered (existing) and streaming

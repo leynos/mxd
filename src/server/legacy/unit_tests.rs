@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use argon2::Argon2;
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use rstest::rstest;
@@ -26,6 +26,7 @@ fn postgres_url_detection(#[case] url: &str, #[case] expected: bool) {
     assert_eq!(super::is_postgres_url(url), expected);
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[tokio::test]
 async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
     let pool = test_helpers::dummy_pool();
@@ -53,13 +54,7 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
     );
 
     // Spawned task receives a clone of resources, adding one more reference.
-    let expected_after_spawn = after_resources + 1;
-    let actual_after_spawn = Arc::strong_count(&argon2);
-    if actual_after_spawn != expected_after_spawn {
-        return Err(anyhow!(
-            "expected {expected_after_spawn} argon2 refs, got {actual_after_spawn}"
-        ));
-    }
+    assert_eq!(Arc::strong_count(&argon2), after_resources + 1);
 
     client.write_all(&test_helpers::handshake_frame()).await?;
     let mut reply = [0u8; protocol::REPLY_LEN];
@@ -68,20 +63,14 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
 
     shutdown_tx
         .send(true)
-        .map_err(|_| anyhow!("shutdown receivers should remain until broadcast"))?;
+        .expect("shutdown receivers should remain until broadcast");
 
     while let Some(result) = join_set.join_next().await {
-        result.map_err(|err| anyhow!("client handler task failed: {err}"))?;
+        result.expect("client handler task");
     }
 
     // After task completes, only the original and resources clone remain.
-    let expected_after_join = strong_before + 1;
-    let actual_after_join = Arc::strong_count(&argon2);
-    if actual_after_join != expected_after_join {
-        return Err(anyhow!(
-            "expected {expected_after_join} argon2 refs, got {actual_after_join}"
-        ));
-    }
+    assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
 
     Ok(())
 }

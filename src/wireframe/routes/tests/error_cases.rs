@@ -233,7 +233,7 @@ async fn process_transaction_bytes_unknown_type() {
 #[rstest]
 #[serial]
 fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
-    let rt = runtime();
+    let rt = runtime()?;
     let Some(test_db) = build_test_db(&rt, setup_full_db)? else {
         return Ok(());
     };
