@@ -30,7 +30,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v5
-      - uses: leynos/shared-actions/.github/actions/setup-rust@a455a06f519e8eedf22695232f72da420d19879b
+      - uses: leynos/shared-actions/.github/actions/setup-rust@86f68619873e226bd976b401fbcbc5e2a48c61ec
         with:
           install-postgres-deps: ${{ matrix.feature == 'postgres' }}
           install-sqlite-deps: ${{ matrix.feature == 'sqlite' }}
@@ -69,7 +69,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v5
-      - uses: leynos/shared-actions/.github/actions/setup-rust@a455a06f519e8eedf22695232f72da420d19879b
+      - uses: leynos/shared-actions/.github/actions/setup-rust@86f68619873e226bd976b401fbcbc5e2a48c61ec
         with:
           install-postgres-deps: true
       - name: Cache Cargo directories
