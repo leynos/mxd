@@ -123,11 +123,11 @@ and explicit dependencies. Timeframes are intentionally omitted.
   user, privileges, and connection flags. Acceptance: Session state survives
   across handlers and enforces privilege checks defined in `docs/protocol.md`.
   Dependencies: 1.4.2.
-- [ ] 1.4.4. Provide outbound transport and messaging traits, so domain code can
-  respond without depending on `wireframe` types. Acceptance: Domain modules
-  interact with adapter traits defined alongside the server boundary, and the
-  crate continues compiling with no direct `wireframe` imports, matching
-  guidance in `docs/design.md`. Dependencies: 1.4.2.
+- [ ] 1.4.4. Provide outbound transport and messaging traits, so that domain
+  code can respond without depending on `wireframe` types. Acceptance: Domain
+  modules interact with adapter traits defined alongside the server boundary,
+  and the crate continues compiling with no direct `wireframe` imports,
+  matching guidance in `docs/design.md`. Dependencies: 1.4.2.
 - [ ] 1.4.5. Provide a reply builder that mirrors Hotline error propagation and
   logging conventions. Acceptance: Error replies retain the original
   transaction IDs and are logged through the existing tracing infrastructure.
@@ -145,10 +145,10 @@ and explicit dependencies. Timeframes are intentionally omitted.
   or encode responses when required. Acceptance: SynHX parity tests cover
   password, message, and news bodies with the XOR toggle enabled. Dependencies:
   1.2.
-- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version, so Hotline 1.9
-  fallbacks remain available. Acceptance: Compatibility tests prove Hotline
-  1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange messages
-  successfully. Dependencies: 1.2.3.
+- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version, so that
+  Hotline 1.9 fallbacks remain available. Acceptance: Compatibility tests prove
+  Hotline 1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange
+  messages successfully. Dependencies: 1.2.3.
 - [ ] 1.5.3. Publish an internal compatibility matrix documenting supported
   clients, known deviations, and required toggles. Acceptance: The matrix lives
   in `docs/` and is referenced by release notes during QA sign-off.

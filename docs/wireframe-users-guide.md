@@ -365,14 +365,14 @@ identifiers, or wrap the remainder of the pipeline using `Transform`. The
 `Next` continuation calls the inner service, returning a `ServiceResponse`
 containing the frame that will be serialized back to the client.[^11]
 
-The `middleware::from_fn` helper adapts async functions into middleware
-components, enabling payload decoding, invocation of the inner service, and
-response editing before the response is serialized. `HandlerService` rebuilds a
-packet from the request bytes, invokes the registered handler, and by default
-returns the original payload; replies are crafted in middleware (or custom
-packet types with interior mutability). Decode typed payloads via the `Message`
-helpers, then write the encoded response into
-`ServiceResponse::frame_mut()`.[^10][^12]
+The `middleware::from_fn` helper acts as an adaptor for async functions,
+turning them into middleware components that enable payload decoding,
+invocation of the inner service, and response editing before the response is
+serialized. `HandlerService` rebuilds a packet from the request bytes, invokes
+the registered handler, and by default returns the original payload; replies
+are crafted in middleware (or custom packet types with interior mutability).
+Decode typed payloads via the `Message` helpers, then write the encoded
+response into `ServiceResponse::frame_mut()`.[^10][^12]
 
 ```rust
 use std::convert::Infallible;

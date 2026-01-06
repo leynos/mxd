@@ -1,5 +1,7 @@
 //! Helpers for wireframe routing BDD integration tests.
 
+// The lint feature enables combined sqlite/postgres builds for full static
+// analysis coverage, so only enforce exclusivity outside lint runs.
 #[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))]
 compile_error!("Choose either sqlite or postgres, not both");
 
@@ -40,9 +42,7 @@ pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, Any
     {
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path().join("mxd.db");
-        let db_url = path
-            .to_str()
-            .ok_or_else(|| "database path is not valid UTF-8".to_owned())?;
+        let db_url = path.to_str().ok_or("database path is not valid UTF-8")?;
         setup(db_url)?;
         let pool = rt.block_on(establish_pool(db_url))?;
         Ok(Some(TestDb {

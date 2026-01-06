@@ -116,6 +116,8 @@ tests.
 - [x] (2026-01-06) Address follow-up review notes by splitting Hotline codec
       tests into `framed_tests.rs`, returning `Result` from routing helpers,
       and enforcing sqlite/postgres exclusivity in `test-util`.
+- [x] (2026-01-06) Reformat key file notes as a definition list and align
+      documentation language with adaptor terminology guidance.
 
 ## Surprises & Discoveries
 
@@ -277,35 +279,37 @@ architecture. The transport layer is migrating from a bespoke TCP loop
 
 Key files and their roles:
 
-- `src/server/wireframe.rs`: Builds a `WireframeServer` with
-  `HotlineFrameCodec`, registers supported route IDs (plus the fallback route),
-  and installs `TransactionMiddleware` for transaction processing.
+`src/server/wireframe.rs`: Builds a `WireframeServer` with `HotlineFrameCodec`,
+registers supported route IDs (plus the fallback route), and installs
+`TransactionMiddleware` for transaction processing.
 
-- `src/wireframe/routes/mod.rs`: Contains `process_transaction_bytes()` which
-  parses raw bytes, dispatches to `Command::process()`, and returns reply
-  bytes. This function already implements the domain routing logic.
+`src/wireframe/routes/mod.rs`: Contains `process_transaction_bytes()` which
+parses raw bytes, dispatches to `Command::process()`, and returns reply bytes.
+This function already implements the domain routing logic.
 
-- `src/wireframe/codec/frame.rs`: `HotlineFrameCodec` maps Hotline transactions
-  into bincode `Envelope` payloads for wireframe routing.
+`src/wireframe/codec/frame.rs`: `HotlineFrameCodec` maps Hotline transactions
+into bincode `Envelope` payloads for wireframe routing.
 
-- `src/wireframe/codec/framed.rs`: Tokio `HotlineCodec` used by the frame codec
-  to decode and encode the 20-byte Hotline headers.
+`src/wireframe/codec/framed.rs`: Tokio `HotlineCodec` used by the frame codec
+to decode and encode the 20-byte Hotline headers.
 
-- `src/wireframe/route_ids.rs`: Route ID mapping (including the fallback
-  handler).
+`src/wireframe/route_ids.rs`: Route ID mapping (including the fallback handler).
 
-- `src/wireframe/protocol.rs`: `HotlineProtocol` implements `WireframeProtocol`
-  with lifecycle hooks (`on_connection_setup`, `before_send`, etc.).
+`src/wireframe/protocol.rs`: `HotlineProtocol` implements `WireframeProtocol`
+with lifecycle hooks (`on_connection_setup`, `before_send`, etc.).
 
-- `src/commands.rs`: `Command` enum with variants for each transaction type
-  (Login, GetFileNameList, etc.) and the `process()` method that executes
-  handlers.
+`src/commands.rs`: `Command` enum with variants for each transaction type
+(Login, GetFileNameList, etc.) and the `process()` method that executes
+handlers.
 
-- `tests/file_list.rs`, `tests/news_categories.rs`: Integration tests that
-  exercise the wireframe server (legacy networking gate removed).
+`tests/file_list.rs`: Integration tests that exercise the wireframe server
+(legacy networking gate removed).
 
-- `test-util/src/server.rs`: `TestServer` harness that starts the server binary
-  for integration tests.
+`tests/news_categories.rs`: Integration tests that exercise the wireframe
+server (legacy networking gate removed).
+
+`test-util/src/server.rs`: `TestServer` harness that starts the server binary
+for integration tests.
 
 Transaction type IDs (from `src/transaction_type.rs`):
 
