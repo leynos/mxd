@@ -128,6 +128,8 @@ tests.
       helpers with `anyhow::anyhow!` so `AnyError` remains consistent.
 - [x] (2026-01-06) Add a shared `with_env_var` guard and update the PostgreSQL
       environment test to use the global mutex pattern.
+- [x] (2026-01-06) Document routing test helpers and switch `collect_strings`
+      to zero-copy UTF-8 parsing to avoid extra allocations.
 
 ## Surprises & Discoveries
 

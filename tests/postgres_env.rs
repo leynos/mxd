@@ -22,10 +22,10 @@ fn external_postgres_is_used() -> Result<(), AnyError> {
                     return Err(anyhow::anyhow!("expected external PostgreSQL instance"));
                 }
                 if !db.url.starts_with(prefix) {
-                    return Err(anyhow::anyhow!("expected url with prefix {prefix}"));
+                    return Err(anyhow::anyhow!("expected URL with prefix {prefix}"));
                 }
                 if db.url.as_ref() == base {
-                    return Err(anyhow::anyhow!("expected database url to be updated"));
+                    return Err(anyhow::anyhow!("expected database URL to be updated"));
                 }
                 Ok::<_, AnyError>(())
             }

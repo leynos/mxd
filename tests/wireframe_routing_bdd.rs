@@ -242,7 +242,7 @@ fn then_files(world: &RoutingWorld, first: String, second: String) {
         let params = assert_step_ok!(decode_params(&tx.payload).map_err(|e| e.to_string()));
         let names =
             assert_step_ok!(collect_strings(&params, FieldId::FileName).map_err(|e| e.to_string()));
-        assert_eq!(names, vec![first, second]);
+        assert_eq!(names, vec![first.as_str(), second.as_str()]);
     });
 }
 
@@ -257,7 +257,8 @@ fn then_categories(world: &RoutingWorld, one: String, two: String, three: String
             collect_strings(&params, FieldId::NewsCategory).map_err(|e| e.to_string())
         );
         names.sort_unstable();
-        let expected = vec![one, two, three];
+        let mut expected = vec![one.as_str(), two.as_str(), three.as_str()];
+        expected.sort_unstable();
         assert_eq!(names, expected);
     });
 }
@@ -272,7 +273,7 @@ fn then_articles(world: &RoutingWorld, first: String, second: String) {
         let names = assert_step_ok!(
             collect_strings(&params, FieldId::NewsArticle).map_err(|e| e.to_string())
         );
-        assert_eq!(names, vec![first, second]);
+        assert_eq!(names, vec![first.as_str(), second.as_str()]);
     });
 }
 

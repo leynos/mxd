@@ -173,6 +173,6 @@ fn process_transaction_bytes_post_news_article_success() -> Result<(), AnyError>
     ))?;
     let list_params = decode_reply_params(&list_reply)?;
     let names = collect_strings(&list_params, FieldId::NewsArticle)?;
-    assert!(names.contains(&"Third".to_owned()));
+    assert!(names.contains(&"Third"));
     Ok(())
 }

@@ -127,7 +127,8 @@ pub fn build_frame(
     Ok(transaction_bytes(&header, &payload))
 }
 
-/// Collect UTF-8 strings for a field from decoded parameters.
+/// Collect UTF-8 strings for a field from decoded parameters without
+/// allocating new buffers.
 ///
 /// # Errors
 ///
@@ -144,11 +145,11 @@ pub fn build_frame(
 pub fn collect_strings(
     params: &[(FieldId, Vec<u8>)],
     field_id: FieldId,
-) -> Result<Vec<String>, std::string::FromUtf8Error> {
+) -> Result<Vec<&str>, std::str::Utf8Error> {
     params
         .iter()
         .filter(|(id, _)| id == &field_id)
-        .map(|(_, data)| String::from_utf8(data.clone()))
+        .map(|(_, data)| std::str::from_utf8(data))
         .collect()
 }
 
