@@ -61,7 +61,7 @@ pub(super) fn find_string(
         .iter()
         .find(|(id, _)| id == &field_id)
         .map(|(_, data)| data.as_slice())
-        .ok_or_else(|| -> AnyError { format!("missing {field_id:?} field").into() })?;
+        .ok_or_else(|| anyhow::anyhow!("missing {field_id:?} field"))?;
     let text = std::str::from_utf8(data)?;
     Ok(text.to_owned())
 }
@@ -72,7 +72,7 @@ pub(super) fn find_i32(params: &[(FieldId, Vec<u8>)], field_id: FieldId) -> Resu
         .iter()
         .find(|(id, _)| id == &field_id)
         .map(|(_, data)| data.as_slice())
-        .ok_or_else(|| -> AnyError { format!("missing {field_id:?} field").into() })?;
+        .ok_or_else(|| anyhow::anyhow!("missing {field_id:?} field"))?;
     let raw: [u8; 4] = bytes.try_into()?;
     Ok(i32::from_be_bytes(raw))
 }

@@ -31,7 +31,7 @@ fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, A
     file_ids
         .get(name)
         .copied()
-        .ok_or_else(|| format!("missing file id for {name}").into())
+        .ok_or_else(|| anyhow::anyhow!("missing file id for {name}"))
 }
 
 /// Execute a database operation within a connection.

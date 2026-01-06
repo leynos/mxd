@@ -21,13 +21,13 @@ fn external_postgres_is_used() -> Result<(), AnyError> {
         || match PostgresTestDb::new() {
             Ok(db) => {
                 if db.uses_embedded() {
-                    return Err("expected external PostgreSQL instance".into());
+                    return Err(anyhow::anyhow!("expected external PostgreSQL instance"));
                 }
                 if !db.url.starts_with(prefix) {
-                    return Err(format!("expected url with prefix {prefix}").into());
+                    return Err(anyhow::anyhow!("expected url with prefix {prefix}"));
                 }
                 if db.url.as_ref() == base {
-                    return Err("expected database url to be updated".into());
+                    return Err(anyhow::anyhow!("expected database url to be updated"));
                 }
                 Ok::<_, AnyError>(())
             }
@@ -35,7 +35,7 @@ fn external_postgres_is_used() -> Result<(), AnyError> {
                 tracing::warn!("skipping test: PostgreSQL unavailable");
                 Ok(())
             }
-            Err(e) => Err(Box::new(e) as AnyError),
+            Err(e) => Err(e.into()),
         },
     )
 }

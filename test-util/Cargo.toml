@@ -17,6 +17,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
 rstest = "0.18"
 tracing = "0.1"
+anyhow = "1"
 postgres = { version = "0.19", optional = true }
 uuid = { version = "1", features = ["v7"], optional = true }
 url = { version = "2", optional = true }

@@ -59,7 +59,10 @@ fn perform_login(stream: &mut TcpStream, username: &[u8], password: &[u8]) -> Re
     stream.read_exact(&mut data)?;
 
     if reply_hdr.error != 0 {
-        return Err(format!("login failed with error code {}", reply_hdr.error).into());
+        return Err(anyhow::anyhow!(
+            "login failed with error code {}",
+            reply_hdr.error
+        ));
     }
 
     Ok(())
@@ -103,11 +106,10 @@ fn get_file_list(stream: &mut TcpStream) -> Result<Vec<String>, AnyError> {
         payload,
     };
     if resp.header.error != 0 {
-        return Err(format!(
+        return Err(anyhow::anyhow!(
             "file list request failed with error code {}",
             resp.header.error
-        )
-        .into());
+        ));
     }
     let params = decode_params(&resp.payload)?;
     let mut names = Vec::new();
@@ -146,7 +148,7 @@ fn test_stream(
     reason = "Keep signature consistent with `SetupFn` so tests can swap in fallible setup \
               routines."
 )]
-fn noop_setup(_: &str) -> TestResult<()> { Ok(()) }
+const fn noop_setup(_: &str) -> TestResult<()> { Ok(()) }
 
 #[rstest]
 fn list_files_acl(test_stream: TestResult<Option<(TestServer, TcpStream)>>) -> TestResult<()> {

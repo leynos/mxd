@@ -120,6 +120,12 @@ tests.
       documentation language with adaptor terminology guidance.
 - [x] (2026-01-06) Add backend-specific error context for test database setup
       and connection pool creation in `test-util` helpers.
+- [x] (2026-01-06) Replace manual error mapping with `anyhow::Context` so test
+      database setup and pool errors preserve richer diagnostics.
+- [x] (2026-01-06) Switch `test-util::AnyError` to `anyhow::Error` so
+      `anyhow::Context` composes cleanly with fallible helper calls.
+- [x] (2026-01-06) Replace string-to-error `.into()` conversions in tests and
+      helpers with `anyhow::anyhow!` so `AnyError` remains consistent.
 
 ## Surprises & Discoveries
 

@@ -31,15 +31,15 @@ fn handshake() -> Result<(), AnyError> {
     let mut reply = [0u8; 8];
     stream.read_exact(&mut reply)?;
     if &reply[0..4] != b"TRTP" {
-        return Err("unexpected reply magic".into());
+        return Err(anyhow::anyhow!("unexpected reply magic"));
     }
 
     let status_bytes: [u8; 4] = reply[4..8]
         .try_into()
-        .map_err(|_| "failed to decode reply status bytes")?;
+        .map_err(|_| anyhow::anyhow!("failed to decode reply status bytes"))?;
     let status = u32::from_be_bytes(status_bytes);
     if status != 0 {
-        return Err(format!("expected zero status, got {status}").into());
+        return Err(anyhow::anyhow!("expected zero status, got {status}"));
     }
 
     // Close the write side to signal that no further data will be sent.
@@ -49,7 +49,7 @@ fn handshake() -> Result<(), AnyError> {
 
     let mut tmp = [0u8; 1];
     if stream.read(&mut tmp)? != 0 {
-        return Err("expected EOF after handshake".into());
+        return Err(anyhow::anyhow!("expected EOF after handshake"));
     }
     Ok(())
 }

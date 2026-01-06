@@ -5,7 +5,7 @@
 //! instances. It is used by integration tests in the main crate.
 
 /// A boxed error type for test functions.
-pub type AnyError = Box<dyn std::error::Error + Send + Sync>;
+pub type AnyError = anyhow::Error;
 
 #[cfg(feature = "postgres")]
 pub mod postgres;

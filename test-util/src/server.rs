@@ -149,7 +149,7 @@ where
     let path = temp.path().join("mxd.db");
     let path_str = path
         .to_str()
-        .ok_or_else(|| "database path is not valid UTF-8".to_owned())?;
+        .ok_or_else(|| anyhow::anyhow!("database path is not valid UTF-8"))?;
     let url = DbUrl::from(path_str);
     setup(&url)?;
     Ok(url)
@@ -199,10 +199,10 @@ fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
             Ok(())
         } else {
             warn!(lines_received = ?lines_received, "server did not signal readiness");
-            Err("server failed to signal readiness".into())
+            Err(anyhow::anyhow!("server failed to signal readiness"))
         }
     } else {
-        Err("missing stdout from server".into())
+        Err(anyhow::anyhow!("missing stdout from server"))
     }
 }
 
