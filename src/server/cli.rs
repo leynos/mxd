@@ -12,10 +12,29 @@
     reason = "OrthoConfig and Clap derive macros generate items that cannot be documented"
 )]
 
-use argon2::Params;
 use clap::{Args, Parser, Subcommand};
 use ortho_config::OrthoConfig;
 use serde::{Deserialize, Serialize};
+
+// ────────────────────────────────────────────────────────────────────────────
+// WORKAROUND: Literal defaults for build.rs compatibility
+//
+// These constants duplicate `argon2::Params::DEFAULT_*` values so that
+// `build.rs` can include this module directly for man page generation
+// without adding `argon2` as a build-dependency.
+//
+// This workaround can be removed once ortho-config gains native man page
+// generation support, allowing the CLI to be defined with full runtime
+// dependencies while still producing man pages at build time.
+//
+// Values as of argon2 0.5.x:
+//   DEFAULT_M_COST = 19_456
+//   DEFAULT_T_COST = 2
+//   DEFAULT_P_COST = 1
+// ────────────────────────────────────────────────────────────────────────────
+const DEFAULT_ARGON2_M_COST: u32 = 19_456;
+const DEFAULT_ARGON2_T_COST: u32 = 2;
+const DEFAULT_ARGON2_P_COST: u32 = 1;
 
 /// Arguments for the `create-user` administrative subcommand.
 #[derive(Parser, OrthoConfig, Deserialize, Serialize, Default, Debug, Clone)]
@@ -48,16 +67,16 @@ pub struct AppConfig {
     #[arg(long, default_value_t = String::from("mxd.db"))]
     pub database: String,
     /// Argon2 memory cost parameter.
-    #[ortho_config(default = Params::DEFAULT_M_COST)]
-    #[arg(long, default_value_t = Params::DEFAULT_M_COST)]
+    #[ortho_config(default = DEFAULT_ARGON2_M_COST)]
+    #[arg(long, default_value_t = DEFAULT_ARGON2_M_COST)]
     pub argon2_m_cost: u32,
     /// Argon2 time cost parameter.
-    #[ortho_config(default = Params::DEFAULT_T_COST)]
-    #[arg(long, default_value_t = Params::DEFAULT_T_COST)]
+    #[ortho_config(default = DEFAULT_ARGON2_T_COST)]
+    #[arg(long, default_value_t = DEFAULT_ARGON2_T_COST)]
     pub argon2_t_cost: u32,
     /// Argon2 parallelism cost parameter.
-    #[ortho_config(default = Params::DEFAULT_P_COST)]
-    #[arg(long, default_value_t = Params::DEFAULT_P_COST)]
+    #[ortho_config(default = DEFAULT_ARGON2_P_COST)]
+    #[arg(long, default_value_t = DEFAULT_ARGON2_P_COST)]
     pub argon2_p_cost: u32,
 }
 
