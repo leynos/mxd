@@ -1,0 +1,83 @@
+---
+name: Build and Package
+
+'on':
+  workflow_call:
+    inputs:
+      platform:
+        description: Target platform identifier (linux)
+        required: true
+        type: string
+      runner:
+        description: Runner label that should execute the job
+        required: true
+        type: string
+      target:
+        description: Rust target triple to compile for
+        required: true
+        type: string
+      bin-name:
+        description: Name of the binary to build
+        required: true
+        type: string
+      version:
+        description: Version string used for packaging
+        required: true
+        type: string
+      artifact-name:
+        description: Name used when uploading workflow artefacts
+        required: true
+        type: string
+      should-upload-workflow-artifacts:
+        description: Whether workflow artefacts should be uploaded
+        required: true
+        type: boolean
+      package-arch:
+        description: Linux package architecture identifier (e.g. amd64)
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build ${{ inputs.platform }} artefacts
+    runs-on: ${{ inputs.runner }}
+    env:
+      BIN_NAME: ${{ inputs.bin-name }}
+      VERSION: ${{ inputs.version }}
+      MAN_ARCH: ${{ inputs.package-arch }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build release binary
+        uses: >-
+          leynos/shared-actions/.github/actions/rust-build-release@df81280dcc1d6e66134114dbc924313328b15f05
+        with:
+          target: ${{ inputs.target }}
+          bin-name: ${{ inputs.bin-name }}
+
+      - name: Package Linux artefacts
+        if: inputs.platform == 'linux'
+        uses: >-
+          leynos/shared-actions/.github/actions/linux-packages@df81280dcc1d6e66134114dbc924313328b15f05
+        with:
+          project-dir: .
+          package-name: ${{ inputs.bin-name }}
+          bin-name: ${{ inputs.bin-name }}
+          target: ${{ inputs.target }}
+          version: ${{ inputs.version }}
+          formats: deb,rpm
+          man-paths: dist/${{ inputs.bin-name }}_linux_${{ env.MAN_ARCH }}/${{ inputs.bin-name }}.1
+          outdir: dist
+          description: Marrakesh Express daemon
+
+      - name: Prune packaging metadata
+        if: inputs.platform == 'linux'
+        shell: bash
+        run: rm -rf dist/.man dist/nfpm.yaml
+
+      - name: Upload Linux artefacts
+        if: inputs.platform == 'linux' && inputs.should-upload-workflow-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: dist
