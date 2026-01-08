@@ -39,6 +39,9 @@ name: Release Binary
         description: Whether workflow artefact uploads are enabled
         value: ${{ jobs.metadata.outputs.should_upload_workflow_artifacts }}
 
+permissions:
+  contents: read
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true

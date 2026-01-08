@@ -37,6 +37,9 @@ name: Build and Package
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build ${{ inputs.platform }} artefacts
