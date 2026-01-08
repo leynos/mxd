@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'crates/mxd-verification/tla/**'
+      - 'crates/mxd-verification/Dockerfile'
       - 'scripts/run-tlc.sh'
       - '.github/workflows/tlc.yml'
   pull_request:
     paths:
       - 'crates/mxd-verification/tla/**'
+      - 'crates/mxd-verification/Dockerfile'
       - 'scripts/run-tlc.sh'
       - '.github/workflows/tlc.yml'
 
@@ -19,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Build TLC Docker image
+        run: docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
 
       - name: Run TLC handshake verification
         run: make tlc-handshake

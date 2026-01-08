@@ -101,6 +101,10 @@ timing while preserving timeout semantics. With `MaxClients = 3` and
 Run locally with:
 
 ```sh
+# First, build the TLC Docker image (one-time setup)
+docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
+
+# Then run TLC
 make tlc-handshake
 ```
 
@@ -159,6 +163,9 @@ publish counterexample artefacts for triage.
 ## Running locally
 
 ```sh
+# Build TLC Docker image (one-time setup)
+docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
+
 # TLC via Makefile (uses Docker wrapper)
 make tlc-handshake
 
