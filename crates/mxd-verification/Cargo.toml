@@ -1,0 +1,13 @@
+[package]
+name = "mxd-verification"
+version = "0.1.0"
+edition = "2024"
+description = "Formal verification specs and harnesses for mxd"
+
+[dependencies]
+
+[dev-dependencies]
+rstest = "0.26"
+
+[lints]
+workspace = true
