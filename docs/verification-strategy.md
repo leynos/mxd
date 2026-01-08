@@ -80,6 +80,30 @@ Use Kani when:
 Harnesses live adjacent to the code they verify and compile only under
 `#[cfg(kani)]`.
 
+## TLA+ specifications
+
+### Handshake specification (MxdHandshake.tla)
+
+The handshake spec models the server-side state machine for client connections.
+It verifies:
+
+- Timeout behaviour fires after 5 seconds of inactivity
+- Error codes correctly map to validation failures (INVALID,
+  UNSUPPORTED_VERSION,
+  TIMEOUT)
+- Ready state is only reachable with valid protocol ID and supported version
+- States progress monotonically (no regression from terminal states)
+
+The specification uses discrete time ticks rather than real time to abstract
+timing while preserving timeout semantics. With `MaxClients = 3` and
+`TimeoutTicks = 5`, TLC explores approximately 10⁶ states.
+
+Run locally with:
+
+```sh
+make tlc-handshake
+```
+
 ## Deliverables and workflow
 
 Each implementation step in `docs/roadmap.md` includes an explicit verification
@@ -135,13 +159,15 @@ publish counterexample artefacts for triage.
 ## Running locally
 
 ```sh
+# TLC via Makefile (uses Docker wrapper)
+make tlc-handshake
+
+# TLC via Docker directly
+./scripts/run-tlc.sh crates/mxd-verification/tla/MxdHandshake.tla
+
 # Stateright models (bounded)
 cargo test -p mxd-verification -- --nocapture
 
 # Kani harnesses (example)
 cargo kani -p mxd-domain --harness <harness_name>
-
-# TLC model checker (example)
-tlc2.TLC -config crates/mxd-verification/tla/MxdLogin.cfg \
-  crates/mxd-verification/tla/MxdLogin.tla
 ```

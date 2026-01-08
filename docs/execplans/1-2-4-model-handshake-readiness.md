@@ -1,8 +1,7 @@
 # Execution plan: Model handshake readiness in TLA+
 
-**Task:** 1.2.4 from `docs/roadmap.md`
-**Branch:** `1-2-4-model-handshake-readiness`
-**Status:** Planning
+**Task:** 1.2.4 from `docs/roadmap.md` **Branch:**
+`1-2-4-model-handshake-readiness` **Status:** Complete
 
 ## Objective
 
@@ -55,7 +54,7 @@ Create the `crates/mxd-verification/` workspace member with minimal scaffolding.
 
 **Files to create:**
 
-```
+```text
 crates/
   mxd-verification/
     Cargo.toml
@@ -99,7 +98,7 @@ Add `"crates/mxd-verification"` to the workspace members list.
 
 **Commit:** "Add mxd-verification crate skeleton"
 
----
+______________________________________________________________________
 
 ### Step 2: Write the TLA+ handshake specification
 
@@ -140,7 +139,7 @@ handshake state machine.
 
 **Commit:** "Add TLA+ handshake specification"
 
----
+______________________________________________________________________
 
 ### Step 3: Write the TLC configuration
 
@@ -148,7 +147,7 @@ Create `crates/mxd-verification/tla/MxdHandshake.cfg` with model bounds.
 
 **Configuration:**
 
-```
+```text
 SPECIFICATION Spec
 
 CONSTANTS
@@ -169,7 +168,7 @@ exercising concurrency. Increase for deeper exploration if needed.
 
 **Commit:** "Add TLC configuration for handshake spec"
 
----
+______________________________________________________________________
 
 ### Step 4: Create Docker wrapper for TLA+ tools
 
@@ -195,7 +194,7 @@ docker run --rm -v "$(pwd):/workspace" -w /workspace "$TLC_IMAGE" \
 
 **Commit:** "Add Docker wrapper for TLA+ tools"
 
----
+______________________________________________________________________
 
 ### Step 5: Add Makefile targets for TLA+ verification
 
@@ -216,7 +215,7 @@ tlc-handshake: ## Run TLC on handshake spec
 
 **Commit:** "Add Makefile targets for TLA+ verification"
 
----
+______________________________________________________________________
 
 ### Step 6: Add integration test for TLC execution
 
@@ -247,7 +246,7 @@ fn tlc_handshake_no_violations() {
 
 **Commit:** "Add TLC integration test for handshake spec"
 
----
+______________________________________________________________________
 
 ### Step 7: Add GitHub Actions workflow for TLA+ verification
 
@@ -288,7 +287,7 @@ jobs:
 
 **Commit:** "Add GitHub Actions workflow for TLA+ verification"
 
----
+______________________________________________________________________
 
 ### Step 8: Update documentation
 
@@ -318,7 +317,7 @@ Mark task 1.2.4 as complete with status note.
 
 **Commit:** "Document handshake TLA+ spec and mark 1.2.4 complete"
 
----
+______________________________________________________________________
 
 ## Verification
 
@@ -339,30 +338,30 @@ Mark task 1.2.4 as complete with status note.
 
 ## Design decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| Discrete time ticks vs real time | Abstracts timing while preserving timeout semantics; simpler state space |
-| MaxClients = 3 | Balances state explosion vs concurrency coverage; can increase for deeper exploration |
-| Server-side model only | Client actions are non-deterministic inputs; goal is verifying server invariants |
-| Separate crate for verification | Keeps verification artefacts co-located; follows `docs/verification-strategy.md` convention |
-| Docker wrapper for TLC | Avoids local TLA+ Toolbox installation; reproducible across environments |
-| CI on path-filtered PRs | Runs TLC only when TLA+ specs or runner change; keeps CI fast for unrelated changes |
+| Decision                         | Rationale                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| Discrete time ticks vs real time | Abstracts timing while preserving timeout semantics; simpler state space                    |
+| MaxClients = 3                   | Balances state explosion vs concurrency coverage; can increase for deeper exploration       |
+| Server-side model only           | Client actions are non-deterministic inputs; goal is verifying server invariants            |
+| Separate crate for verification  | Keeps verification artefacts co-located; follows `docs/verification-strategy.md` convention |
+| Docker wrapper for TLC           | Avoids local TLA+ Toolbox installation; reproducible across environments                    |
+| CI on path-filtered PRs          | Runs TLC only when TLA+ specs or runner change; keeps CI fast for unrelated changes         |
 
 ## Files to modify
 
-| File | Change |
-|------|--------|
-| `Cargo.toml` (root) | Add workspace member |
-| `crates/mxd-verification/Cargo.toml` | New file |
-| `crates/mxd-verification/src/lib.rs` | New file |
-| `crates/mxd-verification/tla/MxdHandshake.tla` | New file |
-| `crates/mxd-verification/tla/MxdHandshake.cfg` | New file |
-| `crates/mxd-verification/tests/tlc_handshake.rs` | New file |
-| `scripts/run-tlc.sh` | New file (Docker wrapper) |
-| `.github/workflows/tlc.yml` | New file (CI workflow) |
-| `Makefile` | Add TLC targets |
-| `docs/verification-strategy.md` | Document handshake spec |
-| `docs/roadmap.md` | Mark 1.2.4 complete |
+| File                                             | Change                    |
+| ------------------------------------------------ | ------------------------- |
+| `Cargo.toml` (root)                              | Add workspace member      |
+| `crates/mxd-verification/Cargo.toml`             | New file                  |
+| `crates/mxd-verification/src/lib.rs`             | New file                  |
+| `crates/mxd-verification/tla/MxdHandshake.tla`   | New file                  |
+| `crates/mxd-verification/tla/MxdHandshake.cfg`   | New file                  |
+| `crates/mxd-verification/tests/tlc_handshake.rs` | New file                  |
+| `scripts/run-tlc.sh`                             | New file (Docker wrapper) |
+| `.github/workflows/tlc.yml`                      | New file (CI workflow)    |
+| `Makefile`                                       | Add TLC targets           |
+| `docs/verification-strategy.md`                  | Document handshake spec   |
+| `docs/roadmap.md`                                | Mark 1.2.4 complete       |
 
 ## Open questions
 

@@ -12,5 +12,5 @@
 //!
 //! Current specifications:
 //!
-//! - `MxdHandshake.tla` — Models the handshake state machine and verifies
-//!   timeout, error-code, and readiness invariants.
+//! - `MxdHandshake.tla` — Models the handshake state machine and verifies timeout, error-code, and
+//!   readiness invariants.

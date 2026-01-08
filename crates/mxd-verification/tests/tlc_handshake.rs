@@ -21,7 +21,7 @@ use std::process::Command;
 ///
 /// Panics if TLC reports invariant violations or fails to run.
 #[test]
-#[ignore]
+#[ignore = "requires Docker and takes several seconds to run"]
 fn tlc_handshake_no_violations() {
     // Check Docker is available
     let docker_check = Command::new("docker")
@@ -29,12 +29,11 @@ fn tlc_handshake_no_violations() {
         .output()
         .expect("Docker must be installed to run TLC tests");
 
-    if !docker_check.status.success() {
-        panic!(
-            "Docker is not available: {}",
-            String::from_utf8_lossy(&docker_check.stderr)
-        );
-    }
+    assert!(
+        docker_check.status.success(),
+        "Docker is not available: {}",
+        String::from_utf8_lossy(&docker_check.stderr)
+    );
 
     // Run TLC via the Docker wrapper
     let output = Command::new("./scripts/run-tlc.sh")
@@ -45,22 +44,18 @@ fn tlc_handshake_no_violations() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-
-    // Print output for debugging
-    println!("TLC stdout:\n{stdout}");
-    println!("TLC stderr:\n{stderr}");
-
-    // Check for success indicators
     let combined_output = format!("{stdout}\n{stderr}");
 
     // TLC should complete without errors
-    if combined_output.contains("Error:") {
-        panic!("TLC reported an error:\n{combined_output}");
-    }
+    assert!(
+        !combined_output.contains("Error:"),
+        "TLC reported an error:\n{combined_output}"
+    );
 
-    if combined_output.contains("is violated") {
-        panic!("TLC found an invariant violation:\n{combined_output}");
-    }
+    assert!(
+        !combined_output.contains("is violated"),
+        "TLC found an invariant violation:\n{combined_output}"
+    );
 
     // TLC should exit successfully
     assert!(

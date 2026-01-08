@@ -61,11 +61,15 @@ and explicit dependencies. Timeframes are intentionally omitted.
   connection task, exposing it via connection state and app data, and clearing
   it on teardown, so routing can gate compatibility shims safely. Dependencies:
   1.2.1.
-- [ ] 1.2.4. Model handshake readiness in Temporal Logic of Actions (TLA+) and
+- [x] 1.2.4. Model handshake readiness in Temporal Logic of Actions (TLA+) and
   the TLC (TLA+ model checker). Acceptance: TLC runs the
   `crates/mxd-verification/tla/MxdHandshake.tla` spec with no invariant
   violations for bounded client counts and documents timeout, error-code, and
-  readiness invariants. Dependencies: 1.2.3.
+  readiness invariants. Status: Completed on 8 January 2026 by creating the
+  `mxd-verification` crate with TLA+ handshake spec, TLC configuration, Docker
+  wrapper, Makefile targets, and CI workflow. The spec verifies TypeInvariant,
+  ErrorCodeInvariant, ReadinessInvariant, and NoReadyWithError. Dependencies:
+  1.2.3.
 
 ### 1.3. Adopt wireframe transaction framing
 
