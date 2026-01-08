@@ -68,8 +68,8 @@ and explicit dependencies. Timeframes are intentionally omitted.
   readiness invariants. Status: Completed on 8 January 2026 by creating the
   `mxd-verification` crate with TLA+ handshake spec, TLC configuration, Docker
   wrapper, Makefile targets, and CI workflow. The spec verifies TypeInvariant,
-  TimeoutInvariant, ErrorCodeInvariant, ReadinessInvariant, and NoReadyWithError.
-  Dependencies: 1.2.3.
+  TimeoutInvariant, ErrorCodeInvariant, ReadinessInvariant, and
+  NoReadyWithError. Dependencies: 1.2.3.
 
 ### 1.3. Adopt wireframe transaction framing
 
@@ -123,7 +123,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   user, privileges, and connection flags. Acceptance: Session state survives
   across handlers and enforces privilege checks defined in `docs/protocol.md`.
   Dependencies: 1.4.2.
-- [ ] 1.4.4. Provide outbound transport and messaging traits, so domain code can
+- [ ] 1.4.4. Provide outbound transport and messaging traits so domain code can
   respond without depending on `wireframe` types. Acceptance: Domain modules
   interact with adapter traits defined alongside the server boundary, and the
   crate continues compiling with no direct `wireframe` imports, matching
@@ -144,7 +144,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   or encode responses when required. Acceptance: SynHX parity tests cover
   password, message, and news bodies with the XOR toggle enabled. Dependencies:
   1.2.
-- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version, so Hotline 1.9
+- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version so Hotline 1.9
   fallbacks remain available. Acceptance: Compatibility tests prove Hotline
   1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange messages
   successfully. Dependencies: 1.2.3.
@@ -340,7 +340,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Dependencies: 4.1.
 - [ ] 4.2.2. Implement news search and filtering (by poster, date range,
   headline) using Diesel query helpers. Acceptance: Search queries return
-  results within 200 ms for typical data sets, and support CTE-backed recursive
+  results within 200 ms for typical data sets and support CTE-backed recursive
   traversal where needed. Dependencies: 4.2.1.
 - [ ] 4.2.3. Cache frequently accessed bundles and article headers.
   Acceptance: Cache hit rates exceed 90% for popular bundles without stale data
@@ -378,7 +378,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 5.1.2. Enforce privilege codes 14–18 and 22–32 across administrative
   handlers. Acceptance: Privilege violations return protocol error codes and
   are logged with user context. Dependencies: 5.1.1.
-- [ ] 5.1.3. Provide audit logs summarizing administrative actions with before/
+- [ ] 5.1.3. Provide audit logs summarising administrative actions with before/
   after snapshots where applicable. Acceptance: Audit entries include actor,
   target, action, and rationale fields and feed compliance reporting.
   Dependencies: 5.1.2.
@@ -389,7 +389,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 5.2. Harden database backends and query tooling
 
-- [ ] 5.2.1. Finalize PostgreSQL support, ensuring migrations, Diesel builders,
+- [ ] 5.2.1. Finalise PostgreSQL support, ensuring migrations, Diesel builders,
   and tests run against PostgreSQL 14+. Acceptance: CI runs the full
   integration suite on SQLite and PostgreSQL backends with identical behaviour.
   Dependencies: 3.
