@@ -104,11 +104,11 @@ Validate(c) ==
        ELSE state' = [state EXCEPT ![c] = Error]
     /\ UNCHANGED <<ticksElapsed, protocolValid, versionSupported>>
 
-\* Time passes for all clients awaiting handshake
+\* Time passes for all clients awaiting handshake (but not past timeout)
 Tick ==
-    /\ \E c \in Clients : state[c] = AwaitingHandshake
+    /\ \E c \in Clients : state[c] = AwaitingHandshake /\ ticksElapsed[c] < TimeoutTicks
     /\ ticksElapsed' = [c \in Clients |->
-        IF state[c] = AwaitingHandshake
+        IF state[c] = AwaitingHandshake /\ ticksElapsed[c] < TimeoutTicks
         THEN ticksElapsed[c] + 1
         ELSE ticksElapsed[c]]
     /\ UNCHANGED <<state, errorCode, protocolValid, versionSupported>>

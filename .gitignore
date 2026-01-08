@@ -33,3 +33,6 @@ fuzz/corpus/*.bin
 
 # Debugging plan drafts
 debugging-plan-*.md
+
+# TLC model checker generated files
+states/

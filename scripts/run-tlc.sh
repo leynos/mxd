@@ -4,16 +4,17 @@
 # Usage: ./scripts/run-tlc.sh <spec.tla> [spec.cfg]
 #
 # This script runs TLC in a Docker container, avoiding the need for local
-# TLA+ Toolbox installation. The tlaplus/tlaplus image includes TLC, TLAPS,
-# and related tools.
+# TLA+ Toolbox installation. Uses the talex5/tla community image.
 #
 # Environment variables:
-#   TLC_IMAGE - Docker image to use (default: ghcr.io/tlaplus/tlaplus:latest)
+#   TLC_IMAGE - Docker image to use (default: docker.io/talex5/tla)
 #   TLC_WORKERS - Number of worker threads (default: auto)
 
 set -euo pipefail
 
-TLC_IMAGE="${TLC_IMAGE:-ghcr.io/tlaplus/tlaplus:latest}"
+# Use locally-built image by default; build with:
+#   docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
+TLC_IMAGE="${TLC_IMAGE:-localhost/mxd-tlc}"
 TLC_WORKERS="${TLC_WORKERS:-auto}"
 
 if [[ $# -lt 1 ]]; then
@@ -42,11 +43,9 @@ if [[ ! -f "$CFG_FILE" ]]; then
 fi
 
 # Run TLC in Docker
-# -v mounts the current directory as /workspace
-# -w sets the working directory
 # --rm removes the container after exit
 exec docker run --rm \
     -v "$(pwd):/workspace" \
-    -w /workspace \
+    --workdir /workspace \
     "$TLC_IMAGE" \
-    tlc -workers "$TLC_WORKERS" -config "$CFG_FILE" "$SPEC_FILE"
+    -workers "$TLC_WORKERS" -config "$CFG_FILE" "$SPEC_FILE"
