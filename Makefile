@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only lint lint-postgres lint-sqlite lint-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release
+.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only lint lint-postgres lint-sqlite lint-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
 
 APP ?= mxd
 CARGO ?= cargo
@@ -12,6 +12,7 @@ ifneq ($(wildcard $(MDLINT_FALLBACK)),)
   endif
 endif
 NIXIE ?= nixie
+TLC_RUNNER ?= ./scripts/run-tlc.sh
 RSTEST_TIMEOUT ?= 20
 SQLITE_FEATURES := --features sqlite
 POSTGRES_FEATURES := --no-default-features --features "postgres legacy-networking"
@@ -60,6 +61,11 @@ markdownlint: ## Lint Markdown files
 
 nixie: ## Validate Mermaid diagrams
 	$(NIXIE) --no-sandbox
+
+tlc: tlc-handshake ## Run all TLA+ model checks
+
+tlc-handshake: ## Run TLC on handshake spec
+	$(TLC_RUNNER) crates/mxd-verification/tla/MxdHandshake.tla
 
 test: test-postgres test-sqlite test-wireframe-only ## Run sqlite, postgres, and wireframe-only suites
 
