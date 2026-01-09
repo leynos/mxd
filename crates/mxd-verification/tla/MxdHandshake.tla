@@ -157,18 +157,10 @@ TypeInvariant ==
     /\ protocolValid \in [Clients -> BOOLEAN]
     /\ versionSupported \in [Clients -> BOOLEAN]
 
-\* TimeoutInvariant: clients in AwaitingHandshake with elapsed >= TimeoutTicks
-\* must transition to Error with TIMEOUT code or have already transitioned.
-\* Since Timeout action is always enabled when condition met, this is enforced.
-TimeoutInvariant ==
-    \A c \in Clients :
-        (state[c] = AwaitingHandshake /\ ticksElapsed[c] >= TimeoutTicks)
-        => TRUE  \* Timeout action is enabled; invariant relies on action semantics
-
 \* ErrorCodeInvariant: error codes match validation failures
 \* - INVALID only when protocol is invalid
 \* - UNSUPPORTED_VERSION only when version unsupported (but protocol valid)
-\* - TIMEOUT only when in Error after timeout
+\* - TIMEOUT only when in Error after timeout elapsed
 \* - OK only when both valid
 ErrorCodeInvariant ==
     \A c \in Clients :
@@ -176,6 +168,8 @@ ErrorCodeInvariant ==
             => (state[c] = Error /\ ~protocolValid[c])
         /\ (errorCode[c] = HANDSHAKE_ERR_UNSUPPORTED_VERSION)
             => (state[c] = Error /\ protocolValid[c] /\ ~versionSupported[c])
+        /\ (errorCode[c] = HANDSHAKE_ERR_TIMEOUT)
+            => (state[c] = Error /\ ticksElapsed[c] >= TimeoutTicks)
         /\ (state[c] = Ready) => (errorCode[c] = HANDSHAKE_OK)
 
 \* ReadinessInvariant: Ready state implies valid protocol, supported version, and OK code
@@ -190,12 +184,5 @@ ReadinessInvariant ==
 \* (Trivially true since state is a single value, but documents intent)
 NoReadyWithError ==
     \A c \in Clients : ~(state[c] = Ready /\ state[c] = Error)
-
-\* MonotonicProgress: once in a terminal state, cannot be in a non-terminal state
-\* without first disconnecting (which resets to Idle)
-\* Note: This is a state invariant, not a temporal property. It's trivially true
-\* because transitions from terminal states only go to Idle via ClientDisconnect.
-MonotonicProgress ==
-    TRUE  \* Enforced by action definitions; included for documentation
 
 ================================================================================

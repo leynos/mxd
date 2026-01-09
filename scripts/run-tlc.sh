@@ -4,18 +4,23 @@
 # Usage: ./scripts/run-tlc.sh <spec.tla> [spec.cfg]
 #
 # This script runs TLC in a Docker container, avoiding the need for local
-# TLA+ Toolbox installation. Uses the talex5/tla community image.
+# TLA+ Toolbox installation.
 #
 # Environment variables:
-#   TLC_IMAGE - Docker image to use (default: docker.io/talex5/tla)
+#   TLC_IMAGE - Docker image to use (required, set by Makefile or CI)
 #   TLC_WORKERS - Number of worker threads (default: auto)
 
 set -euo pipefail
 
-# Use ghcr.io image by default; for local development build with:
+# TLC_IMAGE must be set by the caller (Makefile or CI workflow).
+# For local development, build with:
 #   docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
 #   TLC_IMAGE=mxd-tlc ./scripts/run-tlc.sh ...
-TLC_IMAGE="${TLC_IMAGE:-ghcr.io/leynos/mxd/mxd-tlc:latest}"
+if [[ -z "${TLC_IMAGE:-}" ]]; then
+    echo "Error: TLC_IMAGE environment variable must be set" >&2
+    echo "Use 'make tlc-handshake' or set TLC_IMAGE explicitly" >&2
+    exit 1
+fi
 TLC_WORKERS="${TLC_WORKERS:-auto}"
 
 if [[ $# -lt 1 ]]; then

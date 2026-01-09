@@ -87,12 +87,11 @@ Harnesses live adjacent to the code they verify and compile only under
 The handshake spec models the server-side state machine for client connections.
 It verifies:
 
-- Timeout behaviour fires after 5 seconds of inactivity
 - Error codes correctly map to validation failures (INVALID,
-  UNSUPPORTED_VERSION,
-  TIMEOUT)
+  UNSUPPORTED_VERSION, TIMEOUT)
+- TIMEOUT error code implies timeout condition (ticks elapsed >= threshold)
 - Ready state is only reachable with valid protocol ID and supported version
-- States progress monotonically (no regression from terminal states)
+- Ready and Error states are mutually exclusive
 
 The specification uses discrete time ticks rather than real time to abstract
 timing while preserving timeout semantics. With `MaxClients = 3` and

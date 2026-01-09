@@ -36,9 +36,21 @@ fn tlc_handshake_no_violations() {
     );
 
     // Run TLC via the Docker wrapper
-    let output = Command::new("./scripts/run-tlc.sh")
+    //
+    // Resolve the workspace root relative to this crate's manifest directory:
+    //   <workspace_root>/crates/mxd-verification -> CARGO_MANIFEST_DIR
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("Failed to determine workspace root from CARGO_MANIFEST_DIR");
+
+    // Build the path to the TLC wrapper script at <workspace_root>/scripts/run-tlc.sh
+    let script_path = workspace_root.join("scripts").join("run-tlc.sh");
+
+    let output = Command::new(&script_path)
         .arg("crates/mxd-verification/tla/MxdHandshake.tla")
-        .current_dir(env!("CARGO_MANIFEST_DIR").replace("/crates/mxd-verification", ""))
+        .current_dir(workspace_root)
         .output()
         .expect("Failed to execute run-tlc.sh");
 

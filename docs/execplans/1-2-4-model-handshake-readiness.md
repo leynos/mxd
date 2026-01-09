@@ -5,9 +5,10 @@
 
 ## Objective
 
-Model the MXD handshake state machine in TLA+ and verify invariants using the
-TLC model checker. The spec must demonstrate no violations for bounded client
-counts and document timeout, error-code, and readiness invariants.
+Model the mxd handshake state machine in Temporal Logic of Actions (TLA+) and
+verify invariants using TLC (the TLA+ model checker). The spec must demonstrate
+no violations for bounded client counts and document timeout, error-code, and
+readiness invariants.
 
 ## Acceptance criteria
 

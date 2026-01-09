@@ -13,6 +13,7 @@ ifneq ($(wildcard $(MDLINT_FALLBACK)),)
 endif
 NIXIE ?= nixie
 TLC_RUNNER ?= ./scripts/run-tlc.sh
+TLC_IMAGE ?= ghcr.io/leynos/mxd/mxd-tlc:latest
 RSTEST_TIMEOUT ?= 20
 SQLITE_FEATURES := --features sqlite
 POSTGRES_FEATURES := --no-default-features --features "postgres legacy-networking"
@@ -65,7 +66,7 @@ nixie: ## Validate Mermaid diagrams
 tlc: tlc-handshake ## Run all TLA+ model checks
 
 tlc-handshake: ## Run TLC on handshake spec
-	$(TLC_RUNNER) crates/mxd-verification/tla/MxdHandshake.tla
+	TLC_IMAGE=$(TLC_IMAGE) $(TLC_RUNNER) crates/mxd-verification/tla/MxdHandshake.tla
 
 test: test-postgres test-sqlite test-wireframe-only ## Run sqlite, postgres, and wireframe-only suites
 

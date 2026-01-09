@@ -1,9 +1,9 @@
-# Dockerfile for running TLC model checker
-# Uses the latest TLA+ tools from GitHub releases
+# Dockerfile for running the TLC model checker
+# Uses TLA+ tools pinned at v1.8.0 for reproducibility
 
 FROM docker.io/eclipse-temurin:21-jre-alpine
 
-# Download the latest tla2tools.jar
+# Download tla2tools.jar pinned at v1.8.0 (update version here when upgrading)
 RUN apk add --no-cache curl && \
     curl -fsSL -o /opt/tla2tools.jar \
       https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar && \
