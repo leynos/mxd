@@ -15,7 +15,8 @@ RUN adduser -D -u 1000 tlc
 ARG TLA_VERSION=1.7.4
 ARG TLA_SHA256=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 
-RUN apk add --no-cache curl && \
+RUN set -o pipefail && \
+    apk add --no-cache curl && \
     curl -fsSL -o /opt/tla2tools.jar \
       "https://github.com/tlaplus/tlaplus/releases/download/v${TLA_VERSION}/tla2tools.jar" && \
     echo "${TLA_SHA256}  /opt/tla2tools.jar" | sha256sum -c - && \
