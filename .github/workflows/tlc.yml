@@ -15,6 +15,9 @@ on:
       - 'scripts/run-tlc.sh'
       - '.github/workflows/tlc.yml'
 
+env:
+  TLC_IMAGE: ghcr.io/leynos/mxd/mxd-tlc:latest
+
 jobs:
   tlc:
     name: TLC Model Checking
@@ -22,8 +25,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build TLC Docker image
-        run: docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
+      - name: Pull or build TLC Docker image
+        run: |
+          if ! docker pull "$TLC_IMAGE" 2>/dev/null; then
+            echo "Image not found in registry, building locally..."
+            docker build -t "$TLC_IMAGE" -f crates/mxd-verification/Dockerfile .
+          fi
 
       - name: Run TLC handshake verification
         run: make tlc-handshake

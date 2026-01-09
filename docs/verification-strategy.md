@@ -101,11 +101,15 @@ timing while preserving timeout semantics. With `MaxClients = 3` and
 Run locally with:
 
 ```sh
-# First, build the TLC Docker image (one-time setup)
-docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
-
-# Then run TLC
 make tlc-handshake
+```
+
+The script pulls `ghcr.io/leynos/mxd/mxd-tlc:latest` automatically. For local
+development with a modified Dockerfile, build and use a local image:
+
+```sh
+docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
+TLC_IMAGE=mxd-tlc make tlc-handshake
 ```
 
 ## Deliverables and workflow
@@ -163,10 +167,7 @@ publish counterexample artefacts for triage.
 ## Running locally
 
 ```sh
-# Build TLC Docker image (one-time setup)
-docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
-
-# TLC via Makefile (uses Docker wrapper)
+# TLC via Makefile (pulls ghcr.io image automatically)
 make tlc-handshake
 
 # TLC via Docker directly

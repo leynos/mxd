@@ -12,9 +12,10 @@
 
 set -euo pipefail
 
-# Use locally-built image by default; build with:
+# Use ghcr.io image by default; for local development build with:
 #   docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
-TLC_IMAGE="${TLC_IMAGE:-localhost/mxd-tlc}"
+#   TLC_IMAGE=mxd-tlc ./scripts/run-tlc.sh ...
+TLC_IMAGE="${TLC_IMAGE:-ghcr.io/leynos/mxd/mxd-tlc:latest}"
 TLC_WORKERS="${TLC_WORKERS:-auto}"
 
 if [[ $# -lt 1 ]]; then
