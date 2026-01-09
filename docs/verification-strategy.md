@@ -98,6 +98,37 @@ The specification uses discrete time ticks rather than real time to abstract
 timing while preserving timeout semantics. With `MaxClients = 3` and
 `TimeoutTicks = 5`, TLC explores approximately 10⁶ states.
 
+For screen readers: The following state diagram illustrates the handshake state
+machine modelled in `MxdHandshake.tla`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+
+    state Idle
+    state AwaitingHandshake
+    state Validating
+    state Ready
+    state Error
+
+    Idle --> AwaitingHandshake: ClientConnect
+
+    AwaitingHandshake --> Validating: ReceiveHandshake
+    AwaitingHandshake --> Error: Timeout
+    AwaitingHandshake --> AwaitingHandshake: Tick
+
+    Validating --> Ready: Validate OK
+    Validating --> Error: Validate INVALID or UNSUPPORTED_VERSION
+
+    Ready --> Idle: ClientDisconnect
+    Error --> Idle: ClientDisconnect
+```
+
+*Figure 1: Handshake state machine. Connections begin in Idle and transition
+through AwaitingHandshake and Validating to reach either Ready (success) or
+Error (invalid protocol, unsupported version, or timeout). Terminal states
+return to Idle on disconnect.*
+
 Run locally with:
 
 ```sh
