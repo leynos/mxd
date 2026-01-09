@@ -378,7 +378,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 5.1.2. Enforce privilege codes 14–18 and 22–32 across administrative
   handlers. Acceptance: Privilege violations return protocol error codes and
   are logged with user context. Dependencies: 5.1.1.
-- [ ] 5.1.3. Provide audit logs summarising administrative actions with before/
+- [ ] 5.1.3. Provide audit logs summarizing administrative actions with before/
   after snapshots where applicable. Acceptance: Audit entries include actor,
   target, action, and rationale fields and feed compliance reporting.
   Dependencies: 5.1.2.
@@ -389,7 +389,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 5.2. Harden database backends and query tooling
 
-- [ ] 5.2.1. Finalise PostgreSQL support, ensuring migrations, Diesel builders,
+- [ ] 5.2.1. Finalize PostgreSQL support, ensuring migrations, Diesel builders,
   and tests run against PostgreSQL 14+. Acceptance: CI runs the full
   integration suite on SQLite and PostgreSQL backends with identical behaviour.
   Dependencies: 3.

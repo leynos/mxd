@@ -12,6 +12,7 @@ resolver = "2"
 
 [workspace.dependencies]
 diesel-cte-ext = { version = "0.1.0", default-features = false, features = ["async"] }
+rstest = "0.26"
 
 [package]
 name = "mxd"

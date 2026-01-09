@@ -7,7 +7,7 @@ description = "Formal verification specs and harnesses for mxd"
 [dependencies]
 
 [dev-dependencies]
-rstest = "0.26"
+rstest = { workspace = true }
 
 [lints]
 workspace = true

@@ -44,6 +44,6 @@ jobs:
         with:
           name: tlc-counterexample
           path: |
-            *.out
-            *_TTrace_*.tla
+            crates/mxd-verification/tla/*.out
+            crates/mxd-verification/tla/*_TTrace_*.tla
           if-no-files-found: ignore

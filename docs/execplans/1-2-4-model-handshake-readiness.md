@@ -185,12 +185,38 @@ installation requirements.
 
 set -euo pipefail
 
-TLC_IMAGE="${TLC_IMAGE:-ghcr.io/tlaplus/tlaplus:latest}"
-SPEC_FILE="${1:?Usage: $0 <spec.tla> [spec.cfg]}"
+# TLC_IMAGE must be set by the caller (Makefile or CI workflow)
+if [[ -z "${TLC_IMAGE:-}" ]]; then
+    echo "Error: TLC_IMAGE environment variable must be set" >&2
+    echo "Use 'make tlc-handshake' or set TLC_IMAGE explicitly" >&2
+    exit 1
+fi
+TLC_WORKERS="${TLC_WORKERS:-auto}"
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 <spec.tla> [spec.cfg]" >&2
+    exit 1
+fi
+
+SPEC_FILE="$1"
 CFG_FILE="${2:-${SPEC_FILE%.tla}.cfg}"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace "$TLC_IMAGE" \
-    tlc -config "$CFG_FILE" "$SPEC_FILE"
+# Verify files exist
+if [[ ! -f "$SPEC_FILE" ]]; then
+    echo "Error: Specification file not found: $SPEC_FILE" >&2
+    exit 1
+fi
+
+if [[ ! -f "$CFG_FILE" ]]; then
+    echo "Error: Configuration file not found: $CFG_FILE" >&2
+    exit 1
+fi
+
+exec docker run --rm \
+    -v "$(pwd):/workspace" \
+    --workdir /workspace \
+    "$TLC_IMAGE" \
+    -workers "$TLC_WORKERS" -config "$CFG_FILE" "$SPEC_FILE"
 ```
 
 **Commit:** "Add Docker wrapper for TLA+ tools"

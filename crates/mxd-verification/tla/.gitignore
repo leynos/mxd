@@ -1,4 +1,4 @@
 # TLC generated trace files
-*_TTrace_*.tla
-*_TTrace_*.bin
-*.out
+*_TTrace_*.tla  # TLA+ counterexample traces
+*_TTrace_*.bin  # Binary trace dumps
+*.out           # TLC standard output logs

@@ -50,8 +50,9 @@ fi
 
 # Run TLC in Docker
 # --rm removes the container after exit
+# -metadir /tmp uses container-local temp for state files (non-root user)
 exec docker run --rm \
-    -v "$(pwd):/workspace" \
+    -v "$(pwd):/workspace:ro" \
     --workdir /workspace \
     "$TLC_IMAGE" \
-    -workers "$TLC_WORKERS" -config "$CFG_FILE" "$SPEC_FILE"
+    -metadir /tmp -workers "$TLC_WORKERS" -config "$CFG_FILE" "$SPEC_FILE"

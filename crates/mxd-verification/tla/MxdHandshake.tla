@@ -104,22 +104,23 @@ Validate(c) ==
        ELSE state' = [state EXCEPT ![c] = Error]
     /\ UNCHANGED <<ticksElapsed, protocolValid, versionSupported>>
 
-\* Time passes for all clients awaiting handshake (but not past timeout)
+\* Time passes for all clients awaiting handshake.
+\* When ticksElapsed reaches TimeoutTicks, atomically transition to Error.
 Tick ==
     /\ \E c \in Clients : state[c] = AwaitingHandshake /\ ticksElapsed[c] < TimeoutTicks
     /\ ticksElapsed' = [c \in Clients |->
         IF state[c] = AwaitingHandshake /\ ticksElapsed[c] < TimeoutTicks
         THEN ticksElapsed[c] + 1
         ELSE ticksElapsed[c]]
-    /\ UNCHANGED <<state, errorCode, protocolValid, versionSupported>>
-
-\* Timeout fires when client has waited too long
-Timeout(c) ==
-    /\ state[c] = AwaitingHandshake
-    /\ ticksElapsed[c] >= TimeoutTicks
-    /\ state' = [state EXCEPT ![c] = Error]
-    /\ errorCode' = [errorCode EXCEPT ![c] = HANDSHAKE_ERR_TIMEOUT]
-    /\ UNCHANGED <<ticksElapsed, protocolValid, versionSupported>>
+    /\ state' = [c \in Clients |->
+        IF state[c] = AwaitingHandshake /\ ticksElapsed[c] + 1 = TimeoutTicks
+        THEN Error
+        ELSE state[c]]
+    /\ errorCode' = [c \in Clients |->
+        IF state[c] = AwaitingHandshake /\ ticksElapsed[c] + 1 = TimeoutTicks
+        THEN HANDSHAKE_ERR_TIMEOUT
+        ELSE errorCode[c]]
+    /\ UNCHANGED <<protocolValid, versionSupported>>
 
 \* Client disconnects: return to Idle (reset all state)
 ClientDisconnect(c) ==
@@ -140,7 +141,6 @@ Next ==
         ReceiveHandshake(c, valid, supported)
     \/ \E c \in Clients : Validate(c)
     \/ Tick
-    \/ \E c \in Clients : Timeout(c)
     \/ \E c \in Clients : ClientDisconnect(c)
 
 Spec == Init /\ [][Next]_vars
@@ -156,6 +156,12 @@ TypeInvariant ==
     /\ ticksElapsed \in [Clients -> 0..TimeoutTicks]
     /\ protocolValid \in [Clients -> BOOLEAN]
     /\ versionSupported \in [Clients -> BOOLEAN]
+
+\* TimeoutInvariant: clients awaiting handshake must not have reached timeout
+\* (once ticksElapsed reaches TimeoutTicks, the client transitions to Error)
+TimeoutInvariant ==
+    \A c \in Clients :
+        (state[c] = AwaitingHandshake) => (ticksElapsed[c] < TimeoutTicks)
 
 \* ErrorCodeInvariant: error codes match validation failures
 \* - INVALID only when protocol is invalid
