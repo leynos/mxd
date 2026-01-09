@@ -7,18 +7,22 @@ on:
   push:
     branches: [main]
     paths:
-      - 'crates/mxd-verification/tla/**'
-      - 'crates/mxd-verification/Dockerfile'
+      - 'crates/mxd-verification/**'
       - 'scripts/run-tlc.sh'
+      - 'Makefile'
       - '.github/workflows/tlc.yml'
   pull_request:
     paths:
-      - 'crates/mxd-verification/tla/**'
-      - 'crates/mxd-verification/Dockerfile'
+      - 'crates/mxd-verification/**'
       - 'scripts/run-tlc.sh'
+      - 'Makefile'
       - '.github/workflows/tlc.yml'
 
 env:
+  # Use :latest for bootstrap; the local build fallback ensures reproducibility
+  # when the registry image is unavailable. After first push to ghcr.io, consider
+  # pinning to a specific commit SHA tag (e.g., ghcr.io/leynos/mxd/mxd-tlc:abc1234)
+  # produced by tlc-image.yml for stricter reproducibility.
   TLC_IMAGE: ghcr.io/leynos/mxd/mxd-tlc:latest
 
 jobs:
@@ -46,4 +50,5 @@ jobs:
           path: |
             crates/mxd-verification/tla/*.out
             crates/mxd-verification/tla/*_TTrace_*.tla
+            crates/mxd-verification/tla/*_TTrace_*.bin
           if-no-files-found: ignore

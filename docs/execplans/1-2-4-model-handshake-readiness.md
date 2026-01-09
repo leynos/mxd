@@ -123,20 +123,19 @@ handshake state machine.
 - **Actions:**
   - `ClientConnect(c)` — Transition Idle → AwaitingHandshake
   - `ReceiveHandshake(c, valid, supported)` — Receive handshake bytes
-  - `Validate(c)` — Check protocol and version, set error code
-  - `Reply(c)` — Send reply, transition to Ready or Error
-  - `Tick` — Increment elapsed ticks for all waiting clients
-  - `Timeout(c)` — Fire timeout when ticks ≥ TimeoutTicks
+  - `Validate(c)` — Check protocol and version, set error code, transition to
+    Ready or Error (reply merged into this action)
+  - `Tick` — Increment elapsed ticks; atomically transition to Error on timeout
   - `ClientDisconnect(c)` — Return to Idle
 
 - **Invariants:**
   - `TypeInvariant` — All variables have correct types
-  - `TimeoutInvariant` — Clients waiting ≥ TimeoutTicks have timeout error
+  - `TimeoutInvariant` — Clients in AwaitingHandshake have ticksElapsed <
+    TimeoutTicks
   - `ErrorCodeInvariant` — Error codes match validation failures
   - `ReadinessInvariant` — Ready ⇒ errorCode = 0 ∧ valid protocol ∧ supported
     version
   - `NoReadyWithError` — Ready and Error are mutually exclusive
-  - `MonotonicProgress` — Terminal states do not regress
 
 **Commit:** "Add TLA+ handshake specification"
 
@@ -161,7 +160,6 @@ INVARIANTS
     ErrorCodeInvariant
     ReadinessInvariant
     NoReadyWithError
-    MonotonicProgress
 ```
 
 **Trade-off:** `MaxClients = 3` keeps state space tractable (~10⁶ states) while
