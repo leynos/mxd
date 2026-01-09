@@ -80,6 +80,68 @@ Use Kani when:
 Harnesses live adjacent to the code they verify and compile only under
 `#[cfg(kani)]`.
 
+## TLA+ specifications
+
+### Handshake specification (MxdHandshake.tla)
+
+The handshake spec models the server-side state machine for client connections.
+It verifies:
+
+- Error codes correctly map to validation failures (INVALID,
+  UNSUPPORTED_VERSION, TIMEOUT)
+- TIMEOUT error code implies timeout condition (ticks elapsed >= threshold)
+- Ready state is only reachable with valid protocol ID and supported version
+- Ready and Error states are mutually exclusive
+
+The specification uses discrete time ticks rather than real time to abstract
+timing while preserving timeout semantics. With `MaxClients = 3` and
+`TimeoutTicks = 5`, TLC explores approximately 10⁶ states.
+
+For screen readers: The following state diagram illustrates the handshake state
+machine modelled in `MxdHandshake.tla`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+
+    state Idle
+    state AwaitingHandshake
+    state Validating
+    state Ready
+    state Error
+
+    Idle --> AwaitingHandshake: ClientConnect
+
+    AwaitingHandshake --> Validating: ReceiveHandshake
+    AwaitingHandshake --> Error: Timeout
+    AwaitingHandshake --> AwaitingHandshake: Tick
+
+    Validating --> Ready: Validate OK
+    Validating --> Error: Validate INVALID or UNSUPPORTED_VERSION
+
+    Ready --> Idle: ClientDisconnect
+    Error --> Idle: ClientDisconnect
+```
+
+*Figure 1: Handshake state machine. Connections begin in Idle and transition
+through AwaitingHandshake and Validating to reach either Ready (success) or
+Error (invalid protocol, unsupported version, or timeout). Terminal states
+return to Idle on disconnect.*
+
+Run locally with:
+
+```sh
+make tlc-handshake
+```
+
+The script pulls `ghcr.io/leynos/mxd/mxd-tlc:latest` automatically. For local
+development with a modified Dockerfile, build and use a local image:
+
+```sh
+docker build -t mxd-tlc -f crates/mxd-verification/Dockerfile .
+TLC_IMAGE=mxd-tlc make tlc-handshake
+```
+
 ## Deliverables and workflow
 
 Each implementation step in `docs/roadmap.md` includes an explicit verification
@@ -135,13 +197,15 @@ publish counterexample artefacts for triage.
 ## Running locally
 
 ```sh
+# TLC via Makefile (pulls ghcr.io image automatically)
+make tlc-handshake
+
+# TLC via Docker directly
+./scripts/run-tlc.sh crates/mxd-verification/tla/MxdHandshake.tla
+
 # Stateright models (bounded)
 cargo test -p mxd-verification -- --nocapture
 
 # Kani harnesses (example)
 cargo kani -p mxd-domain --harness <harness_name>
-
-# TLC model checker (example)
-tlc2.TLC -config crates/mxd-verification/tla/MxdLogin.cfg \
-  crates/mxd-verification/tla/MxdLogin.tla
 ```

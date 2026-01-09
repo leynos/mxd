@@ -1,0 +1,54 @@
+name: TLA+ Verification
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/mxd-verification/**'
+      - 'scripts/run-tlc.sh'
+      - 'Makefile'
+      - '.github/workflows/tlc.yml'
+  pull_request:
+    paths:
+      - 'crates/mxd-verification/**'
+      - 'scripts/run-tlc.sh'
+      - 'Makefile'
+      - '.github/workflows/tlc.yml'
+
+env:
+  # Use :latest for bootstrap; the local build fallback ensures reproducibility
+  # when the registry image is unavailable. After first push to ghcr.io, consider
+  # pinning to a specific commit SHA tag (e.g., ghcr.io/leynos/mxd/mxd-tlc:abc1234)
+  # produced by tlc-image.yml for stricter reproducibility.
+  TLC_IMAGE: ghcr.io/leynos/mxd/mxd-tlc:latest
+
+jobs:
+  tlc:
+    name: TLC Model Checking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Pull or build TLC Docker image
+        run: |
+          if ! docker pull "$TLC_IMAGE" 2>/dev/null; then
+            echo "Image not found in registry, building locally..."
+            docker build -t "$TLC_IMAGE" -f crates/mxd-verification/Dockerfile .
+          fi
+
+      - name: Run TLC handshake verification
+        run: make tlc-handshake
+
+      - name: Upload counterexample on failure
+        if: failure()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: tlc-counterexample
+          path: |
+            crates/mxd-verification/tla/*.out
+            crates/mxd-verification/tla/*_TTrace_*.tla
+            crates/mxd-verification/tla/*_TTrace_*.bin
+          if-no-files-found: ignore

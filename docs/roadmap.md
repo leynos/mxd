@@ -61,13 +61,15 @@ and explicit dependencies. Timeframes are intentionally omitted.
   connection task, exposing it via connection state and app data, and clearing
   it on teardown, so routing can gate compatibility shims safely. Dependencies:
   1.2.1.
-- [ ] 1.2.4. Model handshake readiness in Temporal Logic of Actions (TLA+) and
+- [x] 1.2.4. Model handshake readiness in Temporal Logic of Actions (TLA+) and
   the TLC (TLA+ model checker). Acceptance: TLC runs the
   `crates/mxd-verification/tla/MxdHandshake.tla` spec with no invariant
   violations for bounded client counts and documents timeout, error-code, and
-  readiness invariants. Dependencies: Task “Persist handshake metadata
-  (sub-protocol ID, sub-version) into per-connection state for later routing
-  decisions.”
+  readiness invariants. Status: Completed on 8 January 2026 by creating the
+  `mxd-verification` crate with TLA+ handshake spec, TLC configuration, Docker
+  wrapper, Makefile targets, and CI workflow. The spec verifies TypeInvariant,
+  TimeoutInvariant, ErrorCodeInvariant, ReadinessInvariant, and NoReadyWithError.
+  Dependencies: 1.2.3.
 
 ### 1.3. Adopt wireframe transaction framing
 
@@ -96,9 +98,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   the legacy writer via `rstest-bdd` scenarios. Dependencies: 1.3.1.
 - [ ] 1.3.4. Add Kani harnesses for transaction framing invariants. Acceptance:
   Kani proves header validation, fragment sizing, and transaction ID echoing
-  for bounded payloads without panics. Dependencies: Task “Reuse existing
-  parameter encoding helpers within the new codec to prevent duplicate
-  implementations.”
+  for bounded payloads without panics. Dependencies: 1.3.3.
 
 ### 1.4. Route transactions through wireframe
 
@@ -108,10 +108,10 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`, and
   routing smoke tests exercise every handler through this port without invoking
   legacy wiring. Status: Completed on 25 December 2025 by introducing
-  `HotlineProtocol` implementing `WireframeProtocol` with lifecycle hooks and
-  connection context metadata, plus unit tests covering protocol adapter
-  registration, error routing, and transaction ID preservation. Dependencies:
-  1.3.
+  `HotlineProtocol` implementing `WireframeProtocol` with lifecycle hooks,
+  `RouteState` and `SessionState` for per-connection context, and unit tests
+  covering protocol adapter registration, error routing, and transaction ID
+  preservation. Dependencies: 1.3.
 - [x] 1.4.2. Map every implemented transaction ID to a `wireframe` route that
   delegates to the existing domain handlers. Acceptance: Login, news listing,
   and file listing integration tests run against the wireframe server without
@@ -123,11 +123,11 @@ and explicit dependencies. Timeframes are intentionally omitted.
   user, privileges, and connection flags. Acceptance: Session state survives
   across handlers and enforces privilege checks defined in `docs/protocol.md`.
   Dependencies: 1.4.2.
-- [ ] 1.4.4. Provide outbound transport and messaging traits, so that domain
-  code can respond without depending on `wireframe` types. Acceptance: Domain
-  modules interact with adapter traits defined alongside the server boundary,
-  and the crate continues compiling with no direct `wireframe` imports,
-  matching guidance in `docs/design.md`. Dependencies: 1.4.2.
+- [ ] 1.4.4. Provide outbound transport and messaging traits, so domain code can
+  respond without depending on `wireframe` types. Acceptance: Domain modules
+  interact with adapter traits defined alongside the server boundary, and the
+  crate continues compiling with no direct `wireframe` imports, matching
+  guidance in `docs/design.md`. Dependencies: 1.4.2.
 - [ ] 1.4.5. Provide a reply builder that mirrors Hotline error propagation and
   logging conventions. Acceptance: Error replies retain the original
   transaction IDs and are logged through the existing tracing infrastructure.
@@ -136,8 +136,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Acceptance: Stateright models explore login, privilege checks, and
   out-of-order delivery, and `cargo test -p mxd-verification` passes with
   invariants preventing privileged effects before authentication. Dependencies:
-  Task “Provide a reply builder that mirrors Hotline error propagation and
-  logging conventions.”
+  1.4.5.
 
 ### 1.5. Validate Hotline and SynHX compatibility
 
@@ -145,19 +144,17 @@ and explicit dependencies. Timeframes are intentionally omitted.
   or encode responses when required. Acceptance: SynHX parity tests cover
   password, message, and news bodies with the XOR toggle enabled. Dependencies:
   1.2.
-- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version, so that
-  Hotline 1.9 fallbacks remain available. Acceptance: Compatibility tests prove
-  Hotline 1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange
-  messages successfully. Dependencies: 1.2.3.
+- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version, so Hotline 1.9
+  fallbacks remain available. Acceptance: Compatibility tests prove Hotline
+  1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange messages
+  successfully. Dependencies: 1.2.3.
 - [ ] 1.5.3. Publish an internal compatibility matrix documenting supported
   clients, known deviations, and required toggles. Acceptance: The matrix lives
   in `docs/` and is referenced by release notes during QA sign-off.
   Dependencies: 1.5.2.
 - [ ] 1.5.4. Verify XOR and sub-version compatibility logic with Kani.
   Acceptance: Kani harnesses show XOR encode/decode round-trips and version
-  gating for bounded inputs without panics. Dependencies: Task “Gate protocol
-  quirks on the handshake sub-version so Hotline 1.9 fallbacks remain
-  available.”
+  gating for bounded inputs without panics. Dependencies: 1.5.2.
 
 ### 1.6. Regression and platform verification
 
@@ -173,8 +170,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Dependencies: 1.6.1.
 - [ ] 1.6.4. Add CI checks for formal verification artefacts. Acceptance: CI
   runs Stateright models, selected Kani harnesses, and TLC specs, publishing
-  counterexample traces as build artefacts. Dependencies: Task “Port unit and
-  integration tests so they start the wireframe server binary under test.”
+  counterexample traces as build artefacts. Dependencies: 1.6.1.
 
 ## 2. Session and presence parity
 
@@ -194,12 +190,11 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 2.1.4. Model session lifecycle and presence interleavings in Stateright.
   Acceptance: Stateright models cover login, agree/disagree, idle updates, and
   logout ordering across multiple clients with invariants matching
-  `docs/protocol.md`. Dependencies: Task “Track presence state, idle timers,
-  and away flags in the shared session context.”
+  `docs/protocol.md`. Dependencies: 2.1.2.
 
 ### 2.2. Implement private messaging workflows
 
-- [ ] 2.2.1. Support Send Instant Message (108) and Server Message (104),
+- [ ] 2.2.1. Support Send Instant Message (108) and Server Message (104)
   transactions including quoting and automatic responses. Acceptance: Unit
   tests validate option codes 1–4 and quoted replies defined in
   `docs/protocol.md`. Dependencies: 2.1.
@@ -213,9 +208,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Dependencies: 2.2.2.
 - [ ] 2.2.4. Specify private messaging delivery rules in TLA+ and check with
   TLC. Acceptance: TLC verifies refusal flags and privilege gating for bounded
-  sender and recipient sets with no invariant violations. Dependencies: Task
-  “Enforce privilege code 19 (Send Private Message) and refusal flags surfaced
-  by Set Client User Info (304).”
+  sender and recipient sets with no invariant violations. Dependencies: 2.2.2.
 
 ### 2.3. Deliver chat room operations
 
@@ -235,9 +228,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 2.3.4. Model chat room membership and invite flows in Stateright.
   Acceptance: Stateright explores create, invite, join, leave, and message
   ordering, proving membership invariants and correct broadcast recipients.
-  Dependencies: Task “Implement chat transactions (Create Chat 111, Invite
-  112–114, Join 115, Leave 116, Send Chat 105, Chat Message 106, Notify Chat
-  events 117–120) exactly as specified in `docs/protocol.md`.”
+  Dependencies: 2.3.2.
 
 ## 3. File services parity
 
@@ -255,9 +246,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   repositories containing thousands of nodes. Dependencies: 3.1.2.
 - [ ] 3.1.4. Add Kani harnesses for permission bitsets and drop box predicates.
   Acceptance: Kani proves access-control list (ACL) checks and drop box
-  visibility rules for bounded cases without panics. Dependencies: Task
-  “Introduce the `FileNode` schema and permission model described in
-  `docs/file-sharing-design.md`.”
+  visibility rules for bounded cases without panics. Dependencies: 3.1.1.
 
 ### 3.2. Provide file listing and metadata transactions
 
@@ -274,8 +263,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 3.2.4. Model file listing visibility in Stateright. Acceptance:
   Stateright models include admin and non-admin clients and prove drop box
   contents never leak to unauthorized users, matching
-  `docs/file-sharing-design.md`. Dependencies: Task “Implement Set File Info
-  (207) for renames, comments, and drop box flags with privilege enforcement.”
+  `docs/file-sharing-design.md`. Dependencies: 3.2.2.
 
 ### 3.3. Build transfer and resume pipelines
 
@@ -291,8 +279,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 3.3.4. Specify transfer and resume state machines in TLA+ and check with
   TLC. Acceptance: The spec models download and upload, resume tokens, and
   data-channel negotiation and proves idempotent completion for bounded
-  transfers. Dependencies: Task “Implement Upload File (203) and Upload Folder
-  (213) with multipart streaming to `object_store` backends.”
+  transfers. Dependencies: 3.3.2.
 
 ### 3.4. Deliver advanced file management features
 
@@ -308,8 +295,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   moderators. Dependencies: 3.4.1.
 - [ ] 3.4.4. Prove alias and move validation helpers with Kani. Acceptance:
   Kani harnesses prevent cycles, self-links, and invalid moves for bounded
-  folder graphs. Dependencies: Task “Implement Make File Alias (209) with
-  validation against cycles and permission inheritance.”
+  folder graphs. Dependencies: 3.4.2.
 
 ### 3.5. Support multi-backend object storage
 
@@ -325,8 +311,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 3.5.4. Model object lifecycle transitions in TLA+ and check with TLC.
   Acceptance: The spec proves expiry, archive, and delete transitions are
   monotonic and do not resurrect content for bounded objects. Dependencies:
-  Task “Implement lifecycle hooks for retention policies (expiry, archive,
-  delete) per folder.”
+  3.5.2.
 
 ## 4. News system rebuild
 
@@ -345,9 +330,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Dependencies: 4.1.1.
 - [ ] 4.1.4. Specify news threading invariants in TLA+ and check with TLC.
   Acceptance: The spec models parent, prev, next, and first-child links and
-  proves acyclic ordering for bounded graphs. Dependencies: Task “Apply the
-  schema from `docs/news-schema.md` (bundles, categories, threaded articles,
-  permissions).”
+  proves acyclic ordering for bounded graphs. Dependencies: 4.1.1.
 
 ### 4.2. Implement news browsing transactions
 
@@ -364,8 +347,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   exceeding configured TTLs. Dependencies: 4.2.2.
 - [ ] 4.2.4. Add Kani harnesses for paging and sequence calculations.
   Acceptance: Kani proves bounds checks and monotonic sequence numbers for
-  bounded result sets without panics. Dependencies: Task “Implement news search
-  and filtering (by poster, date range, headline) using Diesel query helpers.”
+  bounded result sets without panics. Dependencies: 4.2.2.
 
 ### 4.3. Implement news authoring and moderation
 
@@ -383,9 +365,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Dependencies: 4.3.1.
 - [ ] 4.3.4. Model concurrent news edits and moderation in Stateright.
   Acceptance: Stateright explores post, reply, edit, delete, and lock ordering
-  and proves linkage invariants and privilege gates. Dependencies: Task
-  “Implement Post News, Post News Reply, Edit News, and Delete News
-  transactions with full audit trails.”
+  and proves linkage invariants and privilege gates. Dependencies: 4.3.1.
 
 ## 5. Administration and database platform
 
@@ -405,8 +385,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 5.1.4. Model administrative actions and session termination in
   Stateright. Acceptance: Stateright proves kicks, bans, and broadcasts honour
   privilege gates and that termination is idempotent for bounded sessions.
-  Dependencies: Task “Enforce privilege codes 14–18 and 22–32 across
-  administrative handlers.”
+  Dependencies: 5.1.2.
 
 ### 5.2. Harden database backends and query tooling
 
@@ -423,9 +402,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   roadmap references the crate for hierarchical queries. Dependencies: 5.2.2.
 - [ ] 5.2.4. Add Kani harnesses for `diesel_cte_ext` query builders.
   Acceptance: Kani verifies recursive CTE builders handle empty inputs and
-  bounded query shapes without panics. Dependencies: Task “Expand
-  `diesel_cte_ext` to cover recursive and non-recursive CTEs required by news
-  threading and file hierarchy queries.”
+  bounded query shapes without panics. Dependencies: 5.2.2.
 
 ## 6. Quality engineering
 
