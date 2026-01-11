@@ -58,6 +58,21 @@ jobs:
           target: ${{ inputs.target }}
           bin-name: ${{ inputs.bin-name }}
 
+      - name: Stage man page for packaging
+        if: inputs.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          man_src=$(find target -path "*/build/$BIN_NAME-*/out/$BIN_NAME.1" -print -quit)
+          if [[ -z "$man_src" ]]; then
+            echo "::error::Man page not found in build output"
+            exit 1
+          fi
+          man_dest="dist/${BIN_NAME}_linux_${MAN_ARCH}"
+          mkdir -p "$man_dest"
+          cp "$man_src" "$man_dest/"
+          echo "Staged man page: $man_src -> $man_dest/$BIN_NAME.1"
+
       - name: Package Linux artefacts
         if: inputs.platform == 'linux'
         uses: >-
