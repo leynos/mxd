@@ -601,7 +601,7 @@ when total payload limits are relaxed.
 **Testing strategy.** The streaming framing is covered with `rstest` unit tests
 in `src/transaction/reader.rs` and `src/transaction/writer.rs`, plus BDD
 scenarios in `tests/features/transaction_streaming.feature` bound through
-`rstest-bdd` v0.2.0. The scenarios cover successful multi-fragment streaming,
+`rstest-bdd` v0.3.2. The scenarios cover successful multi-fragment streaming,
 limit enforcement, and header mismatch rejection.
 
 #### Transaction routing middleware (December 2025)

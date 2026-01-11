@@ -34,8 +34,8 @@ behavioural tests continue to pass without changing observable server behaviour.
 - Scope: more than 10 files touched or more than 400 lines (net) changed.
 - Interface: any public API signature change outside the framing modules.
 - Dependencies: adding the `kani` dev-dependency is in scope; any other new
-  dependency or feature flag requires escalation. If `rstest-bdd` must be
-  bumped to 0.3.2, confirm before updating.
+  dependency or feature flag requires escalation. The `rstest-bdd` bump to
+  0.3.2 is approved; further dependency changes require escalation.
 - Iterations: if tests or Kani proofs fail after two fix attempts, escalate.
 - Ambiguity: if multiple valid interpretations of the invariants would change
   the harness design, stop and ask.
@@ -53,15 +53,16 @@ behavioural tests continue to pass without changing observable server behaviour.
       Likelihood: low
       Mitigation: document bounds in `docs/design.md` and align them with
       `MAX_FRAME_DATA`/`MAX_PAYLOAD_SIZE` where feasible.
-    - Risk: Dependency version mismatch (requested `rstest-bdd` 0.3.2 vs
-      current 0.3.0).
+    - Risk: Dependency version drift between Cargo.toml and docs.
       Severity: low
       Likelihood: medium
-      Mitigation: confirm whether a bump is required and run full test gates.
+      Mitigation: update docs alongside any dependency bumps and re-run
+      format/lint gates.
 
 ## Progress
 
     - [x] (2026-01-11 00:00Z) Draft plan with current invariants and sources.
+    - [x] (2026-01-11 00:00Z) Upgrade rstest-bdd to 0.3.2 and align docs.
     - [ ] Add Kani harness modules and any supporting helpers.
     - [ ] Add/adjust `rstest` unit tests and verify BDD coverage.
     - [ ] Update design/verification docs and user guide if needed.
@@ -77,6 +78,10 @@ behavioural tests continue to pass without changing observable server behaviour.
       framing code (`src/transaction`, `src/wireframe/codec`, `src/header_util`).
       Rationale: aligns with `docs/verification-strategy.md` and keeps harness
       access to private helpers without widening visibility.
+      Date/Author: 2026-01-11, Codex
+    - Decision: Upgrade `rstest-bdd` to 0.3.2 and update documentation samples.
+      Rationale: user confirmed the version bump; docs must reflect the active
+      dependency.
       Date/Author: 2026-01-11, Codex
 
 ## Outcomes & Retrospective
@@ -241,4 +246,5 @@ Each harness should:
 
 ## Revision note
 
-Initial draft created to cover roadmap item 1.3.4 and verification requirements.
+Initial draft created to cover roadmap item 1.3.4 and verification
+requirements. Updated to reflect the approved rstest-bdd 0.3.2 upgrade.

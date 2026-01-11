@@ -128,8 +128,8 @@ fn runs_migrations(test_cluster: TestCluster) {
 }
 ```
 
-The fixture integrates with `rstest-bdd` v0.1.0-alpha4 so behaviour tests can
-remain declarative as well:
+The fixture integrates with `rstest-bdd` v0.3.2 so behaviour tests can remain
+declarative as well:
 
 ```rust,no_run
 use pg_embedded_setup_unpriv::{test_support::test_cluster, TestCluster};
