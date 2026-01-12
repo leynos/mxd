@@ -1,0 +1,430 @@
+# Introduce a shared session context (Task 1.4.3)
+
+This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
+`Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
+`Outcomes & Retrospective` must be kept up to date as work proceeds.
+
+Status: DRAFT
+
+No `PLANS.md` exists in this repository.
+
+## Purpose / Big Picture
+
+After this change, the wireframe server maintains a shared session context that
+tracks the authenticated user, their privileges, and connection flags across all
+transaction handlers. Privilege checks defined in `docs/protocol.md` are
+enforced automatically, preventing unauthorised operations before they reach
+domain logic.
+
+Observable outcome: running `make test` exercises privilege-gated transactions
+(file listing, news posting) through the wireframe server, with tests verifying
+that unauthenticated or unprivileged requests receive appropriate error codes.
+The `Session` struct in `src/handler.rs` is extended with privilege bits and
+connection flags, and handlers consult this context before processing
+privileged operations.
+
+## Constraints
+
+- Files must stay under 400 lines; every Rust module starts with a `//!`
+  module-level comment.
+- The session context must survive across handlers without relying on
+  thread-local storage for cross-handler state (Tokio work-stealing scheduler
+  incompatibility was discovered in task 1.4.2).
+- Privilege checks must match the 38 privilege bits documented in
+  `docs/protocol.md` (field 110, User Access).
+- Domain modules must remain free of `wireframe::*` imports.
+- Validation must use Makefile targets (`make check-fmt`, `make lint`,
+  `make test`, `make markdownlint`).
+- Documentation uses en-GB-oxendict spelling and wraps paragraphs at 80
+  columns.
+- No new dependencies without explicit approval.
+
+## Tolerances (Exception Triggers)
+
+- Scope: if implementation requires changes to more than 15 files or 500 net
+  lines of code, stop and escalate.
+- Interface: if public API signatures in `src/handler.rs` or
+  `src/wireframe/routes/mod.rs` must change beyond adding new fields/methods,
+  stop and escalate.
+- Dependencies: if a new external crate is required, stop and escalate.
+- Tests: if tests fail after two iterations of fixes, stop and escalate.
+- Ambiguity: if privilege semantics differ between transactions or require
+  interpretation, stop and present options with trade-offs.
+
+## Risks
+
+- Risk: Privilege bitmap interpretation may differ between Hotline 1.8.5 and
+  earlier versions.
+  Severity: medium
+  Likelihood: low
+  Mitigation: Implement privilege checks based strictly on `docs/protocol.md`
+  bit definitions; add comments referencing the protocol spec for each bit.
+
+- Risk: Session state mutation during concurrent handler execution could cause
+  races.
+  Severity: high
+  Likelihood: low
+  Mitigation: Session is already wrapped in `Arc<tokio::sync::Mutex<Session>>`
+  in `TransactionMiddleware`; maintain this pattern and document that handlers
+  must hold the lock for the duration of privilege checks and state updates.
+
+- Risk: Extending the `Session` struct may break existing tests or integration
+  code.
+  Severity: medium
+  Likelihood: medium
+  Mitigation: Add new fields with sensible defaults (`Default` impl) so existing
+  code continues to work; update tests incrementally.
+
+## Progress
+
+- [ ] Research existing session and privilege handling across the codebase.
+- [ ] Design the extended `Session` struct with privilege bits and flags.
+- [ ] Implement the `Privileges` bitflags type matching `docs/protocol.md`.
+- [ ] Extend `Session` with `privileges` and `connection_flags` fields.
+- [ ] Update login handler to populate privileges from user account data.
+- [ ] Add privilege check helpers to `Session`.
+- [ ] Integrate privilege enforcement into `GetFileNameList` handler.
+- [ ] Integrate privilege enforcement into news transaction handlers.
+- [ ] Add unit tests for privilege bitflags and session helpers.
+- [ ] Add rstest-bdd behavioural tests for privilege enforcement.
+- [ ] Add Postgres-backed tests using `pg-embedded-setup-unpriv`.
+- [ ] Update `docs/design.md` with session context architecture.
+- [ ] Update `docs/users-guide.md` if user-visible behaviour changes.
+- [ ] Mark task 1.4.3 as done in `docs/roadmap.md`.
+
+## Surprises & Discoveries
+
+(To be populated during implementation.)
+
+## Decision Log
+
+(To be populated during implementation.)
+
+## Outcomes & Retrospective
+
+(To be populated at completion.)
+
+## Context and Orientation
+
+The mxd codebase implements a Hotline-compatible server using hexagonal
+architecture. The transport layer uses the `wireframe` library with a custom
+`HotlineFrameCodec` for transaction framing.
+
+Key files and their roles:
+
+`src/handler.rs`
+: Defines `Context` (per-connection shared state: peer, pool, argon2) and
+`Session` (per-connection mutable state: currently only `user_id: Option<i32>`).
+The `handle_request` function dispatches transactions through `Command`.
+
+`src/commands.rs`
+: Contains the `Command` enum and `process()` method that executes handlers.
+Currently checks `session.user_id` for authentication in `GetFileNameList` but
+does not check specific privileges.
+
+`src/login.rs`
+: Handles login authentication. Sets `session.user_id` on successful login but
+does not populate privileges.
+
+`src/wireframe/routes/mod.rs`
+: Contains `TransactionMiddleware` that wraps `Session` in
+`Arc<tokio::sync::Mutex<Session>>` and passes it to `process_transaction_bytes`.
+This ensures session state survives across the handler pipeline.
+
+`src/wireframe/connection.rs`
+: Manages `ConnectionContext` with handshake metadata and peer address using
+thread-local storage for the current Tokio task.
+
+`src/models.rs`
+: Defines `User` struct with `id`, `username`, `password`. Does not currently
+store privilege bits (privileges would need to be added to the schema or
+hard-coded for initial implementation).
+
+`docs/protocol.md`
+: Documents the Hotline protocol including the 38 privilege bits in field 110
+(User Access). Key privilege bits for this task:
+- Bit 2: Download File
+- Bit 20: News Read Article
+- Bit 21: News Post Article
+
+The current `Session` struct:
+
+    pub struct Session {
+        pub user_id: Option<i32>,
+    }
+
+This task extends it to:
+
+    pub struct Session {
+        pub user_id: Option<i32>,
+        pub privileges: Privileges,
+        pub connection_flags: ConnectionFlags,
+    }
+
+Where `Privileges` is a bitflags type matching the protocol specification and
+`ConnectionFlags` tracks connection-level state (e.g., refused messages, refused
+chat invites, automatic response enabled).
+
+## Plan of Work
+
+The implementation proceeds in four stages:
+
+### Stage A: Design privilege and session types
+
+1. Create `src/privileges.rs` with a `Privileges` bitflags type covering all 38
+   bits from `docs/protocol.md` field 110. Include constants for each privilege
+   with documentation referencing the protocol spec.
+
+2. Create `src/connection_flags.rs` with a `ConnectionFlags` bitflags type for
+   the user preference flags (refuse private messages, refuse chat invites,
+   automatic response).
+
+3. Extend `Session` in `src/handler.rs` with `privileges: Privileges` and
+   `connection_flags: ConnectionFlags` fields, defaulting to empty/none.
+
+4. Add helper methods to `Session`:
+   - `is_authenticated() -> bool`
+   - `has_privilege(Privileges) -> bool`
+   - `require_privilege(Privileges) -> Result<(), PrivilegeError>`
+
+### Stage B: Populate session on login
+
+1. Update `handle_login` in `src/login.rs` to set default privileges after
+   successful authentication. Initially, all authenticated users receive a
+   baseline set of privileges (matching guest/default account behaviour).
+
+2. Extend the `users` table schema (via migration) to store privilege bits, or
+   document that privileges are currently hard-coded pending user account
+   management (task 5.1).
+
+3. Update `handle_login` to read privileges from the database if stored, or
+   apply defaults if not.
+
+### Stage C: Enforce privileges in handlers
+
+1. Update `GetFileNameList` handler in `src/commands.rs` to check
+   `session.has_privilege(Privileges::DOWNLOAD_FILE)` before processing.
+   Return error code 1 (authentication required) if not authenticated, or a
+   new error code for insufficient privileges.
+
+2. Update news handlers to check appropriate privileges:
+   - `GetNewsCategoryNameList`: `NEWS_READ_ARTICLE`
+   - `GetNewsArticleNameList`: `NEWS_READ_ARTICLE`
+   - `GetNewsArticleData`: `NEWS_READ_ARTICLE`
+   - `PostNewsArticle`: `NEWS_POST_ARTICLE`
+
+3. Define privilege error codes aligned with Hotline protocol conventions.
+
+### Stage D: Testing and documentation
+
+1. Add unit tests in `src/privileges.rs` and `src/handler.rs`:
+   - Privilege bitflags construction and checking
+   - Session helper methods
+   - Default privilege assignment
+
+2. Add rstest-bdd behavioural tests in `tests/features/session_privileges.feature`:
+   - Authenticated user can list files
+   - Unauthenticated user receives error for file listing
+   - User without download privilege receives error
+   - User with news read privilege can list articles
+   - User without news post privilege cannot post articles
+
+3. Add Postgres-backed tests using `PostgresTestDb` fixture from
+   `pg-embedded-setup-unpriv`.
+
+4. Update `docs/design.md` with session context architecture diagram and
+   privilege enforcement description.
+
+5. Update `docs/users-guide.md` if privilege behaviour affects user experience.
+
+6. Mark task 1.4.3 as done in `docs/roadmap.md`.
+
+## Concrete Steps
+
+All commands run from the repository root `/home/ariana/project`.
+
+1. Create the privileges module:
+
+       # Create src/privileges.rs with Privileges bitflags
+
+2. Create the connection flags module:
+
+       # Create src/connection_flags.rs with ConnectionFlags bitflags
+
+3. Update lib.rs to expose new modules:
+
+       # Add pub mod privileges; and pub mod connection_flags;
+
+4. Extend Session struct:
+
+       # Edit src/handler.rs to add privileges and connection_flags fields
+
+5. Update login handler:
+
+       # Edit src/login.rs to populate session.privileges
+
+6. Add privilege checks to handlers:
+
+       # Edit src/commands.rs to check privileges before processing
+
+7. Verify compilation:
+
+       cargo build --features wireframe
+
+   Expected: Build succeeds with no errors.
+
+8. Run the test suite:
+
+       set -o pipefail
+       make test | tee /tmp/mxd-make-test.log
+
+   Expected: All existing tests pass. New privilege tests are added and pass.
+
+9. Run linting and formatting checks:
+
+       set -o pipefail
+       make check-fmt | tee /tmp/mxd-make-check-fmt.log
+       make lint | tee /tmp/mxd-make-lint.log
+
+   Expected: No warnings or errors.
+
+10. Run Markdown validation:
+
+        set -o pipefail
+        make markdownlint | tee /tmp/mxd-make-markdownlint.log
+
+    Expected: All documentation passes linting.
+
+## Validation and Acceptance
+
+Acceptance criteria from the roadmap:
+
+> Session state survives across handlers and enforces privilege checks defined
+> in `docs/protocol.md`.
+
+Quality criteria (what "done" means):
+
+- Tests: `make test` passes with new tests covering:
+  - Privilege bitflags construction (38 bits match protocol spec)
+  - Session helper methods (`is_authenticated`, `has_privilege`)
+  - Privilege enforcement in `GetFileNameList` handler
+  - Privilege enforcement in news handlers
+  - Behavioural scenarios for authenticated/unauthenticated access
+
+- Lint/typecheck: `make check-fmt` and `make lint` pass without warnings.
+
+- Documentation: `docs/design.md` updated with session context architecture.
+
+Quality method (how we check):
+
+1. `make test` exercises privilege enforcement paths.
+2. Manual inspection of handler code confirms privilege checks precede
+   processing.
+3. Code review verifies privilege bit definitions match `docs/protocol.md`.
+
+Specific test scenarios:
+
+1. **Unauthenticated file listing**: Send `GetFileNameList` without prior login.
+   Expected: Error response with code 1.
+
+2. **Authenticated file listing**: Login, then send `GetFileNameList`.
+   Expected: Success response with file list.
+
+3. **News read without privilege**: Login with user lacking `NEWS_READ_ARTICLE`,
+   send `GetNewsArticleData`.
+   Expected: Error response with privilege error code.
+
+4. **News post without privilege**: Login with user lacking `NEWS_POST_ARTICLE`,
+   send `PostNewsArticle`.
+   Expected: Error response with privilege error code.
+
+## Idempotence and Recovery
+
+All steps are safe to repeat. If a step fails partway through, re-run the
+failing phase after correcting the error. The migration adding privilege
+columns (if implemented) uses Diesel's idempotent migration system.
+
+Commits should be atomic and focused. If a commit introduces a regression, it
+can be reverted independently.
+
+## Artifacts and Notes
+
+Example privilege bitflags definition (based on `docs/protocol.md`):
+
+    bitflags::bitflags! {
+        /// User access privilege bits from Hotline protocol field 110.
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+        pub struct Privileges: u64 {
+            /// Bit 0: Delete File
+            const DELETE_FILE = 1 << 0;
+            /// Bit 1: Upload File
+            const UPLOAD_FILE = 1 << 1;
+            /// Bit 2: Download File
+            const DOWNLOAD_FILE = 1 << 2;
+            // ... remaining 35 bits
+            /// Bit 20: News Read Article
+            const NEWS_READ_ARTICLE = 1 << 20;
+            /// Bit 21: News Post Article
+            const NEWS_POST_ARTICLE = 1 << 21;
+            // ...
+        }
+    }
+
+Example session helper:
+
+    impl Session {
+        pub fn has_privilege(&self, priv: Privileges) -> bool {
+            self.privileges.contains(priv)
+        }
+
+        pub fn require_privilege(
+            &self,
+            priv: Privileges,
+        ) -> Result<(), PrivilegeError> {
+            if self.user_id.is_none() {
+                return Err(PrivilegeError::NotAuthenticated);
+            }
+            if !self.has_privilege(priv) {
+                return Err(PrivilegeError::InsufficientPrivileges);
+            }
+            Ok(())
+        }
+    }
+
+Example privilege enforcement in handler:
+
+    Self::GetFileNameList { header, .. } => {
+        session.require_privilege(Privileges::DOWNLOAD_FILE)?;
+        // ... existing implementation
+    }
+
+## Interfaces and Dependencies
+
+In `src/privileges.rs`, define:
+
+    pub struct Privileges: u64 { /* bitflags */ }
+
+In `src/connection_flags.rs`, define:
+
+    pub struct ConnectionFlags: u8 { /* bitflags */ }
+
+In `src/handler.rs`, extend:
+
+    pub struct Session {
+        pub user_id: Option<i32>,
+        pub privileges: Privileges,
+        pub connection_flags: ConnectionFlags,
+    }
+
+    impl Session {
+        pub fn is_authenticated(&self) -> bool;
+        pub fn has_privilege(&self, p: Privileges) -> bool;
+        pub fn require_privilege(&self, p: Privileges) -> Result<(), PrivilegeError>;
+    }
+
+Dependencies:
+
+- `bitflags` crate (already in dependencies via transitive use)
+- `rstest` v0.26 (already in dev-dependencies)
+- `rstest-bdd` v0.3.2 (already in dev-dependencies)
+- `pg-embedded-setup-unpriv` (already in dev-dependencies)
