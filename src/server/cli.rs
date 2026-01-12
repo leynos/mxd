@@ -1,95 +1,18 @@
 //! Command-line interface definitions for the MXD server.
 //!
-//! Keeping these types in the library allows every binary (legacy TCP and the
-//! forthcoming wireframe adapter) to expose an identical configuration surface.
+//! This module re-exports CLI types from the `cli-defs` crate, which provides
+//! stable definitions shared between build-time (man page generation) and
+//! runtime consumers.
 
-#![expect(
-    non_snake_case,
-    reason = "Clap/OrthoConfig derive macros generate helper modules with uppercase names"
-)]
-#![expect(
-    missing_docs,
-    reason = "OrthoConfig and Clap derive macros generate items that cannot be documented"
-)]
-
-use clap::{Args, Parser, Subcommand};
-use ortho_config::OrthoConfig;
-use serde::{Deserialize, Serialize};
-
-// ────────────────────────────────────────────────────────────────────────────
-// WORKAROUND: Literal defaults for build.rs compatibility
-//
-// These constants duplicate `argon2::Params::DEFAULT_*` values so that
-// `build.rs` can include this module directly for man page generation
-// without adding `argon2` as a build-dependency.
-//
-// This workaround can be removed once ortho-config gains native man page
-// generation support, allowing the CLI to be defined with full runtime
-// dependencies while still producing man pages at build time.
-//
-// Values as of argon2 0.5.x:
-//   DEFAULT_M_COST = 19_456
-//   DEFAULT_T_COST = 2
-//   DEFAULT_P_COST = 1
-// ────────────────────────────────────────────────────────────────────────────
-const DEFAULT_ARGON2_M_COST: u32 = 19_456;
-const DEFAULT_ARGON2_T_COST: u32 = 2;
-const DEFAULT_ARGON2_P_COST: u32 = 1;
-
-/// Arguments for the `create-user` administrative subcommand.
-#[derive(Parser, OrthoConfig, Deserialize, Serialize, Default, Debug, Clone)]
-#[ortho_config(prefix = "MXD_")]
-pub struct CreateUserArgs {
-    /// Username for the new account.
-    pub username: Option<String>,
-    /// Password for the new account.
-    pub password: Option<String>,
-}
-
-/// CLI subcommands exposed by `mxd`.
-#[derive(Subcommand, Deserialize, Serialize, Debug, Clone)]
-pub enum Commands {
-    /// Create a new user account.
-    #[command(name = "create-user")]
-    CreateUser(CreateUserArgs),
-}
-
-/// Runtime configuration shared by all binaries.
-#[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
-#[ortho_config(prefix = "MXD_")]
-pub struct AppConfig {
-    /// Server bind address.
-    #[ortho_config(default = "0.0.0.0:5500".to_owned())]
-    #[arg(long, default_value_t = String::from("0.0.0.0:5500"))]
-    pub bind: String,
-    /// Database connection string or path.
-    #[ortho_config(default = "mxd.db".to_owned())]
-    #[arg(long, default_value_t = String::from("mxd.db"))]
-    pub database: String,
-    /// Argon2 memory cost parameter.
-    #[ortho_config(default = DEFAULT_ARGON2_M_COST)]
-    #[arg(long, default_value_t = DEFAULT_ARGON2_M_COST)]
-    pub argon2_m_cost: u32,
-    /// Argon2 time cost parameter.
-    #[ortho_config(default = DEFAULT_ARGON2_T_COST)]
-    #[arg(long, default_value_t = DEFAULT_ARGON2_T_COST)]
-    pub argon2_t_cost: u32,
-    /// Argon2 parallelism cost parameter.
-    #[ortho_config(default = DEFAULT_ARGON2_P_COST)]
-    #[arg(long, default_value_t = DEFAULT_ARGON2_P_COST)]
-    pub argon2_p_cost: u32,
-}
-
-/// Top-level CLI entry point consumed by binaries.
-#[derive(Parser, Deserialize, Serialize, Debug, Clone)]
-pub struct Cli {
-    /// Application configuration.
-    #[command(flatten)]
-    pub config: AppConfig,
-    /// Optional subcommand.
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-}
+pub use cli_defs::{
+    AppConfig,
+    Cli,
+    Commands,
+    CreateUserArgs,
+    DEFAULT_ARGON2_M_COST,
+    DEFAULT_ARGON2_P_COST,
+    DEFAULT_ARGON2_T_COST,
+};
 
 #[cfg(test)]
 mod tests {

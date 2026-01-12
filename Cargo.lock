@@ -529,6 +529,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cli-defs"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "clap",
+ "figment",
+ "figment-json5",
+ "ortho_config 0.3.0",
+ "rstest 0.26.1",
+ "serde",
+ "serde_yaml",
+ "toml 0.8.23",
+ "uncased",
+ "xdg",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2224,6 +2241,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_mangen",
+ "cli-defs",
  "diesel",
  "diesel-async",
  "diesel-cte-ext",

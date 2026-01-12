@@ -1,6 +1,7 @@
 [workspace]
 members = [
     ".",
+    "cli-defs",
     "crates/mxd-verification",
     "fuzz",
     "test-util",
@@ -70,6 +71,7 @@ wireframe = "0.2.0"
 figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"
+cli-defs = { path = "cli-defs" }
 anyhow = "1"
 async-trait = "0.1"
 bincode = "2.0.1"
@@ -128,12 +130,7 @@ kani = "0.0.1"
 [build-dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_mangen = "0.2"
-figment = { version = "0.10", features = ["env", "toml"] }
-ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" }
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-uncased = "0.9"
-xdg = "3"
+cli-defs = { path = "cli-defs" }
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
