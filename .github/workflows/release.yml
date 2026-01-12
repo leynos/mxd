@@ -44,7 +44,7 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   metadata:
@@ -113,6 +113,7 @@ jobs:
       artifact-name: ${{ needs.metadata.outputs.repo_name }}-${{ matrix.artifact }}
       should-upload-workflow-artifacts: ${{ fromJSON(needs.metadata.outputs.should_upload_workflow_artifacts) }}
       package-arch: ${{ matrix.package_arch }}
+      description: Marrakesh Express daemon
 
   release:
     if: needs.metadata.outputs.should_publish == 'true'

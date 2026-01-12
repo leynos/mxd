@@ -36,6 +36,10 @@ name: Build and Package
         description: Linux package architecture identifier (e.g. amd64)
         required: true
         type: string
+      description:
+        description: Package description for Linux packages
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -86,7 +90,7 @@ jobs:
           formats: deb,rpm
           man-paths: dist/${{ inputs.bin-name }}_linux_${{ env.MAN_ARCH }}/${{ inputs.bin-name }}.1
           outdir: dist
-          description: Marrakesh Express daemon
+          description: ${{ inputs.description }}
 
       - name: Prune packaging metadata
         if: inputs.platform == 'linux'
