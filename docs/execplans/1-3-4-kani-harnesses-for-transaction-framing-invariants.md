@@ -187,23 +187,22 @@ draft-only; implementation requires explicit approval.
    - `src/transaction/reader/mod.rs` (or a sibling `kani.rs`) for header
      validation invariants.
    - `src/wireframe/codec/mod.rs` for fragment sizing during encode.
-
-- `src/header_util.rs` for the reply ID echoing and panic freedom with bounded
+   - `src/header_util.rs` for the reply ID echoing and panic freedom with
      payload lengths.
 
-1. Update documentation:
+4. Update documentation:
 
    - `docs/design.md` for verification decisions and bounds.
    - `docs/verification-strategy.md` for harness names/run commands.
    - `docs/users-guide.md` only if behaviour changed.
 
-2. Run documentation formatting and linting (use `tee` for logs):
+5. Run documentation formatting and linting (use `tee` for logs):
 
        make fmt 2>&1 | tee /tmp/mxd-fmt.log
        make markdownlint 2>&1 | tee /tmp/mxd-markdownlint.log
        make nixie 2>&1 | tee /tmp/mxd-nixie.log
 
-3. Run Rust formatting and tests (use `pg_embedded_setup_unpriv` for
+6. Run Rust formatting and tests (use `pg_embedded_setup_unpriv` for
    PostgreSQL):
 
        cargo install --locked pg-embed-setup-unpriv
@@ -212,11 +211,11 @@ draft-only; implementation requires explicit approval.
        make lint 2>&1 | tee /tmp/mxd-lint.log
        make test 2>&1 | tee /tmp/mxd-test.log
 
-4. Run Kani proofs (confirm harness names first):
+7. Run Kani proofs (confirm harness names first):
 
        cargo kani -p mxd --harness <harness_name> 2>&1 | tee /tmp/mxd-kani.log
 
-5. Mark roadmap item 1.3.4 as done in `docs/roadmap.md` once all checks pass.
+8. Mark roadmap item 1.3.4 as done in `docs/roadmap.md` once all checks pass.
 
 ## Validation and Acceptance
 
