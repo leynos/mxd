@@ -135,6 +135,8 @@ jobs:
               --draft \
               --verify-tag \
               --notes "Automated release for ${{ github.ref_name }}"
+        # GH_TOKEN is preferred by the gh CLI; GITHUB_TOKEN is used by other
+        # GitHub Actions tooling. Both are set to ensure compatibility.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -158,7 +160,9 @@ jobs:
 
       - name: Check asset upload errors
         if: steps.upload_assets.outputs.upload-error == 'true'
+        env:
+          ERROR_MESSAGE: ${{ steps.upload_assets.outputs.error-message }}
         run: |
           echo "Error uploading release assets:"
-          printf '%s\n' "${{ steps.upload_assets.outputs.error-message }}"
+          printf '%s\n' "$ERROR_MESSAGE"
           exit 1

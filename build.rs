@@ -9,9 +9,8 @@
 // differently. These are expected and safe to ignore here.
 //
 // NOTE: `#[allow]` is used here instead of `#[expect]` because:
-// - These lints may or may not fire depending on the build context (release vs
-//   debug, clippy vs rustc), making `#[expect]` inappropriate as it would fail
-//   when the lint doesn't fire.
+// - These lints may or may not fire depending on the build context (release vs debug, clippy vs
+//   rustc), making `#[expect]` inappropriate as it would fail when the lint doesn't fire.
 // - `unfulfilled_lint_expectations` cannot be expected (it's self-referential).
 #![allow(dead_code, reason = "CLI types unused in build script context")]
 #![allow(unused_imports, reason = "CLI module imports unused in build script")]
