@@ -17,7 +17,7 @@ use super::helpers::{
     find_string,
     runtime,
 };
-use crate::{field_id::FieldId, transaction_type::TransactionType};
+use crate::{field_id::FieldId, privileges::Privileges, transaction_type::TransactionType};
 
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
@@ -151,7 +151,7 @@ fn process_transaction_bytes_post_news_article_success() -> Result<(), AnyError>
     };
     let mut ctx = RouteTestContext::new(test_db.pool())?;
     // Authenticate with default user privileges (includes NEWS_POST_ARTICLE)
-    ctx.authenticate(1);
+    ctx.authenticate_with_privileges(1, Privileges::default_user());
 
     let flags = 0i32.to_be_bytes();
     let reply = rt.block_on(ctx.send(

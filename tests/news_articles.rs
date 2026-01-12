@@ -20,7 +20,7 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{AnyError, handshake, login, setup_news_db, with_db};
+use test_util::{AnyError, DatabaseUrl, handshake, login, setup_news_db, with_db};
 mod common;
 
 type ParamList = Vec<(FieldId, Vec<u8>)>;
@@ -114,22 +114,67 @@ fn verify_article_titles(db_url: &str, expected: &[&str]) -> Result<(), AnyError
     Ok(())
 }
 
+async fn create_test_user_in_db(conn: &mut DbConnection) -> Result<(), AnyError> {
+    use mxd::{db::create_user, models::NewUser, users::hash_password};
+
+    let argon2 = argon2::Argon2::default();
+    let hashed = hash_password(&argon2, "secret")?;
+    let new_user = NewUser {
+        username: "alice",
+        password: &hashed,
+    };
+    create_user(conn, &new_user).await?;
+    Ok(())
+}
+
+fn setup_news_with_article(db: DatabaseUrl) -> Result<(), AnyError> {
+    with_db(db, |conn| {
+        Box::pin(async move {
+            use chrono::{DateTime, Utc};
+            use mxd::{models::NewArticle, schema::news_articles::dsl as a};
+
+            create_test_user_in_db(conn).await?;
+            create_category(
+                conn,
+                &NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
+                .ok_or_else(|| anyhow::anyhow!("news fixture timestamp out of range"))?
+                .naive_utc();
+            diesel::insert_into(a::news_articles)
+                .values(&NewArticle {
+                    category_id: 1,
+                    parent_article_id: None,
+                    prev_article_id: None,
+                    next_article_id: None,
+                    first_child_article_id: None,
+                    title: "First",
+                    poster: Some("alice"),
+                    posted_at: posted,
+                    flags: 0,
+                    data_flavor: Some("text/plain"),
+                    data: Some("hello"),
+                })
+                .execute(conn)
+                .await?;
+            Ok(())
+        })
+    })?;
+    Ok(())
+}
+
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), AnyError> {
-    use mxd::{db::create_user, models::NewUser, users::hash_password};
-
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 // Create test user for authentication
-                let argon2 = argon2::Argon2::default();
-                let hashed = hash_password(&argon2, "secret")?;
-                let new_user = NewUser {
-                    username: "alice",
-                    password: &hashed,
-                };
-                create_user(conn, &new_user).await?;
+                create_test_user_in_db(conn).await?;
 
                 create_category(
                     conn,
@@ -194,55 +239,7 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn get_news_article_data() -> Result<(), AnyError> {
-    use chrono::{DateTime, Utc};
-    use mxd::{db::create_user, models::NewArticle, models::NewUser, users::hash_password};
-
-    let Some(server) = common::start_server_or_skip(|db| {
-        with_db(db, |conn| {
-            Box::pin(async move {
-                use mxd::schema::news_articles::dsl as a;
-
-                // Create test user for authentication
-                let argon2 = argon2::Argon2::default();
-                let hashed = hash_password(&argon2, "secret")?;
-                let new_user = NewUser {
-                    username: "alice",
-                    password: &hashed,
-                };
-                create_user(conn, &new_user).await?;
-
-                create_category(
-                    conn,
-                    &NewCategory {
-                        name: "General",
-                        bundle_id: None,
-                    },
-                )
-                .await?;
-                let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-                    .expect("valid timestamp")
-                    .naive_utc();
-                diesel::insert_into(a::news_articles)
-                    .values(&NewArticle {
-                        category_id: 1,
-                        parent_article_id: None,
-                        prev_article_id: None,
-                        next_article_id: None,
-                        first_child_article_id: None,
-                        title: "First",
-                        poster: Some("alice"),
-                        posted_at: posted,
-                        flags: 0,
-                        data_flavor: Some("text/plain"),
-                        data: Some("hello"),
-                    })
-                    .execute(conn)
-                    .await?;
-                Ok(())
-            })
-        })
-    })?
-    else {
+    let Some(server) = common::start_server_or_skip(setup_news_with_article)? else {
         return Ok(());
     };
 
@@ -275,19 +272,11 @@ fn get_news_article_data() -> Result<(), AnyError> {
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn post_news_article_root() -> Result<(), AnyError> {
-    use mxd::{db::create_user, models::NewUser, users::hash_password};
-
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 // Create test user for authentication
-                let argon2 = argon2::Argon2::default();
-                let hashed = hash_password(&argon2, "secret")?;
-                let new_user = NewUser {
-                    username: "alice",
-                    password: &hashed,
-                };
-                create_user(conn, &new_user).await?;
+                create_test_user_in_db(conn).await?;
 
                 create_category(
                     conn,

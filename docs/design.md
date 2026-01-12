@@ -671,7 +671,8 @@ executing. The `Session` struct provides helper methods:
 - `is_authenticated()` – Returns `true` if the session has a user ID.
 - `has_privilege(Privileges)` – Checks if the session has a specific privilege.
 - `require_privilege(Privileges)` – Returns `Ok(())` or a `PrivilegeError`.
-- `require_authenticated()` – Returns `Ok(())` or `PrivilegeError::NotAuthenticated`.
+- `require_authenticated()` – Returns `Ok(())` or
+  `PrivilegeError::NotAuthenticated`.
 
 When a privilege check fails, the middleware returns an error reply with the
 appropriate error code:

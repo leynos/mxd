@@ -265,55 +265,21 @@ impl Command {
                 username,
                 password,
                 header,
-            } => {
-                let req = LoginRequest {
-                    username,
-                    password,
-                    header,
-                };
-                handle_login(peer, session, pool, req).await
-            }
+            } => Self::process_login(peer, pool, session, username, password, header).await,
             Self::GetFileNameList { header, .. } => {
-                if let Err(e) = session.require_privilege(Privileges::DOWNLOAD_FILE) {
-                    return Ok(privilege_error_reply(&header, e));
-                }
-                let user_id = session
-                    .user_id
-                    .expect("require_privilege guarantees authentication");
-                let mut conn = pool.get().await?;
-                let files = crate::db::list_files_for_user(&mut conn, user_id).await?;
-                let params: Vec<(FieldId, &[u8])> = files
-                    .iter()
-                    .map(|f| (FieldId::FileName, f.name.as_bytes()))
-                    .collect();
-                let payload = encode_params(&params)?;
-                Ok(Transaction {
-                    header: reply_header(&header, 0, payload.len()),
-                    payload,
-                })
+                Self::process_get_file_name_list(pool, session, header).await
             }
             Self::GetNewsCategoryNameList { header, path } => {
-                if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
-                    return Ok(privilege_error_reply(&header, e));
-                }
-                handle_category_list(pool, header, path).await
+                Self::process_get_news_category_name_list(pool, session, header, path).await
             }
             Self::GetNewsArticleNameList { header, path } => {
-                if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
-                    return Ok(privilege_error_reply(&header, e));
-                }
-                handle_article_titles(pool, header, path).await
+                Self::process_get_news_article_name_list(pool, session, header, path).await
             }
             Self::GetNewsArticleData {
                 header,
                 path,
                 article_id,
-            } => {
-                if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
-                    return Ok(privilege_error_reply(&header, e));
-                }
-                handle_article_data(pool, header, path, article_id).await
-            }
+            } => Self::process_get_news_article_data(pool, session, header, path, article_id).await,
             Self::PostNewsArticle {
                 header,
                 path,
@@ -322,24 +288,156 @@ impl Command {
                 data_flavor,
                 data,
             } => {
-                if let Err(e) = session.require_privilege(Privileges::NEWS_POST_ARTICLE) {
-                    return Ok(privilege_error_reply(&header, e));
-                }
-                let req = PostArticleRequest {
+                Self::process_post_news_article(
+                    pool,
+                    session,
+                    header,
                     path,
                     title,
                     flags,
                     data_flavor,
                     data,
-                };
-                handle_post_article(pool, header, req).await
+                )
+                .await
             }
-            Self::InvalidPayload { header } => Ok(Transaction {
-                header: reply_header(&header, ERR_INVALID_PAYLOAD, 0),
-                payload: Vec::new(),
-            }),
-            Self::Unknown { header } => Ok(handle_unknown(peer, &header)),
+            Self::InvalidPayload { header } => Ok(Self::process_invalid_payload(header)),
+            Self::Unknown { header } => Ok(Self::process_unknown(peer, header)),
         }
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "command fields map directly to handler arguments"
+    )]
+    async fn process_login(
+        peer: SocketAddr,
+        pool: DbPool,
+        session: &mut crate::handler::Session,
+        username: String,
+        password: String,
+        header: FrameHeader,
+    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let req = LoginRequest {
+            username,
+            password,
+            header,
+        };
+        handle_login(peer, session, pool, req).await
+    }
+
+    #[expect(
+        clippy::expect_used,
+        reason = "require_privilege guarantees authentication"
+    )]
+    async fn process_get_file_name_list(
+        pool: DbPool,
+        session: &mut crate::handler::Session,
+        header: FrameHeader,
+    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        if let Err(e) = session.require_privilege(Privileges::DOWNLOAD_FILE) {
+            return Ok(privilege_error_reply(&header, e));
+        }
+        let user_id = session
+            .user_id
+            .expect("require_privilege guarantees authentication");
+        let mut conn = pool.get().await?;
+        let files = crate::db::list_files_for_user(&mut conn, user_id).await?;
+        let params: Vec<(FieldId, &[u8])> = files
+            .iter()
+            .map(|f| (FieldId::FileName, f.name.as_bytes()))
+            .collect();
+        let payload = encode_params(&params)?;
+        Ok(Transaction {
+            header: reply_header(&header, 0, payload.len()),
+            payload,
+        })
+    }
+
+    async fn process_get_news_category_name_list(
+        pool: DbPool,
+        session: &mut crate::handler::Session,
+        header: FrameHeader,
+        path: Option<String>,
+    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
+            return Ok(privilege_error_reply(&header, e));
+        }
+        handle_category_list(pool, header, path).await
+    }
+
+    async fn process_get_news_article_name_list(
+        pool: DbPool,
+        session: &mut crate::handler::Session,
+        header: FrameHeader,
+        path: String,
+    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
+            return Ok(privilege_error_reply(&header, e));
+        }
+        handle_article_titles(pool, header, path).await
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "command fields map directly to handler arguments"
+    )]
+    async fn process_get_news_article_data(
+        pool: DbPool,
+        session: &mut crate::handler::Session,
+        header: FrameHeader,
+        path: String,
+        article_id: i32,
+    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
+            return Ok(privilege_error_reply(&header, e));
+        }
+        handle_article_data(pool, header, path, article_id).await
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "command fields map directly to handler arguments"
+    )]
+    async fn process_post_news_article(
+        pool: DbPool,
+        session: &mut crate::handler::Session,
+        header: FrameHeader,
+        path: String,
+        title: String,
+        flags: i32,
+        data_flavor: String,
+        data: String,
+    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        if let Err(e) = session.require_privilege(Privileges::NEWS_POST_ARTICLE) {
+            return Ok(privilege_error_reply(&header, e));
+        }
+        let req = PostArticleRequest {
+            path,
+            title,
+            flags,
+            data_flavor,
+            data,
+        };
+        handle_post_article(pool, header, req).await
+    }
+
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "signature required by Command.process dispatch"
+    )]
+    fn process_invalid_payload(header: FrameHeader) -> Transaction {
+        Transaction {
+            header: reply_header(&header, ERR_INVALID_PAYLOAD, 0),
+            payload: Vec::new(),
+        }
+    }
+
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "signature required by Command.process dispatch"
+    )]
+    fn process_unknown(peer: SocketAddr, header: FrameHeader) -> Transaction {
+        handle_unknown(peer, &header)
     }
 }
 

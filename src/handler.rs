@@ -41,7 +41,7 @@ pub struct Session {
     pub privileges: Privileges,
     /// Connection-level preference flags (refuse messages, auto-response, etc.).
     ///
-    /// Set during login/agreement and can be updated via SetClientUserInfo.
+    /// Set during login/agreement and can be updated via `SetClientUserInfo`.
     pub connection_flags: ConnectionFlags,
 }
 
@@ -68,9 +68,7 @@ impl Error for PrivilegeError {}
 impl Session {
     /// Check whether the session is authenticated.
     #[must_use]
-    pub const fn is_authenticated(&self) -> bool {
-        self.user_id.is_some()
-    }
+    pub const fn is_authenticated(&self) -> bool { self.user_id.is_some() }
 
     /// Check whether the session has a specific privilege.
     ///

@@ -2,7 +2,7 @@
 //!
 //! These flags represent user preferences sent during login (field 113, Options)
 //! that control how the user interacts with other users on the server. They are
-//! stored per-session and can be updated via SetClientUserInfo (transaction 304).
+//! stored per-session and can be updated via `SetClientUserInfo` (transaction 304).
 
 use bitflags::bitflags;
 
@@ -11,7 +11,7 @@ bitflags! {
     ///
     /// These flags control how the user receives messages and chat invitations.
     /// They are set during the Agreed transaction (121) and can be updated via
-    /// SetClientUserInfo (304).
+    /// `SetClientUserInfo` (304).
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
     pub struct ConnectionFlags: u8 {
         /// Bit 0: Refuse private messages from other users.
@@ -29,21 +29,15 @@ bitflags! {
 impl ConnectionFlags {
     /// Check if the user is refusing private messages.
     #[must_use]
-    pub const fn refuses_messages(self) -> bool {
-        self.contains(Self::REFUSE_PRIVATE_MESSAGES)
-    }
+    pub const fn refuses_messages(self) -> bool { self.contains(Self::REFUSE_PRIVATE_MESSAGES) }
 
     /// Check if the user is refusing chat invitations.
     #[must_use]
-    pub const fn refuses_chat(self) -> bool {
-        self.contains(Self::REFUSE_CHAT_INVITES)
-    }
+    pub const fn refuses_chat(self) -> bool { self.contains(Self::REFUSE_CHAT_INVITES) }
 
     /// Check if automatic response is enabled.
     #[must_use]
-    pub const fn has_auto_response(self) -> bool {
-        self.contains(Self::AUTOMATIC_RESPONSE)
-    }
+    pub const fn has_auto_response(self) -> bool { self.contains(Self::AUTOMATIC_RESPONSE) }
 }
 
 #[cfg(test)]
@@ -69,9 +63,7 @@ mod tests {
         assert_eq!(
             flag.bits(),
             1u8 << expected_bit,
-            "flag {:?} should be at bit {}",
-            flag,
-            expected_bit
+            "flag {flag:?} should be at bit {expected_bit}"
         );
     }
 
@@ -98,8 +90,7 @@ mod tests {
 
     #[test]
     fn combined_flags() {
-        let flags =
-            ConnectionFlags::REFUSE_PRIVATE_MESSAGES | ConnectionFlags::REFUSE_CHAT_INVITES;
+        let flags = ConnectionFlags::REFUSE_PRIVATE_MESSAGES | ConnectionFlags::REFUSE_CHAT_INVITES;
         assert!(flags.refuses_messages());
         assert!(flags.refuses_chat());
         assert!(!flags.has_auto_response());

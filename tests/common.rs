@@ -2,7 +2,7 @@
 
 #[cfg(feature = "postgres")]
 use test_util::postgres::PostgresTestDbError;
-use test_util::{AnyError, TestServer, ensure_server_binary_env};
+use test_util::{AnyError, DatabaseUrl, TestServer, ensure_server_binary_env};
 
 /// Start the server for a test or skip if prerequisites are unavailable.
 ///
@@ -14,10 +14,13 @@ use test_util::{AnyError, TestServer, ensure_server_binary_env};
 /// Returns any error produced by the setup callback or while launching the server.
 pub fn start_server_or_skip<F>(setup: F) -> Result<Option<TestServer>, AnyError>
 where
-    F: FnOnce(&str) -> Result<(), AnyError>,
+    F: FnOnce(DatabaseUrl) -> Result<(), AnyError>,
 {
     ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server"))?;
-    match TestServer::start_with_setup("./Cargo.toml", |db| setup(db.as_str())) {
+    match TestServer::start_with_setup("./Cargo.toml", |db| {
+        let url = DatabaseUrl::new(db.as_str());
+        setup(url)
+    }) {
         Ok(s) => Ok(Some(s)),
         Err(e) => {
             #[cfg(feature = "postgres")]

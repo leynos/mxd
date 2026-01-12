@@ -11,8 +11,8 @@ No `PLANS.md` exists in this repository.
 ## Purpose / Big Picture
 
 After this change, the wireframe server maintains a shared session context that
-tracks the authenticated user, their privileges, and connection flags across all
-transaction handlers. Privilege checks defined in `docs/protocol.md` are
+tracks the authenticated user, their privileges, and connection flags across
+all transaction handlers. Privilege checks defined in `docs/protocol.md` are
 enforced automatically, preventing unauthorised operations before they reach
 domain logic.
 
@@ -54,26 +54,20 @@ privileged operations.
 ## Risks
 
 - Risk: Privilege bitmap interpretation may differ between Hotline 1.8.5 and
-  earlier versions.
-  Severity: medium
-  Likelihood: low
-  Mitigation: Implement privilege checks based strictly on `docs/protocol.md`
-  bit definitions; add comments referencing the protocol spec for each bit.
+  earlier versions. Severity: medium Likelihood: low Mitigation: Implement
+  privilege checks based strictly on `docs/protocol.md` bit definitions; add
+  comments referencing the protocol spec for each bit.
 
 - Risk: Session state mutation during concurrent handler execution could cause
-  races.
-  Severity: high
-  Likelihood: low
-  Mitigation: Session is already wrapped in `Arc<tokio::sync::Mutex<Session>>`
-  in `TransactionMiddleware`; maintain this pattern and document that handlers
-  must hold the lock for the duration of privilege checks and state updates.
+  races. Severity: high Likelihood: low Mitigation: Session is already wrapped
+  in `Arc<tokio::sync::Mutex<Session>>` in `TransactionMiddleware`; maintain
+  this pattern and document that handlers must hold the lock for the duration
+  of privilege checks and state updates.
 
 - Risk: Extending the `Session` struct may break existing tests or integration
-  code.
-  Severity: medium
-  Likelihood: medium
-  Mitigation: Add new fields with sensible defaults (`Default` impl) so existing
-  code continues to work; update tests incrementally.
+  code. Severity: medium Likelihood: medium Mitigation: Add new fields with
+  sensible defaults (`Default` impl) so existing code continues to work; update
+  tests incrementally.
 
 ## Progress
 
@@ -126,8 +120,8 @@ privileged operations.
 
 3. **Default privileges**: `default_user()` includes: DOWNLOAD_FILE, READ_CHAT,
    SEND_CHAT, SHOW_IN_LIST, SEND_PRIVATE_MESSAGE, NEWS_READ_ARTICLE,
-   NEWS_POST_ARTICLE, GET_CLIENT_INFO, CHANGE_OWN_PASSWORD. This matches typical
-   guest/user behaviour.
+   NEWS_POST_ARTICLE, GET_CLIENT_INFO, CHANGE_OWN_PASSWORD. This matches
+   typical guest/user behaviour.
 
 ## Outcomes & Retrospective
 
@@ -175,37 +169,32 @@ architecture. The transport layer uses the `wireframe` library with a custom
 
 Key files and their roles:
 
-`src/handler.rs`
-: Defines `Context` (per-connection shared state: peer, pool, argon2) and
-`Session` (per-connection mutable state: currently only `user_id: Option<i32>`).
-The `handle_request` function dispatches transactions through `Command`.
+`src/handler.rs`: Defines `Context` (per-connection shared state: peer, pool,
+argon2) and `Session` (per-connection mutable state: currently only
+`user_id: Option<i32>`). The `handle_request` function dispatches transactions
+through `Command`.
 
-`src/commands.rs`
-: Contains the `Command` enum and `process()` method that executes handlers.
-Currently checks `session.user_id` for authentication in `GetFileNameList` but
-does not check specific privileges.
+`src/commands.rs`: Contains the `Command` enum and `process()` method that
+executes handlers. Currently checks `session.user_id` for authentication in
+`GetFileNameList` but does not check specific privileges.
 
-`src/login.rs`
-: Handles login authentication. Sets `session.user_id` on successful login but
-does not populate privileges.
+`src/login.rs`: Handles login authentication. Sets `session.user_id` on
+successful login but does not populate privileges.
 
-`src/wireframe/routes/mod.rs`
-: Contains `TransactionMiddleware` that wraps `Session` in
-`Arc<tokio::sync::Mutex<Session>>` and passes it to `process_transaction_bytes`.
-This ensures session state survives across the handler pipeline.
+`src/wireframe/routes/mod.rs`: Contains `TransactionMiddleware` that wraps
+`Session` in `Arc<tokio::sync::Mutex<Session>>` and passes it to
+`process_transaction_bytes`. This ensures session state survives across the
+handler pipeline.
 
-`src/wireframe/connection.rs`
-: Manages `ConnectionContext` with handshake metadata and peer address using
-thread-local storage for the current Tokio task.
+`src/wireframe/connection.rs`: Manages `ConnectionContext` with handshake
+metadata and peer address using thread-local storage for the current Tokio task.
 
-`src/models.rs`
-: Defines `User` struct with `id`, `username`, `password`. Does not currently
-store privilege bits (privileges would need to be added to the schema or
-hard-coded for initial implementation).
+`src/models.rs`: Defines `User` struct with `id`, `username`, `password`. Does
+not currently store privilege bits (privileges would need to be added to the
+schema or hard-coded for initial implementation).
 
-`docs/protocol.md`
-: Documents the Hotline protocol including the 38 privilege bits in field 110
-(User Access). Key privilege bits for this task:
+`docs/protocol.md`: Documents the Hotline protocol including the 38 privilege
+bits in field 110 (User Access). Key privilege bits for this task:
 
 - Bit 2: Download File
 - Bit 20: News Read Article
@@ -226,8 +215,8 @@ This task extends it to:
     }
 
 Where `Privileges` is a bitflags type matching the protocol specification and
-`ConnectionFlags` tracks connection-level state (e.g., refused messages, refused
-chat invites, automatic response enabled).
+`ConnectionFlags` tracks connection-level state (e.g., refused messages,
+refused chat invites, automatic response enabled).
 
 ## Plan of Work
 
@@ -267,9 +256,9 @@ The implementation proceeds in four stages:
 ### Stage C: Enforce privileges in handlers
 
 1. Update `GetFileNameList` handler in `src/commands.rs` to check
-   `session.has_privilege(Privileges::DOWNLOAD_FILE)` before processing.
-   Return error code 1 (authentication required) if not authenticated, or a
-   new error code for insufficient privileges.
+   `session.has_privilege(Privileges::DOWNLOAD_FILE)` before processing. Return
+   error code 1 (authentication required) if not authenticated, or a new error
+   code for insufficient privileges.
 
 2. Update news handlers to check appropriate privileges:
    - `GetNewsCategoryNameList`: `NEWS_READ_ARTICLE`
@@ -286,7 +275,8 @@ The implementation proceeds in four stages:
    - Session helper methods
    - Default privilege assignment
 
-2. Add rstest-bdd behavioural tests in `tests/features/session_privileges.feature`:
+2. Add rstest-bdd behavioural tests in
+   `tests/features/session_privileges.feature`:
    - Authenticated user can list files
    - Unauthenticated user receives error for file listing
    - User without download privilege receives error
@@ -395,12 +385,11 @@ Specific test scenarios:
    Expected: Success response with file list.
 
 3. **News read without privilege**: Login with user lacking `NEWS_READ_ARTICLE`,
-   send `GetNewsArticleData`.
-   Expected: Error response with privilege error code.
+   send `GetNewsArticleData`. Expected: Error response with privilege error
+   code.
 
 4. **News post without privilege**: Login with user lacking `NEWS_POST_ARTICLE`,
-   send `PostNewsArticle`.
-   Expected: Error response with privilege error code.
+   send `PostNewsArticle`. Expected: Error response with privilege error code.
 
 ## Idempotence and Recovery
 
@@ -425,12 +414,12 @@ Example privilege bitflags definition (based on `docs/protocol.md`):
             const UPLOAD_FILE = 1 << 1;
             /// Bit 2: Download File
             const DOWNLOAD_FILE = 1 << 2;
-            // ... remaining 35 bits
+            // … remaining 35 bits
             /// Bit 20: News Read Article
             const NEWS_READ_ARTICLE = 1 << 20;
             /// Bit 21: News Post Article
             const NEWS_POST_ARTICLE = 1 << 21;
-            // ...
+            // …
         }
     }
 
@@ -459,7 +448,7 @@ Example privilege enforcement in handler:
 
     Self::GetFileNameList { header, .. } => {
         session.require_privilege(Privileges::DOWNLOAD_FILE)?;
-        // ... existing implementation
+        // … existing implementation
     }
 
 ## Interfaces and Dependencies

@@ -26,6 +26,23 @@ use mxd::{
 
 use crate::AnyError;
 
+/// Database URL wrapper to make fixture APIs more explicit.
+#[derive(Clone, Debug)]
+pub struct DatabaseUrl(String);
+
+impl DatabaseUrl {
+    /// Create a new database URL wrapper from a string.
+    pub fn new(url: impl Into<String>) -> Self { Self(url.into()) }
+
+    /// Borrow the wrapped URL as a string slice.
+    #[must_use]
+    pub const fn as_str(&self) -> &str { self.0.as_str() }
+}
+
+impl From<&str> for DatabaseUrl {
+    fn from(value: &str) -> Self { Self::new(value) }
+}
+
 /// Resolve a file name to its ID from the lookup map.
 fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, AnyError> {
     file_ids
@@ -65,14 +82,18 @@ async fn ensure_test_user(conn: &mut DbConnection) -> Result<(), AnyError> {
 ///
 /// Returns an error if the connection cannot be established, migrations fail,
 /// or the closure returns an error.
-pub fn with_db<F>(db: &str, f: F) -> Result<(), AnyError>
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "DatabaseUrl is an owned API boundary for fixtures"
+)]
+pub fn with_db<F>(db: DatabaseUrl, f: F) -> Result<(), AnyError>
 where
     F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<(), AnyError>>,
 {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let mut conn = DbConnection::establish(db).await?;
-        apply_migrations(&mut conn, db).await?;
+        let mut conn = DbConnection::establish(db.as_str()).await?;
+        apply_migrations(&mut conn, db.as_str()).await?;
         f(&mut conn).await
     })
 }
@@ -82,7 +103,7 @@ where
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
+pub fn setup_files_db(db: DatabaseUrl) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
             let argon2 = argon2::Argon2::default();
@@ -136,7 +157,7 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
+pub fn setup_news_db(db: DatabaseUrl) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
             // Ensure test user exists for authentication
@@ -212,7 +233,7 @@ pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
+pub fn setup_news_categories_root_db(db: DatabaseUrl) -> Result<(), AnyError> {
     setup_news_categories_with_structure(db, |conn, _| {
         Box::pin(async move {
             create_category(
@@ -241,7 +262,7 @@ pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
+pub fn setup_news_categories_nested_db(db: DatabaseUrl) -> Result<(), AnyError> {
     setup_news_categories_with_structure(db, |conn, root_id| {
         Box::pin(async move {
             let sub_id = create_bundle(
@@ -273,7 +294,7 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_categories_with_structure<F>(db: &str, build: F) -> Result<(), AnyError>
+pub fn setup_news_categories_with_structure<F>(db: DatabaseUrl, build: F) -> Result<(), AnyError>
 where
     F: Send
         + 'static

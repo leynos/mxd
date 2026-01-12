@@ -17,6 +17,7 @@ mod server;
 
 pub use bdd_helpers::{SetupFn, TestDb, build_test_db};
 pub use fixtures::{
+    DatabaseUrl,
     setup_files_db,
     setup_news_categories_nested_db,
     setup_news_categories_root_db,

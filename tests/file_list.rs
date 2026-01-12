@@ -17,12 +17,12 @@ use mxd::{
     transaction_type::TransactionType,
 };
 use rstest::{fixture, rstest};
-use test_util::{AnyError, TestServer, handshake, setup_files_db};
+use test_util::{AnyError, DatabaseUrl, TestServer, handshake, setup_files_db};
 use tracing::{debug, info};
 mod common;
 
 type TestResult<T> = Result<T, AnyError>;
-type SetupFn = fn(&str) -> TestResult<()>;
+type SetupFn = fn(DatabaseUrl) -> TestResult<()>;
 
 /// Performs the login transaction for a test connection.
 ///
@@ -148,7 +148,7 @@ fn test_stream(
     reason = "Keep signature consistent with `SetupFn` so tests can swap in fallible setup \
               routines."
 )]
-const fn noop_setup(_: &str) -> TestResult<()> { Ok(()) }
+fn noop_setup(_: DatabaseUrl) -> TestResult<()> { Ok(()) }
 
 #[rstest]
 fn list_files_acl(test_stream: TestResult<Option<(TestServer, TcpStream)>>) -> TestResult<()> {

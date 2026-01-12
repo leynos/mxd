@@ -17,7 +17,15 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
-use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_files_db, setup_news_db};
+use test_util::{
+    DatabaseUrl,
+    SetupFn,
+    TestDb,
+    build_frame,
+    build_test_db,
+    setup_files_db,
+    setup_news_db,
+};
 use tokio::runtime::Runtime;
 
 struct PrivilegeWorld {
@@ -104,8 +112,8 @@ fn world() -> PrivilegeWorld {
 }
 
 /// Setup for tests requiring both users and news data.
-fn setup_combined_db(db: &str) -> Result<(), test_util::AnyError> {
-    setup_files_db(db)?;
+fn setup_combined_db(db: DatabaseUrl) -> Result<(), test_util::AnyError> {
+    setup_files_db(db.clone())?;
     setup_news_db(db)?;
     Ok(())
 }

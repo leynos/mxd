@@ -3,8 +3,7 @@
 //! Currently provides the client-side handshake and login used by multiple suites.
 
 use std::{
-    convert::TryFrom,
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     io::{self, Read, Write},
     net::TcpStream,
 };
@@ -63,10 +62,6 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 /// # Panics
 ///
 /// Panics if the server returns a non-zero error code (authentication failed).
-#[expect(
-    clippy::big_endian_bytes,
-    reason = "TRTP protocol uses network byte order"
-)]
 #[expect(
     clippy::panic_in_result_fn,
     reason = "test helper: panics indicate protocol violations"

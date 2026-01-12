@@ -119,9 +119,7 @@ impl Privileges {
     ///
     /// Grants all available permissions. Use with caution.
     #[must_use]
-    pub const fn admin() -> Self {
-        Self::all()
-    }
+    pub const fn admin() -> Self { Self::all() }
 }
 
 #[cfg(test)]
@@ -220,9 +218,7 @@ mod tests {
         assert_eq!(
             priv_flag.bits(),
             1u64 << expected_bit,
-            "privilege {:?} should be at bit {}",
-            priv_flag,
-            expected_bit
+            "privilege {priv_flag:?} should be at bit {expected_bit}"
         );
     }
 

@@ -22,6 +22,7 @@ use mxd::{
 use rstest::rstest;
 use test_util::{
     AnyError,
+    DatabaseUrl,
     handshake,
     login,
     setup_news_categories_nested_db,
@@ -147,11 +148,11 @@ mod rstest_tests {
 fn list_news_categories_invalid_path() -> Result<(), AnyError> {
     use mxd::{db::create_user, models::NewUser, users::hash_password};
 
-    let Some(server) = common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db: DatabaseUrl| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
-            let mut conn = DbConnection::establish(db).await?;
-            apply_migrations(&mut conn, db).await?;
+            let mut conn = DbConnection::establish(db.as_str()).await?;
+            apply_migrations(&mut conn, db.as_str()).await?;
 
             // Create test user for authentication
             let argon2 = argon2::Argon2::default();
@@ -202,11 +203,11 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
 fn list_news_categories_empty() -> Result<(), AnyError> {
     use mxd::{db::create_user, models::NewUser, users::hash_password};
 
-    let Some(server) = common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db: DatabaseUrl| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
-            let mut conn = DbConnection::establish(db).await?;
-            apply_migrations(&mut conn, db).await?;
+            let mut conn = DbConnection::establish(db.as_str()).await?;
+            apply_migrations(&mut conn, db.as_str()).await?;
 
             // Create test user for authentication
             let argon2 = argon2::Argon2::default();
