@@ -187,19 +187,53 @@ fn expected_framing_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
         return expected;
     }
 
-    let mut offset = 0usize;
-    while offset < payload.len() {
-        let end = (offset + MAX_FRAME_DATA).min(payload.len());
+    for_each_fragment_range(payload.len(), |offset, len| {
+        let end = offset + len;
         let chunk = payload
             .get(offset..end)
             .expect("payload length checked before slicing");
         let mut frame_header = header.clone();
         frame_header.data_size = u32::try_from(chunk.len()).expect("chunk length fits u32");
         expected.extend(transaction_bytes(&frame_header, chunk));
-        offset = end;
-    }
+        Ok::<(), ()>(())
+    })
+    .expect("fragment iteration succeeds");
 
     expected
+}
+
+#[rstest]
+#[case(0, 0)]
+#[case(1, 1)]
+#[case(MAX_FRAME_DATA, 1)]
+#[case(MAX_FRAME_DATA + 1, 2)]
+#[case((2 * MAX_FRAME_DATA) + 1, 3)]
+fn fragment_ranges_cover_payload(#[case] total_len: usize, #[case] expected_count: usize) {
+    let mut sum = 0usize;
+    let mut count = 0usize;
+    let mut last_len = 0usize;
+    let mut expected_offset = 0usize;
+
+    for_each_fragment_range(total_len, |offset, len| {
+        assert_eq!(offset, expected_offset);
+        assert!(len > 0);
+        assert!(len <= MAX_FRAME_DATA);
+        assert!(offset + len <= total_len);
+        sum += len;
+        count += 1;
+        last_len = len;
+        expected_offset += len;
+        Ok::<(), ()>(())
+    })
+    .expect("fragment iteration succeeds");
+
+    assert_eq!(sum, total_len);
+    assert_eq!(count, expected_count);
+    if total_len == 0 {
+        assert_eq!(last_len, 0);
+    } else {
+        assert!(last_len > 0);
+    }
 }
 
 #[rstest]

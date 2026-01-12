@@ -10,6 +10,8 @@ use std::time::Duration;
 
 pub mod errors;
 pub mod frame;
+#[cfg(kani)]
+pub(crate) mod kani_support;
 pub mod params;
 pub mod reader;
 pub mod writer;

@@ -96,9 +96,12 @@ and explicit dependencies. Timeframes are intentionally omitted.
   encoding support to `HotlineTransaction`, reusing
   `transaction::encode_params` for parameter payloads, and covering parity with
   the legacy writer via `rstest-bdd` scenarios. Dependencies: 1.3.1.
-- [ ] 1.3.4. Add Kani harnesses for transaction framing invariants. Acceptance:
+- [x] 1.3.4. Add Kani harnesses for transaction framing invariants. Acceptance:
   Kani proves header validation, fragment sizing, and transaction ID echoing
-  for bounded payloads without panics. Dependencies: 1.3.3.
+  for bounded payloads without panics. Status: Completed on 12 January 2026 by
+  adding Kani harnesses for header validation, fragment sizing, and reply
+  header invariants, factoring a shared fragment range helper, and adding unit
+  coverage for the fragmentation ranges. Dependencies: 1.3.3.
 
 ### 1.4. Route transactions through wireframe
 

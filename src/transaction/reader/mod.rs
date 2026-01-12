@@ -5,6 +5,8 @@
 //! interface that yields payload fragments without buffering the full message,
 //! enabling large file transfers to be processed safely.
 
+#[cfg(kani)]
+mod kani;
 mod streaming;
 
 use std::time::Duration;

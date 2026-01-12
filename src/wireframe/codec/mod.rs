@@ -10,6 +10,8 @@
 
 mod frame;
 mod framed;
+#[cfg(kani)]
+mod kani;
 
 use bincode::{
     de::{BorrowDecode, BorrowDecoder, read::Reader},
@@ -247,6 +249,21 @@ const fn validate_fragment_consistency(
     Ok(())
 }
 
+/// Call `f(offset, len)` for each payload fragment range.
+fn for_each_fragment_range<E>(
+    total_len: usize,
+    mut f: impl FnMut(usize, usize) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut offset = 0usize;
+    while offset < total_len {
+        let remaining = total_len - offset;
+        let len = remaining.min(MAX_FRAME_DATA);
+        f(offset, len)?;
+        offset += len;
+    }
+    Ok(())
+}
+
 impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
     fn borrow_decode<D: BorrowDecoder<'de, Context = ()>>(
         decoder: &mut D,
@@ -349,9 +366,8 @@ impl Encode for HotlineTransaction {
             return Ok(());
         }
 
-        let mut offset = 0usize;
-        while offset < self.payload.len() {
-            let end = (offset + MAX_FRAME_DATA).min(self.payload.len());
+        for_each_fragment_range(self.payload.len(), |offset, len| {
+            let end = offset + len;
             let chunk = self
                 .payload
                 .get(offset..end)
@@ -362,8 +378,8 @@ impl Encode for HotlineTransaction {
             header.write_bytes(&mut hdr_buf);
             encoder.writer().write(&hdr_buf)?;
             encoder.writer().write(chunk)?;
-            offset = end;
-        }
+            Ok(())
+        })?;
         Ok(())
     }
 }

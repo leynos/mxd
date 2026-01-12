@@ -376,7 +376,7 @@ Add unit tests in `src/wireframe/routes/tests/` using rstest:
 - Preserve the transaction ID in the reply.
 - Unknown transaction type returns ERR_INTERNAL.
 
-Add behavioural tests using rstest-bdd v0.3.0:
+Add behavioural tests using rstest-bdd v0.3.2:
 
 - Create `tests/features/wireframe_routing.feature` with scenarios for Login,
   file listing, and news listing.
@@ -483,7 +483,7 @@ Dependencies:
 
 - `wireframe` crate (already in use)
 - `rstest` v0.26 (already in dev-dependencies)
-- `rstest-bdd` v0.3.0
+- `rstest-bdd` v0.3.2
 - `pg-embedded-setup-unpriv` (already in dev-dependencies)
 
 ## Revision Note

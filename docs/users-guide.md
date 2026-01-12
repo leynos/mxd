@@ -66,8 +66,14 @@ unchanged, so the shell exit code remains reliable in automation scripts.
 ## Testing against PostgreSQL
 
 Integration tests and developer machines can exercise the postgres backend by
-running `pg_embedded_setup_unpriv` before `make test`. The helper stages a
-PostgreSQL distribution with unprivileged ownership, so the
+installing the helper from crates.io and running it before `make test`:
+
+```sh
+cargo install --locked pg-embed-setup-unpriv
+pg_embedded_setup_unpriv
+```
+
+The helper stages a PostgreSQL distribution with unprivileged ownership, so the
 `postgresql_embedded` crate can start temporary clusters without root access.
 After invoking the helper, run `make test` to execute sqlite, postgres, and
 wireframe-only suites; the postgres jobs automatically reuse the staged
