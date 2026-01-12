@@ -3,7 +3,6 @@ members = [
     ".",
     "crates/mxd-verification",
     "fuzz",
-    "postgres_setup_unpriv",
     "test-util",
     "validator",
 ]

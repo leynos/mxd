@@ -177,7 +177,8 @@ draft-only; implementation requires explicit approval.
 6. Run Rust formatting and tests (use `pg_embedded_setup_unpriv` for
    PostgreSQL):
 
-       cargo run --release --bin pg_embedded_setup_unpriv 2>&1 | tee /tmp/pg-embed.log
+       cargo install --locked pg-embed-setup-unpriv
+       pg_embedded_setup_unpriv 2>&1 | tee /tmp/pg-embed.log
        make check-fmt 2>&1 | tee /tmp/mxd-check-fmt.log
        make lint 2>&1 | tee /tmp/mxd-lint.log
        make test 2>&1 | tee /tmp/mxd-test.log

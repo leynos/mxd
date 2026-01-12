@@ -36,15 +36,21 @@ tool and integrate it into automated test flows.
    budget. The helper accepts values between `1` and `600` seconds and reports
    an error when the override falls outside that range or cannot be parsed.
 
-3. Run the helper (`cargo run --release --bin pg_embedded_setup_unpriv`). The
-   command downloads the specified PostgreSQL release, ensures the directories
-   exist, applies PostgreSQL-compatible permissions (0755 for the installation
-   cache, 0700 for the runtime and data directories), and initialises the
-   cluster with the provided credentials. Invocations that begin as `root`
-   prepare directories for `nobody` and execute lifecycle commands through the
-   worker helper so the privileged operations run entirely under the sandbox
-   user. Ownership fix-ups occur on every call so running the tool twice
-   remains idempotent.
+3. Install and run the helper:
+
+   ```bash
+   cargo install --locked pg-embed-setup-unpriv
+   pg_embedded_setup_unpriv
+   ```
+
+   The command downloads the specified PostgreSQL release, ensures the
+   directories exist, applies PostgreSQL-compatible permissions (0755 for the
+   installation cache, 0700 for the runtime and data directories), and
+   initialises the cluster with the provided credentials. Invocations that
+   begin as `root` prepare directories for `nobody` and execute lifecycle
+   commands through the worker helper so the privileged operations run entirely
+   under the sandbox user. Ownership fix-ups occur on every call so running the
+   tool twice remains idempotent.
 
 4. Pass the resulting paths and credentials to your tests. If you use
    `postgresql_embedded` directly after the setup step, it can reuse the staged
