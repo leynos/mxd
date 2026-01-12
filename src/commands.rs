@@ -23,8 +23,10 @@ use crate::{
         list_names_at_path,
     },
     field_id::FieldId,
+    handler::PrivilegeError,
     header_util::reply_header,
     login::{LoginRequest, handle_login},
+    privileges::Privileges,
     transaction::{
         FrameHeader,
         Transaction,
@@ -40,12 +42,28 @@ use crate::{
     transaction_type::TransactionType,
 };
 
+/// Error code used when authentication is required but not present.
+pub const ERR_NOT_AUTHENTICATED: u32 = 1;
 /// Error code used when the requested news path is unsupported.
 pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 1;
 /// Error code used when a request includes an unexpected payload.
 pub const ERR_INVALID_PAYLOAD: u32 = 2;
 /// Error code used for unexpected server-side failures.
 pub const ERR_INTERNAL_SERVER: u32 = 3;
+/// Error code used when the user lacks the required privilege.
+pub const ERR_INSUFFICIENT_PRIVILEGES: u32 = 4;
+
+/// Build an error reply for a privilege check failure.
+fn privilege_error_reply(header: &FrameHeader, err: PrivilegeError) -> Transaction {
+    let error_code = match err {
+        PrivilegeError::NotAuthenticated => ERR_NOT_AUTHENTICATED,
+        PrivilegeError::InsufficientPrivileges(_) => ERR_INSUFFICIENT_PRIVILEGES,
+    };
+    Transaction {
+        header: reply_header(header, error_code, 0),
+        payload: Vec::new(),
+    }
+}
 
 /// High-level command representation parsed from incoming transactions.
 ///
@@ -256,12 +274,12 @@ impl Command {
                 handle_login(peer, session, pool, req).await
             }
             Self::GetFileNameList { header, .. } => {
-                let Some(user_id) = session.user_id else {
-                    return Ok(Transaction {
-                        header: reply_header(&header, 1, 0),
-                        payload: Vec::new(),
-                    });
-                };
+                if let Err(e) = session.require_privilege(Privileges::DOWNLOAD_FILE) {
+                    return Ok(privilege_error_reply(&header, e));
+                }
+                let user_id = session
+                    .user_id
+                    .expect("require_privilege guarantees authentication");
                 let mut conn = pool.get().await?;
                 let files = crate::db::list_files_for_user(&mut conn, user_id).await?;
                 let params: Vec<(FieldId, &[u8])> = files
@@ -275,16 +293,27 @@ impl Command {
                 })
             }
             Self::GetNewsCategoryNameList { header, path } => {
+                if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
+                    return Ok(privilege_error_reply(&header, e));
+                }
                 handle_category_list(pool, header, path).await
             }
             Self::GetNewsArticleNameList { header, path } => {
+                if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
+                    return Ok(privilege_error_reply(&header, e));
+                }
                 handle_article_titles(pool, header, path).await
             }
             Self::GetNewsArticleData {
                 header,
                 path,
                 article_id,
-            } => handle_article_data(pool, header, path, article_id).await,
+            } => {
+                if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
+                    return Ok(privilege_error_reply(&header, e));
+                }
+                handle_article_data(pool, header, path, article_id).await
+            }
             Self::PostNewsArticle {
                 header,
                 path,
@@ -293,6 +322,9 @@ impl Command {
                 data_flavor,
                 data,
             } => {
+                if let Err(e) = session.require_privilege(Privileges::NEWS_POST_ARTICLE) {
+                    return Ok(privilege_error_reply(&header, e));
+                }
                 let req = PostArticleRequest {
                     path,
                     title,

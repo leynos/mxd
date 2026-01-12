@@ -37,6 +37,7 @@ cfg_if::cfg_if! {
 }
 
 pub mod commands;
+pub mod connection_flags;
 pub mod db;
 pub mod field_id;
 pub mod handler;
@@ -44,6 +45,7 @@ pub mod header_util;
 pub mod login;
 pub mod models;
 pub(crate) mod news_path;
+pub mod privileges;
 pub mod protocol;
 pub mod schema;
 pub mod server;

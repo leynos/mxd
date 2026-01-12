@@ -654,6 +654,36 @@ fail under Tokio's work-stealing scheduler, the middleware passes the session
 session state is accessible regardless of which worker thread processes a given
 frame.
 
+The `Session` struct tracks three core pieces of state:
+
+- `user_id: Option<i32>` – The authenticated user's database ID, or `None` for
+  unauthenticated connections.
+- `privileges: Privileges` – A bitflags value encoding the 38 privilege bits
+  defined in `docs/protocol.md` field 110. These control which operations the
+  user may perform (file downloads, news posts, admin actions, etc.).
+- `connection_flags: ConnectionFlags` – A bitflags value encoding the 3
+  connection preference bits (refuse private messages, refuse chat invites,
+  automatic response).
+
+**Privilege enforcement.** Each handler checks the required privilege before
+executing. The `Session` struct provides helper methods:
+
+- `is_authenticated()` – Returns `true` if the session has a user ID.
+- `has_privilege(Privileges)` – Checks if the session has a specific privilege.
+- `require_privilege(Privileges)` – Returns `Ok(())` or a `PrivilegeError`.
+- `require_authenticated()` – Returns `Ok(())` or `PrivilegeError::NotAuthenticated`.
+
+When a privilege check fails, the middleware returns an error reply with the
+appropriate error code:
+
+- `ERR_NOT_AUTHENTICATED (1)` – The client must log in first.
+- `ERR_INSUFFICIENT_PRIVILEGES (4)` – The user lacks the required privilege.
+
+The `Privileges` bitflags type provides `default_user()` to return sensible
+defaults for newly authenticated users (download files, read/send chat, read/
+post news articles, etc.). Administrators can be granted elevated privileges
+via the `user_permissions` table in the database.
+
 **Testing strategy.** The routing middleware is tested at two levels:
 
 1. **Unit tests** (`src/wireframe/routes/tests`) use `rstest` to cover error
@@ -1658,8 +1688,11 @@ build the reply. The login handler (`handle_login`) will:
   user([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/login.rs#L32-L39)
    )(
   [3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/login.rs#L34-L42)).
-   We may also initialize other session state (e.g. set their permissions or
-  mark them as “online” in some global tracker).
+   We also initialize `session.privileges` to `Privileges::default_user()`,
+  granting the user standard capabilities (download files, read/send chat,
+  read/post news articles, etc.). These privileges gate subsequent operations;
+  handlers call `session.require_privilege(Privileges::XXX)` before executing
+  privileged actions.
 
 - Prepare a reply transaction. In Hotline, the login reply (transaction 100,
   which is a generic error or success message) includes either an error code or

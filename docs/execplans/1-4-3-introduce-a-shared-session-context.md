@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETED
 
 No `PLANS.md` exists in this repository.
 
@@ -77,32 +77,95 @@ privileged operations.
 
 ## Progress
 
-- [ ] Research existing session and privilege handling across the codebase.
-- [ ] Design the extended `Session` struct with privilege bits and flags.
-- [ ] Implement the `Privileges` bitflags type matching `docs/protocol.md`.
-- [ ] Extend `Session` with `privileges` and `connection_flags` fields.
-- [ ] Update login handler to populate privileges from user account data.
-- [ ] Add privilege check helpers to `Session`.
-- [ ] Integrate privilege enforcement into `GetFileNameList` handler.
-- [ ] Integrate privilege enforcement into news transaction handlers.
-- [ ] Add unit tests for privilege bitflags and session helpers.
-- [ ] Add rstest-bdd behavioural tests for privilege enforcement.
-- [ ] Add Postgres-backed tests using `pg-embedded-setup-unpriv`.
-- [ ] Update `docs/design.md` with session context architecture.
+- [x] Research existing session and privilege handling across the codebase.
+- [x] Design the extended `Session` struct with privilege bits and flags.
+- [x] Implement the `Privileges` bitflags type matching `docs/protocol.md`.
+- [x] Extend `Session` with `privileges` and `connection_flags` fields.
+- [x] Update login handler to populate privileges from user account data.
+- [x] Add privilege check helpers to `Session`.
+- [x] Integrate privilege enforcement into `GetFileNameList` handler.
+- [x] Integrate privilege enforcement into news transaction handlers.
+- [x] Add unit tests for privilege bitflags and session helpers.
+- [x] Add rstest-bdd behavioural tests for privilege enforcement.
+- [x] Add Postgres-backed tests using `pg-embedded-setup-unpriv`.
+- [x] Update `docs/design.md` with session context architecture.
 - [ ] Update `docs/users-guide.md` if user-visible behaviour changes.
-- [ ] Mark task 1.4.3 as done in `docs/roadmap.md`.
+      (Not required: no user-visible behaviour change; privilege enforcement is
+      server-side.)
+- [x] Mark task 1.4.3 as done in `docs/roadmap.md`.
 
 ## Surprises & Discoveries
 
-(To be populated during implementation.)
+1. **bitflags dependency**: The `bitflags` crate was not a direct dependency
+   despite transitive use. Added `bitflags = "2"` to `Cargo.toml`.
+
+2. **Test authentication requirements**: Existing integration and BDD tests
+   were not authenticating before sending privileged requests. After adding
+   privilege enforcement, tests failed with error code 1 (not authenticated).
+   Fixed by adding `authenticate()` helper to test contexts and updating test
+   setup functions to create a test user.
+
+3. **Unique constraint on users**: The `setup_full_db` fixture called both
+   `setup_files_db` and `setup_news_db`, each attempting to create the same
+   `alice` user. Fixed by introducing an `ensure_test_user()` helper that
+   checks for existing users before insertion.
+
+4. **NEWS_POST_ARTICLE missing from defaults**: The initial `default_user()`
+   privileges omitted `NEWS_POST_ARTICLE`, causing the `PostNewsArticle` test
+   to fail. Added the privilege to the default set.
 
 ## Decision Log
 
-(To be populated during implementation.)
+1. **Privilege storage**: Privileges are populated from `default_user()` on
+   login rather than stored per-user in the database. Future task 5.1 will add
+   per-user privilege storage.
+
+2. **Error codes**: Used `ERR_NOT_AUTHENTICATED (1)` for unauthenticated
+   requests and `ERR_INSUFFICIENT_PRIVILEGES (4)` for missing privileges,
+   aligning with Hotline protocol conventions.
+
+3. **Default privileges**: `default_user()` includes: DOWNLOAD_FILE, READ_CHAT,
+   SEND_CHAT, SHOW_IN_LIST, SEND_PRIVATE_MESSAGE, NEWS_READ_ARTICLE,
+   NEWS_POST_ARTICLE, GET_CLIENT_INFO, CHANGE_OWN_PASSWORD. This matches typical
+   guest/user behaviour.
 
 ## Outcomes & Retrospective
 
-(To be populated at completion.)
+**Outcome**: Task 1.4.3 completed successfully. The wireframe server now tracks
+authenticated user, privileges, and connection flags in a shared session
+context that survives across handlers. Privilege checks enforce the protocol
+specification before handlers execute.
+
+**Files changed**:
+
+- Created: `src/privileges.rs` (38 privilege bits)
+- Created: `src/connection_flags.rs` (3 connection flags)
+- Modified: `src/lib.rs` (module exports)
+- Modified: `src/handler.rs` (Session struct, PrivilegeError enum, helpers)
+- Modified: `src/login.rs` (populate privileges on login)
+- Modified: `src/commands.rs` (privilege enforcement in handlers)
+- Modified: `Cargo.toml` (bitflags dependency)
+- Created: `tests/features/session_privileges.feature` (BDD scenarios)
+- Created: `tests/session_privileges_bdd.rs` (BDD test implementation)
+- Modified: Multiple test files (authentication updates)
+- Modified: `test-util/src/fixtures.rs` (ensure_test_user helper)
+- Modified: `test-util/src/protocol.rs` (login helper)
+- Modified: `docs/design.md` (session context documentation)
+- Modified: `docs/roadmap.md` (task marked complete)
+
+**Tests added**:
+
+- Unit tests for Privileges bitflags and Session helpers
+- 6 BDD scenarios covering authenticated/unauthenticated and privileged/
+  unprivileged access paths
+
+**Retrospective**:
+
+- Implementation stayed within tolerance limits (~300 lines of new code).
+- No interface changes beyond adding new fields and methods.
+- Main complexity was updating existing tests to authenticate before privileged
+  operations; this was expected per the risk assessment.
+- The `bitflags` crate addition was minimal and well-justified.
 
 ## Context and Orientation
 
@@ -143,6 +206,7 @@ hard-coded for initial implementation).
 `docs/protocol.md`
 : Documents the Hotline protocol including the 38 privilege bits in field 110
 (User Access). Key privilege bits for this task:
+
 - Bit 2: Download File
 - Bit 20: News Read Article
 - Bit 21: News Post Article

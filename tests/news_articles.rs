@@ -20,7 +20,7 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{AnyError, handshake, setup_news_db, with_db};
+use test_util::{AnyError, handshake, login, setup_news_db, with_db};
 mod common;
 
 type ParamList = Vec<(FieldId, Vec<u8>)>;
@@ -33,7 +33,13 @@ fn connect_and_handshake(port: u16) -> Result<TcpStream, AnyError> {
     Ok(stream)
 }
 
-fn setup_stream(port: u16) -> Result<TcpStream, AnyError> { connect_and_handshake(port) }
+fn connect_handshake_and_login(port: u16) -> Result<TcpStream, AnyError> {
+    let mut stream = connect_and_handshake(port)?;
+    login(&mut stream, "alice", "secret")?;
+    Ok(stream)
+}
+
+fn setup_stream(port: u16) -> Result<TcpStream, AnyError> { connect_handshake_and_login(port) }
 
 fn send_transaction(stream: &mut TcpStream, tx: &Transaction) -> Result<(), AnyError> {
     stream.write_all(&tx.to_bytes())?;
@@ -111,9 +117,20 @@ fn verify_article_titles(db_url: &str, expected: &[&str]) -> Result<(), AnyError
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), AnyError> {
+    use mxd::{db::create_user, models::NewUser, users::hash_password};
+
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
+                // Create test user for authentication
+                let argon2 = argon2::Argon2::default();
+                let hashed = hash_password(&argon2, "secret")?;
+                let new_user = NewUser {
+                    username: "alice",
+                    password: &hashed,
+                };
+                create_user(conn, &new_user).await?;
+
                 create_category(
                     conn,
                     &NewCategory {
@@ -178,12 +195,21 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
 #[test]
 fn get_news_article_data() -> Result<(), AnyError> {
     use chrono::{DateTime, Utc};
-    use mxd::models::NewArticle;
+    use mxd::{db::create_user, models::NewArticle, models::NewUser, users::hash_password};
 
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 use mxd::schema::news_articles::dsl as a;
+
+                // Create test user for authentication
+                let argon2 = argon2::Argon2::default();
+                let hashed = hash_password(&argon2, "secret")?;
+                let new_user = NewUser {
+                    username: "alice",
+                    password: &hashed,
+                };
+                create_user(conn, &new_user).await?;
 
                 create_category(
                     conn,
@@ -249,9 +275,20 @@ fn get_news_article_data() -> Result<(), AnyError> {
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn post_news_article_root() -> Result<(), AnyError> {
+    use mxd::{db::create_user, models::NewUser, users::hash_password};
+
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
+                // Create test user for authentication
+                let argon2 = argon2::Argon2::default();
+                let hashed = hash_password(&argon2, "secret")?;
+                let new_user = NewUser {
+                    username: "alice",
+                    password: &hashed,
+                };
+                create_user(conn, &new_user).await?;
+
                 create_category(
                     conn,
                     &NewCategory {
@@ -268,7 +305,7 @@ fn post_news_article_root() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let mut stream = connect_and_handshake(server.port())?;
+    let mut stream = connect_handshake_and_login(server.port())?;
 
     let mut request_params = Vec::new();
     request_params.push((FieldId::NewsPath, b"General".as_ref()));

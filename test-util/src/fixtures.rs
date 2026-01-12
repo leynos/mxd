@@ -34,6 +34,29 @@ fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, A
         .ok_or_else(|| anyhow::anyhow!("missing file id for {name}"))
 }
 
+/// Ensure the test user 'alice' exists in the database.
+///
+/// This helper is idempotent; it checks for the user first and creates only if
+/// not present.
+async fn ensure_test_user(conn: &mut DbConnection) -> Result<(), AnyError> {
+    let existing = users_dsl::users
+        .filter(users_dsl::username.eq("alice"))
+        .select(users_dsl::id)
+        .first::<i32>(conn)
+        .await
+        .optional()?;
+    if existing.is_none() {
+        let argon2 = argon2::Argon2::default();
+        let hashed = hash_password(&argon2, "secret")?;
+        let new_user = NewUser {
+            username: "alice",
+            password: &hashed,
+        };
+        create_user(conn, &new_user).await?;
+    }
+    Ok(())
+}
+
 /// Execute a database operation within a connection.
 ///
 /// Establishes a connection, runs migrations, and executes the provided closure.
@@ -116,6 +139,9 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
 pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
+            // Ensure test user exists for authentication
+            ensure_test_user(conn).await?;
+
             let category_id = create_category(
                 conn,
                 &NewCategory {
@@ -255,6 +281,9 @@ where
 {
     with_db(db, |conn| {
         Box::pin(async move {
+            // Ensure test user exists for authentication
+            ensure_test_user(conn).await?;
+
             let root_id = insert_root_bundle(conn).await?;
             build(conn, root_id).await
         })

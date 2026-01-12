@@ -27,5 +27,5 @@ pub use fixtures::{
 pub use mxd::wireframe::test_helpers::{build_frame, collect_strings};
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresTestDb, postgres_db};
-pub use protocol::handshake;
+pub use protocol::{handshake, login};
 pub use server::{TestServer, ensure_server_binary_env, with_env_var};

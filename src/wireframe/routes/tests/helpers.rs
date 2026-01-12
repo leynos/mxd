@@ -10,6 +10,7 @@ use crate::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    privileges::Privileges,
     transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
     wireframe::routes::process_transaction_bytes,
@@ -42,6 +43,24 @@ impl RouteTestContext {
             session: Session::default(),
             peer,
         })
+    }
+
+    /// Authenticate the session with default user privileges.
+    ///
+    /// Sets the session's user ID and grants default user privileges so that
+    /// handlers requiring authentication will succeed. Use this before testing
+    /// privileged operations without going through the full login flow.
+    pub(super) fn authenticate(&mut self, user_id: i32) {
+        self.session.user_id = Some(user_id);
+        self.session.privileges = Privileges::default_user();
+    }
+
+    /// Authenticate with custom privileges.
+    ///
+    /// Sets the session's user ID and grants the specified privileges.
+    pub(super) fn authenticate_with_privileges(&mut self, user_id: i32, privileges: Privileges) {
+        self.session.user_id = Some(user_id);
+        self.session.privileges = privileges;
     }
 
     /// Send a transaction through routing and parse the reply.

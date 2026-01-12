@@ -23,6 +23,7 @@ use rstest::rstest;
 use test_util::{
     AnyError,
     handshake,
+    login,
     setup_news_categories_nested_db,
     setup_news_categories_root_db,
 };
@@ -34,6 +35,7 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
     stream.set_read_timeout(Some(std::time::Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(std::time::Duration::from_secs(20)))?;
     handshake(&mut stream)?;
+    login(&mut stream, "alice", "secret")?;
     let request_params = path
         .map(|p| vec![(FieldId::NewsPath, p.as_bytes())])
         .unwrap_or_default();
@@ -143,11 +145,23 @@ mod rstest_tests {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_invalid_path() -> Result<(), AnyError> {
+    use mxd::{db::create_user, models::NewUser, users::hash_password};
+
     let Some(server) = common::start_server_or_skip(|db| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
             apply_migrations(&mut conn, db).await?;
+
+            // Create test user for authentication
+            let argon2 = argon2::Argon2::default();
+            let hashed = hash_password(&argon2, "secret")?;
+            let new_user = NewUser {
+                username: "alice",
+                password: &hashed,
+            };
+            create_user(&mut conn, &new_user).await?;
+
             create_category(
                 &mut conn,
                 &NewCategory {
@@ -186,11 +200,23 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_empty() -> Result<(), AnyError> {
+    use mxd::{db::create_user, models::NewUser, users::hash_password};
+
     let Some(server) = common::start_server_or_skip(|db| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db).await?;
             apply_migrations(&mut conn, db).await?;
+
+            // Create test user for authentication
+            let argon2 = argon2::Argon2::default();
+            let hashed = hash_password(&argon2, "secret")?;
+            let new_user = NewUser {
+                username: "alice",
+                password: &hashed,
+            };
+            create_user(&mut conn, &new_user).await?;
+
             Ok(())
         })
     })?

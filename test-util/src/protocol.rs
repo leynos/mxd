@@ -1,11 +1,18 @@
 //! Protocol helpers shared by integration tests.
 //!
-//! Currently provides the client-side handshake used by multiple suites.
+//! Currently provides the client-side handshake and login used by multiple suites.
 
 use std::{
+    convert::TryFrom,
     convert::TryInto,
     io::{self, Read, Write},
     net::TcpStream,
+};
+
+use mxd::{
+    field_id::FieldId,
+    transaction::{FrameHeader, Transaction, encode_params},
+    transaction_type::TransactionType,
 };
 
 /// Send a client handshake and verify the server reply matches expectations.
@@ -44,5 +51,62 @@ pub fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
         .map_err(|_| io::Error::new(io::ErrorKind::UnexpectedEof, "handshake reply too short"))?;
     let code = u32::from_be_bytes(code_bytes);
     assert_eq!(code, 0, "handshake returned error code {code}");
+    Ok(())
+}
+
+/// Send a login transaction and verify successful authentication.
+///
+/// # Errors
+///
+/// Returns an I/O error if the login fails.
+///
+/// # Panics
+///
+/// Panics if the server returns a non-zero error code (authentication failed).
+#[expect(
+    clippy::big_endian_bytes,
+    reason = "TRTP protocol uses network byte order"
+)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test helper: panics indicate protocol violations"
+)]
+pub fn login(stream: &mut TcpStream, username: &str, password: &str) -> std::io::Result<()> {
+    let params: &[(FieldId, &[u8])] = &[
+        (FieldId::Login, username.as_bytes()),
+        (FieldId::Password, password.as_bytes()),
+    ];
+    let payload = encode_params(params)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    let payload_size = u32::try_from(payload.len())
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: TransactionType::Login.into(),
+        id: 1,
+        error: 0,
+        total_size: payload_size,
+        data_size: payload_size,
+    };
+    let tx = Transaction { header, payload };
+    stream.write_all(&tx.to_bytes())?;
+
+    // Read the response header
+    let mut hdr_buf = [0u8; 20];
+    stream.read_exact(&mut hdr_buf)?;
+    let reply_header = FrameHeader::from_bytes(&hdr_buf);
+
+    // Read the response payload (if any)
+    if reply_header.data_size > 0 {
+        let mut payload_buf = vec![0u8; reply_header.data_size as usize];
+        stream.read_exact(&mut payload_buf)?;
+    }
+
+    assert_eq!(
+        reply_header.error, 0,
+        "login failed with error code {}",
+        reply_header.error
+    );
     Ok(())
 }

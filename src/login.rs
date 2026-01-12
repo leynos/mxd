@@ -18,6 +18,7 @@ use crate::{
     db::{DbPool, get_user_by_name},
     field_id::FieldId,
     header_util::reply_header,
+    privileges::Privileges,
     transaction::{FrameHeader, Transaction, encode_params},
     users::verify_password,
 };
@@ -45,6 +46,9 @@ pub(crate) async fn handle_login(
     let (error, payload) = if let Some(u) = user {
         if verify_password(&u.password, &req.password) {
             session.user_id = Some(u.id);
+            // Grant default user privileges on successful authentication.
+            // TODO(task 5.1): Load privileges from user account in database.
+            session.privileges = Privileges::default_user();
             let params = encode_params(&[(
                 FieldId::Version,
                 &crate::protocol::CLIENT_VERSION.to_be_bytes(),
