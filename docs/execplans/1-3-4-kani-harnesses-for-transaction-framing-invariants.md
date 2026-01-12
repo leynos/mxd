@@ -10,8 +10,8 @@ PLANS.md: not present in the repository root.
 
 ## Purpose / Big Picture
 
-Add bounded Kani proofs for transaction framing invariants so we can
-demonstrate panic freedom and correctness for the core wire protocol framing
+Add bounded Kani proofs for transaction framing invariants so that panic
+freedom and correctness can be demonstrated for the core wire protocol framing
 logic. Success means `cargo kani` verifies header validation, fragment sizing,
 and transaction ID echoing for bounded inputs, while existing unit and
 behavioural tests continue to pass without changing observable server behaviour.
@@ -148,9 +148,10 @@ fragment sizing helper), record the decision in `docs/design.md` before
 changing code.
 
 Stage B: add supporting unit and behaviour tests. Introduce `rstest` unit tests
-for any new helper predicates or reply header behaviour. Confirm existing BDD
-scenarios cover the behaviours; add new `.feature` scenarios only if a gap is
-found (for example, a missing fragment sizing edge case).
+for any new helper predicates or reply header behaviour. Confirm existing
+behaviour-driven development (BDD) scenarios cover the behaviours; add new
+`.feature` scenarios only if a gap is found (for example, a missing fragment
+sizing edge case).
 
 Stage C: implement Kani harnesses. Add `#[cfg(kani)]` modules adjacent to the
 framing code. Use bounded payload sizes (for example, a small constant like 64

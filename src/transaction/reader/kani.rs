@@ -1,26 +1,14 @@
 //! Kani harnesses for transaction reader framing invariants.
 
 use super::{headers_match, validate_continuation_frame, validate_first_header};
-use crate::transaction::FrameHeader;
+use crate::transaction::kani_support::any_frame_header;
 
 const KANI_MAX_TOTAL: u32 = 64;
-const KANI_MAX_TOTAL_USIZE: usize = 64;
-
-fn any_header() -> FrameHeader {
-    FrameHeader {
-        flags: kani::any(),
-        is_reply: kani::any(),
-        ty: kani::any(),
-        id: kani::any(),
-        error: kani::any(),
-        total_size: kani::any(),
-        data_size: kani::any(),
-    }
-}
+const KANI_MAX_TOTAL_USIZE: usize = KANI_MAX_TOTAL as usize;
 
 #[kani::proof]
 fn kani_validate_first_header_matches_predicate() {
-    let header = any_header();
+    let header = any_frame_header();
 
     let max_total_plus = KANI_MAX_TOTAL.saturating_add(1);
     kani::assume(header.total_size <= max_total_plus);
@@ -39,8 +27,8 @@ fn kani_validate_first_header_matches_predicate() {
 
 #[kani::proof]
 fn kani_validate_continuation_frame_matches_predicate() {
-    let first = any_header();
-    let next = any_header();
+    let first = any_frame_header();
+    let next = any_frame_header();
     let remaining: u32 = kani::any();
 
     let max_total_plus = KANI_MAX_TOTAL.saturating_add(1);

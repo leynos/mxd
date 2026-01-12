@@ -249,33 +249,19 @@ const fn validate_fragment_consistency(
     Ok(())
 }
 
-/// Iterator over `(offset, length)` pairs for payload fragmentation.
-struct FragmentRanges {
-    offset: usize,
+/// Call `f(offset, len)` for each payload fragment range.
+fn for_each_fragment_range<E>(
     total_len: usize,
-}
-
-impl Iterator for FragmentRanges {
-    type Item = (usize, usize);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.offset >= self.total_len {
-            return None;
-        }
-        let remaining = self.total_len - self.offset;
+    mut f: impl FnMut(usize, usize) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut offset = 0usize;
+    while offset < total_len {
+        let remaining = total_len - offset;
         let len = remaining.min(MAX_FRAME_DATA);
-        let start = self.offset;
-        self.offset += len;
-        Some((start, len))
+        f(offset, len)?;
+        offset += len;
     }
-}
-
-/// Yield payload ranges sized for Hotline frame fragmentation.
-const fn fragment_ranges(total_len: usize) -> FragmentRanges {
-    FragmentRanges {
-        offset: 0,
-        total_len,
-    }
+    Ok(())
 }
 
 impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
@@ -380,7 +366,7 @@ impl Encode for HotlineTransaction {
             return Ok(());
         }
 
-        for (offset, len) in fragment_ranges(self.payload.len()) {
+        for_each_fragment_range(self.payload.len(), |offset, len| {
             let end = offset + len;
             let chunk = self
                 .payload
@@ -392,7 +378,8 @@ impl Encode for HotlineTransaction {
             header.write_bytes(&mut hdr_buf);
             encoder.writer().write(&hdr_buf)?;
             encoder.writer().write(chunk)?;
-        }
+            Ok(())
+        })?;
         Ok(())
     }
 }
