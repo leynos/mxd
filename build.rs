@@ -11,12 +11,14 @@ use clap_mangen::Man;
 use cli_defs::Cli;
 
 fn main() -> io::Result<()> {
-    println!("cargo::rerun-if-changed=cli-defs/src/lib.rs");
-    println!("cargo::rerun-if-changed=cli-defs/Cargo.toml");
+    println!("cargo::rerun-if-changed=cli-defs");
 
     let out_dir = match env::var("OUT_DIR") {
         Ok(dir) => PathBuf::from(dir),
-        Err(_) => return Ok(()),
+        Err(_) => {
+            // Cargo does not set OUT_DIR for `cargo check` or IDE analysis runs.
+            return Ok(());
+        }
     };
     let bin_name = env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "mxd".into());
 

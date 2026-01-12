@@ -62,39 +62,40 @@ pub enum Commands {
 /// Runtime configuration shared by all binaries.
 ///
 /// The default bind address `0.0.0.0:5500` listens on all interfaces.
-/// For production deployments, consider binding to a specific interface
-/// or using a reverse proxy.
+/// This is convenient for local development, but production deployments should
+/// bind to a specific interface (for example `127.0.0.1`) and sit behind a
+/// reverse proxy.
 #[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 pub struct AppConfig {
     /// Server bind address.
     #[ortho_config(default = "0.0.0.0:5500".to_owned())]
-    #[arg(long, default_value_t = String::from("0.0.0.0:5500"))]
+    #[arg(long)]
     pub bind: String,
     /// Database connection string or path.
     #[ortho_config(default = "mxd.db".to_owned())]
-    #[arg(long, default_value_t = String::from("mxd.db"))]
+    #[arg(long)]
     pub database: String,
     /// Argon2 memory cost parameter.
     #[ortho_config(default = DEFAULT_ARGON2_M_COST)]
-    #[arg(long, default_value_t = DEFAULT_ARGON2_M_COST)]
+    #[arg(long)]
     pub argon2_m_cost: u32,
     /// Argon2 time cost parameter.
     #[ortho_config(default = DEFAULT_ARGON2_T_COST)]
-    #[arg(long, default_value_t = DEFAULT_ARGON2_T_COST)]
+    #[arg(long)]
     pub argon2_t_cost: u32,
     /// Argon2 parallelism cost parameter.
     #[ortho_config(default = DEFAULT_ARGON2_P_COST)]
-    #[arg(long, default_value_t = DEFAULT_ARGON2_P_COST)]
+    #[arg(long)]
     pub argon2_p_cost: u32,
 }
 
 /// Top-level CLI entry point consumed by binaries.
-#[derive(Parser, Deserialize, Serialize, Debug, Clone)]
+#[derive(Parser, Serialize)]
 pub struct Cli {
-    /// Application configuration.
+    /// CLI configuration overrides (merged with files and defaults at runtime).
     #[command(flatten)]
-    pub config: AppConfig,
+    pub config: AppConfigCli,
     /// Optional subcommand.
     #[command(subcommand)]
     pub command: Option<Commands>,

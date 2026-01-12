@@ -4,6 +4,10 @@
 //! stable definitions shared between build-time (man page generation) and
 //! runtime consumers.
 
+use std::ffi::OsString;
+
+use anyhow::{Context, Result};
+use clap::{CommandFactory, Parser};
 pub use cli_defs::{
     AppConfig,
     Cli,
@@ -13,6 +17,50 @@ pub use cli_defs::{
     DEFAULT_ARGON2_P_COST,
     DEFAULT_ARGON2_T_COST,
 };
+
+/// Parsed CLI with resolved configuration values.
+#[derive(Debug, Clone)]
+pub struct ResolvedCli {
+    /// Application configuration.
+    pub config: AppConfig,
+    /// Optional subcommand.
+    pub command: Option<Commands>,
+}
+
+/// Load configuration using `OrthoConfig` defaults and CLI overrides.
+///
+/// # Errors
+///
+/// Returns an error if configuration parsing fails.
+pub fn load_cli() -> Result<ResolvedCli> {
+    let cli = Cli::parse();
+    let config_args = config_args_without_subcommand();
+    let config = AppConfig::load_from_iter(config_args).context("load configuration")?;
+    Ok(ResolvedCli {
+        config,
+        command: cli.command,
+    })
+}
+
+fn config_args_without_subcommand() -> Vec<OsString> {
+    let args: Vec<OsString> = std::env::args_os().collect();
+    let subcommands = Cli::command()
+        .get_subcommands()
+        .map(|cmd| cmd.get_name().to_owned())
+        .collect::<Vec<_>>();
+    let subcommand_index = args.iter().position(|arg| {
+        arg.to_str()
+            .is_some_and(|value| subcommands.iter().any(|name| name == value))
+    });
+    // OrthoConfig's CLI parser does not handle subcommands, so strip any
+    // subcommand and its arguments before loading configuration.
+    if let Some(index) = subcommand_index {
+        let head = args.get(..index).map(<[OsString]>::to_vec);
+        head.unwrap_or(args)
+    } else {
+        args
+    }
+}
 
 #[cfg(test)]
 mod tests {

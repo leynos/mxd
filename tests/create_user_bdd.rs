@@ -12,7 +12,7 @@ use argon2::Params;
 use diesel_async::AsyncConnection;
 use mxd::{
     db::{self, DbConnection},
-    server::{self, AppConfig, Cli, Commands, CreateUserArgs},
+    server::{self, AppConfig, Commands, CreateUserArgs, ResolvedCli},
 };
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
@@ -56,7 +56,7 @@ impl CreateUserWorld {
             username: Some(username),
             password,
         };
-        let cli = Cli {
+        let cli = ResolvedCli {
             config: self.config.borrow().clone(),
             command: Some(Commands::CreateUser(args)),
         };

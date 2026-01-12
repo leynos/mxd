@@ -41,7 +41,7 @@ use url::Url;
 
 use super::{
     admin,
-    cli::{AppConfig, Cli},
+    cli::{AppConfig, ResolvedCli},
 };
 use crate::{
     db::{DbPool, apply_migrations, establish_pool},
@@ -83,8 +83,8 @@ struct AcceptedConnection {
 ///
 /// Returns any error encountered while merging configuration or while running
 /// the requested command/daemon.
-pub async fn dispatch(cli: Cli) -> Result<()> {
-    let Cli { config, command } = cli;
+pub async fn dispatch(cli: ResolvedCli) -> Result<()> {
+    let ResolvedCli { config, command } = cli;
     if let Some(command) = command {
         admin::run_command(command, &config).await
     } else {
