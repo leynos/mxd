@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 PLANS.md: not present in the repository root.
 
@@ -63,14 +63,27 @@ behavioural tests continue to pass without changing observable server behaviour.
 
     - [x] (2026-01-11 00:00Z) Draft plan with current invariants and sources.
     - [x] (2026-01-11 00:00Z) Upgrade rstest-bdd to 0.3.2 and align docs.
-    - [ ] Add Kani harness modules and any supporting helpers.
-    - [ ] Add/adjust `rstest` unit tests and verify BDD coverage.
-    - [ ] Update design/verification docs and user guide if needed.
-    - [ ] Run formatting, lint, tests, Kani proofs, and update roadmap status.
+    - [x] (2026-01-12 00:00Z) Begin implementation and confirm framing targets.
+    - [x] (2026-01-12 00:00Z) Add Kani harness modules and fragmentation helper.
+    - [x] (2026-01-12 00:00Z) Add `rstest` unit coverage for fragment ranges.
+    - [x] (2026-01-12 00:00Z) Update design/verification docs and guide text.
+    - [x] (2026-01-12 00:00Z) Run formatting, lint, tests, Kani proofs, and
+      update roadmap status.
 
 ## Surprises & Discoveries
 
-    - None yet.
+    - Observation: `cfg(kani)` triggered the `unexpected_cfgs` lint under
+      `-D warnings`.
+      Evidence: `cargo build -p mxd` warned about unexpected `cfg(kani)` until
+      `Cargo.toml` was updated with `check-cfg`.
+      Impact: Added `unexpected_cfgs` configuration to allow `cfg(kani)`.
+    - Observation: Kani requires `kani::assert` to include a message and
+      needed an explicit unwind bound for fragment range iteration.
+      Evidence: `cargo kani` reported missing argument errors and produced
+      unbounded loop unwinding for `fragment_ranges` until assertions were
+      updated and `#[kani::unwind(3)]` was added.
+      Impact: Added descriptive messages and bounded the harness loop to keep
+      proofs tractable.
 
 ## Decision Log
 
@@ -83,10 +96,24 @@ behavioural tests continue to pass without changing observable server behaviour.
       Rationale: user confirmed the version bump; docs must reflect the active
       dependency.
       Date/Author: 2026-01-11, Codex
+    - Decision: Factor `fragment_ranges` from the codec encoder to make
+      fragmentation proofs reusable in Kani and unit tests.
+      Rationale: keeps the fragment sizing invariant centralised and avoids
+      duplicating the framing loop.
+      Date/Author: 2026-01-12, Codex
+    - Decision: Bound the fragment sizing harness to two fragments and set
+      `#[kani::unwind(3)]`.
+      Rationale: keeps Kani proof time bounded while still covering multi-
+      fragment cases.
+      Date/Author: 2026-01-12, Codex
 
 ## Outcomes & Retrospective
 
-TBD after implementation.
+- Implemented Kani harnesses covering header validation, fragment sizing, and
+  reply header ID echoing with bounded inputs.
+- Added reusable fragment range iterator plus `rstest` coverage.
+- Ran lint, tests, and Kani proofs; all passed with warnings limited to
+  unsupported Kani constructs outside reachable paths.
 
 ## Context and Orientation
 
@@ -233,10 +260,14 @@ Expected additions:
   installed Kani toolchain).
 - `#[cfg(kani)]` harnesses such as:
 
-  - `kani_header_validation_matches_predicate` in
-      `src/transaction/reader/mod.rs` (or `src/transaction/reader/kani.rs`).
-  - `kani_encode_fragment_sizes_bounded` in `src/wireframe/codec/mod.rs`.
-  - `kani_reply_header_echoes_id` in `src/header_util.rs`.
+  - `kani_validate_first_header_matches_predicate` in
+      `src/transaction/reader/kani.rs`.
+  - `kani_validate_continuation_frame_matches_predicate` in
+      `src/transaction/reader/kani.rs`.
+  - `kani_validate_header_matches_predicate` in
+      `src/wireframe/codec/kani.rs`.
+  - `kani_fragment_ranges_cover_payload` in `src/wireframe/codec/kani.rs`.
+  - `kani_reply_header_echoes_id` in `src/header_util/kani.rs`.
 
 Each harness should:
 

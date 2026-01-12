@@ -602,7 +602,10 @@ when total payload limits are relaxed.
 in `src/transaction/reader.rs` and `src/transaction/writer.rs`, plus BDD
 scenarios in `tests/features/transaction_streaming.feature` bound through
 `rstest-bdd` v0.3.2. The scenarios cover successful multi-fragment streaming,
-limit enforcement, and header mismatch rejection.
+limit enforcement, and header mismatch rejection. Kani harnesses in
+`src/transaction/reader/kani.rs`, `src/wireframe/codec/kani.rs`, and
+`src/header_util/kani.rs` prove bounded header validation, fragment sizing, and
+transaction ID echoing without panics.
 
 #### Transaction routing middleware (December 2025)
 

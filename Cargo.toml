@@ -123,6 +123,7 @@ proptest = "1.4.0"
 tempfile = "3.23.0"
 paste = "1.0.15"
 pg-embedded-setup-unpriv = { package = "pg-embed-setup-unpriv", version = "0.1.0", features = ["diesel-support"] }
+kani = "0.0.1"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -190,6 +191,7 @@ result_large_err                    = "deny"
 unknown_lints                       = "deny"
 renamed_and_removed_lints           = "deny"
 missing_docs                        = "deny"
+unexpected_cfgs                     = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [workspace.lints.rustdoc]
 missing_crate_level_docs            = "deny"

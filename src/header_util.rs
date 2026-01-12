@@ -29,3 +29,6 @@ pub fn reply_header(
         data_size: u32::try_from(payload_len).expect("payload fits in u32"),
     }
 }
+
+#[cfg(kani)]
+mod kani;

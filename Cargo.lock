@@ -1955,6 +1955,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "kani"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b4b7234edbef8bfed0dd44c39b0cd344d4ef7fa2bcb5dec3c9c334874ed8744"
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2214,6 +2220,7 @@ dependencies = [
  "figment",
  "figment-json5",
  "futures-util",
+ "kani",
  "ortho_config 0.3.0",
  "paste",
  "pg-embed-setup-unpriv",

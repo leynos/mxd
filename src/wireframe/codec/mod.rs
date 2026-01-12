@@ -10,6 +10,8 @@
 
 mod frame;
 mod framed;
+#[cfg(kani)]
+mod kani;
 
 use bincode::{
     de::{BorrowDecode, BorrowDecoder, read::Reader},
@@ -247,6 +249,35 @@ const fn validate_fragment_consistency(
     Ok(())
 }
 
+/// Iterator over `(offset, length)` pairs for payload fragmentation.
+struct FragmentRanges {
+    offset: usize,
+    total_len: usize,
+}
+
+impl Iterator for FragmentRanges {
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset >= self.total_len {
+            return None;
+        }
+        let remaining = self.total_len - self.offset;
+        let len = remaining.min(MAX_FRAME_DATA);
+        let start = self.offset;
+        self.offset += len;
+        Some((start, len))
+    }
+}
+
+/// Yield payload ranges sized for Hotline frame fragmentation.
+const fn fragment_ranges(total_len: usize) -> FragmentRanges {
+    FragmentRanges {
+        offset: 0,
+        total_len,
+    }
+}
+
 impl<'de> BorrowDecode<'de, ()> for HotlineTransaction {
     fn borrow_decode<D: BorrowDecoder<'de, Context = ()>>(
         decoder: &mut D,
@@ -349,9 +380,8 @@ impl Encode for HotlineTransaction {
             return Ok(());
         }
 
-        let mut offset = 0usize;
-        while offset < self.payload.len() {
-            let end = (offset + MAX_FRAME_DATA).min(self.payload.len());
+        for (offset, len) in fragment_ranges(self.payload.len()) {
+            let end = offset + len;
             let chunk = self
                 .payload
                 .get(offset..end)
@@ -362,7 +392,6 @@ impl Encode for HotlineTransaction {
             header.write_bytes(&mut hdr_buf);
             encoder.writer().write(&hdr_buf)?;
             encoder.writer().write(chunk)?;
-            offset = end;
         }
         Ok(())
     }

@@ -80,6 +80,11 @@ Use Kani when:
 Harnesses live adjacent to the code they verify and compile only under
 `#[cfg(kani)]`.
 
+Current harnesses cover transaction framing invariants in
+`src/transaction/reader/kani.rs`, `src/wireframe/codec/kani.rs`, and
+`src/header_util/kani.rs`, proving header validation, fragment sizing, and
+transaction ID echoing for bounded payloads.
+
 ## TLA+ specifications
 
 ### Handshake specification (MxdHandshake.tla)
@@ -206,6 +211,10 @@ make tlc-handshake
 # Stateright models (bounded)
 cargo test -p mxd-verification -- --nocapture
 
-# Kani harnesses (example)
-cargo kani -p mxd-domain --harness <harness_name>
+# Kani harnesses (transaction framing invariants)
+cargo kani -p mxd --harness kani_validate_header_matches_predicate
+cargo kani -p mxd --harness kani_fragment_ranges_cover_payload
+cargo kani -p mxd --harness kani_validate_first_header_matches_predicate
+cargo kani -p mxd --harness kani_validate_continuation_frame_matches_predicate
+cargo kani -p mxd --harness kani_reply_header_echoes_id
 ```

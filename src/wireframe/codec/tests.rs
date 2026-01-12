@@ -203,6 +203,35 @@ fn expected_framing_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
 }
 
 #[rstest]
+#[case(0, 0)]
+#[case(1, 1)]
+#[case(MAX_FRAME_DATA, 1)]
+#[case(MAX_FRAME_DATA + 1, 2)]
+#[case((2 * MAX_FRAME_DATA) + 1, 3)]
+fn fragment_ranges_cover_payload(#[case] total_len: usize, #[case] expected_count: usize) {
+    let mut sum = 0usize;
+    let mut count = 0usize;
+    let mut last_len = 0usize;
+
+    for (offset, len) in fragment_ranges(total_len) {
+        assert!(len > 0);
+        assert!(len <= MAX_FRAME_DATA);
+        assert!(offset + len <= total_len);
+        sum += len;
+        count += 1;
+        last_len = len;
+    }
+
+    assert_eq!(sum, total_len);
+    assert_eq!(count, expected_count);
+    if total_len == 0 {
+        assert_eq!(last_len, 0);
+    } else {
+        assert!(last_len > 0);
+    }
+}
+
+#[rstest]
 #[case::size_mismatch(
     FrameHeader {
         flags: 0,
