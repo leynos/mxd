@@ -5,6 +5,9 @@
 //! Extracting these types into a separate crate avoids brittle `#[path = ...]`
 //! includes and keeps build-time and runtime dependencies cleanly separated.
 
+// FIXME: File-wide suppressions are unavoidable here. Clap and OrthoConfig derive macros
+// inject generated code throughout the module, and there is no mechanism to narrow
+// the scope without restructuring the crate.
 #![expect(
     non_snake_case,
     reason = "Clap/OrthoConfig derive macros generate helper modules with uppercase names"
@@ -57,6 +60,10 @@ pub enum Commands {
 }
 
 /// Runtime configuration shared by all binaries.
+///
+/// The default bind address `0.0.0.0:5500` listens on all interfaces.
+/// For production deployments, consider binding to a specific interface
+/// or using a reverse proxy.
 #[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
 pub struct AppConfig {

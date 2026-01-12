@@ -12,6 +12,7 @@ use cli_defs::Cli;
 
 fn main() -> io::Result<()> {
     println!("cargo::rerun-if-changed=cli-defs/src/lib.rs");
+    println!("cargo::rerun-if-changed=cli-defs/Cargo.toml");
 
     let out_dir = match env::var("OUT_DIR") {
         Ok(dir) => PathBuf::from(dir),
