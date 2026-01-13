@@ -8,13 +8,13 @@
 use std::net::SocketAddr;
 
 mod handlers;
-mod news;
-
-use news::{GetArticleDataRequest, PostArticleRequest};
 
 use crate::{
     db::DbPool,
     field_id::FieldId,
+    handler::PrivilegeError,
+    header_util::reply_header,
+    news_handlers,
     transaction::{
         FrameHeader,
         Transaction,
@@ -39,6 +39,18 @@ pub const ERR_INVALID_PAYLOAD: u32 = 2;
 pub const ERR_INTERNAL_SERVER: u32 = 3;
 /// Error code used when the user lacks the required privilege.
 pub const ERR_INSUFFICIENT_PRIVILEGES: u32 = 4;
+
+/// Build an error reply for a privilege check failure.
+pub(crate) fn privilege_error_reply(header: &FrameHeader, err: PrivilegeError) -> Transaction {
+    let error_code = match err {
+        PrivilegeError::NotAuthenticated => ERR_NOT_AUTHENTICATED,
+        PrivilegeError::InsufficientPrivileges(_) => ERR_INSUFFICIENT_PRIVILEGES,
+    };
+    Transaction {
+        header: reply_header(header, error_code, 0),
+        payload: Vec::new(),
+    }
+}
 
 /// Context passed to all command handlers containing shared infrastructure.
 struct HandlerContext<'a> {
@@ -270,22 +282,16 @@ impl Command {
                 Self::process_get_file_name_list(ctx).await
             }
             Self::GetNewsCategoryNameList { header, path } => {
-                let ctx = HandlerContext::new(pool, session, header);
-                Self::process_get_news_category_name_list(ctx, path).await
+                news_handlers::process_category_name_list(pool, session, header, path).await
             }
             Self::GetNewsArticleNameList { header, path } => {
-                let ctx = HandlerContext::new(pool, session, header);
-                Self::process_get_news_article_name_list(ctx, path).await
+                news_handlers::process_article_name_list(pool, session, header, path).await
             }
             Self::GetNewsArticleData {
                 header,
                 path,
                 article_id,
-            } => {
-                let ctx = HandlerContext::new(pool, session, header);
-                let req = GetArticleDataRequest { path, article_id };
-                Self::process_get_news_article_data(ctx, req).await
-            }
+            } => news_handlers::process_article_data(pool, session, header, path, article_id).await,
             Self::PostNewsArticle {
                 header,
                 path,
@@ -294,15 +300,17 @@ impl Command {
                 data_flavor,
                 data,
             } => {
-                let ctx = HandlerContext::new(pool, session, header);
-                let req = PostArticleRequest {
+                news_handlers::process_post_article(
+                    pool,
+                    session,
+                    header,
                     path,
                     title,
                     flags,
                     data_flavor,
                     data,
-                };
-                Self::process_post_news_article(ctx, req).await
+                )
+                .await
             }
             Self::InvalidPayload { header } => Ok(Self::process_invalid_payload(header)),
             Self::Unknown { header } => Ok(Self::process_unknown(peer, header)),

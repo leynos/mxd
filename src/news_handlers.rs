@@ -8,21 +8,141 @@
 use futures_util::future::BoxFuture;
 use tracing::error;
 
-use super::{ERR_INTERNAL_SERVER, NEWS_ERR_PATH_UNSUPPORTED};
 use crate::{
+    commands::{ERR_INTERNAL_SERVER, NEWS_ERR_PATH_UNSUPPORTED, privilege_error_reply},
     db::{
         CreateRootArticleParams,
         DbConnection,
         DbPool,
         PathLookupError,
         create_root_article,
+        get_article,
         list_article_titles,
         list_names_at_path,
     },
     field_id::FieldId,
+    handler::{PrivilegeError, Session},
     header_util::reply_header,
+    privileges::Privileges,
     transaction::{FrameHeader, Transaction, encode_params},
 };
+
+/// Parameters for posting a new news article.
+#[derive(Debug, PartialEq, Eq)]
+struct PostArticleRequest {
+    path: String,
+    title: String,
+    flags: i32,
+    data_flavor: String,
+    data: String,
+}
+
+impl PostArticleRequest {
+    /// Build database parameters from this request.
+    ///
+    /// The returned [`CreateRootArticleParams`] borrows from `self` and contains
+    /// all fields except `path`, which is used separately for path lookup.
+    fn to_db_params(&self) -> CreateRootArticleParams<'_> {
+        CreateRootArticleParams {
+            title: &self.title,
+            flags: self.flags,
+            data_flavor: &self.data_flavor,
+            data: &self.data,
+        }
+    }
+}
+
+/// Handle news category listing commands after privilege checks.
+///
+/// # Errors
+/// Returns an error if privilege checks or database operations fail.
+pub async fn process_category_name_list(
+    pool: DbPool,
+    session: &mut Session,
+    header: FrameHeader,
+    path: Option<String>,
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let privilege_result: Result<(), PrivilegeError> =
+        session.require_privilege(Privileges::NEWS_READ_ARTICLE);
+    if let Err(e) = privilege_result {
+        return Ok(privilege_error_reply(&header, e));
+    }
+    handle_category_list(pool, header, path).await
+}
+
+/// Handle news article title listing commands after privilege checks.
+///
+/// # Errors
+/// Returns an error if privilege checks or database operations fail.
+pub async fn process_article_name_list(
+    pool: DbPool,
+    session: &mut Session,
+    header: FrameHeader,
+    path: String,
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let privilege_result: Result<(), PrivilegeError> =
+        session.require_privilege(Privileges::NEWS_READ_ARTICLE);
+    if let Err(e) = privilege_result {
+        return Ok(privilege_error_reply(&header, e));
+    }
+    handle_article_titles(pool, header, path).await
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "entry point mirrors protocol command fields"
+)]
+/// Handle news article data commands after privilege checks.
+///
+/// # Errors
+/// Returns an error if privilege checks or database operations fail.
+pub async fn process_article_data(
+    pool: DbPool,
+    session: &mut Session,
+    header: FrameHeader,
+    path: String,
+    article_id: i32,
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let privilege_result: Result<(), PrivilegeError> =
+        session.require_privilege(Privileges::NEWS_READ_ARTICLE);
+    if let Err(e) = privilege_result {
+        return Ok(privilege_error_reply(&header, e));
+    }
+    handle_article_data(pool, header, path, article_id).await
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "entry point mirrors protocol command fields"
+)]
+/// Handle news article creation commands after privilege checks.
+///
+/// # Errors
+/// Returns an error if privilege checks or database operations fail.
+pub async fn process_post_article(
+    pool: DbPool,
+    session: &mut Session,
+    header: FrameHeader,
+    path: String,
+    title: String,
+    flags: i32,
+    data_flavor: String,
+    data: String,
+) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let privilege_result: Result<(), PrivilegeError> =
+        session.require_privilege(Privileges::NEWS_POST_ARTICLE);
+    if let Err(e) = privilege_result {
+        return Ok(privilege_error_reply(&header, e));
+    }
+    let req = PostArticleRequest {
+        path,
+        title,
+        flags,
+        data_flavor,
+        data,
+    };
+    handle_post_article(pool, header, req).await
+}
 
 /// Helper to execute a news database operation and build a reply transaction.
 ///
@@ -96,7 +216,7 @@ fn news_error_reply(header: &FrameHeader, err: PathLookupError) -> Transaction {
 ///
 /// # Errors
 /// Returns an error if the path lookup fails or the database cannot be queried.
-pub(super) async fn handle_category_list(
+async fn handle_category_list(
     pool: DbPool,
     header: FrameHeader,
     path: Option<String>,
@@ -118,7 +238,7 @@ pub(super) async fn handle_category_list(
 ///
 /// # Errors
 /// Returns an error if the path lookup fails or the database cannot be queried.
-pub(super) async fn handle_article_titles(
+async fn handle_article_titles(
     pool: DbPool,
     header: FrameHeader,
     path: String,
@@ -140,13 +260,12 @@ pub(super) async fn handle_article_titles(
 ///
 /// # Errors
 /// Returns an error if the path lookup fails or the database cannot be queried.
-pub(super) async fn handle_article_data(
+async fn handle_article_data(
     pool: DbPool,
     header: FrameHeader,
     path: String,
     article_id: i32,
 ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
-    use crate::db::get_article;
     run_news_tx(pool, header, move |conn| {
         Box::pin(async move {
             let article = get_article(conn, &path, article_id).await?;
@@ -206,43 +325,11 @@ pub(super) async fn handle_article_data(
     .await
 }
 
-/// Parameters for retrieving a news article's data.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct GetArticleDataRequest {
-    pub(super) path: String,
-    pub(super) article_id: i32,
-}
-
-/// Parameters for posting a new news article.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct PostArticleRequest {
-    pub(super) path: String,
-    pub(super) title: String,
-    pub(super) flags: i32,
-    pub(super) data_flavor: String,
-    pub(super) data: String,
-}
-
-impl PostArticleRequest {
-    /// Build database parameters from this request.
-    ///
-    /// The returned [`CreateRootArticleParams`] borrows from `self` and contains
-    /// all fields except `path`, which is used separately for path lookup.
-    pub(super) fn to_db_params(&self) -> CreateRootArticleParams<'_> {
-        CreateRootArticleParams {
-            title: &self.title,
-            flags: self.flags,
-            data_flavor: &self.data_flavor,
-            data: &self.data,
-        }
-    }
-}
-
 /// Create a new root article under the provided path.
 ///
 /// # Errors
 /// Returns an error if the path lookup fails or the database cannot be queried.
-pub(super) async fn handle_post_article(
+async fn handle_post_article(
     pool: DbPool,
     header: FrameHeader,
     req: PostArticleRequest,

@@ -4,19 +4,10 @@ use std::net::SocketAddr;
 
 use super::{
     Command,
-    ERR_INSUFFICIENT_PRIVILEGES,
     ERR_INTERNAL_SERVER,
     ERR_INVALID_PAYLOAD,
-    ERR_NOT_AUTHENTICATED,
     HandlerContext,
-    news::{
-        GetArticleDataRequest,
-        PostArticleRequest,
-        handle_article_data,
-        handle_article_titles,
-        handle_category_list,
-        handle_post_article,
-    },
+    privilege_error_reply,
 };
 use crate::{
     field_id::FieldId,
@@ -27,37 +18,7 @@ use crate::{
     transaction::{FrameHeader, Transaction, encode_params},
 };
 
-/// Build an error reply for a privilege check failure.
-fn privilege_error_reply(header: &FrameHeader, err: PrivilegeError) -> Transaction {
-    let error_code = match err {
-        PrivilegeError::NotAuthenticated => ERR_NOT_AUTHENTICATED,
-        PrivilegeError::InsufficientPrivileges(_) => ERR_INSUFFICIENT_PRIVILEGES,
-    };
-    Transaction {
-        header: reply_header(header, error_code, 0),
-        payload: Vec::new(),
-    }
-}
-
 impl Command {
-    async fn check_privilege_and_run<F, Fut>(
-        session: &crate::handler::Session,
-        header: &FrameHeader,
-        privilege: Privileges,
-        handler: F,
-    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>>
-    where
-        F: FnOnce() -> Fut,
-        Fut: std::future::Future<
-                Output = Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>>,
-            >,
-    {
-        if let Err(e) = session.require_privilege(privilege) {
-            return Ok(privilege_error_reply(header, e));
-        }
-        handler().await
-    }
-
     pub(super) async fn process_login(
         peer: SocketAddr,
         ctx: HandlerContext<'_>,
@@ -100,70 +61,6 @@ impl Command {
             header: reply_header(&header, 0, payload.len()),
             payload,
         })
-    }
-
-    pub(super) async fn process_get_news_category_name_list(
-        ctx: HandlerContext<'_>,
-        path: Option<String>,
-    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let HandlerContext {
-            pool,
-            session,
-            header,
-        } = ctx;
-        let header_for_handler = header.clone();
-        Self::check_privilege_and_run(session, &header, Privileges::NEWS_READ_ARTICLE, || {
-            handle_category_list(pool, header_for_handler, path)
-        })
-        .await
-    }
-
-    pub(super) async fn process_get_news_article_name_list(
-        ctx: HandlerContext<'_>,
-        path: String,
-    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let HandlerContext {
-            pool,
-            session,
-            header,
-        } = ctx;
-        let header_for_handler = header.clone();
-        Self::check_privilege_and_run(session, &header, Privileges::NEWS_READ_ARTICLE, || {
-            handle_article_titles(pool, header_for_handler, path)
-        })
-        .await
-    }
-
-    pub(super) async fn process_get_news_article_data(
-        ctx: HandlerContext<'_>,
-        req: GetArticleDataRequest,
-    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let HandlerContext {
-            pool,
-            session,
-            header,
-        } = ctx;
-        let header_for_handler = header.clone();
-        Self::check_privilege_and_run(session, &header, Privileges::NEWS_READ_ARTICLE, || {
-            handle_article_data(pool, header_for_handler, req.path, req.article_id)
-        })
-        .await
-    }
-
-    pub(super) async fn process_post_news_article(
-        ctx: HandlerContext<'_>,
-        req: PostArticleRequest,
-    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let HandlerContext {
-            pool,
-            session,
-            header,
-        } = ctx;
-        let header_for_handler = header.clone();
-        Self::check_privilege_and_run(session, &header, Privileges::NEWS_POST_ARTICLE, || {
-            handle_post_article(pool, header_for_handler, req)
-        })
-        .await
     }
 
     #[expect(

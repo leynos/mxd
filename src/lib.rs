@@ -44,6 +44,7 @@ pub mod handler;
 pub mod header_util;
 pub mod login;
 pub mod models;
+pub mod news_handlers;
 pub(crate) mod news_path;
 pub mod privileges;
 pub mod protocol;
