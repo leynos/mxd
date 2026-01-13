@@ -4,7 +4,7 @@
 //! stable definitions shared between build-time (man page generation) and
 //! runtime consumers.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
@@ -48,10 +48,19 @@ fn config_args_without_subcommand() -> Vec<OsString> {
         .get_subcommands()
         .map(|cmd| cmd.get_name().to_owned())
         .collect::<Vec<_>>();
-    let subcommand_index = args.iter().position(|arg| {
-        arg.to_str()
+    let mut subcommand_index = None;
+    for (index, arg) in args.iter().enumerate() {
+        if arg.as_os_str() == OsStr::new("--") {
+            break;
+        }
+        if arg
+            .to_str()
             .is_some_and(|value| subcommands.iter().any(|name| name == value))
-    });
+        {
+            subcommand_index = Some(index);
+            break;
+        }
+    }
     // OrthoConfig's CLI parser does not handle subcommands, so strip any
     // subcommand and its arguments before loading configuration.
     if let Some(index) = subcommand_index {
