@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only lint lint-postgres lint-sqlite lint-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
+.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
 
 APP ?= mxd
 CARGO ?= cargo
@@ -22,7 +22,7 @@ TEST_POSTGRES_FEATURES := --no-default-features --features "postgres test-suppor
 WIREFRAME_ONLY_FEATURES := --no-default-features --features "sqlite toml test-support"
 POSTGRES_TARGET_DIR := target/postgres
 
-all: check-fmt lint test
+all: check-fmt typecheck lint test
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \
@@ -45,6 +45,17 @@ fmt: ## Format Rust and Markdown sources
 
 check-fmt: ## Verify formatting for Rust sources
 	$(CARGO) fmt --all -- --check
+
+typecheck: typecheck-postgres typecheck-sqlite typecheck-wireframe-only ## Run cargo check for all feature sets
+
+typecheck-postgres: ## Run cargo check with the postgres backend
+	$(CARGO) check $(TEST_POSTGRES_FEATURES)
+
+typecheck-sqlite: ## Run cargo check with the sqlite backend
+	$(CARGO) check $(TEST_SQLITE_FEATURES)
+
+typecheck-wireframe-only: ## Run cargo check with legacy networking disabled
+	$(CARGO) check $(WIREFRAME_ONLY_FEATURES)
 
 lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy for all feature sets
 
