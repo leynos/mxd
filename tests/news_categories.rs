@@ -183,6 +183,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
     assert_eq!(hdr.error, NEWS_ERR_PATH_UNSUPPORTED);
     Ok(())
 }
+
 /// Tests that requesting a list of news categories from an empty database returns no categories.
 ///
 /// This test sets up a test server with an empty database, performs a TCP handshake,

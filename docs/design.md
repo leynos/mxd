@@ -645,8 +645,8 @@ The `process_transaction_bytes()` function implements the core routing logic:
 4. Serialize the reply `Transaction` back to bytes.
 
 Parse failures at any stage produce an error reply with `ERR_INTERNAL` (3),
-while unknown transaction types return error code 1 (matching the existing
-`handle_unknown()` behaviour in `commands.rs`).
+while unknown transaction types return error code 3 (matching the existing
+`handle_unknown()` behaviour in the commands module).
 
 **Session state management.** Unlike thread-local storage approaches, which
 fail under Tokio's work-stealing scheduler, the middleware passes the session
