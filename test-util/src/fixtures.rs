@@ -106,13 +106,7 @@ where
 pub fn setup_files_db(db: DatabaseUrl) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
-            let argon2 = argon2::Argon2::default();
-            let hashed = hash_password(&argon2, "secret")?;
-            let new_user = NewUser {
-                username: "alice",
-                password: &hashed,
-            };
-            create_user(conn, &new_user).await?;
+            ensure_test_user(conn).await?;
             let user_id: i32 = users_dsl::users
                 .filter(users_dsl::username.eq("alice"))
                 .select(users_dsl::id)

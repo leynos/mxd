@@ -325,10 +325,6 @@ impl Command {
         handle_login(peer, session, pool, req).await
     }
 
-    #[expect(
-        clippy::expect_used,
-        reason = "require_privilege guarantees authentication"
-    )]
     async fn process_get_file_name_list(
         pool: DbPool,
         session: &mut crate::handler::Session,
@@ -337,9 +333,7 @@ impl Command {
         if let Err(e) = session.require_privilege(Privileges::DOWNLOAD_FILE) {
             return Ok(privilege_error_reply(&header, e));
         }
-        let user_id = session
-            .user_id
-            .expect("require_privilege guarantees authentication");
+        let user_id = session.user_id.ok_or(PrivilegeError::NotAuthenticated)?;
         let mut conn = pool.get().await?;
         let files = crate::db::list_files_for_user(&mut conn, user_id).await?;
         let params: Vec<(FieldId, &[u8])> = files
