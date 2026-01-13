@@ -48,6 +48,7 @@ pub struct CreateUserArgs {
     /// Username for the new account.
     pub username: Option<String>,
     /// Password for the new account.
+    #[serde(skip_serializing)]
     pub password: Option<String>,
 }
 

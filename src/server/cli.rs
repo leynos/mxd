@@ -55,8 +55,7 @@ fn config_args_without_subcommand() -> Vec<OsString> {
     // OrthoConfig's CLI parser does not handle subcommands, so strip any
     // subcommand and its arguments before loading configuration.
     if let Some(index) = subcommand_index {
-        let head = args.get(..index).map(<[OsString]>::to_vec);
-        head.unwrap_or(args)
+        args.into_iter().take(index).collect()
     } else {
         args
     }
