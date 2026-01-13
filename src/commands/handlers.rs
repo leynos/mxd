@@ -40,6 +40,24 @@ fn privilege_error_reply(header: &FrameHeader, err: PrivilegeError) -> Transacti
 }
 
 impl Command {
+    async fn check_privilege_and_run<F, Fut>(
+        session: &crate::handler::Session,
+        header: &FrameHeader,
+        privilege: Privileges,
+        handler: F,
+    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<
+                Output = Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>>,
+            >,
+    {
+        if let Err(e) = session.require_privilege(privilege) {
+            return Ok(privilege_error_reply(header, e));
+        }
+        handler().await
+    }
+
     pub(super) async fn process_login(
         peer: SocketAddr,
         ctx: HandlerContext<'_>,
@@ -93,10 +111,11 @@ impl Command {
             session,
             header,
         } = ctx;
-        if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
-            return Ok(privilege_error_reply(&header, e));
-        }
-        handle_category_list(pool, header, path).await
+        let header_for_handler = header.clone();
+        Self::check_privilege_and_run(session, &header, Privileges::NEWS_READ_ARTICLE, || {
+            handle_category_list(pool, header_for_handler, path)
+        })
+        .await
     }
 
     pub(super) async fn process_get_news_article_name_list(
@@ -108,10 +127,11 @@ impl Command {
             session,
             header,
         } = ctx;
-        if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
-            return Ok(privilege_error_reply(&header, e));
-        }
-        handle_article_titles(pool, header, path).await
+        let header_for_handler = header.clone();
+        Self::check_privilege_and_run(session, &header, Privileges::NEWS_READ_ARTICLE, || {
+            handle_article_titles(pool, header_for_handler, path)
+        })
+        .await
     }
 
     pub(super) async fn process_get_news_article_data(
@@ -123,10 +143,11 @@ impl Command {
             session,
             header,
         } = ctx;
-        if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
-            return Ok(privilege_error_reply(&header, e));
-        }
-        handle_article_data(pool, header, req.path, req.article_id).await
+        let header_for_handler = header.clone();
+        Self::check_privilege_and_run(session, &header, Privileges::NEWS_READ_ARTICLE, || {
+            handle_article_data(pool, header_for_handler, req.path, req.article_id)
+        })
+        .await
     }
 
     pub(super) async fn process_post_news_article(
@@ -138,10 +159,11 @@ impl Command {
             session,
             header,
         } = ctx;
-        if let Err(e) = session.require_privilege(Privileges::NEWS_POST_ARTICLE) {
-            return Ok(privilege_error_reply(&header, e));
-        }
-        handle_post_article(pool, header, req).await
+        let header_for_handler = header.clone();
+        Self::check_privilege_and_run(session, &header, Privileges::NEWS_POST_ARTICLE, || {
+            handle_post_article(pool, header_for_handler, req)
+        })
+        .await
     }
 
     #[expect(
