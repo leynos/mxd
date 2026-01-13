@@ -206,6 +206,13 @@ pub(super) async fn handle_article_data(
     .await
 }
 
+/// Parameters for retrieving a news article's data.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct GetArticleDataRequest {
+    pub(super) path: String,
+    pub(super) article_id: i32,
+}
+
 /// Parameters for posting a new news article.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct PostArticleRequest {

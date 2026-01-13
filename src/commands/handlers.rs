@@ -8,7 +8,9 @@ use super::{
     ERR_INTERNAL_SERVER,
     ERR_INVALID_PAYLOAD,
     ERR_NOT_AUTHENTICATED,
+    HandlerContext,
     news::{
+        GetArticleDataRequest,
         PostArticleRequest,
         handle_article_data,
         handle_article_titles,
@@ -17,7 +19,6 @@ use super::{
     },
 };
 use crate::{
-    db::DbPool,
     field_id::FieldId,
     handler::PrivilegeError,
     header_util::reply_header,
@@ -39,18 +40,17 @@ fn privilege_error_reply(header: &FrameHeader, err: PrivilegeError) -> Transacti
 }
 
 impl Command {
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "command fields map directly to handler arguments"
-    )]
     pub(super) async fn process_login(
         peer: SocketAddr,
-        pool: DbPool,
-        session: &mut crate::handler::Session,
+        ctx: HandlerContext<'_>,
         username: String,
         password: String,
-        header: FrameHeader,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let HandlerContext {
+            pool,
+            session,
+            header,
+        } = ctx;
         let req = LoginRequest {
             username,
             password,
@@ -60,10 +60,13 @@ impl Command {
     }
 
     pub(super) async fn process_get_file_name_list(
-        pool: DbPool,
-        session: &mut crate::handler::Session,
-        header: FrameHeader,
+        ctx: HandlerContext<'_>,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let HandlerContext {
+            pool,
+            session,
+            header,
+        } = ctx;
         if let Err(e) = session.require_privilege(Privileges::DOWNLOAD_FILE) {
             return Ok(privilege_error_reply(&header, e));
         }
@@ -82,11 +85,14 @@ impl Command {
     }
 
     pub(super) async fn process_get_news_category_name_list(
-        pool: DbPool,
-        session: &mut crate::handler::Session,
-        header: FrameHeader,
+        ctx: HandlerContext<'_>,
         path: Option<String>,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let HandlerContext {
+            pool,
+            session,
+            header,
+        } = ctx;
         if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
             return Ok(privilege_error_reply(&header, e));
         }
@@ -94,58 +100,47 @@ impl Command {
     }
 
     pub(super) async fn process_get_news_article_name_list(
-        pool: DbPool,
-        session: &mut crate::handler::Session,
-        header: FrameHeader,
+        ctx: HandlerContext<'_>,
         path: String,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let HandlerContext {
+            pool,
+            session,
+            header,
+        } = ctx;
         if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
             return Ok(privilege_error_reply(&header, e));
         }
         handle_article_titles(pool, header, path).await
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "command fields map directly to handler arguments"
-    )]
     pub(super) async fn process_get_news_article_data(
-        pool: DbPool,
-        session: &mut crate::handler::Session,
-        header: FrameHeader,
-        path: String,
-        article_id: i32,
+        ctx: HandlerContext<'_>,
+        req: GetArticleDataRequest,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let HandlerContext {
+            pool,
+            session,
+            header,
+        } = ctx;
         if let Err(e) = session.require_privilege(Privileges::NEWS_READ_ARTICLE) {
             return Ok(privilege_error_reply(&header, e));
         }
-        handle_article_data(pool, header, path, article_id).await
+        handle_article_data(pool, header, req.path, req.article_id).await
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "command fields map directly to handler arguments"
-    )]
     pub(super) async fn process_post_news_article(
-        pool: DbPool,
-        session: &mut crate::handler::Session,
-        header: FrameHeader,
-        path: String,
-        title: String,
-        flags: i32,
-        data_flavor: String,
-        data: String,
+        ctx: HandlerContext<'_>,
+        req: PostArticleRequest,
     ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let HandlerContext {
+            pool,
+            session,
+            header,
+        } = ctx;
         if let Err(e) = session.require_privilege(Privileges::NEWS_POST_ARTICLE) {
             return Ok(privilege_error_reply(&header, e));
         }
-        let req = PostArticleRequest {
-            path,
-            title,
-            flags,
-            data_flavor,
-            data,
-        };
         handle_post_article(pool, header, req).await
     }
 
