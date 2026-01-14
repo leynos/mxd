@@ -29,7 +29,6 @@ use super::{
 use crate::{
     field_id::FieldId,
     handler::Session,
-    privileges::Privileges,
     transaction::{FrameHeader, HEADER_LEN, Transaction, parse_transaction},
     transaction_type::TransactionType,
     wireframe::test_helpers::{dummy_pool, transaction_bytes},
@@ -239,13 +238,8 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
         return Ok(());
     };
     let pool = test_db.pool();
-    // Create an authenticated session with default user privileges.
-    let authenticated_session = Session {
-        user_id: Some(1),
-        privileges: Privileges::default_user(),
-        ..Default::default()
-    };
-    let session = Arc::new(tokio::sync::Mutex::new(authenticated_session));
+    // Start with an unauthenticated session; login should establish privileges.
+    let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
     let peer = "127.0.0.1:12345".parse().expect("peer addr");
     let middleware = TransactionMiddleware::new(pool, Arc::clone(&session), peer);
 
@@ -310,23 +304,7 @@ struct MiddlewareCase {
 fn build_middleware_cases() -> Vec<MiddlewareCase> {
     let article_id = 1i32.to_be_bytes().to_vec();
     let flags = 0i32.to_be_bytes().to_vec();
-    // Order matters: post_news_article must run before login because login
-    // resets session privileges to default_user() which lacks NEWS_POST_ARTICLE.
-    // The session is pre-authenticated with full privileges including
-    // NEWS_POST_ARTICLE.
     vec![
-        MiddlewareCase {
-            label: "post_news_article",
-            ty: TransactionType::PostNewsArticle,
-            id: 901_006,
-            params: vec![
-                (FieldId::NewsPath, b"General".to_vec()),
-                (FieldId::NewsTitle, b"Third".to_vec()),
-                (FieldId::NewsArticleFlags, flags),
-                (FieldId::NewsDataFlavor, b"text/plain".to_vec()),
-                (FieldId::NewsArticleData, b"hello".to_vec()),
-            ],
-        },
         MiddlewareCase {
             label: "login",
             ty: TransactionType::Login,
@@ -361,6 +339,18 @@ fn build_middleware_cases() -> Vec<MiddlewareCase> {
             params: vec![
                 (FieldId::NewsPath, b"General".to_vec()),
                 (FieldId::NewsArticleId, article_id),
+            ],
+        },
+        MiddlewareCase {
+            label: "post_news_article",
+            ty: TransactionType::PostNewsArticle,
+            id: 901_006,
+            params: vec![
+                (FieldId::NewsPath, b"General".to_vec()),
+                (FieldId::NewsTitle, b"Third".to_vec()),
+                (FieldId::NewsArticleFlags, flags),
+                (FieldId::NewsDataFlavor, b"text/plain".to_vec()),
+                (FieldId::NewsArticleData, b"hello".to_vec()),
             ],
         },
     ]

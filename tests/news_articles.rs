@@ -4,7 +4,6 @@
 //! wireframe transport.
 
 use std::{
-    convert::TryFrom,
     io::{Read, Write},
     net::TcpStream,
     time::Duration,
@@ -20,7 +19,15 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{AnyError, DatabaseUrl, handshake, login, setup_news_db, with_db};
+use test_util::{
+    AnyError,
+    ensure_test_user,
+    handshake,
+    login,
+    setup_news_db,
+    setup_news_with_article,
+    with_db,
+};
 mod common;
 
 type ParamList = Vec<(FieldId, Vec<u8>)>;
@@ -38,8 +45,6 @@ fn connect_handshake_and_login(port: u16) -> Result<TcpStream, AnyError> {
     login(&mut stream, "alice", "secret")?;
     Ok(stream)
 }
-
-fn setup_stream(port: u16) -> Result<TcpStream, AnyError> { connect_handshake_and_login(port) }
 
 fn send_transaction(stream: &mut TcpStream, tx: &Transaction) -> Result<(), AnyError> {
     stream.write_all(&tx.to_bytes())?;
@@ -114,59 +119,6 @@ fn verify_article_titles(db_url: &str, expected: &[&str]) -> Result<(), AnyError
     Ok(())
 }
 
-async fn create_test_user_in_db(conn: &mut DbConnection) -> Result<(), AnyError> {
-    use mxd::{db::create_user, models::NewUser, users::hash_password};
-
-    let argon2 = argon2::Argon2::default();
-    let hashed = hash_password(&argon2, "secret")?;
-    let new_user = NewUser {
-        username: "alice",
-        password: &hashed,
-    };
-    create_user(conn, &new_user).await?;
-    Ok(())
-}
-
-fn setup_news_with_article(db: DatabaseUrl) -> Result<(), AnyError> {
-    with_db(db, |conn| {
-        Box::pin(async move {
-            use chrono::{DateTime, Utc};
-            use mxd::{models::NewArticle, schema::news_articles::dsl as a};
-
-            create_test_user_in_db(conn).await?;
-            create_category(
-                conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                },
-            )
-            .await?;
-            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-                .ok_or_else(|| anyhow::anyhow!("news fixture timestamp out of range"))?
-                .naive_utc();
-            diesel::insert_into(a::news_articles)
-                .values(&NewArticle {
-                    category_id: 1,
-                    parent_article_id: None,
-                    prev_article_id: None,
-                    next_article_id: None,
-                    first_child_article_id: None,
-                    title: "First",
-                    poster: Some("alice"),
-                    posted_at: posted,
-                    flags: 0,
-                    data_flavor: Some("text/plain"),
-                    data: Some("hello"),
-                })
-                .execute(conn)
-                .await?;
-            Ok(())
-        })
-    })?;
-    Ok(())
-}
-
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), AnyError> {
@@ -174,7 +126,7 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
         with_db(db, |conn| {
             Box::pin(async move {
                 // Create test user for authentication
-                create_test_user_in_db(conn).await?;
+                ensure_test_user(conn).await?;
 
                 create_category(
                     conn,
@@ -193,7 +145,7 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
     };
 
     let port = server.port();
-    let mut stream = setup_stream(port)?;
+    let mut stream = connect_handshake_and_login(port)?;
     send_transaction_with_params(
         &mut stream,
         TransactionType::NewsArticleNameList,
@@ -213,7 +165,7 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let mut stream = setup_stream(server.port())?;
+    let mut stream = connect_handshake_and_login(server.port())?;
     send_transaction_with_params(
         &mut stream,
         TransactionType::NewsArticleNameList,
@@ -243,7 +195,7 @@ fn get_news_article_data() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let mut stream = setup_stream(server.port())?;
+    let mut stream = connect_handshake_and_login(server.port())?;
 
     let mut params = Vec::new();
     params.push((FieldId::NewsPath, b"General".as_ref()));
@@ -276,7 +228,7 @@ fn post_news_article_root() -> Result<(), AnyError> {
         with_db(db, |conn| {
             Box::pin(async move {
                 // Create test user for authentication
-                create_test_user_in_db(conn).await?;
+                ensure_test_user(conn).await?;
 
                 create_category(
                     conn,

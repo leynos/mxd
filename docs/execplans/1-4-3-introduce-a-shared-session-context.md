@@ -13,7 +13,7 @@ No `PLANS.md` exists in this repository.
 After this change, the wireframe server maintains a shared session context that
 tracks the authenticated user, their privileges, and connection flags across
 all transaction handlers. Privilege checks defined in `docs/protocol.md` are
-enforced automatically, preventing unauthorised operations before they reach
+enforced automatically, preventing unauthorized operations before they reach
 domain logic.
 
 Observable outcome: running `make test` exercises privilege-gated transactions
@@ -75,7 +75,8 @@ privileged operations.
 - [x] Design the extended `Session` struct with privilege bits and flags.
 - [x] Implement the `Privileges` bitflags type matching `docs/protocol.md`.
 - [x] Extend `Session` with `privileges` and `connection_flags` fields.
-- [x] Update login handler to populate privileges from user account data.
+- [x] Update login handler to initialise privileges using `default_user()`,
+      pending database-backed privilege loading.
 - [x] Add privilege check helpers to `Session`.
 - [x] Integrate privilege enforcement into `GetFileNameList` handler.
 - [x] Integrate privilege enforcement into news transaction handlers.
@@ -90,8 +91,8 @@ privileged operations.
 
 ## Surprises & Discoveries
 
-1. **bitflags dependency**: The `bitflags` crate was not a direct dependency
-   despite transitive use. Added `bitflags = "2"` to `Cargo.toml`.
+1. **bitflags dependency**: The `bitflags` crate was not a direct dependency,
+   so `bitflags = "2.10.0"` was added to `Cargo.toml`.
 
 2. **Test authentication requirements**: Existing integration and BDD tests
    were not authenticating before sending privileged requests. After adding
@@ -137,7 +138,9 @@ specification before handlers execute.
 - Modified: `src/lib.rs` (module exports)
 - Modified: `src/handler.rs` (Session struct, PrivilegeError enum, helpers)
 - Modified: `src/login.rs` (populate privileges on login)
-- Modified: `src/commands.rs` (privilege enforcement in handlers)
+- Modified: `src/commands/mod.rs` (command parsing and dispatch)
+- Modified: `src/commands/handlers.rs` (file listing and error replies)
+- Created: `src/news_handlers/mod.rs` (news handler extraction)
 - Modified: `Cargo.toml` (bitflags dependency)
 - Created: `tests/features/session_privileges.feature` (BDD scenarios)
 - Created: `tests/session_privileges_bdd.rs` (BDD test implementation)
@@ -150,15 +153,15 @@ specification before handlers execute.
 **Tests added**:
 
 - Unit tests for Privileges bitflags and Session helpers
-- 6 BDD scenarios covering authenticated/unauthenticated and privileged/
-  unprivileged access paths
+- 6 behaviour-driven development (BDD) scenarios covering
+  authenticated/unauthenticated and privileged/unprivileged access paths
 
 **Retrospective**:
 
 - Implementation stayed within tolerance limits (~300 lines of new code).
 - No interface changes beyond adding new fields and methods.
-- Main complexity was updating existing tests to authenticate before privileged
-  operations; this was expected per the risk assessment.
+- The main complexity was updating existing tests to authenticate before
+  privileged operations; this was expected per the risk assessment.
 - The `bitflags` crate addition was minimal and well-justified.
 
 ## Context and Orientation
@@ -174,12 +177,19 @@ argon2) and `Session` (per-connection mutable state: currently only
 `user_id: Option<i32>`). The `handle_request` function dispatches transactions
 through `Command`.
 
-`src/commands.rs`: Contains the `Command` enum and `process()` method that
-executes handlers. Currently checks `session.user_id` for authentication in
-`GetFileNameList` but does not check specific privileges.
+`src/commands/mod.rs`: Contains the `Command` enum and dispatches handler
+execution. Currently, it enforces privilege checks for file listing and
+delegates news operations to `src/news_handlers/mod.rs`.
 
-`src/login.rs`: Handles login authentication. Sets `session.user_id` on
-successful login but does not populate privileges.
+`src/commands/handlers.rs`: Implements login, file listing, and error reply
+helpers shared by command processing.
+
+`src/news_handlers/mod.rs`: Implements news-related handlers, database
+operations, and privilege checks for news transactions.
+
+`src/login.rs`: Handles login authentication. Sets `session.user_id` and
+initialises `session.privileges` to `Privileges::default_user()` pending
+database-backed privilege loading.
 
 `src/wireframe/routes/mod.rs`: Contains `TransactionMiddleware` that wraps
 `Session` in `Arc<tokio::sync::Mutex<Session>>` and passes it to
@@ -201,12 +211,6 @@ bits in field 110 (User Access). Key privilege bits for this task:
 - Bit 21: News Post Article
 
 The current `Session` struct:
-
-    pub struct Session {
-        pub user_id: Option<i32>,
-    }
-
-This task extends it to:
 
     pub struct Session {
         pub user_id: Option<i32>,
@@ -255,7 +259,7 @@ The implementation proceeds in four stages:
 
 ### Stage C: Enforce privileges in handlers
 
-1. Update `GetFileNameList` handler in `src/commands.rs` to check
+1. Update `GetFileNameList` handler in `src/commands/handlers.rs` to check
    `session.has_privilege(Privileges::DOWNLOAD_FILE)` before processing. Return
    error code 1 (authentication required) if not authenticated, or a new error
    code for insufficient privileges.
@@ -319,7 +323,8 @@ All commands run from the repository root `/home/ariana/project`.
 
 6. Add privilege checks to handlers:
 
-       # Edit src/commands.rs to check privileges before processing
+       # Edit src/commands/handlers.rs and src/news_handlers/mod.rs to check
+       # privileges before processing
 
 7. Verify compilation:
 
@@ -369,7 +374,7 @@ Quality criteria (what "done" means):
 
 - Documentation: `docs/design.md` updated with session context architecture.
 
-Quality method (how we check):
+Quality method (verification approach):
 
 1. `make test` exercises privilege enforcement paths.
 2. Manual inspection of handler code confirms privilege checks precede
@@ -477,7 +482,7 @@ In `src/handler.rs`, extend:
 
 Dependencies:
 
-- `bitflags` crate (already in dependencies via transitive use)
+- `bitflags` crate (added directly: `bitflags = "2.10.0"`)
 - `rstest` v0.26 (already in dev-dependencies)
 - `rstest-bdd` v0.3.2 (already in dev-dependencies)
 - `pg-embedded-setup-unpriv` (already in dev-dependencies)

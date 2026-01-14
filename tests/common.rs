@@ -17,10 +17,7 @@ where
     F: FnOnce(DatabaseUrl) -> Result<(), AnyError>,
 {
     ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server"))?;
-    match TestServer::start_with_setup("./Cargo.toml", |db| {
-        let url = DatabaseUrl::new(db.as_str());
-        setup(url)
-    }) {
+    match TestServer::start_with_setup("./Cargo.toml", |db| setup(DatabaseUrl::from(db))) {
         Ok(s) => Ok(Some(s)),
         Err(e) => {
             #[cfg(feature = "postgres")]

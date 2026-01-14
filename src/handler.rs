@@ -8,7 +8,7 @@ use std::{error::Error, fmt, net::SocketAddr, sync::Arc};
 use argon2::Argon2;
 
 use crate::{
-    commands::Command,
+    commands::{Command, CommandError},
     connection_flags::ConnectionFlags,
     db::DbPool,
     privileges::Privileges,
@@ -58,12 +58,26 @@ impl fmt::Display for PrivilegeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotAuthenticated => write!(f, "authentication required"),
-            Self::InsufficientPrivileges(p) => write!(f, "insufficient privileges: {p:?}"),
+            Self::InsufficientPrivileges(p) => {
+                write!(f, "insufficient privileges: {}", format_privileges(*p))
+            }
         }
     }
 }
 
 impl Error for PrivilegeError {}
+
+fn format_privileges(privileges: Privileges) -> String {
+    let names: Vec<String> = privileges
+        .iter_names()
+        .map(|(name, _)| name.to_ascii_lowercase().replace('_', " "))
+        .collect();
+    if names.is_empty() {
+        "none".to_owned()
+    } else {
+        names.join(", ")
+    }
+}
 
 impl Session {
     /// Check whether the session is authenticated.
@@ -75,7 +89,7 @@ impl Session {
     /// Returns `false` if the user is not authenticated or lacks the privilege.
     #[must_use]
     pub const fn has_privilege(&self, priv_required: Privileges) -> bool {
-        self.privileges.contains(priv_required)
+        self.user_id.is_some() && self.privileges.contains(priv_required)
     }
 
     /// Require that the session is authenticated and has the specified privilege.
@@ -128,7 +142,7 @@ pub async fn handle_request(
     ctx: &Context,
     session: &mut Session,
     frame: &[u8],
-) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+) -> Result<Transaction, CommandError> {
     let tx = parse_transaction(frame)?;
     let cmd = Command::from_transaction(tx)?;
     let reply = cmd.process(ctx.peer, ctx.pool.clone(), session).await?;

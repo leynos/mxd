@@ -43,6 +43,18 @@ impl From<&str> for DatabaseUrl {
     fn from(value: &str) -> Self { Self::new(value) }
 }
 
+impl From<String> for DatabaseUrl {
+    fn from(value: String) -> Self { Self::new(value) }
+}
+
+impl From<&crate::server::DbUrl> for DatabaseUrl {
+    fn from(value: &crate::server::DbUrl) -> Self { Self::new(value.as_ref()) }
+}
+
+impl AsRef<str> for DatabaseUrl {
+    fn as_ref(&self) -> &str { self.as_str() }
+}
+
 /// Resolve a file name to its ID from the lookup map.
 fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, AnyError> {
     file_ids
@@ -55,7 +67,11 @@ fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, A
 ///
 /// This helper is idempotent; it checks for the user first and creates only if
 /// not present.
-async fn ensure_test_user(conn: &mut DbConnection) -> Result<(), AnyError> {
+///
+/// # Errors
+///
+/// Returns an error if the user lookup, password hashing, or creation fails.
+pub async fn ensure_test_user(conn: &mut DbConnection) -> Result<(), AnyError> {
     let existing = users_dsl::users
         .filter(users_dsl::username.eq("alice"))
         .select(users_dsl::id)
@@ -214,6 +230,55 @@ pub fn setup_news_db(db: DatabaseUrl) -> Result<(), AnyError> {
                     flags: 0,
                     data_flavor: Some("text/plain"),
                     data: Some("b"),
+                },
+            )
+            .await?;
+            Ok(())
+        })
+    })
+}
+
+/// Create a test database with one news category and a single article.
+///
+/// # Errors
+///
+/// Returns an error if database setup fails.
+pub fn setup_news_with_article(db: DatabaseUrl) -> Result<(), AnyError> {
+    with_db(db, |conn| {
+        Box::pin(async move {
+            ensure_test_user(conn).await?;
+
+            let category_id = create_category(
+                conn,
+                &NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+
+            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "news fixture timestamp out of range",
+                    )
+                })?
+                .naive_utc();
+            insert_article(
+                conn,
+                &NewArticle {
+                    category_id,
+                    parent_article_id: None,
+                    prev_article_id: None,
+                    next_article_id: None,
+                    first_child_article_id: None,
+                    title: "First",
+                    poster: Some("alice"),
+                    posted_at: posted,
+                    flags: 0,
+                    data_flavor: Some("text/plain"),
+                    data: Some("hello"),
                 },
             )
             .await?;

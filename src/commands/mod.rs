@@ -5,21 +5,24 @@
 //! the connection handler to drive database operations and build reply
 //! transactions.
 
-use std::net::SocketAddr;
+use std::{future::Future, net::SocketAddr};
 
 mod handlers;
+
+use diesel_async::pooled_connection::bb8::RunError;
+use thiserror::Error;
 
 use crate::{
     db::DbPool,
     field_id::FieldId,
     handler::PrivilegeError,
     header_util::reply_header,
-    news_handlers,
+    news_handlers::{self, ArticleDataRequest, PostArticleRequest},
+    privileges::Privileges,
     transaction::{
         FrameHeader,
         Transaction,
         TransactionError,
-        decode_params,
         decode_params_map,
         first_param_i32,
         first_param_string,
@@ -31,14 +34,33 @@ use crate::{
 
 /// Error code used when authentication is required but not present.
 pub const ERR_NOT_AUTHENTICATED: u32 = 1;
-/// Error code used when the requested news path is unsupported.
-pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 1;
 /// Error code used when a request includes an unexpected payload.
 pub const ERR_INVALID_PAYLOAD: u32 = 2;
 /// Error code used for unexpected server-side failures.
 pub const ERR_INTERNAL_SERVER: u32 = 3;
 /// Error code used when the user lacks the required privilege.
 pub const ERR_INSUFFICIENT_PRIVILEGES: u32 = 4;
+/// Error code used when the requested news path is unsupported.
+pub const NEWS_ERR_PATH_UNSUPPORTED: u32 = 5;
+/// Error code used when a news article cannot be found.
+pub const NEWS_ERR_ARTICLE_NOT_FOUND: u32 = 6;
+
+/// Errors that can occur while processing commands.
+#[derive(Debug, Error)]
+pub enum CommandError {
+    /// A database query failed.
+    #[error("database error: {0}")]
+    Database(#[from] diesel::result::Error),
+    /// Connection pool access failed.
+    #[error("pool error: {0}")]
+    Pool(#[from] RunError),
+    /// Transaction parsing or encoding failed.
+    #[error("transaction error: {0}")]
+    Transaction(#[from] TransactionError),
+    /// Privilege checks failed unexpectedly.
+    #[error("privilege error: {0}")]
+    Privilege(#[from] PrivilegeError),
+}
 
 /// Build an error reply for a privilege check failure.
 pub(crate) fn privilege_error_reply(header: &FrameHeader, err: PrivilegeError) -> Transaction {
@@ -50,6 +72,23 @@ pub(crate) fn privilege_error_reply(header: &FrameHeader, err: PrivilegeError) -
         header: reply_header(header, error_code, 0),
         payload: Vec::new(),
     }
+}
+
+/// Check privileges and run a handler, mapping failures to error replies.
+pub(crate) async fn check_privilege_and_run<F, Fut>(
+    session: &crate::handler::Session,
+    header: &FrameHeader,
+    privilege: Privileges,
+    handler: F,
+) -> Result<Transaction, CommandError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<Transaction, CommandError>>,
+{
+    if let Err(e) = session.require_privilege(privilege) {
+        return Ok(privilege_error_reply(header, e));
+    }
+    handler().await
 }
 
 /// Context passed to all command handlers containing shared infrastructure.
@@ -77,6 +116,7 @@ impl<'a> HandlerContext<'a> {
 ///
 /// Commands encapsulate the parameters and type information needed to
 /// process client requests.
+#[derive(Debug)]
 pub enum Command {
     /// User login request with credentials.
     Login {
@@ -91,8 +131,6 @@ pub enum Command {
     GetFileNameList {
         /// Transaction frame header.
         header: FrameHeader,
-        /// Raw payload bytes.
-        payload: Vec<u8>,
     },
     /// Request for news category names at a given path.
     GetNewsCategoryNameList {
@@ -154,34 +192,12 @@ struct LoginCredentials {
     password: String,
 }
 
-/// Extract username and password from login parameters.
-fn parse_login_params(
-    params: Vec<(FieldId, Vec<u8>)>,
-) -> Result<LoginCredentials, TransactionError> {
-    let mut username = None;
-    let mut password = None;
-
-    for (id, data) in params {
-        match id {
-            FieldId::Login => {
-                username = Some(
-                    String::from_utf8(data)
-                        .map_err(|_| TransactionError::InvalidParamValue(FieldId::Login))?,
-                );
-            }
-            FieldId::Password => {
-                password = Some(
-                    String::from_utf8(data)
-                        .map_err(|_| TransactionError::InvalidParamValue(FieldId::Password))?,
-                );
-            }
-            _ => {}
-        }
-    }
-
+/// Extract username and password from login payload parameters.
+fn parse_login_params(payload: &[u8]) -> Result<LoginCredentials, TransactionError> {
+    let params = decode_params_map(payload)?;
     Ok(LoginCredentials {
-        username: username.ok_or(TransactionError::MissingField(FieldId::Login))?,
-        password: password.ok_or(TransactionError::MissingField(FieldId::Password))?,
+        username: required_param_string(&params, FieldId::Login)?,
+        password: required_param_string(&params, FieldId::Password)?,
     })
 }
 
@@ -190,7 +206,6 @@ impl Command {
     ///
     /// # Errors
     /// Returns an error if required parameters are missing or cannot be parsed.
-    #[must_use = "handle the result"]
     pub fn from_transaction(tx: Transaction) -> Result<Self, TransactionError> {
         let ty = TransactionType::from(tx.header.ty);
         if !ty.allows_payload() && !tx.payload.is_empty() {
@@ -198,18 +213,14 @@ impl Command {
         }
         match ty {
             TransactionType::Login => {
-                let params = decode_params(&tx.payload)?;
-                let creds = parse_login_params(params)?;
+                let creds = parse_login_params(&tx.payload)?;
                 Ok(Self::Login {
                     username: creds.username,
                     password: creds.password,
                     header: tx.header,
                 })
             }
-            TransactionType::GetFileNameList => Ok(Self::GetFileNameList {
-                header: tx.header,
-                payload: tx.payload,
-            }),
+            TransactionType::GetFileNameList => Ok(Self::GetFileNameList { header: tx.header }),
             TransactionType::NewsCategoryNameList => {
                 let params = decode_params_map(&tx.payload)?;
                 let path = first_param_string(&params, FieldId::NewsPath)?;
@@ -261,13 +272,12 @@ impl Command {
     /// # Errors
     /// Returns an error if database access fails or the command cannot be
     /// handled.
-    #[must_use = "handle the result"]
     pub async fn process(
         self,
         peer: SocketAddr,
         pool: DbPool,
         session: &mut crate::handler::Session,
-    ) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    ) -> Result<Transaction, CommandError> {
         match self {
             Self::Login {
                 username,
@@ -277,7 +287,7 @@ impl Command {
                 let ctx = HandlerContext::new(pool, session, header);
                 Self::process_login(peer, ctx, username, password).await
             }
-            Self::GetFileNameList { header, .. } => {
+            Self::GetFileNameList { header } => {
                 let ctx = HandlerContext::new(pool, session, header);
                 Self::process_get_file_name_list(ctx).await
             }
@@ -291,7 +301,10 @@ impl Command {
                 header,
                 path,
                 article_id,
-            } => news_handlers::process_article_data(pool, session, header, path, article_id).await,
+            } => {
+                let req = ArticleDataRequest { path, article_id };
+                news_handlers::process_article_data(pool, session, header, req).await
+            }
             Self::PostNewsArticle {
                 header,
                 path,
@@ -300,17 +313,14 @@ impl Command {
                 data_flavor,
                 data,
             } => {
-                news_handlers::process_post_article(
-                    pool,
-                    session,
-                    header,
+                let req = PostArticleRequest {
                     path,
                     title,
                     flags,
                     data_flavor,
                     data,
-                )
-                .await
+                };
+                news_handlers::process_post_article(pool, session, header, req).await
             }
             Self::InvalidPayload { header } => Ok(Self::process_invalid_payload(header)),
             Self::Unknown { header } => Ok(Self::process_unknown(peer, header)),

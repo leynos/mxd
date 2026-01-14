@@ -3,13 +3,13 @@
 use rstest::rstest;
 
 use super::*;
+use crate::transaction::encode_params;
 
 /// Returns valid login parameters for testing.
-fn valid_login_params() -> Vec<(FieldId, Vec<u8>)> {
-    vec![
-        (FieldId::Login, b"alice".to_vec()),
-        (FieldId::Password, b"secret".to_vec()),
-    ]
+fn valid_login_payload() -> Vec<u8> {
+    let params: Vec<(FieldId, &[u8])> =
+        vec![(FieldId::Login, b"alice"), (FieldId::Password, b"secret")];
+    encode_params(&params).expect("payload encodes")
 }
 
 /// Asserts that credentials match expected valid values.
@@ -20,15 +20,16 @@ fn assert_valid_credentials(creds: &LoginCredentials) {
 
 #[test]
 fn parse_login_params_both_fields_valid() {
-    let params = valid_login_params();
-    let result = parse_login_params(params).expect("should parse");
+    let payload = valid_login_payload();
+    let result = parse_login_params(&payload).expect("should parse");
     assert_valid_credentials(&result);
 }
 
 #[test]
 fn parse_login_params_missing_username() {
-    let params = vec![(FieldId::Password, b"secret".to_vec())];
-    let result = parse_login_params(params);
+    let params: Vec<(FieldId, &[u8])> = vec![(FieldId::Password, b"secret")];
+    let payload = encode_params(&params).expect("payload encodes");
+    let result = parse_login_params(&payload);
     assert!(matches!(
         result,
         Err(TransactionError::MissingField(FieldId::Login))
@@ -37,8 +38,9 @@ fn parse_login_params_missing_username() {
 
 #[test]
 fn parse_login_params_missing_password() {
-    let params = vec![(FieldId::Login, b"alice".to_vec())];
-    let result = parse_login_params(params);
+    let params: Vec<(FieldId, &[u8])> = vec![(FieldId::Login, b"alice")];
+    let payload = encode_params(&params).expect("payload encodes");
+    let result = parse_login_params(&payload);
     assert!(matches!(
         result,
         Err(TransactionError::MissingField(FieldId::Password))
@@ -52,7 +54,7 @@ fn parse_login_params_invalid_utf8(
     #[case] invalid_field: FieldId,
     #[case] expected_error_field: FieldId,
 ) {
-    let params = vec![
+    let params: Vec<(FieldId, Vec<u8>)> = vec![
         (
             FieldId::Login,
             if invalid_field == FieldId::Login {
@@ -70,7 +72,8 @@ fn parse_login_params_invalid_utf8(
             },
         ),
     ];
-    let result = parse_login_params(params);
+    let payload = encode_params(&params).expect("payload encodes");
+    let result = parse_login_params(&payload);
     assert!(matches!(
         result,
         Err(TransactionError::InvalidParamValue(field)) if field == expected_error_field
@@ -79,8 +82,12 @@ fn parse_login_params_invalid_utf8(
 
 #[test]
 fn parse_login_params_ignores_extra_fields() {
-    let mut params = valid_login_params();
+    let mut params: Vec<(FieldId, Vec<u8>)> = vec![
+        (FieldId::Login, b"alice".to_vec()),
+        (FieldId::Password, b"secret".to_vec()),
+    ];
     params.push((FieldId::NewsPath, b"/news".to_vec()));
-    let result = parse_login_params(params).expect("should parse");
+    let payload = encode_params(&params).expect("payload encodes");
+    let result = parse_login_params(&payload).expect("should parse");
     assert_valid_credentials(&result);
 }

@@ -1,5 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 //! Behavioural tests for session privilege enforcement.
 
 use std::{
@@ -39,6 +37,7 @@ struct PrivilegeWorld {
 }
 
 impl PrivilegeWorld {
+    #[expect(clippy::expect_used, reason = "test setup")]
     fn new() -> Self {
         let rt = Runtime::new().expect("runtime");
         let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
@@ -85,7 +84,7 @@ impl PrivilegeWorld {
         };
         let pool = self.pool.borrow().clone();
         let peer = self.peer;
-        let mut session = self.session.replace(Session::default());
+        let mut session = self.session.borrow().clone();
         let reply = self
             .rt
             .block_on(async { process_transaction_bytes(&frame, peer, pool, &mut session).await });
@@ -94,6 +93,7 @@ impl PrivilegeWorld {
         self.reply.borrow_mut().replace(outcome);
     }
 
+    #[expect(clippy::expect_used, reason = "test assertion helper")]
     fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T {
         let reply_ref = self.reply.borrow();
         let Some(reply) = reply_ref.as_ref() else {

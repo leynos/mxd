@@ -645,8 +645,8 @@ The `process_transaction_bytes()` function implements the core routing logic:
 4. Serialize the reply `Transaction` back to bytes.
 
 Parse failures at any stage produce an error reply with `ERR_INTERNAL` (3),
-while unknown transaction types return error code 3 (matching the existing
-`handle_unknown()` behaviour in the commands module).
+while unknown transaction types return `ERR_INTERNAL_SERVER`, matching the
+`handle_unknown()` helper in `src/commands/handlers.rs`.
 
 **Session state management.** Unlike thread-local storage approaches, which
 fail under Tokio's work-stealing scheduler, the middleware passes the session
@@ -682,8 +682,8 @@ appropriate error code:
 
 The `Privileges` bitflags type provides `default_user()` to return sensible
 defaults for newly authenticated users (download files, read/send chat, read/
-post news articles, etc.). Administrators can be granted elevated privileges
-via the `user_permissions` table in the database.
+post news articles, etc.). A follow-up task will load per-user privileges from
+the database once the permissions schema is introduced.
 
 **Testing strategy.** The routing middleware is tested at two levels:
 
@@ -1689,11 +1689,12 @@ build the reply. The login handler (`handle_login`) will:
   user([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/login.rs#L32-L39)
    )(
   [3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/login.rs#L34-L42)).
-   We also initialize `session.privileges` to `Privileges::default_user()`,
-  granting the user standard capabilities (download files, read/send chat,
-  read/post news articles, etc.). These privileges gate subsequent operations;
-  handlers call `session.require_privilege(Privileges::XXX)` before executing
-  privileged actions.
+   The login handler also initialises `session.privileges` to
+  `Privileges::default_user()`, granting the user standard capabilities
+  (download files, read/send chat, read/post news articles, etc.). These
+  privileges gate subsequent operations; handlers call
+  `session.require_privilege(Privileges::XXX)` before executing privileged
+  actions. A follow-up task will load per-user privileges from the database.
 
 - Prepare a reply transaction. In Hotline, the login reply (transaction 100,
   which is a generic error or success message) includes either an error code or

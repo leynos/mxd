@@ -5,7 +5,6 @@
 //! as invalid paths and empty databases.
 
 use std::{
-    convert::TryFrom,
     io::{Read, Write},
     net::TcpStream,
 };
@@ -23,6 +22,7 @@ use rstest::rstest;
 use test_util::{
     AnyError,
     DatabaseUrl,
+    ensure_test_user,
     handshake,
     login,
     setup_news_categories_nested_db,
@@ -146,8 +146,6 @@ mod rstest_tests {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_invalid_path() -> Result<(), AnyError> {
-    use mxd::{db::create_user, models::NewUser, users::hash_password};
-
     let Some(server) = common::start_server_or_skip(|db: DatabaseUrl| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
@@ -155,13 +153,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
             apply_migrations(&mut conn, db.as_str()).await?;
 
             // Create test user for authentication
-            let argon2 = argon2::Argon2::default();
-            let hashed = hash_password(&argon2, "secret")?;
-            let new_user = NewUser {
-                username: "alice",
-                password: &hashed,
-            };
-            create_user(&mut conn, &new_user).await?;
+            ensure_test_user(&mut conn).await?;
 
             create_category(
                 &mut conn,
@@ -202,8 +194,6 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_empty() -> Result<(), AnyError> {
-    use mxd::{db::create_user, models::NewUser, users::hash_password};
-
     let Some(server) = common::start_server_or_skip(|db: DatabaseUrl| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
@@ -211,13 +201,7 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
             apply_migrations(&mut conn, db.as_str()).await?;
 
             // Create test user for authentication
-            let argon2 = argon2::Argon2::default();
-            let hashed = hash_password(&argon2, "secret")?;
-            let new_user = NewUser {
-                username: "alice",
-                password: &hashed,
-            };
-            create_user(&mut conn, &new_user).await?;
+            ensure_test_user(&mut conn).await?;
 
             Ok(())
         })

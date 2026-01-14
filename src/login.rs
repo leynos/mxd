@@ -15,6 +15,7 @@ use std::net::SocketAddr;
 use tracing::{info, warn};
 
 use crate::{
+    commands::CommandError,
     db::{DbPool, get_user_by_name},
     field_id::FieldId,
     header_util::reply_header,
@@ -40,7 +41,7 @@ pub(crate) async fn handle_login(
     session: &mut crate::handler::Session,
     pool: DbPool,
     req: LoginRequest,
-) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+) -> Result<Transaction, CommandError> {
     let mut conn = pool.get().await?;
     let user = get_user_by_name(&mut conn, &req.username).await?;
     let (error, payload) = if let Some(u) = user {

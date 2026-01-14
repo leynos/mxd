@@ -18,11 +18,13 @@ mod server;
 pub use bdd_helpers::{SetupFn, TestDb, build_test_db};
 pub use fixtures::{
     DatabaseUrl,
+    ensure_test_user,
     setup_files_db,
     setup_news_categories_nested_db,
     setup_news_categories_root_db,
     setup_news_categories_with_structure,
     setup_news_db,
+    setup_news_with_article,
     with_db,
 };
 pub use mxd::wireframe::test_helpers::{build_frame, collect_strings};

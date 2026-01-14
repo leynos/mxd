@@ -50,7 +50,7 @@ path = "tests/wireframe_transaction.rs"
 required-features = ["test-support"]
 
 [dependencies]
-bitflags = "2"
+bitflags = "2.10.0"
 tokio = { version = "1", features = ["full"] }
 diesel = { version = "2.3", default-features = false, features = ["chrono"] }
 diesel-async = { version = "0.7", default-features = false, features = ["bb8", "sync-connection-wrapper"] }
