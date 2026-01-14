@@ -34,6 +34,25 @@ use crate::{
     transaction::{FrameHeader, Transaction, encode_params},
 };
 
+/// Macro to reduce boilerplate in privilege-checked news handlers.
+///
+/// Wraps a handler invocation with privilege checking, automatically cloning
+/// the header and handling the async closure boilerplate required by
+/// `check_privilege_and_run`.
+macro_rules! with_privilege_check {
+    ($pool:expr, $session:expr, $header:expr, $privilege:expr, $handler:expr $(, $args:expr)*) => {{
+        let reply_header = $header.clone();
+        let pool = $pool;
+        check_privilege_and_run(
+            $session,
+            &$header,
+            $privilege,
+            || async move { Ok($handler(pool, reply_header, $($args),*).await) },
+        )
+        .await
+    }};
+}
+
 /// Parameters for retrieving a news article's data.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ArticleDataRequest {
@@ -81,14 +100,14 @@ pub async fn process_category_name_list(
     header: FrameHeader,
     path: Option<String>,
 ) -> Result<Transaction, CommandError> {
-    let reply_header = header.clone();
-    check_privilege_and_run(
+    with_privilege_check!(
+        pool,
         session,
-        &header,
+        header,
         Privileges::NEWS_READ_ARTICLE,
-        || async move { Ok(handle_category_list(pool, reply_header, path).await) },
+        handle_category_list,
+        path
     )
-    .await
 }
 
 /// Handle news article title listing commands after privilege checks.
@@ -101,14 +120,14 @@ pub async fn process_article_name_list(
     header: FrameHeader,
     path: String,
 ) -> Result<Transaction, CommandError> {
-    let reply_header = header.clone();
-    check_privilege_and_run(
+    with_privilege_check!(
+        pool,
         session,
-        &header,
+        header,
         Privileges::NEWS_READ_ARTICLE,
-        || async move { Ok(handle_article_titles(pool, reply_header, path).await) },
+        handle_article_titles,
+        path
     )
-    .await
 }
 
 /// Handle news article data commands after privilege checks.
@@ -121,14 +140,14 @@ pub async fn process_article_data(
     header: FrameHeader,
     req: ArticleDataRequest,
 ) -> Result<Transaction, CommandError> {
-    let reply_header = header.clone();
-    check_privilege_and_run(
+    with_privilege_check!(
+        pool,
         session,
-        &header,
+        header,
         Privileges::NEWS_READ_ARTICLE,
-        || async move { Ok(handle_article_data(pool, reply_header, req).await) },
+        handle_article_data,
+        req
     )
-    .await
 }
 
 /// Handle news article creation commands after privilege checks.
@@ -141,14 +160,14 @@ pub async fn process_post_article(
     header: FrameHeader,
     req: PostArticleRequest,
 ) -> Result<Transaction, CommandError> {
-    let reply_header = header.clone();
-    check_privilege_and_run(
+    with_privilege_check!(
+        pool,
         session,
-        &header,
+        header,
         Privileges::NEWS_POST_ARTICLE,
-        || async move { Ok(handle_post_article(pool, reply_header, req).await) },
+        handle_post_article,
+        req
     )
-    .await
 }
 
 /// Retrieve the list of category names for a given news path.
