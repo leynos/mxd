@@ -6,9 +6,12 @@ use std::{
 };
 
 use mxd::{
+    commands::ERR_INSUFFICIENT_PRIVILEGES,
+    connection_flags::ConnectionFlags,
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    privileges::Privileges,
     transaction::{Transaction, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{routes::process_transaction_bytes, test_helpers::dummy_pool},
@@ -131,6 +134,18 @@ fn given_unauthenticated(world: &PrivilegeWorld) {
     assert!(session.user_id.is_none());
 }
 
+#[given("the session is authenticated but unprivileged")]
+fn given_authenticated_but_unprivileged(world: &PrivilegeWorld) {
+    if world.is_skipped() {
+        return;
+    }
+    world.session.replace(Session {
+        user_id: Some(1),
+        privileges: Privileges::empty(),
+        connection_flags: ConnectionFlags::default(),
+    });
+}
+
 #[given("I send a login transaction for \"{username}\" with password \"{password}\"")]
 fn given_login(world: &PrivilegeWorld, username: String, password: String) {
     world.send(
@@ -178,6 +193,11 @@ fn then_error_code(world: &PrivilegeWorld, code: u32) {
     });
 }
 
+#[then("the reply has insufficient privileges error")]
+fn then_insufficient_privileges_error(world: &PrivilegeWorld) {
+    then_error_code(world, ERR_INSUFFICIENT_PRIVILEGES);
+}
+
 #[scenario(path = "tests/features/session_privileges.feature", index = 0)]
 fn unauthenticated_file_list(world: PrivilegeWorld) { let _ = world; }
 
@@ -185,13 +205,22 @@ fn unauthenticated_file_list(world: PrivilegeWorld) { let _ = world; }
 fn authenticated_file_list(world: PrivilegeWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/session_privileges.feature", index = 2)]
-fn unauthenticated_news_categories(world: PrivilegeWorld) { let _ = world; }
+fn authenticated_but_unprivileged_file_list(world: PrivilegeWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/session_privileges.feature", index = 3)]
-fn authenticated_news_categories(world: PrivilegeWorld) { let _ = world; }
+fn unauthenticated_news_categories(world: PrivilegeWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/session_privileges.feature", index = 4)]
-fn unauthenticated_post_news(world: PrivilegeWorld) { let _ = world; }
+fn authenticated_news_categories(world: PrivilegeWorld) { let _ = world; }
 
 #[scenario(path = "tests/features/session_privileges.feature", index = 5)]
+fn authenticated_but_unprivileged_news_categories(world: PrivilegeWorld) { let _ = world; }
+
+#[scenario(path = "tests/features/session_privileges.feature", index = 6)]
+fn unauthenticated_post_news(world: PrivilegeWorld) { let _ = world; }
+
+#[scenario(path = "tests/features/session_privileges.feature", index = 7)]
 fn authenticated_post_news(world: PrivilegeWorld) { let _ = world; }
+
+#[scenario(path = "tests/features/session_privileges.feature", index = 8)]
+fn authenticated_but_unprivileged_post_news(world: PrivilegeWorld) { let _ = world; }

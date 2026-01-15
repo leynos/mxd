@@ -15,6 +15,11 @@ Feature: Session privilege enforcement
     When I request the file name list
     Then the reply has error code 0
 
+  Scenario: Authenticated but unprivileged user cannot list files
+    Given the session is authenticated but unprivileged
+    When I request the file name list
+    Then the reply has insufficient privileges error
+
   Scenario: Unauthenticated user receives error for news category listing
     Given the session is not authenticated
     When I request the news category list
@@ -25,6 +30,11 @@ Feature: Session privilege enforcement
     When I request the news category list
     Then the reply has error code 0
 
+  Scenario: Authenticated but unprivileged user cannot list news categories
+    Given the session is authenticated but unprivileged
+    When I request the news category list
+    Then the reply has insufficient privileges error
+
   Scenario: Unauthenticated user receives error for posting news
     Given the session is not authenticated
     When I post a news article titled "Test" to "General"
@@ -34,3 +44,8 @@ Feature: Session privilege enforcement
     Given I send a login transaction for "alice" with password "secret"
     When I post a news article titled "Test" to "General"
     Then the reply has error code 0
+
+  Scenario: Authenticated but unprivileged user cannot post news
+    Given the session is authenticated but unprivileged
+    When I post a news article titled "Test" to "General"
+    Then the reply has insufficient privileges error
