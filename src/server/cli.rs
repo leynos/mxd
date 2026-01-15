@@ -49,6 +49,13 @@ pub fn load_cli() -> Result<ResolvedCli> {
     })
 }
 
+/// Collect program arguments with any subcommand and its trailing args stripped.
+///
+/// Scans arguments and stops at the `--` separator to avoid treating literal
+/// values as subcommands. Detects known clap subcommands via
+/// `Cli::command().get_subcommands()` and, when found, returns only the args
+/// preceding the subcommand. This allows `OrthoConfig`'s CLI parser (which does
+/// not handle subcommands) to load configuration safely.
 fn config_args_without_subcommand() -> Vec<OsString> {
     let args: Vec<OsString> = std::env::args_os().collect();
     let subcommands = Cli::command()
