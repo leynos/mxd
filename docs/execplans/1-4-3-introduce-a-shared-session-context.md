@@ -203,7 +203,7 @@ metadata and peer address using thread-local storage for the current Tokio task.
 not currently store privilege bits (privileges would need to be added to the
 schema or hard-coded for initial implementation).
 
-`docs/protocol.md`: Documents the Hotline protocol including the 38 privilege
+`docs/protocol.md`: Documents the Hotline protocol, including the 38 privilege
 bits in field 110 (User Access). Key privilege bits for this task:
 
 - Bit 2: Download File

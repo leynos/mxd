@@ -112,8 +112,12 @@ impl PrivilegeWorld {
     }
 
     /// Query the test user's ID from the database by username.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the user does not exist; this indicates a test setup failure.
     #[expect(clippy::expect_used, reason = "test helper")]
-    fn get_test_user_id(&self, username: &str) -> Option<i32> {
+    fn get_test_user_id(&self, username: &str) -> i32 {
         let pool = self.pool.borrow().clone();
         let name = username.to_owned();
         self.rt.block_on(async move {
@@ -123,7 +127,7 @@ impl PrivilegeWorld {
                 .select(users_dsl::id)
                 .first::<i32>(&mut conn)
                 .await
-                .ok()
+                .expect("test user should exist")
         })
     }
 }
@@ -162,7 +166,7 @@ fn given_authenticated_but_unprivileged(world: &PrivilegeWorld) {
     }
     let user_id = world.get_test_user_id("alice");
     world.session.replace(Session {
-        user_id,
+        user_id: Some(user_id),
         privileges: Privileges::empty(),
         connection_flags: ConnectionFlags::default(),
     });

@@ -115,10 +115,10 @@ impl Session {
     ///
     /// Returns [`PrivilegeError::NotAuthenticated`] if not logged in.
     pub const fn require_authenticated(&self) -> Result<(), PrivilegeError> {
-        if self.user_id.is_none() {
-            return Err(PrivilegeError::NotAuthenticated);
+        match self.user_id {
+            Some(_) => Ok(()),
+            None => Err(PrivilegeError::NotAuthenticated),
         }
-        Ok(())
     }
 }
 
