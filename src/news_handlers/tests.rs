@@ -1,8 +1,11 @@
 //! Unit tests for news handler helpers.
 
+use rstest::fixture;
+
 use super::*;
 
 /// Returns a `PostArticleRequest` with sensible default values for testing.
+#[fixture]
 fn default_post_article_request() -> PostArticleRequest {
     PostArticleRequest {
         path: "/news".to_string(),

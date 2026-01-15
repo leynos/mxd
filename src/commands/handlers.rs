@@ -52,6 +52,9 @@ impl Command {
             header,
         } = ctx;
         let header_reply = header.clone();
+        // Extract user_id early; check_privilege_and_run also validates auth,
+        // so this provides the value for the closure while maintaining a single
+        // auth check path.
         let Some(user_id) = session.user_id else {
             return Ok(privilege_error_reply(
                 &header,

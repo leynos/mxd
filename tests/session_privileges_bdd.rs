@@ -5,6 +5,8 @@ use std::{
     net::SocketAddr,
 };
 
+use diesel::prelude::*;
+use diesel_async::RunQueryDsl;
 use mxd::{
     commands::ERR_INSUFFICIENT_PRIVILEGES,
     connection_flags::ConnectionFlags,
@@ -12,6 +14,7 @@ use mxd::{
     field_id::FieldId,
     handler::Session,
     privileges::Privileges,
+    schema::users::dsl as users_dsl,
     transaction::{Transaction, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{routes::process_transaction_bytes, test_helpers::dummy_pool},
@@ -67,6 +70,8 @@ impl PrivilegeWorld {
                 self.skipped.set(true);
                 return;
             }
+            // Database setup failures are unrecoverable in test context; panic
+            // to abort the test immediately rather than masking the error.
             Err(err) => panic!("failed to set up database: {err}"),
         };
         self.pool.replace(db.pool());
@@ -105,6 +110,22 @@ impl PrivilegeWorld {
         let tx = reply.as_ref().expect("reply should be Ok");
         f(tx)
     }
+
+    /// Query the test user's ID from the database by username.
+    #[expect(clippy::expect_used, reason = "test helper")]
+    fn get_test_user_id(&self, username: &str) -> Option<i32> {
+        let pool = self.pool.borrow().clone();
+        let name = username.to_owned();
+        self.rt.block_on(async move {
+            let mut conn = pool.get().await.expect("pool connection");
+            users_dsl::users
+                .filter(users_dsl::username.eq(&name))
+                .select(users_dsl::id)
+                .first::<i32>(&mut conn)
+                .await
+                .ok()
+        })
+    }
 }
 
 #[fixture]
@@ -139,8 +160,9 @@ fn given_authenticated_but_unprivileged(world: &PrivilegeWorld) {
     if world.is_skipped() {
         return;
     }
+    let user_id = world.get_test_user_id("alice");
     world.session.replace(Session {
-        user_id: Some(1),
+        user_id,
         privileges: Privileges::empty(),
         connection_flags: ConnectionFlags::default(),
     });

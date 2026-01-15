@@ -96,7 +96,7 @@ enum NewsHandlerError {
 /// Returns an error if privilege checks or database operations fail.
 pub async fn process_category_name_list(
     pool: DbPool,
-    session: &mut Session,
+    session: &Session,
     header: FrameHeader,
     path: Option<String>,
 ) -> Result<Transaction, CommandError> {
@@ -116,7 +116,7 @@ pub async fn process_category_name_list(
 /// Returns an error if privilege checks or database operations fail.
 pub async fn process_article_name_list(
     pool: DbPool,
-    session: &mut Session,
+    session: &Session,
     header: FrameHeader,
     path: String,
 ) -> Result<Transaction, CommandError> {
@@ -136,7 +136,7 @@ pub async fn process_article_name_list(
 /// Returns an error if privilege checks or database operations fail.
 pub async fn process_article_data(
     pool: DbPool,
-    session: &mut Session,
+    session: &Session,
     header: FrameHeader,
     req: ArticleDataRequest,
 ) -> Result<Transaction, CommandError> {
@@ -156,7 +156,7 @@ pub async fn process_article_data(
 /// Returns an error if privilege checks or database operations fail.
 pub async fn process_post_article(
     pool: DbPool,
-    session: &mut Session,
+    session: &Session,
     header: FrameHeader,
     req: PostArticleRequest,
 ) -> Result<Transaction, CommandError> {
@@ -246,12 +246,24 @@ async fn handle_post_article(
     .await
 }
 
+/// Push an optional i32 field as big-endian bytes if present.
+fn push_optional_i32(params: &mut Vec<(FieldId, Vec<u8>)>, field: FieldId, value: Option<i32>) {
+    if let Some(v) = value {
+        params.push((field, v.to_be_bytes().to_vec()));
+    }
+}
+
+/// Push an optional string field as bytes if present.
+fn push_optional_str(params: &mut Vec<(FieldId, Vec<u8>)>, field: FieldId, value: Option<&str>) {
+    if let Some(s) = value {
+        params.push((field, s.as_bytes().to_vec()));
+    }
+}
+
 fn article_to_params(article: &Article) -> Vec<(FieldId, Vec<u8>)> {
     let mut params: Vec<(FieldId, Vec<u8>)> = Vec::new();
     params.push((FieldId::NewsTitle, article.title.as_bytes().to_vec()));
-    if let Some(poster) = article.poster.as_deref() {
-        params.push((FieldId::NewsPoster, poster.as_bytes().to_vec()));
-    }
+    push_optional_str(&mut params, FieldId::NewsPoster, article.poster.as_deref());
     params.push((
         FieldId::NewsDate,
         article
@@ -261,18 +273,18 @@ fn article_to_params(article: &Article) -> Vec<(FieldId, Vec<u8>)> {
             .to_be_bytes()
             .to_vec(),
     ));
-    if let Some(prev) = article.prev_article_id {
-        params.push((FieldId::NewsPrevId, prev.to_be_bytes().to_vec()));
-    }
-    if let Some(next) = article.next_article_id {
-        params.push((FieldId::NewsNextId, next.to_be_bytes().to_vec()));
-    }
-    if let Some(parent) = article.parent_article_id {
-        params.push((FieldId::NewsParentId, parent.to_be_bytes().to_vec()));
-    }
-    if let Some(child) = article.first_child_article_id {
-        params.push((FieldId::NewsFirstChildId, child.to_be_bytes().to_vec()));
-    }
+    push_optional_i32(&mut params, FieldId::NewsPrevId, article.prev_article_id);
+    push_optional_i32(&mut params, FieldId::NewsNextId, article.next_article_id);
+    push_optional_i32(
+        &mut params,
+        FieldId::NewsParentId,
+        article.parent_article_id,
+    );
+    push_optional_i32(
+        &mut params,
+        FieldId::NewsFirstChildId,
+        article.first_child_article_id,
+    );
     params.push((
         FieldId::NewsArticleFlags,
         article.flags.to_be_bytes().to_vec(),
@@ -286,9 +298,11 @@ fn article_to_params(article: &Article) -> Vec<(FieldId, Vec<u8>)> {
             .as_bytes()
             .to_vec(),
     ));
-    if let Some(data) = article.data.as_deref() {
-        params.push((FieldId::NewsArticleData, data.as_bytes().to_vec()));
-    }
+    push_optional_str(
+        &mut params,
+        FieldId::NewsArticleData,
+        article.data.as_deref(),
+    );
     params
 }
 
@@ -352,7 +366,10 @@ fn article_not_found_reply(header: &FrameHeader) -> Transaction {
 
 fn path_error_reply(header: &FrameHeader, err: PathLookupError) -> Transaction {
     match err {
-        PathLookupError::InvalidPath => unsupported_path_reply(header),
+        PathLookupError::InvalidPath => {
+            tracing::debug!("invalid news path requested");
+            unsupported_path_reply(header)
+        }
         PathLookupError::Diesel(e) => logged_internal_error(header, "database error", e),
         PathLookupError::Serde(e) => logged_internal_error(header, "serialization error", e),
     }

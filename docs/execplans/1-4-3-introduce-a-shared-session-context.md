@@ -75,7 +75,7 @@ privileged operations.
 - [x] Design the extended `Session` struct with privilege bits and flags.
 - [x] Implement the `Privileges` bitflags type matching `docs/protocol.md`.
 - [x] Extend `Session` with `privileges` and `connection_flags` fields.
-- [x] Update login handler to initialise privileges using `default_user()`,
+- [x] Update login handler to initialize privileges using `default_user()`,
       pending database-backed privilege loading.
 - [x] Add privilege check helpers to `Session`.
 - [x] Integrate privilege enforcement into `GetFileNameList` handler.
@@ -188,7 +188,7 @@ helpers shared by command processing.
 operations, and privilege checks for news transactions.
 
 `src/login.rs`: Handles login authentication. Sets `session.user_id` and
-initialises `session.privileges` to `Privileges::default_user()` pending
+initializes `session.privileges` to `Privileges::default_user()` pending
 database-backed privilege loading.
 
 `src/wireframe/routes/mod.rs`: Contains `TransactionMiddleware` that wraps

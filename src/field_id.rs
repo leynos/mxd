@@ -35,7 +35,12 @@ pub enum FieldId {
     NewsNextId,
     /// Article data payload.
     NewsArticleData,
-    /// Article flags field.
+    /// Article flags field (field 334).
+    ///
+    /// Protocol semantics: indicates whether a post is locked or is an
+    /// announcement type. Typically 0 for normal posts. Flag values are not
+    /// strictly defined in the protocol specification; implementations may
+    /// vary.
     NewsArticleFlags,
     /// Parent article id field.
     NewsParentId,

@@ -91,3 +91,11 @@ fn parse_login_params_ignores_extra_fields() {
     let result = parse_login_params(&payload).expect("should parse");
     assert_valid_credentials(&result);
 }
+
+#[test]
+fn parse_login_params_rejects_malformed_payload() {
+    // Payload too short to contain the parameter count (needs at least 2 bytes)
+    let malformed = &[0x01];
+    let result = parse_login_params(malformed);
+    assert!(matches!(result, Err(TransactionError::SizeMismatch)));
+}

@@ -3,7 +3,6 @@
 //! Currently provides the client-side handshake and login used by multiple suites.
 
 use std::{
-    convert::TryInto,
     io::{self, Read, Write},
     net::TcpStream,
 };

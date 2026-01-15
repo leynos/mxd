@@ -99,13 +99,14 @@ impl Session {
     /// Returns [`PrivilegeError::NotAuthenticated`] if not logged in, or
     /// [`PrivilegeError::InsufficientPrivileges`] if the privilege is missing.
     pub const fn require_privilege(&self, priv_required: Privileges) -> Result<(), PrivilegeError> {
-        if self.user_id.is_none() {
-            return Err(PrivilegeError::NotAuthenticated);
+        match (
+            self.user_id.is_some(),
+            self.privileges.contains(priv_required),
+        ) {
+            (false, _) => Err(PrivilegeError::NotAuthenticated),
+            (true, false) => Err(PrivilegeError::InsufficientPrivileges(priv_required)),
+            (true, true) => Ok(()),
         }
-        if !self.privileges.contains(priv_required) {
-            return Err(PrivilegeError::InsufficientPrivileges(priv_required));
-        }
-        Ok(())
     }
 
     /// Require that the session is authenticated (any privilege level).
