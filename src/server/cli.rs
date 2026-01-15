@@ -7,6 +7,7 @@
 use std::ffi::{OsStr, OsString};
 
 use anyhow::{Context, Result};
+use argon2::Params;
 use clap::{CommandFactory, Parser};
 pub use cli_defs::{
     AppConfig,
@@ -16,6 +17,12 @@ pub use cli_defs::{
     DEFAULT_ARGON2_M_COST,
     DEFAULT_ARGON2_P_COST,
     DEFAULT_ARGON2_T_COST,
+};
+
+const _: () = {
+    assert!(DEFAULT_ARGON2_M_COST == Params::DEFAULT_M_COST);
+    assert!(DEFAULT_ARGON2_T_COST == Params::DEFAULT_T_COST);
+    assert!(DEFAULT_ARGON2_P_COST == Params::DEFAULT_P_COST);
 };
 
 /// Parsed CLI with resolved configuration values.
