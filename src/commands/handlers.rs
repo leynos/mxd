@@ -27,19 +27,9 @@ impl Command {
     pub(super) async fn process_login(
         peer: SocketAddr,
         ctx: HandlerContext<'_>,
-        username: String,
-        password: String,
+        req: LoginRequest,
     ) -> Result<Transaction, CommandError> {
-        let HandlerContext {
-            pool,
-            session,
-            header,
-        } = ctx;
-        let req = LoginRequest {
-            username,
-            password,
-            header,
-        };
+        let HandlerContext { pool, session, .. } = ctx;
         handle_login(peer, session, pool, req).await
     }
 

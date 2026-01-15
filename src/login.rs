@@ -25,10 +25,14 @@ use crate::{
 };
 
 /// Parameters for a login request containing credentials and protocol header.
-pub(crate) struct LoginRequest {
-    pub(crate) username: String,
-    pub(crate) password: String,
-    pub(crate) header: FrameHeader,
+#[derive(Debug)]
+pub struct LoginRequest {
+    /// Username for authentication.
+    pub username: String,
+    /// Password for authentication.
+    pub password: String,
+    /// Transaction frame header.
+    pub header: FrameHeader,
 }
 
 /// Handle a user login request.

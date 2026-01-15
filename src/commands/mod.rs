@@ -17,6 +17,7 @@ use crate::{
     field_id::FieldId,
     handler::PrivilegeError,
     header_util::reply_header,
+    login::LoginRequest,
     news_handlers::{self, ArticleDataRequest, PostArticleRequest},
     privileges::Privileges,
     transaction::{
@@ -120,12 +121,8 @@ impl<'a> HandlerContext<'a> {
 pub enum Command {
     /// User login request with credentials.
     Login {
-        /// Username for authentication.
-        username: String,
-        /// Password for authentication.
-        password: String,
-        /// Transaction frame header.
-        header: FrameHeader,
+        /// Login request containing credentials and header.
+        req: LoginRequest,
     },
     /// Request for the list of available files.
     GetFileNameList {
@@ -215,9 +212,11 @@ impl Command {
             TransactionType::Login => {
                 let creds = parse_login_params(&tx.payload)?;
                 Ok(Self::Login {
-                    username: creds.username,
-                    password: creds.password,
-                    header: tx.header,
+                    req: LoginRequest {
+                        username: creds.username,
+                        password: creds.password,
+                        header: tx.header,
+                    },
                 })
             }
             TransactionType::GetFileNameList => Ok(Self::GetFileNameList { header: tx.header }),
@@ -279,13 +278,9 @@ impl Command {
         session: &mut crate::handler::Session,
     ) -> Result<Transaction, CommandError> {
         match self {
-            Self::Login {
-                username,
-                password,
-                header,
-            } => {
-                let ctx = HandlerContext::new(pool, session, header);
-                Self::process_login(peer, ctx, username, password).await
+            Self::Login { req } => {
+                let ctx = HandlerContext::new(pool, session, req.header.clone());
+                Self::process_login(peer, ctx, req).await
             }
             Self::GetFileNameList { header } => {
                 let ctx = HandlerContext::new(pool, session, header);
