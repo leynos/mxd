@@ -4,6 +4,7 @@
 //! wireframe transport.
 
 use std::{
+    cell::Cell,
     io::{Read, Write},
     net::TcpStream,
     time::Duration,
@@ -191,15 +192,22 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn get_news_article_data() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_with_article)? else {
+    let article_id = Cell::new(None);
+    let Some(server) = common::start_server_or_skip(|db| {
+        let id = setup_news_with_article(db)?;
+        article_id.set(Some(id));
+        Ok(())
+    })?
+    else {
         return Ok(());
     };
 
+    let article_id_value = article_id.get().expect("fixture should set article id");
     let mut stream = connect_handshake_and_login(server.port())?;
 
     let mut params = Vec::new();
     params.push((FieldId::NewsPath, b"General".as_ref()));
-    let id_bytes = 1i32.to_be_bytes();
+    let id_bytes = article_id_value.to_be_bytes();
     params.push((FieldId::NewsArticleId, id_bytes.as_ref()));
     params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
     send_transaction_with_params(&mut stream, TransactionType::NewsArticleData, 8, &params)?;

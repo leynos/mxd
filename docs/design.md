@@ -644,8 +644,8 @@ The `process_transaction_bytes()` function implements the core routing logic:
    session.
 4. Serialize the reply `Transaction` back to bytes.
 
-Parse failures at any stage produce an error reply with `ERR_INTERNAL` (3),
-while unknown transaction types return `ERR_INTERNAL_SERVER`, matching the
+Parse failures at any stage produce an error reply with `ERR_INTERNAL_SERVER`
+(3), while unknown transaction types return `ERR_INTERNAL_SERVER`, matching the
 `handle_unknown()` helper in `src/commands/handlers.rs`.
 
 **Session state management.** Unlike thread-local storage approaches, which

@@ -3,7 +3,11 @@
 //! Centralises repeated setup flows (users, files, news content) so tests can
 //! compose databases with minimal boilerplate.
 
-use std::{collections::HashMap, io};
+use std::{
+    collections::HashMap,
+    io,
+    sync::{Arc, Mutex},
+};
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -240,11 +244,16 @@ pub fn setup_news_db(db: DatabaseUrl) -> Result<(), AnyError> {
 
 /// Create a test database with one news category and a single article.
 ///
+/// Returns the inserted article ID for tests that need to fetch it.
+///
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_with_article(db: DatabaseUrl) -> Result<(), AnyError> {
+pub fn setup_news_with_article(db: DatabaseUrl) -> Result<i32, AnyError> {
+    let article_id = Arc::new(Mutex::new(None));
+    let article_id_handle = Arc::clone(&article_id);
     with_db(db, |conn| {
+        let article_id_ref = Arc::clone(&article_id_handle);
         Box::pin(async move {
             ensure_test_user(conn).await?;
 
@@ -265,7 +274,7 @@ pub fn setup_news_with_article(db: DatabaseUrl) -> Result<(), AnyError> {
                     )
                 })?
                 .naive_utc();
-            insert_article(
+            let inserted_id = insert_article(
                 conn,
                 &NewArticle {
                     category_id,
@@ -282,9 +291,20 @@ pub fn setup_news_with_article(db: DatabaseUrl) -> Result<(), AnyError> {
                 },
             )
             .await?;
+            let mut guard = article_id_ref
+                .lock()
+                .map_err(|_| anyhow::anyhow!("news fixture mutex poisoned"))?;
+            *guard = Some(inserted_id);
             Ok(())
         })
-    })
+    })?;
+    let guard = article_id
+        .lock()
+        .map_err(|_| anyhow::anyhow!("news fixture mutex poisoned"))?;
+    guard
+        .as_ref()
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("news fixture did not set article id"))
 }
 
 /// Create a test database with root-level news categories.
