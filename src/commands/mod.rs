@@ -154,16 +154,8 @@ pub enum Command {
     },
     /// Request to create a new news article.
     PostNewsArticle {
-        /// News category path.
-        path: String,
-        /// Article title.
-        title: String,
-        /// Article flags.
-        flags: i32,
-        /// Data content type.
-        data_flavor: String,
-        /// Article content.
-        data: String,
+        /// Article posting request containing path, title, and content.
+        req: PostArticleRequest,
         /// Transaction frame header.
         header: FrameHeader,
     },
@@ -254,11 +246,13 @@ impl Command {
                 let data_flavor = required_param_string(&params, FieldId::NewsDataFlavor)?;
                 let data = required_param_string(&params, FieldId::NewsArticleData)?;
                 Ok(Self::PostNewsArticle {
-                    path,
-                    title,
-                    flags,
-                    data_flavor,
-                    data,
+                    req: PostArticleRequest {
+                        path,
+                        title,
+                        flags,
+                        data_flavor,
+                        data,
+                    },
                     header: tx.header,
                 })
             }
@@ -300,21 +294,7 @@ impl Command {
                 let req = ArticleDataRequest { path, article_id };
                 news_handlers::process_article_data(pool, session, header, req).await
             }
-            Self::PostNewsArticle {
-                header,
-                path,
-                title,
-                flags,
-                data_flavor,
-                data,
-            } => {
-                let req = PostArticleRequest {
-                    path,
-                    title,
-                    flags,
-                    data_flavor,
-                    data,
-                };
+            Self::PostNewsArticle { header, req } => {
                 news_handlers::process_post_article(pool, session, header, req).await
             }
             Self::InvalidPayload { header } => Ok(Self::process_invalid_payload(header)),
