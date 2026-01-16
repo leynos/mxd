@@ -36,7 +36,11 @@ impl DatabaseUrl {
 
     /// Borrow the wrapped URL as a string slice.
     #[must_use]
-    pub const fn as_str(&self) -> &str { self.0.as_str() }
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "String::as_str is not const-stable on Rust 1.85"
+    )]
+    pub fn as_str(&self) -> &str { self.0.as_str() }
 }
 
 impl From<&str> for DatabaseUrl {
