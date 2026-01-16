@@ -92,27 +92,6 @@ where
     handler().await
 }
 
-/// Context passed to all command handlers containing shared infrastructure.
-struct HandlerContext<'a> {
-    pool: DbPool,
-    session: &'a mut crate::handler::Session,
-    header: FrameHeader,
-}
-
-impl<'a> HandlerContext<'a> {
-    const fn new(
-        pool: DbPool,
-        session: &'a mut crate::handler::Session,
-        header: FrameHeader,
-    ) -> Self {
-        Self {
-            pool,
-            session,
-            header,
-        }
-    }
-}
-
 /// High-level command representation parsed from incoming transactions.
 ///
 /// Commands encapsulate the parameters and type information needed to
@@ -276,8 +255,7 @@ impl Command {
         match self {
             Self::Login { req } => Self::process_login(peer, pool, session, req).await,
             Self::GetFileNameList { header } => {
-                let ctx = HandlerContext::new(pool, session, header);
-                Self::process_get_file_name_list(ctx).await
+                Self::process_get_file_name_list(pool, session, header).await
             }
             Self::GetNewsCategoryNameList { header, path } => {
                 news_handlers::process_category_name_list(pool, session, header, path).await

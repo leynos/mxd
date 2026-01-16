@@ -10,7 +10,6 @@ use super::{
     CommandError,
     ERR_INTERNAL_SERVER,
     ERR_INVALID_PAYLOAD,
-    HandlerContext,
     check_privilege_and_run,
 };
 use crate::{
@@ -33,13 +32,10 @@ impl Command {
     }
 
     pub(super) async fn process_get_file_name_list(
-        ctx: HandlerContext<'_>,
+        pool: DbPool,
+        session: &mut crate::handler::Session,
+        header: FrameHeader,
     ) -> Result<Transaction, CommandError> {
-        let HandlerContext {
-            pool,
-            session,
-            header,
-        } = ctx;
         let header_reply = header.clone();
         let user_id = session.user_id;
         check_privilege_and_run(session, &header, Privileges::DOWNLOAD_FILE, || async move {
