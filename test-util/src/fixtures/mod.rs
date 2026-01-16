@@ -1,6 +1,6 @@
 //! Database fixtures used by integration tests.
 //!
-//! Centralises repeated setup flows (users, files, news content) so tests can
+//! Centralizes repeated setup flows (users, files, news content) so tests can
 //! compose databases with minimal boilerplate.
 
 mod helpers;

@@ -34,7 +34,7 @@ pub(super) async fn insert_article(
         .get_result(conn)
         .await?;
 
-    #[cfg(not(feature = "postgres"))]
+    #[cfg(feature = "sqlite")]
     let inserted_id: i32 = {
         use diesel::sql_types::Integer;
         diesel::insert_into(a::news_articles)
