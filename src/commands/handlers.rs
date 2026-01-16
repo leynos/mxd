@@ -43,14 +43,14 @@ impl Command {
             &header,
             Privileges::DOWNLOAD_FILE,
             || async move {
-                // Invariant: require_privilege guarantees authentication; read user_id after the
-                // check. Defensive fallback guards the invariant without expect.
-                let Some(uid) = session_ref.user_id else {
-                    return Ok(Transaction {
-                        header: reply_header(&header_reply, ERR_INTERNAL_SERVER, 0),
-                        payload: Vec::new(),
-                    });
-                };
+                // Invariant: require_privilege guarantees authentication before this closure runs.
+                #[expect(
+                    clippy::expect_used,
+                    reason = "require_privilege guarantees user_id is Some"
+                )]
+                let uid = session_ref
+                    .user_id
+                    .expect("authenticated after require_privilege");
                 let mut conn = pool.get().await?;
                 let files = crate::db::list_files_for_user(&mut conn, uid).await?;
                 let params: Vec<(FieldId, &[u8])> = files
