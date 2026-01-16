@@ -1,5 +1,15 @@
 //! Private helpers for fixture setup.
 
+// Enforce that exactly one database backend is enabled at compile time.
+#[cfg(not(any(feature = "sqlite", feature = "postgres")))]
+compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
+
+// NOTE: The mutual exclusion of sqlite/postgres is NOT enforced at compile time
+// because the lint feature configuration enables both features for static
+// analysis coverage, so only enforce exclusivity outside lint runs.
+#[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))]
+compile_error!("Choose either sqlite or postgres, not both");
+
 use mxd::{
     db::{DbConnection, create_bundle},
     models::{NewArticle, NewBundle},

@@ -1,7 +1,7 @@
 //! Command execution handlers and shared helpers.
 //!
 //! This module implements the per-command processing logic invoked by
-//! `Command::process` and centralises reply construction shared across handlers.
+//! `Command::process` and centralizes reply construction shared across handlers.
 
 use std::net::SocketAddr;
 
@@ -39,7 +39,9 @@ impl Command {
         let header_reply = header.clone();
         let user_id = session.user_id;
         check_privilege_and_run(session, &header, Privileges::DOWNLOAD_FILE, || async move {
-            // Privilege check ensures authentication; user_id should always be Some.
+            // Invariant: require_privilege guarantees authentication, so user_id is always
+            // Some at this point. Defensive fallback required because clippy::expect_used
+            // is banned and lifetime constraints prevent capturing session in the closure.
             let Some(uid) = user_id else {
                 return Ok(Transaction {
                     header: reply_header(&header_reply, ERR_INTERNAL_SERVER, 0),
