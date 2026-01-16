@@ -272,10 +272,7 @@ impl Command {
         session: &mut crate::handler::Session,
     ) -> Result<Transaction, CommandError> {
         match self {
-            Self::Login { req } => {
-                let ctx = HandlerContext::new(pool, session, req.header.clone());
-                Self::process_login(peer, ctx, req).await
-            }
+            Self::Login { req } => Self::process_login(peer, pool, session, req).await,
             Self::GetFileNameList { header } => {
                 let ctx = HandlerContext::new(pool, session, header);
                 Self::process_get_file_name_list(ctx).await

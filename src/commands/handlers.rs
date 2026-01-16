@@ -14,6 +14,7 @@ use super::{
     check_privilege_and_run,
 };
 use crate::{
+    db::DbPool,
     field_id::FieldId,
     header_util::reply_header,
     login::{LoginRequest, handle_login},
@@ -24,10 +25,10 @@ use crate::{
 impl Command {
     pub(super) async fn process_login(
         peer: SocketAddr,
-        ctx: HandlerContext<'_>,
+        pool: DbPool,
+        session: &mut crate::handler::Session,
         req: LoginRequest,
     ) -> Result<Transaction, CommandError> {
-        let HandlerContext { pool, session, .. } = ctx;
         handle_login(peer, session, pool, req).await
     }
 
