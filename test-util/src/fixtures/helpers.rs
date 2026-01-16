@@ -1,4 +1,8 @@
 //! Private helpers for fixture setup.
+//!
+//! Provides database-agnostic functions to insert test data (bundles, articles)
+//! used by integration and BDD tests. Conditional compilation ensures exactly
+//! one database backend (`PostgreSQL` or `SQLite`) is active at compile time.
 
 // Enforce that exactly one database backend is enabled at compile time.
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
@@ -17,6 +21,13 @@ use mxd::{
 
 use crate::AnyError;
 
+/// Creates and inserts a root bundle test fixture into the database.
+///
+/// # Parameters
+/// - `conn`: Mutable reference to the database connection
+///
+/// # Returns
+/// The ID of the newly created bundle on success, or an error.
 pub(super) async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, AnyError> {
     let id = create_bundle(
         conn,
@@ -30,6 +41,20 @@ pub(super) async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, A
     Ok(id)
 }
 
+/// Inserts a news article into the database.
+///
+/// Returns the ID of the newly inserted article.
+///
+/// # Parameters
+/// - `conn`: Mutable reference to the database connection
+/// - `article`: Article data to insert
+///
+/// # Backend-specific implementation
+/// - `PostgreSQL` uses `returning(...).get_result()` to retrieve the ID
+/// - `SQLite` uses `execute()` followed by `last_insert_rowid()`
+///
+/// # Errors
+/// Returns an error if the database operation fails.
 pub(super) async fn insert_article(
     conn: &mut DbConnection,
     article: &NewArticle<'_>,
