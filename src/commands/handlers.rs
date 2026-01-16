@@ -12,11 +12,9 @@ use super::{
     ERR_INVALID_PAYLOAD,
     HandlerContext,
     check_privilege_and_run,
-    privilege_error_reply,
 };
 use crate::{
     field_id::FieldId,
-    handler::PrivilegeError,
     header_util::reply_header,
     login::{LoginRequest, handle_login},
     privileges::Privileges,
@@ -42,18 +40,17 @@ impl Command {
             header,
         } = ctx;
         let header_reply = header.clone();
-        // Extract user_id early; check_privilege_and_run also validates auth,
-        // so this provides the value for the closure while maintaining a single
-        // auth check path.
-        let Some(user_id) = session.user_id else {
-            return Ok(privilege_error_reply(
-                &header,
-                PrivilegeError::NotAuthenticated,
-            ));
-        };
+        let user_id = session.user_id;
         check_privilege_and_run(session, &header, Privileges::DOWNLOAD_FILE, || async move {
+            // Privilege check ensures authentication; user_id should always be Some.
+            let Some(uid) = user_id else {
+                return Ok(Transaction {
+                    header: reply_header(&header_reply, ERR_INTERNAL_SERVER, 0),
+                    payload: Vec::new(),
+                });
+            };
             let mut conn = pool.get().await?;
-            let files = crate::db::list_files_for_user(&mut conn, user_id).await?;
+            let files = crate::db::list_files_for_user(&mut conn, uid).await?;
             let params: Vec<(FieldId, &[u8])> = files
                 .iter()
                 .map(|f| (FieldId::FileName, f.name.as_bytes()))
