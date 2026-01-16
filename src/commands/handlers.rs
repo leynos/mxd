@@ -37,29 +37,33 @@ impl Command {
         header: FrameHeader,
     ) -> Result<Transaction, CommandError> {
         let header_reply = header.clone();
-        let user_id = session.user_id;
-        check_privilege_and_run(session, &header, Privileges::DOWNLOAD_FILE, || async move {
-            // Invariant: require_privilege guarantees authentication, so user_id is always
-            // Some at this point. Defensive fallback required because clippy::expect_used
-            // is banned and lifetime constraints prevent capturing session in the closure.
-            let Some(uid) = user_id else {
-                return Ok(Transaction {
-                    header: reply_header(&header_reply, ERR_INTERNAL_SERVER, 0),
-                    payload: Vec::new(),
-                });
-            };
-            let mut conn = pool.get().await?;
-            let files = crate::db::list_files_for_user(&mut conn, uid).await?;
-            let params: Vec<(FieldId, &[u8])> = files
-                .iter()
-                .map(|f| (FieldId::FileName, f.name.as_bytes()))
-                .collect();
-            let payload = encode_params(&params)?;
-            Ok(Transaction {
-                header: reply_header(&header_reply, 0, payload.len()),
-                payload,
-            })
-        })
+        let session_ref = &*session;
+        check_privilege_and_run(
+            session_ref,
+            &header,
+            Privileges::DOWNLOAD_FILE,
+            || async move {
+                // Invariant: require_privilege guarantees authentication; read user_id after the
+                // check. Defensive fallback guards the invariant without expect.
+                let Some(uid) = session_ref.user_id else {
+                    return Ok(Transaction {
+                        header: reply_header(&header_reply, ERR_INTERNAL_SERVER, 0),
+                        payload: Vec::new(),
+                    });
+                };
+                let mut conn = pool.get().await?;
+                let files = crate::db::list_files_for_user(&mut conn, uid).await?;
+                let params: Vec<(FieldId, &[u8])> = files
+                    .iter()
+                    .map(|f| (FieldId::FileName, f.name.as_bytes()))
+                    .collect();
+                let payload = encode_params(&params)?;
+                Ok(Transaction {
+                    header: reply_header(&header_reply, 0, payload.len()),
+                    payload,
+                })
+            },
+        )
         .await
     }
 
