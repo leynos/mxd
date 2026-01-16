@@ -3,11 +3,7 @@
 //! Centralises repeated setup flows (users, files, news content) so tests can
 //! compose databases with minimal boilerplate.
 
-use std::{
-    collections::HashMap,
-    io,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, io};
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -106,9 +102,9 @@ pub async fn ensure_test_user(conn: &mut DbConnection) -> Result<(), AnyError> {
     clippy::needless_pass_by_value,
     reason = "DatabaseUrl is an owned API boundary for fixtures"
 )]
-pub fn with_db<F>(db: DatabaseUrl, f: F) -> Result<(), AnyError>
+pub fn with_db<F, R>(db: DatabaseUrl, f: F) -> Result<R, AnyError>
 where
-    F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<(), AnyError>>,
+    F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<R, AnyError>>,
 {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
@@ -250,10 +246,7 @@ pub fn setup_news_db(db: DatabaseUrl) -> Result<(), AnyError> {
 ///
 /// Returns an error if database setup fails.
 pub fn setup_news_with_article(db: DatabaseUrl) -> Result<i32, AnyError> {
-    let article_id = Arc::new(Mutex::new(None));
-    let article_id_handle = Arc::clone(&article_id);
     with_db(db, |conn| {
-        let article_id_ref = Arc::clone(&article_id_handle);
         Box::pin(async move {
             ensure_test_user(conn).await?;
 
@@ -291,20 +284,9 @@ pub fn setup_news_with_article(db: DatabaseUrl) -> Result<i32, AnyError> {
                 },
             )
             .await?;
-            let mut guard = article_id_ref
-                .lock()
-                .map_err(|_| anyhow::anyhow!("news fixture mutex poisoned"))?;
-            *guard = Some(inserted_id);
-            Ok(())
+            Ok(inserted_id)
         })
-    })?;
-    let guard = article_id
-        .lock()
-        .map_err(|_| anyhow::anyhow!("news fixture mutex poisoned"))?;
-    guard
-        .as_ref()
-        .copied()
-        .ok_or_else(|| anyhow::anyhow!("news fixture did not set article id"))
+    })
 }
 
 /// Create a test database with root-level news categories.
