@@ -242,6 +242,8 @@ impl Command {
                 let params = decode_params_map(&tx.payload)?;
                 let path = required_param_string(&params, FieldId::NewsPath)?;
                 let title = required_param_string(&params, FieldId::NewsTitle)?;
+                // NewsArticleFlags (field 334): 0 = normal post; bit flags may indicate
+                // locked/announcement status per Hotline protocol.
                 let flags = first_param_i32(&params, FieldId::NewsArticleFlags)?.unwrap_or(0);
                 let data_flavor = required_param_string(&params, FieldId::NewsDataFlavor)?;
                 let data = required_param_string(&params, FieldId::NewsArticleData)?;
