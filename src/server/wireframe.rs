@@ -34,7 +34,6 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use argon2::Argon2;
-use clap::Parser;
 use tokio::sync::Mutex as TokioMutex;
 use tracing::{error, warn};
 use wireframe::{
@@ -43,7 +42,7 @@ use wireframe::{
     server::WireframeServer,
 };
 
-use super::{AppConfig, Cli};
+use super::{AppConfig, ResolvedCli, load_cli};
 use crate::{
     db::{DbPool, establish_pool},
     handler::Session,
@@ -66,20 +65,20 @@ type HotlineApp = WireframeApp<BincodeSerializer, (), Envelope, HotlineFrameCode
 ///
 /// # Errors
 ///
-/// Propagates failures from configuration loading or the Wireframe runtime.
+/// Returns any error emitted while parsing configuration or starting the Wireframe runtime.
 pub async fn run() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = load_cli()?;
     run_with_cli(cli).await
 }
 
-/// Execute the Wireframe runtime with a pre-parsed [`Cli`].
+/// Execute the Wireframe runtime with a resolved [`ResolvedCli`].
 ///
 /// # Errors
 ///
 /// Returns any error raised while running administrative commands or binding
 /// the Wireframe listener.
-pub async fn run_with_cli(cli: Cli) -> Result<()> {
-    let Cli { config, command } = cli;
+pub async fn run_with_cli(cli: ResolvedCli) -> Result<()> {
+    let ResolvedCli { config, command } = cli;
     if let Some(command) = command {
         admin::run_command(command, &config).await
     } else {

@@ -1,83 +1,132 @@
 //! Command-line interface definitions for the MXD server.
 //!
-//! Keeping these types in the library allows every binary (legacy TCP and the
-//! forthcoming wireframe adapter) to expose an identical configuration surface.
+//! This module re-exports CLI types from the `cli-defs` crate, which provides
+//! stable definitions shared between build-time (man page generation) and
+//! runtime consumers.
 
-#![expect(
-    non_snake_case,
-    reason = "Clap/OrthoConfig derive macros generate helper modules with uppercase names"
-)]
-#![expect(
-    missing_docs,
-    reason = "OrthoConfig and Clap derive macros generate items that cannot be documented"
-)]
+use std::ffi::{OsStr, OsString};
 
+use anyhow::{Context, Result};
 use argon2::Params;
-use clap::{Args, Parser, Subcommand};
-use ortho_config::OrthoConfig;
-use serde::{Deserialize, Serialize};
+use clap::{CommandFactory, Parser};
+pub use cli_defs::{
+    AppConfig,
+    Cli,
+    Commands,
+    CreateUserArgs,
+    DEFAULT_ARGON2_M_COST,
+    DEFAULT_ARGON2_P_COST,
+    DEFAULT_ARGON2_T_COST,
+};
 
-/// Arguments for the `create-user` administrative subcommand.
-#[derive(Parser, OrthoConfig, Deserialize, Serialize, Default, Debug, Clone)]
-#[ortho_config(prefix = "MXD_")]
-pub struct CreateUserArgs {
-    /// Username for the new account.
-    pub username: Option<String>,
-    /// Password for the new account.
-    pub password: Option<String>,
-}
+const _: () = {
+    assert!(DEFAULT_ARGON2_M_COST == Params::DEFAULT_M_COST);
+    assert!(DEFAULT_ARGON2_T_COST == Params::DEFAULT_T_COST);
+    assert!(DEFAULT_ARGON2_P_COST == Params::DEFAULT_P_COST);
+};
 
-/// CLI subcommands exposed by `mxd`.
-#[derive(Subcommand, Deserialize, Serialize, Debug, Clone)]
-pub enum Commands {
-    /// Create a new user account.
-    #[command(name = "create-user")]
-    CreateUser(CreateUserArgs),
-}
-
-/// Runtime configuration shared by all binaries.
-#[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
-#[ortho_config(prefix = "MXD_")]
-pub struct AppConfig {
-    /// Server bind address.
-    #[ortho_config(default = "0.0.0.0:5500".to_owned())]
-    #[arg(long, default_value_t = String::from("0.0.0.0:5500"))]
-    pub bind: String,
-    /// Database connection string or path.
-    #[ortho_config(default = "mxd.db".to_owned())]
-    #[arg(long, default_value_t = String::from("mxd.db"))]
-    pub database: String,
-    /// Argon2 memory cost parameter.
-    #[ortho_config(default = Params::DEFAULT_M_COST)]
-    #[arg(long, default_value_t = Params::DEFAULT_M_COST)]
-    pub argon2_m_cost: u32,
-    /// Argon2 time cost parameter.
-    #[ortho_config(default = Params::DEFAULT_T_COST)]
-    #[arg(long, default_value_t = Params::DEFAULT_T_COST)]
-    pub argon2_t_cost: u32,
-    /// Argon2 parallelism cost parameter.
-    #[ortho_config(default = Params::DEFAULT_P_COST)]
-    #[arg(long, default_value_t = Params::DEFAULT_P_COST)]
-    pub argon2_p_cost: u32,
-}
-
-/// Top-level CLI entry point consumed by binaries.
-#[derive(Parser, Deserialize, Serialize, Debug, Clone)]
-pub struct Cli {
+/// Parsed CLI with resolved configuration values.
+#[derive(Debug, Clone)]
+pub struct ResolvedCli {
     /// Application configuration.
-    #[command(flatten)]
     pub config: AppConfig,
     /// Optional subcommand.
-    #[command(subcommand)]
     pub command: Option<Commands>,
+}
+
+/// Load configuration using `OrthoConfig` defaults and CLI overrides.
+///
+/// # Errors
+///
+/// Returns an error if configuration parsing fails.
+pub fn load_cli() -> Result<ResolvedCli> {
+    let cli = Cli::parse();
+    let config_args = config_args_without_subcommand();
+    let config = AppConfig::load_from_iter(config_args).context("load configuration")?;
+    Ok(ResolvedCli {
+        config,
+        command: cli.command,
+    })
+}
+
+/// Collect program arguments with any subcommand and its trailing args stripped.
+///
+/// Scans arguments and stops at the `--` separator to avoid treating literal
+/// values as subcommands. Detects known clap subcommands via
+/// `Cli::command().get_subcommands()` and, when found, returns only the args
+/// preceding the subcommand. This allows `OrthoConfig`'s CLI parser (which does
+/// not handle subcommands) to load configuration safely.
+fn config_args_without_subcommand() -> Vec<OsString> {
+    let args: Vec<OsString> = std::env::args_os().collect();
+    let subcommands = Cli::command()
+        .get_subcommands()
+        .map(|cmd| cmd.get_name().to_owned())
+        .collect::<Vec<_>>();
+    let mut subcommand_index = None;
+    for (index, arg) in args.iter().enumerate() {
+        if arg.as_os_str() == OsStr::new("--") {
+            break;
+        }
+        if arg
+            .to_str()
+            .is_some_and(|value| subcommands.iter().any(|name| name == value))
+        {
+            subcommand_index = Some(index);
+            break;
+        }
+    }
+    // OrthoConfig's CLI parser does not handle subcommands, so strip any
+    // subcommand and its arguments before loading configuration.
+    if let Some(index) = subcommand_index {
+        args.into_iter().take(index).collect()
+    } else {
+        args
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use argon2::Params;
     use figment::Jail;
     use rstest::rstest;
 
     use super::*;
+
+    /// Verifies that our local constants match the upstream argon2 crate defaults.
+    ///
+    /// This guards against silent drift if argon2 changes its defaults in a
+    /// future release.
+    #[rstest]
+    fn argon2_default_constants_match_upstream() {
+        assert_eq!(
+            DEFAULT_ARGON2_M_COST,
+            Params::DEFAULT_M_COST,
+            "DEFAULT_ARGON2_M_COST should match argon2::Params::DEFAULT_M_COST"
+        );
+        assert_eq!(
+            DEFAULT_ARGON2_T_COST,
+            Params::DEFAULT_T_COST,
+            "DEFAULT_ARGON2_T_COST should match argon2::Params::DEFAULT_T_COST"
+        );
+        assert_eq!(
+            DEFAULT_ARGON2_P_COST,
+            Params::DEFAULT_P_COST,
+            "DEFAULT_ARGON2_P_COST should match argon2::Params::DEFAULT_P_COST"
+        );
+    }
+
+    /// Verifies `AppConfig` uses the expected Argon2 defaults when no overrides
+    /// are provided.
+    #[rstest]
+    fn argon2_defaults_applied_to_config() {
+        Jail::expect_with(|_j| {
+            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
+            assert_eq!(cfg.argon2_m_cost, DEFAULT_ARGON2_M_COST);
+            assert_eq!(cfg.argon2_t_cost, DEFAULT_ARGON2_T_COST);
+            assert_eq!(cfg.argon2_p_cost, DEFAULT_ARGON2_P_COST);
+            Ok(())
+        });
+    }
 
     #[rstest]
     fn env_config_loading() {
@@ -112,8 +161,63 @@ mod tests {
     }
 
     #[rstest]
-    fn argon2_cli() {
+    fn argon2_cli_overrides_all_params() {
         Jail::expect_with(|_j| {
+            let cfg = AppConfig::load_from_iter([
+                "mxd",
+                "--argon2-m-cost",
+                "1024",
+                "--argon2-t-cost",
+                "4",
+                "--argon2-p-cost",
+                "2",
+            ])
+            .expect("load");
+            assert_eq!(cfg.argon2_m_cost, 1024);
+            assert_eq!(cfg.argon2_t_cost, 4);
+            assert_eq!(cfg.argon2_p_cost, 2);
+            Ok(())
+        });
+    }
+
+    #[rstest]
+    fn argon2_env_overrides() {
+        Jail::expect_with(|j| {
+            j.set_env("MXD_ARGON2_M_COST", "2048");
+            j.set_env("MXD_ARGON2_T_COST", "8");
+            j.set_env("MXD_ARGON2_P_COST", "4");
+            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
+            assert_eq!(cfg.argon2_m_cost, 2048);
+            assert_eq!(cfg.argon2_t_cost, 8);
+            assert_eq!(cfg.argon2_p_cost, 4);
+            Ok(())
+        });
+    }
+
+    #[rstest]
+    fn argon2_config_file_overrides() {
+        Jail::expect_with(|j| {
+            j.create_file(
+                ".mxd.toml",
+                concat!(
+                    "argon2_m_cost = 4096\n",
+                    "argon2_t_cost = 16\n",
+                    "argon2_p_cost = 8\n"
+                ),
+            )?;
+            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
+            assert_eq!(cfg.argon2_m_cost, 4096);
+            assert_eq!(cfg.argon2_t_cost, 16);
+            assert_eq!(cfg.argon2_p_cost, 8);
+            Ok(())
+        });
+    }
+
+    #[rstest]
+    fn argon2_cli_overrides_env_and_file() {
+        Jail::expect_with(|j| {
+            j.create_file(".mxd.toml", "argon2_m_cost = 4096\n")?;
+            j.set_env("MXD_ARGON2_M_COST", "2048");
             let cfg = AppConfig::load_from_iter(["mxd", "--argon2-m-cost", "1024"]).expect("load");
             assert_eq!(cfg.argon2_m_cost, 1024);
             Ok(())

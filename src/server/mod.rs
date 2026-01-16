@@ -16,8 +16,7 @@ use std::str::FromStr;
 
 pub use admin::run_command;
 use anyhow::Result;
-use clap::Parser;
-pub use cli::{AppConfig, Cli, Commands, CreateUserArgs};
+pub use cli::{AppConfig, Cli, Commands, CreateUserArgs, ResolvedCli, load_cli};
 #[cfg(feature = "legacy-networking")]
 pub use legacy::run_daemon;
 
@@ -62,25 +61,25 @@ impl FromStr for NetworkRuntime {
 /// Returns any error emitted while parsing configuration or starting the
 /// configured runtime.
 pub async fn run() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = load_cli()?;
     run_with_cli(cli).await
 }
 
-/// Execute the server logic using an already parsed [`Cli`].
+/// Execute the server logic using an already resolved [`ResolvedCli`].
 ///
 /// # Errors
 ///
 /// Propagates any failure reported by the selected runtime.
 #[cfg(feature = "legacy-networking")]
-pub async fn run_with_cli(cli: Cli) -> Result<()> { legacy::dispatch(cli).await }
+pub async fn run_with_cli(cli: ResolvedCli) -> Result<()> { legacy::dispatch(cli).await }
 
-/// Execute the server logic using an already parsed [`Cli`].
+/// Execute the server logic using an already resolved [`ResolvedCli`].
 ///
 /// # Errors
 ///
 /// Returns any error emitted while starting the Wireframe runtime.
 #[cfg(not(feature = "legacy-networking"))]
-pub async fn run_with_cli(cli: Cli) -> Result<()> { wireframe::run_with_cli(cli).await }
+pub async fn run_with_cli(cli: ResolvedCli) -> Result<()> { wireframe::run_with_cli(cli).await }
 
 #[cfg(test)]
 mod tests {

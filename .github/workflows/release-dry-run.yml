@@ -1,0 +1,16 @@
+---
+name: Release Dry Run
+
+'on':
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.yml
+    with:
+      dry-run: true
+    secrets: inherit

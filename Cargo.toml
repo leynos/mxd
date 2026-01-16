@@ -1,6 +1,7 @@
 [workspace]
 members = [
     ".",
+    "cli-defs",
     "crates/mxd-verification",
     "fuzz",
     "test-util",
@@ -70,6 +71,7 @@ wireframe = "0.2.0"
 figment = { version = "0.10", features = ["env", "test"] }
 uncased = "0.9"
 xdg = "3"
+cli-defs = { path = "cli-defs" }
 anyhow = "1"
 async-trait = "0.1"
 bincode = "2.0.1"
@@ -124,6 +126,11 @@ tempfile = "3.23.0"
 paste = "1.0.15"
 pg-embedded-setup-unpriv = { package = "pg-embed-setup-unpriv", version = "0.1.0", features = ["diesel-support"] }
 kani = "0.0.1"
+
+[build-dependencies]
+clap = { version = "4.5.51", features = ["derive"] }
+clap_mangen = "0.2.31"
+cli-defs = { path = "cli-defs" }
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
