@@ -302,7 +302,7 @@ impl Command {
             messaging,
         } = context;
         let reply = self.execute(peer, pool, session).await?;
-        // TODO: use outbound messaging for server-initiated notifications.
+        // TODO: use `messaging` for server-initiated notifications.
         let _ = messaging;
         transport.send_reply(reply)?;
         Ok(())

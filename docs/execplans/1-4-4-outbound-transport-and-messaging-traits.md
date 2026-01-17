@@ -244,7 +244,7 @@ relevant command. If documentation linting fails, run `make fmt` and re-run
 ## Artifacts and Notes
 
 Record key command outputs (test runs, lint runs) by keeping the `tee` logs
-listed above. Summarise any failures and resolutions in `Decision Log`.
+listed above. Summarize any failures and resolutions in `Decision Log`.
 
 ## Interfaces and Dependencies
 

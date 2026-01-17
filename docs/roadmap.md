@@ -135,7 +135,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   helpers; BDD tests in `tests/features/session_privileges.feature` verify
   enforcement for authenticated/unauthenticated and privileged/unprivileged
   access paths. Dependencies: 1.4.2.
-- [x] 1.4.4. Provide outbound transport and messaging traits so domain code can
+- [x] 1.4.4. Provide outbound transport and messaging traits, so domain code can
   respond without depending on `wireframe` types. Acceptance: Domain modules
   interact with adapter traits defined alongside the server boundary, and the
   crate continues compiling with no direct `wireframe` imports, matching

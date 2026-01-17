@@ -98,6 +98,7 @@ impl WireframeOutboundConnection {
     pub fn register_handle(&self, handle: &PushHandle<Vec<u8>>) {
         if self.handle.set(handle.clone()).is_err() {
             warn!("outbound push handle already registered");
+            return;
         }
         self.registry.insert(self.id, handle);
     }
