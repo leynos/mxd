@@ -24,7 +24,6 @@
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
 use async_trait::async_trait;
-use tracing::{error, warn};
 use wireframe::{
     app::Envelope,
     middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform},
@@ -36,10 +35,15 @@ use crate::{
     commands::{Command, CommandContext},
     db::DbPool,
     handler::Session,
-    header_util::reply_header,
     server::outbound::{OutboundMessaging, ReplyBuffer},
-    transaction::{FrameHeader, Transaction, parse_transaction},
+    transaction::{FrameHeader, parse_transaction},
 };
+#[cfg(test)]
+use crate::{header_util::reply_header, transaction::Transaction};
+
+mod reply_builder;
+
+use reply_builder::ReplyBuilder;
 
 /// Error code for internal server failures.
 const ERR_INTERNAL: u32 = 3;
@@ -118,7 +122,7 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
     // Parse the frame as a domain Transaction
     let tx = match parse_transaction(frame) {
         Ok(tx) => tx,
-        Err(e) => return handle_parse_error(e),
+        Err(e) => return handle_parse_error(peer, frame, e),
     };
 
     let header = tx.header.clone();
@@ -126,7 +130,7 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
     // Parse into Command and process
     let cmd = match Command::from_transaction(tx) {
         Ok(cmd) => cmd,
-        Err(e) => return handle_command_parse_error(e, &header),
+        Err(e) => return handle_command_parse_error(peer, &header, e),
     };
 
     #[cfg(test)]
@@ -141,17 +145,20 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
         messaging,
     };
     match cmd.process_with_outbound(command_context).await {
-        Ok(()) => transport
-            .take_reply()
-            .map_or_else(|| handle_missing_reply(&header), |reply| reply.to_bytes()),
-        Err(e) => handle_process_error(e, &header),
+        Ok(()) => transport.take_reply().map_or_else(
+            || handle_missing_reply(peer, &header),
+            |reply| reply.to_bytes(),
+        ),
+        Err(e) => handle_process_error(peer, &header, e),
     }
 }
 
 /// Convert a transaction to raw bytes.
+#[cfg(test)]
 fn transaction_to_bytes(tx: &Transaction) -> Vec<u8> { tx.to_bytes() }
 
 /// Build an error reply transaction from a header and error code.
+#[cfg(test)]
 fn error_transaction(header: &FrameHeader, error_code: u32) -> Transaction {
     Transaction {
         header: reply_header(header, error_code, 0),
@@ -160,36 +167,31 @@ fn error_transaction(header: &FrameHeader, error_code: u32) -> Transaction {
 }
 
 /// Handle transaction parse errors by returning an error reply.
-fn handle_parse_error(e: impl std::fmt::Display) -> Vec<u8> {
-    warn!(error = %e, "failed to parse transaction from bytes");
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 1,
-        ty: 0,
-        id: 0,
-        error: ERR_INTERNAL,
-        total_size: 0,
-        data_size: 0,
-    };
-    transaction_to_bytes(&error_transaction(&header, ERR_INTERNAL))
+fn handle_parse_error(peer: SocketAddr, frame: &[u8], e: impl std::fmt::Display) -> Vec<u8> {
+    ReplyBuilder::from_frame(peer, frame).parse_error(e, ERR_INTERNAL)
 }
 
 /// Handle command parsing errors by returning an error reply.
-fn handle_command_parse_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<u8> {
-    warn!(error = %e, "failed to parse command from transaction");
-    transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
+fn handle_command_parse_error(
+    peer: SocketAddr,
+    header: &FrameHeader,
+    e: impl std::fmt::Display,
+) -> Vec<u8> {
+    ReplyBuilder::from_header(peer, header.clone()).command_parse_error(e, ERR_INTERNAL)
 }
 
 /// Handle command processing errors by returning an error reply.
-fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<u8> {
-    error!(error = %e, "command processing failed");
-    transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
+fn handle_process_error(
+    peer: SocketAddr,
+    header: &FrameHeader,
+    e: impl std::fmt::Display,
+) -> Vec<u8> {
+    ReplyBuilder::from_header(peer, header.clone()).process_error(e, ERR_INTERNAL)
 }
 
 /// Handle missing replies by returning an error reply.
-fn handle_missing_reply(header: &FrameHeader) -> Vec<u8> {
-    error!("command processing did not emit a reply");
-    transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
+fn handle_missing_reply(peer: SocketAddr, header: &FrameHeader) -> Vec<u8> {
+    ReplyBuilder::from_header(peer, header.clone()).missing_reply(ERR_INTERNAL)
 }
 
 /// Build an error reply as a `HotlineTransaction`.

@@ -178,6 +178,25 @@ fn when_unknown_type(world: &RoutingWorld) { world.send(TransactionType::Other(6
 #[when("I send a truncated frame of 10 bytes")]
 fn when_truncated(world: &RoutingWorld) { world.send_raw(&[0u8; 10]); }
 
+#[when("I send a transaction with type {ty} and ID {id} but a truncated payload")]
+fn when_truncated_payload(world: &RoutingWorld, ty: u16, id: u32) {
+    if world.is_skipped() {
+        return;
+    }
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty,
+        id,
+        error: 0,
+        total_size: 4,
+        data_size: 4,
+    };
+    let mut header_buf = [0u8; HEADER_LEN];
+    header.write_bytes(&mut header_buf);
+    world.send_raw(&header_buf);
+}
+
 #[when("I send a transaction with unknown type 65535 and ID {id}")]
 fn when_unknown_with_id(world: &RoutingWorld, id: u32) {
     if world.is_skipped() {
