@@ -15,9 +15,13 @@ use mxd::{
     handler::Session,
     privileges::Privileges,
     schema::users::dsl as users_dsl,
+    server::outbound::NoopOutboundMessaging,
     transaction::{Transaction, parse_transaction},
     transaction_type::TransactionType,
-    wireframe::{routes::process_transaction_bytes, test_helpers::dummy_pool},
+    wireframe::{
+        routes::{RouteContext, process_transaction_bytes},
+        test_helpers::dummy_pool,
+    },
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
@@ -93,9 +97,19 @@ impl PrivilegeWorld {
         let pool = self.pool.borrow().clone();
         let peer = self.peer;
         let mut session = self.session.borrow().clone();
-        let reply = self
-            .rt
-            .block_on(async { process_transaction_bytes(&frame, peer, pool, &mut session).await });
+        let messaging = NoopOutboundMessaging;
+        let reply = self.rt.block_on(async {
+            process_transaction_bytes(
+                &frame,
+                RouteContext {
+                    peer,
+                    pool,
+                    session: &mut session,
+                    messaging: &messaging,
+                },
+            )
+            .await
+        });
         self.session.replace(session);
         let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
         self.reply.borrow_mut().replace(outcome);

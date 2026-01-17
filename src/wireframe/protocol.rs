@@ -22,8 +22,15 @@
 //!
 //! ```rust,ignore
 //! use mxd::wireframe::protocol::HotlineProtocol;
+//! use mxd::wireframe::outbound::{WireframeOutboundConnection, WireframeOutboundRegistry};
+//! use std::sync::Arc;
 //!
-//! let protocol = HotlineProtocol::new(pool.clone(), argon2.clone());
+//! let registry = Arc::new(WireframeOutboundRegistry::default());
+//! let connection = Arc::new(WireframeOutboundConnection::new(
+//!     registry.allocate_id(),
+//!     Arc::clone(&registry),
+//! ));
+//! let protocol = HotlineProtocol::new(pool.clone(), argon2.clone(), connection);
 //! let app = WireframeApp::default()
 //!     .with_protocol(protocol);
 //! ```
@@ -41,7 +48,7 @@ use argon2::Argon2;
 use tracing::info;
 use wireframe::{ConnectionContext, WireframeProtocol, push::PushHandle};
 
-use crate::db::DbPool;
+use crate::{db::DbPool, wireframe::outbound::WireframeOutboundConnection};
 
 /// `WireframeProtocol` implementation for the Hotline protocol.
 ///
@@ -58,6 +65,7 @@ use crate::db::DbPool;
 pub struct HotlineProtocol {
     pool: DbPool,
     argon2: Arc<Argon2<'static>>,
+    outbound: Arc<WireframeOutboundConnection>,
 }
 
 impl HotlineProtocol {
@@ -68,7 +76,17 @@ impl HotlineProtocol {
     /// * `pool` - Database connection pool for transaction handlers.
     /// * `argon2` - Shared Argon2 instance for password hashing.
     #[must_use]
-    pub const fn new(pool: DbPool, argon2: Arc<Argon2<'static>>) -> Self { Self { pool, argon2 } }
+    pub const fn new(
+        pool: DbPool,
+        argon2: Arc<Argon2<'static>>,
+        outbound: Arc<WireframeOutboundConnection>,
+    ) -> Self {
+        Self {
+            pool,
+            argon2,
+            outbound,
+        }
+    }
 
     /// Return a reference to the database pool.
     #[must_use]
@@ -77,6 +95,10 @@ impl HotlineProtocol {
     /// Return a reference to the Argon2 instance.
     #[must_use]
     pub const fn argon2(&self) -> &Arc<Argon2<'static>> { &self.argon2 }
+
+    /// Return the outbound connection state for this protocol instance.
+    #[must_use]
+    pub const fn outbound(&self) -> &Arc<WireframeOutboundConnection> { &self.outbound }
 }
 
 impl WireframeProtocol for HotlineProtocol {
@@ -84,10 +106,11 @@ impl WireframeProtocol for HotlineProtocol {
     type Frame = Vec<u8>;
     type ProtocolError = ();
 
-    fn on_connection_setup(&self, _handle: PushHandle<Self::Frame>, _ctx: &mut ConnectionContext) {
+    fn on_connection_setup(&self, handle: PushHandle<Self::Frame>, _ctx: &mut ConnectionContext) {
         // Connection setup is handled in the app factory via build_app(), which
         // creates ConnectionState with session, context, and handshake metadata.
-        // The push handle could be stored for outbound messaging in future work.
+        // Store the push handle so outbound messaging can target this connection.
+        self.outbound.register_handle(&handle);
         info!("hotline connection established");
     }
 
@@ -115,29 +138,39 @@ impl WireframeProtocol for HotlineProtocol {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use wireframe::ConnectionContext;
 
     use super::*;
-    use crate::wireframe::test_helpers::dummy_pool;
+    use crate::wireframe::{
+        outbound::{WireframeOutboundConnection, WireframeOutboundRegistry},
+        test_helpers::dummy_pool,
+    };
+
+    #[fixture]
+    fn outbound_connection() -> Arc<WireframeOutboundConnection> {
+        let registry = Arc::new(WireframeOutboundRegistry::default());
+        let id = registry.allocate_id();
+        Arc::new(WireframeOutboundConnection::new(id, registry))
+    }
 
     #[rstest]
-    fn protocol_can_be_created() {
+    fn protocol_can_be_created(outbound_connection: Arc<WireframeOutboundConnection>) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
 
-        let protocol = HotlineProtocol::new(pool, argon2);
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
 
         assert!(Arc::strong_count(protocol.argon2()) >= 1);
     }
 
     #[rstest]
-    fn protocol_shares_argon2_instance() {
+    fn protocol_shares_argon2_instance(outbound_connection: Arc<WireframeOutboundConnection>) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
         let argon2_clone = Arc::clone(&argon2);
 
-        let protocol = HotlineProtocol::new(pool, argon2);
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
 
         assert!(Arc::ptr_eq(protocol.argon2(), &argon2_clone));
     }
@@ -156,10 +189,13 @@ mod tests {
     #[case::stream_end_frame(LifecycleHook::StreamEndFrame)]
     #[case::on_command_end(LifecycleHook::OnCommandEnd)]
     #[case::before_send(LifecycleHook::BeforeSend)]
-    fn lifecycle_hooks_do_not_panic(#[case] hook: LifecycleHook) {
+    fn lifecycle_hooks_do_not_panic(
+        #[case] hook: LifecycleHook,
+        outbound_connection: Arc<WireframeOutboundConnection>,
+    ) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
-        let protocol = HotlineProtocol::new(pool, argon2);
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
         let mut ctx = ConnectionContext;
 
         match hook {

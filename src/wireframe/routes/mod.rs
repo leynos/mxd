@@ -12,7 +12,7 @@
 //! 1. Parse raw bytes into `HotlineTransaction`
 //! 2. Convert to domain `Transaction` via `From` impl
 //! 3. Parse into `Command` via `Command::from_transaction()`
-//! 4. Execute via `Command::process()` with context and session
+//! 4. Execute via `Command::process_with_outbound()` using routing context
 //! 5. Convert reply `Transaction` to bytes
 //!
 //! # Registration
@@ -33,15 +33,28 @@ use wireframe::{
 #[cfg(test)]
 use crate::wireframe::codec::HotlineTransaction;
 use crate::{
-    commands::Command,
+    commands::{Command, CommandContext},
     db::DbPool,
     handler::Session,
     header_util::reply_header,
+    server::outbound::{OutboundMessaging, ReplyBuffer},
     transaction::{FrameHeader, Transaction, parse_transaction},
 };
 
 /// Error code for internal server failures.
 const ERR_INTERNAL: u32 = 3;
+
+/// Routing context used when dispatching a frame.
+pub struct RouteContext<'a> {
+    /// Remote peer socket address.
+    pub peer: SocketAddr,
+    /// Database connection pool.
+    pub pool: DbPool,
+    /// Mutable session state for the connection.
+    pub session: &'a mut Session,
+    /// Outbound messaging adapter for push notifications.
+    pub messaging: &'a dyn OutboundMessaging,
+}
 
 #[cfg(test)]
 mod dispatch_spy {
@@ -88,20 +101,20 @@ mod dispatch_spy {
 /// # Arguments
 ///
 /// * `frame` - Raw transaction bytes (header + payload).
-/// * `peer` - The remote peer socket address.
-/// * `pool` - Database connection pool.
-/// * `session` - Mutable session state for the connection.
+/// * `context` - Routing context containing peer, database, session, and outbound messaging
+///   adapters.
 ///
 /// # Returns
 ///
 /// Raw bytes containing the reply transaction, or an error transaction if
 /// processing fails.
-pub async fn process_transaction_bytes(
-    frame: &[u8],
-    peer: std::net::SocketAddr,
-    pool: DbPool,
-    session: &mut Session,
-) -> Vec<u8> {
+pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) -> Vec<u8> {
+    let RouteContext {
+        peer,
+        pool,
+        session,
+        messaging,
+    } = context;
     // Parse the frame as a domain Transaction
     let tx = match parse_transaction(frame) {
         Ok(tx) => tx,
@@ -119,21 +132,24 @@ pub async fn process_transaction_bytes(
     #[cfg(test)]
     dispatch_spy::record(peer, &header);
 
-    match cmd.process(peer, pool, session).await {
-        Ok(reply) => transaction_to_bytes(&reply),
+    let mut transport = ReplyBuffer::new();
+    let command_context = CommandContext {
+        peer,
+        pool,
+        session,
+        transport: &mut transport,
+        messaging,
+    };
+    match cmd.process_with_outbound(command_context).await {
+        Ok(()) => transport
+            .take_reply()
+            .map_or_else(|| handle_missing_reply(&header), |reply| reply.to_bytes()),
         Err(e) => handle_process_error(e, &header),
     }
 }
 
 /// Convert a transaction to raw bytes.
-fn transaction_to_bytes(tx: &Transaction) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(crate::transaction::HEADER_LEN + tx.payload.len());
-    let mut header_buf = [0u8; crate::transaction::HEADER_LEN];
-    tx.header.write_bytes(&mut header_buf);
-    bytes.extend_from_slice(&header_buf);
-    bytes.extend_from_slice(&tx.payload);
-    bytes
-}
+fn transaction_to_bytes(tx: &Transaction) -> Vec<u8> { tx.to_bytes() }
 
 /// Build an error reply transaction from a header and error code.
 fn error_transaction(header: &FrameHeader, error_code: u32) -> Transaction {
@@ -167,6 +183,12 @@ fn handle_command_parse_error(e: impl std::fmt::Display, header: &FrameHeader) -
 /// Handle command processing errors by returning an error reply.
 fn handle_process_error(e: impl std::fmt::Display, header: &FrameHeader) -> Vec<u8> {
     error!(error = %e, "command processing failed");
+    transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
+}
+
+/// Handle missing replies by returning an error reply.
+fn handle_missing_reply(header: &FrameHeader) -> Vec<u8> {
+    error!("command processing did not emit a reply");
     transaction_to_bytes(&error_transaction(header, ERR_INTERNAL))
 }
 
@@ -206,6 +228,7 @@ pub struct TransactionMiddleware {
     pool: DbPool,
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
+    messaging: Arc<dyn OutboundMessaging>,
 }
 
 impl TransactionMiddleware {
@@ -215,11 +238,13 @@ impl TransactionMiddleware {
         pool: DbPool,
         session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
         peer: SocketAddr,
+        messaging: Arc<dyn OutboundMessaging>,
     ) -> Self {
         Self {
             pool,
             session,
             peer,
+            messaging,
         }
     }
 }
@@ -230,6 +255,7 @@ struct TransactionHandler {
     pool: DbPool,
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
+    messaging: Arc<dyn OutboundMessaging>,
 }
 
 #[async_trait]
@@ -241,9 +267,12 @@ impl Service for TransactionHandler {
             let mut session_guard = self.session.lock().await;
             process_transaction_bytes(
                 req.frame(),
-                self.peer,
-                self.pool.clone(),
-                &mut session_guard,
+                RouteContext {
+                    peer: self.peer,
+                    pool: self.pool.clone(),
+                    session: &mut session_guard,
+                    messaging: self.messaging.as_ref(),
+                },
             )
             .await
         };
@@ -267,6 +296,7 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
             pool: self.pool.clone(),
             session: Arc::clone(&self.session),
             peer: self.peer,
+            messaging: Arc::clone(&self.messaging),
         };
         HandlerService::from_service(id, wrapped)
     }

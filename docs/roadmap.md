@@ -135,11 +135,15 @@ and explicit dependencies. Timeframes are intentionally omitted.
   helpers; BDD tests in `tests/features/session_privileges.feature` verify
   enforcement for authenticated/unauthenticated and privileged/unprivileged
   access paths. Dependencies: 1.4.2.
-- [ ] 1.4.4. Provide outbound transport and messaging traits so domain code can
+- [x] 1.4.4. Provide outbound transport and messaging traits, so domain code can
   respond without depending on `wireframe` types. Acceptance: Domain modules
   interact with adapter traits defined alongside the server boundary, and the
   crate continues compiling with no direct `wireframe` imports, matching
-  guidance in `docs/design.md`. Dependencies: 1.4.2.
+  guidance in `docs/design.md`. Status: Completed on 17 January 2026 by adding
+  outbound transport/messaging traits and reply buffering, wiring the command
+  pipeline to emit replies via the traits, implementing the wireframe outbound
+  adapter over push handles, and covering the behaviour with unit and BDD
+  tests. Dependencies: 1.4.2.
 - [ ] 1.4.5. Provide a reply builder that mirrors Hotline error propagation and
   logging conventions. Acceptance: Error replies retain the original
   transaction IDs and are logged through the existing tracing infrastructure.

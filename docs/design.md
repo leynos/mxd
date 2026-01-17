@@ -210,6 +210,15 @@ connection.
   the DB operations in functions, it’s conceivable to swap them out (for
   testing or for a different store) by providing an alternate implementation of
   those functions.
+- *Outbound transport and messaging*: Domain handlers use the
+  `server::outbound::{OutboundTransport, OutboundMessaging}` traits to emit
+  replies and push notifications without importing `wireframe` types. The
+  `ReplyBuffer` adapter captures per-request replies for both the legacy and
+  wireframe runtimes. The wireframe adapter provides
+  `WireframeOutboundMessaging`, backed by `PushHandle` queues and a registry
+  keyed by `OutboundConnectionId`, and registers per-connection push handles
+  during `WireframeProtocol::on_connection_setup` so outbound delivery stays at
+  the adapter boundary.
 
 Overall, this hexagonal architecture provides clear **extension points**: new
 protocol commands can be added by creating new domain handlers and registering
@@ -628,21 +637,24 @@ The middleware holds:
   tracking authentication and user context.
 - `peer: SocketAddr` - The remote peer address captured during connection
   setup.
+- `messaging: Arc<dyn OutboundMessaging>` - Outbound messaging adapter used to
+  push server-initiated notifications.
 
 **Processing pipeline.** When a frame arrives, the middleware:
 
 1. Copies the raw frame bytes from the request envelope.
 2. Uses the peer address captured during connection setup.
-3. Acquires the session mutex and calls `process_transaction_bytes()`.
+3. Acquires the session mutex and calls `process_transaction_bytes()` with a
+   `RouteContext` that includes outbound messaging.
 4. Replaces the response frame with the reply bytes.
 
 The `process_transaction_bytes()` function implements the core routing logic:
 
 1. Parse raw bytes into a domain `Transaction` via `parse_transaction()`.
 2. Convert to a `Command` variant via `Command::from_transaction()`.
-3. Execute the command with `Command::process()`, passing peer, pool, and
-   session.
-4. Serialize the reply `Transaction` back to bytes.
+3. Build a `ReplyBuffer` and `CommandContext`, then call
+   `Command::process_with_outbound()` to execute using outbound adapters.
+4. Serialize the reply from the `ReplyBuffer` back to bytes.
 
 Parse failures at any stage produce an error reply with `ERR_INTERNAL_SERVER`
 (3), while unknown transaction types return `ERR_INTERNAL_SERVER`, matching the

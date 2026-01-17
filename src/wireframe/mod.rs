@@ -10,6 +10,7 @@
 //! - [`connection`]: Handshake metadata storage
 //! - [`context`]: Per-connection state management
 //! - [`handshake`]: Preamble success/failure hooks
+//! - [`outbound`]: Outbound messaging adapters
 //! - [`preamble`]: 12-byte handshake decoder
 //! - [`protocol`]: `WireframeProtocol` adapter implementation
 //! - [`routes`]: Transaction route handlers
@@ -19,6 +20,7 @@ pub mod codec;
 pub mod connection;
 pub mod context;
 pub mod handshake;
+pub mod outbound;
 pub mod preamble;
 pub mod protocol;
 pub mod route_ids;

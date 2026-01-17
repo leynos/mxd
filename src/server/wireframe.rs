@@ -52,6 +52,11 @@ use crate::{
         codec::HotlineFrameCodec,
         connection::take_current_context,
         handshake,
+        outbound::{
+            WireframeOutboundConnection,
+            WireframeOutboundMessaging,
+            WireframeOutboundRegistry,
+        },
         preamble::HotlinePreamble,
         protocol::HotlineProtocol,
         route_ids::{FALLBACK_ROUTE_ID, ROUTE_IDS},
@@ -116,10 +121,12 @@ impl WireframeBootstrap {
             .context("failed to establish database pool")?;
         let argon2 = Arc::new(admin::argon2_from_config(&config)?);
 
+        let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
         let app_factory = {
             let pool = pool.clone();
             let argon2 = Arc::clone(&argon2);
-            move || build_app_for_connection(&pool, &argon2)
+            let outbound_registry = Arc::clone(&outbound_registry);
+            move || build_app_for_connection(&pool, &argon2, &outbound_registry)
         };
 
         let server = WireframeServer::new(app_factory).with_preamble::<HotlinePreamble>();
@@ -147,7 +154,11 @@ fn announce_listening(addr: SocketAddr) {
     }
 }
 
-fn build_app_for_connection(pool: &DbPool, argon2: &Arc<Argon2<'static>>) -> HotlineApp {
+fn build_app_for_connection(
+    pool: &DbPool,
+    argon2: &Arc<Argon2<'static>>,
+    outbound_registry: &Arc<WireframeOutboundRegistry>,
+) -> HotlineApp {
     // Missing connection context indicates handshake setup failed; abort the
     // connection rather than running without routing state. Returning a
     // degraded app would accept traffic with broken routing and state.
@@ -160,7 +171,7 @@ fn build_app_for_connection(pool: &DbPool, argon2: &Arc<Argon2<'static>>) -> Hot
         error!("peer address missing in app factory");
         panic!("peer address missing in app factory");
     });
-    build_app(pool, argon2, peer).unwrap_or_else(|err| {
+    build_app(pool, argon2, outbound_registry, peer).unwrap_or_else(|err| {
         error!(error = %err, "failed to build wireframe application");
         panic!("failed to build wireframe application: {err}");
     })
@@ -169,10 +180,17 @@ fn build_app_for_connection(pool: &DbPool, argon2: &Arc<Argon2<'static>>) -> Hot
 fn build_app(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
+    outbound_registry: &Arc<WireframeOutboundRegistry>,
     peer: SocketAddr,
 ) -> wireframe::app::Result<HotlineApp> {
     let session = Arc::new(TokioMutex::new(Session::default()));
-    let protocol = HotlineProtocol::new(pool.clone(), Arc::clone(argon2));
+    let outbound_id = outbound_registry.allocate_id();
+    let outbound_connection = Arc::new(WireframeOutboundConnection::new(
+        outbound_id,
+        Arc::clone(outbound_registry),
+    ));
+    let outbound_messaging = WireframeOutboundMessaging::new(Arc::clone(&outbound_connection));
+    let protocol = HotlineProtocol::new(pool.clone(), Arc::clone(argon2), outbound_connection);
 
     let app = HotlineApp::default()
         .fragmentation(None)
@@ -181,6 +199,7 @@ fn build_app(
             pool.clone(),
             Arc::clone(&session),
             peer,
+            Arc::new(outbound_messaging),
         ))?;
 
     let handler = routing_placeholder_handler();
