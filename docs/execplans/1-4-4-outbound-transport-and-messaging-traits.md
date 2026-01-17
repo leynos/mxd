@@ -90,13 +90,13 @@ tests cover both success and failure paths for outbound delivery.
   Rationale: Wireframe's `ConnectionContext` is empty, so protocol state is the
   only per-connection hook available for wiring outbound messaging without
   leaking wireframe types into domain code. Date/Author: 2026-01-17 02:21Z /
-  Codex
+  Codex.
 
 ## Outcomes & Retrospective
 
 - Completed on 2026-01-17. Outbound adapters, routing updates, and new unit
   plus BDD coverage landed alongside refreshed design notes. Formatting, lint,
-  test, and documentation gates all passed.
+  tests, and documentation gates all passed.
 
 ## Context and Orientation
 
@@ -141,7 +141,7 @@ Create a new module, likely `src/server/outbound.rs`, with:
 
 - `OutboundTransport` for responses tied to the current connection.
 - `OutboundMessaging` for push/broadcast delivery.
-- `OutboundPriority` enum to map to wireframe high/low priority queues.
+- `OutboundPriority` enum to map to wireframe high- and low-priority queues.
 - `OutboundTarget` newtype (for connection or user identifiers) to avoid
   leaking wireframe identifiers into the domain.
 - `OutboundError` enum using `thiserror` with variants for queue closure,
