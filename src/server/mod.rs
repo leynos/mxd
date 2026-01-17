@@ -10,6 +10,7 @@ pub mod admin;
 pub mod cli;
 #[cfg(feature = "legacy-networking")]
 pub mod legacy;
+pub mod outbound;
 pub mod wireframe;
 
 use std::str::FromStr;

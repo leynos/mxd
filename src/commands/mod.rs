@@ -20,6 +20,7 @@ use crate::{
     login::LoginRequest,
     news_handlers::{self, ArticleDataRequest, PostArticleRequest},
     privileges::Privileges,
+    server::outbound::{OutboundError, OutboundMessaging, OutboundTransport},
     transaction::{
         FrameHeader,
         Transaction,
@@ -61,6 +62,23 @@ pub enum CommandError {
     /// Privilege checks failed unexpectedly.
     #[error("privilege error: {0}")]
     Privilege(#[from] PrivilegeError),
+    /// Outbound transport failed to deliver a reply.
+    #[error("outbound transport error: {0}")]
+    Outbound(#[from] OutboundError),
+}
+
+/// Execution context for command processing with outbound adapters.
+pub(crate) struct CommandContext<'a> {
+    /// Remote peer address.
+    pub peer: SocketAddr,
+    /// Database connection pool.
+    pub pool: DbPool,
+    /// Mutable session state for the connection.
+    pub session: &'a mut crate::handler::Session,
+    /// Outbound transport for replies.
+    pub transport: &'a mut dyn OutboundTransport,
+    /// Outbound messaging adapter for pushes.
+    pub messaging: &'a dyn OutboundMessaging,
 }
 
 /// Build an error reply for a privilege check failure.
@@ -252,7 +270,38 @@ impl Command {
         pool: DbPool,
         session: &mut crate::handler::Session,
     ) -> Result<Transaction, CommandError> {
-        match self {
+        let mut transport = crate::server::outbound::ReplyBuffer::new();
+        let messaging = crate::server::outbound::NoopOutboundMessaging;
+        self.process_with_outbound(CommandContext {
+            peer,
+            pool,
+            session,
+            transport: &mut transport,
+            messaging: &messaging,
+        })
+        .await?;
+        transport
+            .take_reply()
+            .ok_or(CommandError::Outbound(OutboundError::ReplyMissing))
+    }
+
+    /// Execute the command using outbound transport and messaging adapters.
+    ///
+    /// # Errors
+    /// Returns an error if database access fails or the command cannot be
+    /// handled.
+    pub(crate) async fn process_with_outbound(
+        self,
+        context: CommandContext<'_>,
+    ) -> Result<(), CommandError> {
+        let CommandContext {
+            peer,
+            pool,
+            session,
+            transport,
+            messaging,
+        } = context;
+        let reply = match self {
             Self::Login { req } => Self::process_login(peer, pool, session, req).await,
             Self::GetFileNameList { header } => {
                 Self::process_get_file_name_list(pool, session, header).await
@@ -276,7 +325,10 @@ impl Command {
             }
             Self::InvalidPayload { header } => Ok(Self::process_invalid_payload(header)),
             Self::Unknown { header } => Ok(Self::process_unknown(peer, header)),
-        }
+        }?;
+        let _ = messaging;
+        transport.send_reply(reply)?;
+        Ok(())
     }
 }
 

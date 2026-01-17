@@ -16,6 +16,7 @@ use wireframe::middleware::{HandlerService, Service, ServiceRequest, ServiceResp
 
 use super::{
     super::{
+        RouteContext,
         TransactionMiddleware,
         dispatch_spy,
         error_reply,
@@ -29,6 +30,7 @@ use super::{
 use crate::{
     field_id::FieldId,
     handler::Session,
+    server::outbound::NoopOutboundMessaging,
     transaction::{FrameHeader, HEADER_LEN, Transaction, parse_transaction},
     transaction_type::TransactionType,
     wireframe::test_helpers::{dummy_pool, transaction_bytes},
@@ -182,10 +184,20 @@ async fn process_transaction_bytes_truncated_input() {
     let pool = dummy_pool();
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
+    let messaging = NoopOutboundMessaging;
 
     // Send only 10 bytes (less than HEADER_LEN = 20).
     let truncated = vec![0u8; 10];
-    let result = process_transaction_bytes(&truncated, peer, pool, &mut session).await;
+    let result = process_transaction_bytes(
+        &truncated,
+        RouteContext {
+            peer,
+            pool,
+            session: &mut session,
+            messaging: &messaging,
+        },
+    )
+    .await;
 
     // Should return an error transaction.
     assert!(result.len() >= HEADER_LEN);
@@ -204,6 +216,7 @@ async fn process_transaction_bytes_unknown_type() {
     let pool = dummy_pool();
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
+    let messaging = NoopOutboundMessaging;
 
     // Create a transaction with unknown type (65535).
     let header = FrameHeader {
@@ -217,7 +230,16 @@ async fn process_transaction_bytes_unknown_type() {
     };
     let frame = transaction_bytes(&header, &[]);
 
-    let result = process_transaction_bytes(&frame, peer, pool, &mut session).await;
+    let result = process_transaction_bytes(
+        &frame,
+        RouteContext {
+            peer,
+            pool,
+            session: &mut session,
+            messaging: &messaging,
+        },
+    )
+    .await;
 
     let reply_header = FrameHeader::from_bytes(
         result[..HEADER_LEN]
@@ -241,7 +263,8 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     // Start with an unauthenticated session; login should establish privileges.
     let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
     let peer = "127.0.0.1:12345".parse().expect("peer addr");
-    let middleware = TransactionMiddleware::new(pool, Arc::clone(&session), peer);
+    let messaging = Arc::new(NoopOutboundMessaging);
+    let middleware = TransactionMiddleware::new(pool, Arc::clone(&session), peer, messaging);
 
     let calls = Arc::new(AtomicUsize::new(0));
     let spy = SpyService::new(Arc::clone(&calls));

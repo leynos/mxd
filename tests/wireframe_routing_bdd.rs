@@ -12,9 +12,13 @@ use mxd::{
     field_id::FieldId,
     handler::Session,
     privileges::Privileges,
+    server::outbound::NoopOutboundMessaging,
     transaction::{FrameHeader, HEADER_LEN, Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
-    wireframe::{routes::process_transaction_bytes, test_helpers::dummy_pool},
+    wireframe::{
+        routes::{RouteContext, process_transaction_bytes},
+        test_helpers::dummy_pool,
+    },
 };
 use rstest::fixture;
 use rstest_bdd::assert_step_ok;
@@ -108,9 +112,19 @@ impl RoutingWorld {
         let pool = self.pool.borrow().clone();
         let peer = self.peer;
         let mut session = self.session.replace(Session::default());
-        let reply = self
-            .rt
-            .block_on(async { process_transaction_bytes(frame, peer, pool, &mut session).await });
+        let messaging = NoopOutboundMessaging;
+        let reply = self.rt.block_on(async {
+            process_transaction_bytes(
+                frame,
+                RouteContext {
+                    peer,
+                    pool,
+                    session: &mut session,
+                    messaging: &messaging,
+                },
+            )
+            .await
+        });
         self.session.replace(session);
         let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
         self.reply.borrow_mut().replace(outcome);

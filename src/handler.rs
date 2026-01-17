@@ -146,8 +146,7 @@ pub async fn handle_request(
 ) -> Result<Transaction, CommandError> {
     let tx = parse_transaction(frame)?;
     let cmd = Command::from_transaction(tx)?;
-    let reply = cmd.process(ctx.peer, ctx.pool.clone(), session).await?;
-    Ok(reply)
+    cmd.process(ctx.peer, ctx.pool.clone(), session).await
 }
 
 #[cfg(test)]

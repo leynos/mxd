@@ -11,9 +11,10 @@ use crate::{
     field_id::FieldId,
     handler::Session,
     privileges::Privileges,
+    server::outbound::NoopOutboundMessaging,
     transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
-    wireframe::routes::process_transaction_bytes,
+    wireframe::routes::{RouteContext, process_transaction_bytes},
 };
 
 /// Test harness context that bundles routing state for wireframe handlers.
@@ -82,9 +83,17 @@ impl RouteTestContext {
         params: &[(FieldId, &[u8])],
     ) -> Result<Transaction, AnyError> {
         let frame = build_frame(ty, id, params)?;
-        let reply =
-            process_transaction_bytes(&frame, self.peer, self.pool.clone(), &mut self.session)
-                .await;
+        let messaging = NoopOutboundMessaging;
+        let reply = process_transaction_bytes(
+            &frame,
+            RouteContext {
+                peer: self.peer,
+                pool: self.pool.clone(),
+                session: &mut self.session,
+                messaging: &messaging,
+            },
+        )
+        .await;
         Ok(parse_transaction(&reply)?)
     }
 }
