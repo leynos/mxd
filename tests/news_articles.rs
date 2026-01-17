@@ -4,7 +4,7 @@
 //! wireframe transport.
 
 use std::{
-    convert::TryFrom,
+    cell::Cell,
     io::{Read, Write},
     net::TcpStream,
     time::Duration,
@@ -20,7 +20,15 @@ use mxd::{
     transaction::{FrameHeader, Transaction, decode_params, encode_params},
     transaction_type::TransactionType,
 };
-use test_util::{AnyError, handshake, setup_news_db, with_db};
+use test_util::{
+    AnyError,
+    ensure_test_user,
+    handshake,
+    login,
+    setup_news_db,
+    setup_news_with_article,
+    with_db,
+};
 mod common;
 
 type ParamList = Vec<(FieldId, Vec<u8>)>;
@@ -33,7 +41,11 @@ fn connect_and_handshake(port: u16) -> Result<TcpStream, AnyError> {
     Ok(stream)
 }
 
-fn setup_stream(port: u16) -> Result<TcpStream, AnyError> { connect_and_handshake(port) }
+fn connect_handshake_and_login(port: u16) -> Result<TcpStream, AnyError> {
+    let mut stream = connect_and_handshake(port)?;
+    login(&mut stream, "alice", "secret")?;
+    Ok(stream)
+}
 
 fn send_transaction(stream: &mut TcpStream, tx: &Transaction) -> Result<(), AnyError> {
     stream.write_all(&tx.to_bytes())?;
@@ -114,6 +126,9 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
+                // Create test user for authentication
+                ensure_test_user(conn).await?;
+
                 create_category(
                     conn,
                     &NewCategory {
@@ -131,7 +146,7 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
     };
 
     let port = server.port();
-    let mut stream = setup_stream(port)?;
+    let mut stream = connect_handshake_and_login(port)?;
     send_transaction_with_params(
         &mut stream,
         TransactionType::NewsArticleNameList,
@@ -151,7 +166,7 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let mut stream = setup_stream(server.port())?;
+    let mut stream = connect_handshake_and_login(server.port())?;
     send_transaction_with_params(
         &mut stream,
         TransactionType::NewsArticleNameList,
@@ -177,54 +192,22 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn get_news_article_data() -> Result<(), AnyError> {
-    use chrono::{DateTime, Utc};
-    use mxd::models::NewArticle;
-
+    let article_id = Cell::new(None);
     let Some(server) = common::start_server_or_skip(|db| {
-        with_db(db, |conn| {
-            Box::pin(async move {
-                use mxd::schema::news_articles::dsl as a;
-
-                create_category(
-                    conn,
-                    &NewCategory {
-                        name: "General",
-                        bundle_id: None,
-                    },
-                )
-                .await?;
-                let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-                    .expect("valid timestamp")
-                    .naive_utc();
-                diesel::insert_into(a::news_articles)
-                    .values(&NewArticle {
-                        category_id: 1,
-                        parent_article_id: None,
-                        prev_article_id: None,
-                        next_article_id: None,
-                        first_child_article_id: None,
-                        title: "First",
-                        poster: Some("alice"),
-                        posted_at: posted,
-                        flags: 0,
-                        data_flavor: Some("text/plain"),
-                        data: Some("hello"),
-                    })
-                    .execute(conn)
-                    .await?;
-                Ok(())
-            })
-        })
+        let id = setup_news_with_article(db)?;
+        article_id.set(Some(id));
+        Ok(())
     })?
     else {
         return Ok(());
     };
 
-    let mut stream = setup_stream(server.port())?;
+    let article_id_value = article_id.get().expect("fixture should set article id");
+    let mut stream = connect_handshake_and_login(server.port())?;
 
     let mut params = Vec::new();
     params.push((FieldId::NewsPath, b"General".as_ref()));
-    let id_bytes = 1i32.to_be_bytes();
+    let id_bytes = article_id_value.to_be_bytes();
     params.push((FieldId::NewsArticleId, id_bytes.as_ref()));
     params.push((FieldId::NewsDataFlavor, b"text/plain".as_ref()));
     send_transaction_with_params(&mut stream, TransactionType::NewsArticleData, 8, &params)?;
@@ -252,6 +235,9 @@ fn post_news_article_root() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
+                // Create test user for authentication
+                ensure_test_user(conn).await?;
+
                 create_category(
                     conn,
                     &NewCategory {
@@ -268,7 +254,7 @@ fn post_news_article_root() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let mut stream = connect_and_handshake(server.port())?;
+    let mut stream = connect_handshake_and_login(server.port())?;
 
     let mut request_params = Vec::new();
     request_params.push((FieldId::NewsPath, b"General".as_ref()));

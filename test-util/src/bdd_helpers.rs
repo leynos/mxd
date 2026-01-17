@@ -11,12 +11,12 @@ use mxd::db::{DbPool, establish_pool};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 
-use crate::AnyError;
 #[cfg(feature = "postgres")]
 use crate::postgres::PostgresTestDb;
+use crate::{AnyError, DatabaseUrl};
 
 /// Fixture database setup function signature.
-pub type SetupFn = fn(&str) -> Result<(), AnyError>;
+pub type SetupFn = fn(DatabaseUrl) -> Result<(), AnyError>;
 
 /// Holds a database pool and the guard needed to keep the database alive.
 pub struct TestDb {
@@ -43,12 +43,13 @@ pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, Any
     {
         let temp_dir = TempDir::new()?;
         let path = temp_dir.path().join("mxd.db");
-        let db_url = path
+        let db_url_str = path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("database path is not valid UTF-8"))?;
-        setup(db_url).context("failed to run SQLite test database setup")?;
+        let db_url = DatabaseUrl::from(db_url_str);
+        setup(db_url.clone()).context("failed to run SQLite test database setup")?;
         let pool = rt
-            .block_on(establish_pool(db_url))
+            .block_on(establish_pool(db_url.as_str()))
             .context("failed to establish SQLite connection pool")?;
         Ok(Some(TestDb {
             pool,
@@ -63,10 +64,10 @@ pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, Any
             Err(err) if err.is_unavailable() => return Ok(None),
             Err(err) => return Err(err.into()),
         };
-        let db_url = db.url.as_ref();
-        setup(db_url).context("failed to run Postgres test database setup")?;
+        let db_url = DatabaseUrl::from(db.url.as_ref());
+        setup(db_url.clone()).context("failed to run Postgres test database setup")?;
         let pool = rt
-            .block_on(establish_pool(db_url))
+            .block_on(establish_pool(db_url.as_str()))
             .context("failed to establish Postgres connection pool")?;
         Ok(Some(TestDb {
             pool,

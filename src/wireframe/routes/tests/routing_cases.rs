@@ -17,7 +17,7 @@ use super::helpers::{
     find_string,
     runtime,
 };
-use crate::{field_id::FieldId, transaction_type::TransactionType};
+use crate::{field_id::FieldId, privileges::Privileges, transaction_type::TransactionType};
 
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
@@ -74,6 +74,7 @@ fn process_transaction_bytes_news_category_list_success() -> Result<(), AnyError
         return Ok(());
     };
     let mut ctx = RouteTestContext::new(test_db.pool())?;
+    ctx.authenticate(1);
 
     let reply = rt.block_on(ctx.send(TransactionType::NewsCategoryNameList, 3, &[]))?;
     assert_eq!(reply.header.error, 0);
@@ -95,6 +96,7 @@ fn process_transaction_bytes_news_article_list_success() -> Result<(), AnyError>
         return Ok(());
     };
     let mut ctx = RouteTestContext::new(test_db.pool())?;
+    ctx.authenticate(1);
 
     let reply = rt.block_on(ctx.send(
         TransactionType::NewsArticleNameList,
@@ -119,6 +121,7 @@ fn process_transaction_bytes_news_article_data_success() -> Result<(), AnyError>
         return Ok(());
     };
     let mut ctx = RouteTestContext::new(test_db.pool())?;
+    ctx.authenticate(1);
 
     let article_id = 1i32.to_be_bytes();
     let reply = rt.block_on(ctx.send(
@@ -147,6 +150,8 @@ fn process_transaction_bytes_post_news_article_success() -> Result<(), AnyError>
         return Ok(());
     };
     let mut ctx = RouteTestContext::new(test_db.pool())?;
+    // Authenticate with default user privileges (includes NEWS_POST_ARTICLE)
+    ctx.authenticate_with_privileges(1, Privileges::default_user());
 
     let flags = 0i32.to_be_bytes();
     let reply = rt.block_on(ctx.send(

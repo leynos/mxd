@@ -644,15 +644,46 @@ The `process_transaction_bytes()` function implements the core routing logic:
    session.
 4. Serialize the reply `Transaction` back to bytes.
 
-Parse failures at any stage produce an error reply with `ERR_INTERNAL` (3),
-while unknown transaction types return error code 1 (matching the existing
-`handle_unknown()` behaviour in `commands.rs`).
+Parse failures at any stage produce an error reply with `ERR_INTERNAL_SERVER`
+(3), while unknown transaction types return `ERR_INTERNAL_SERVER`, matching the
+`handle_unknown()` helper in `src/commands/handlers.rs`.
 
 **Session state management.** Unlike thread-local storage approaches, which
 fail under Tokio's work-stealing scheduler, the middleware passes the session
 `Arc<Mutex<Session>>` directly through its struct fields. This ensures the same
 session state is accessible regardless of which worker thread processes a given
 frame.
+
+The `Session` struct tracks three core pieces of state:
+
+- `user_id: Option<i32>` – The authenticated user's database ID, or `None` for
+  unauthenticated connections.
+- `privileges: Privileges` – A bitflags value encoding the 38 privilege bits
+  defined in `docs/protocol.md` field 110. These control which operations the
+  user may perform (file downloads, news posts, admin actions, etc.).
+- `connection_flags: ConnectionFlags` – A bitflags value encoding the 3
+  connection preference bits (refuse private messages, refuse chat invites,
+  automatic response).
+
+**Privilege enforcement.** Each handler checks the required privilege before
+executing. The `Session` struct provides helper methods:
+
+- `is_authenticated()` – Returns `true` if the session has a user ID.
+- `has_privilege(Privileges)` – Checks if the session has a specific privilege.
+- `require_privilege(Privileges)` – Returns `Ok(())` or a `PrivilegeError`.
+- `require_authenticated()` – Returns `Ok(())` or
+  `PrivilegeError::NotAuthenticated`.
+
+When a privilege check fails, the middleware returns an error reply with the
+appropriate error code:
+
+- `ERR_NOT_AUTHENTICATED (1)` – The client must log in first.
+- `ERR_INSUFFICIENT_PRIVILEGES (4)` – The user lacks the required privilege.
+
+The `Privileges` bitflags type provides `default_user()` to return sensible
+defaults for newly authenticated users (download files, read/send chat, read/
+post news articles, etc.). A follow-up task will load per-user privileges from
+the database once the permissions schema is introduced.
 
 **Testing strategy.** The routing middleware is tested at two levels:
 
@@ -1658,8 +1689,12 @@ build the reply. The login handler (`handle_login`) will:
   user([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/login.rs#L32-L39)
    )(
   [3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/login.rs#L34-L42)).
-   We may also initialize other session state (e.g. set their permissions or
-  mark them as “online” in some global tracker).
+   The login handler also initialises `session.privileges` to
+  `Privileges::default_user()`, granting the user standard capabilities
+  (download files, read/send chat, read/post news articles, etc.). These
+  privileges gate subsequent operations; handlers call
+  `session.require_privilege(Privileges::XXX)` before executing privileged
+  actions. A follow-up task will load per-user privileges from the database.
 
 - Prepare a reply transaction. In Hotline, the login reply (transaction 100,
   which is a generic error or success message) includes either an error code or

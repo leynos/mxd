@@ -11,7 +11,7 @@ use std::{
 use async_trait::async_trait;
 use rstest::rstest;
 use serial_test::serial;
-use test_util::{AnyError, build_test_db, setup_files_db, setup_news_db};
+use test_util::{AnyError, DatabaseUrl, build_test_db, setup_files_db, setup_news_db};
 use wireframe::middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform};
 
 use super::{
@@ -238,6 +238,7 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
         return Ok(());
     };
     let pool = test_db.pool();
+    // Start with an unauthenticated session; login should establish privileges.
     let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
     let peer = "127.0.0.1:12345".parse().expect("peer addr");
     let middleware = TransactionMiddleware::new(pool, Arc::clone(&session), peer);
@@ -355,8 +356,8 @@ fn build_middleware_cases() -> Vec<MiddlewareCase> {
     ]
 }
 
-fn setup_full_db(db: &str) -> Result<(), AnyError> {
-    setup_files_db(db)?;
+fn setup_full_db(db: DatabaseUrl) -> Result<(), AnyError> {
+    setup_files_db(db.clone())?;
     setup_news_db(db)?;
     Ok(())
 }

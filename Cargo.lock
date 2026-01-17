@@ -2236,6 +2236,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "bincode",
+ "bitflags 2.10.0",
  "bytes",
  "cfg-if",
  "chrono",

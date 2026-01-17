@@ -1,7 +1,9 @@
 //! Database fixtures used by integration tests.
 //!
-//! Centralises repeated setup flows (users, files, news content) so tests can
+//! Centralizes repeated setup flows (users, files, news content) so tests can
 //! compose databases with minimal boilerplate.
+
+mod helpers;
 
 use std::{collections::HashMap, io};
 
@@ -9,6 +11,7 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
+use helpers::{insert_article, insert_root_bundle};
 use mxd::{
     db::{
         DbConnection,
@@ -26,12 +29,72 @@ use mxd::{
 
 use crate::AnyError;
 
+/// Database URL wrapper to make fixture APIs more explicit.
+#[derive(Clone, Debug)]
+pub struct DatabaseUrl(String);
+
+impl DatabaseUrl {
+    /// Create a new database URL wrapper from a string.
+    pub fn new(url: impl Into<String>) -> Self { Self(url.into()) }
+
+    /// Borrow the wrapped URL as a string slice.
+    #[must_use]
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "String::as_str is not const-stable on Rust 1.85"
+    )]
+    pub fn as_str(&self) -> &str { self.0.as_str() }
+}
+
+impl From<&str> for DatabaseUrl {
+    fn from(value: &str) -> Self { Self::new(value) }
+}
+
+impl From<String> for DatabaseUrl {
+    fn from(value: String) -> Self { Self::new(value) }
+}
+
+impl From<&crate::server::DbUrl> for DatabaseUrl {
+    fn from(value: &crate::server::DbUrl) -> Self { Self::new(value.as_ref()) }
+}
+
+impl AsRef<str> for DatabaseUrl {
+    fn as_ref(&self) -> &str { self.as_str() }
+}
+
 /// Resolve a file name to its ID from the lookup map.
 fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, AnyError> {
     file_ids
         .get(name)
         .copied()
         .ok_or_else(|| anyhow::anyhow!("missing file id for {name}"))
+}
+
+/// Ensure the test user 'alice' exists in the database.
+///
+/// This helper is idempotent; it checks for the user first and creates only if
+/// not present.
+///
+/// # Errors
+///
+/// Returns an error if the user lookup, password hashing, or creation fails.
+pub async fn ensure_test_user(conn: &mut DbConnection) -> Result<(), AnyError> {
+    let existing = users_dsl::users
+        .filter(users_dsl::username.eq("alice"))
+        .select(users_dsl::id)
+        .first::<i32>(conn)
+        .await
+        .optional()?;
+    if existing.is_none() {
+        let argon2 = argon2::Argon2::default();
+        let hashed = hash_password(&argon2, "secret")?;
+        let new_user = NewUser {
+            username: "alice",
+            password: &hashed,
+        };
+        create_user(conn, &new_user).await?;
+    }
+    Ok(())
 }
 
 /// Execute a database operation within a connection.
@@ -42,14 +105,18 @@ fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, A
 ///
 /// Returns an error if the connection cannot be established, migrations fail,
 /// or the closure returns an error.
-pub fn with_db<F>(db: &str, f: F) -> Result<(), AnyError>
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "DatabaseUrl is an owned API boundary for fixtures"
+)]
+pub fn with_db<F, R>(db: DatabaseUrl, f: F) -> Result<R, AnyError>
 where
-    F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<(), AnyError>>,
+    F: for<'c> FnOnce(&'c mut DbConnection) -> BoxFuture<'c, Result<R, AnyError>>,
 {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let mut conn = DbConnection::establish(db).await?;
-        apply_migrations(&mut conn, db).await?;
+        let mut conn = DbConnection::establish(db.as_str()).await?;
+        apply_migrations(&mut conn, db.as_str()).await?;
         f(&mut conn).await
     })
 }
@@ -59,16 +126,10 @@ where
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
+pub fn setup_files_db(db: DatabaseUrl) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
-            let argon2 = argon2::Argon2::default();
-            let hashed = hash_password(&argon2, "secret")?;
-            let new_user = NewUser {
-                username: "alice",
-                password: &hashed,
-            };
-            create_user(conn, &new_user).await?;
+            ensure_test_user(conn).await?;
             let user_id: i32 = users_dsl::users
                 .filter(users_dsl::username.eq("alice"))
                 .select(users_dsl::id)
@@ -113,9 +174,12 @@ pub fn setup_files_db(db: &str) -> Result<(), AnyError> {
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
+pub fn setup_news_db(db: DatabaseUrl) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
+            // Ensure test user exists for authentication
+            ensure_test_user(conn).await?;
+
             let category_id = create_category(
                 conn,
                 &NewCategory {
@@ -181,12 +245,63 @@ pub fn setup_news_db(db: &str) -> Result<(), AnyError> {
     })
 }
 
+/// Create a test database with one news category and a single article.
+///
+/// Returns the inserted article ID for tests that need to fetch it.
+///
+/// # Errors
+///
+/// Returns an error if database setup fails.
+pub fn setup_news_with_article(db: DatabaseUrl) -> Result<i32, AnyError> {
+    with_db(db, |conn| {
+        Box::pin(async move {
+            ensure_test_user(conn).await?;
+
+            let category_id = create_category(
+                conn,
+                &NewCategory {
+                    name: "General",
+                    bundle_id: None,
+                },
+            )
+            .await?;
+
+            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "news fixture timestamp out of range",
+                    )
+                })?
+                .naive_utc();
+            let inserted_id = insert_article(
+                conn,
+                &NewArticle {
+                    category_id,
+                    parent_article_id: None,
+                    prev_article_id: None,
+                    next_article_id: None,
+                    first_child_article_id: None,
+                    title: "First",
+                    poster: Some("alice"),
+                    posted_at: posted,
+                    flags: 0,
+                    data_flavor: Some("text/plain"),
+                    data: Some("hello"),
+                },
+            )
+            .await?;
+            Ok(inserted_id)
+        })
+    })
+}
+
 /// Create a test database with root-level news categories.
 ///
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
+pub fn setup_news_categories_root_db(db: DatabaseUrl) -> Result<(), AnyError> {
     setup_news_categories_with_structure(db, |conn, _| {
         Box::pin(async move {
             create_category(
@@ -215,7 +330,7 @@ pub fn setup_news_categories_root_db(db: &str) -> Result<(), AnyError> {
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
+pub fn setup_news_categories_nested_db(db: DatabaseUrl) -> Result<(), AnyError> {
     setup_news_categories_with_structure(db, |conn, root_id| {
         Box::pin(async move {
             let sub_id = create_bundle(
@@ -247,7 +362,7 @@ pub fn setup_news_categories_nested_db(db: &str) -> Result<(), AnyError> {
 /// # Errors
 ///
 /// Returns an error if database setup fails.
-pub fn setup_news_categories_with_structure<F>(db: &str, build: F) -> Result<(), AnyError>
+pub fn setup_news_categories_with_structure<F>(db: DatabaseUrl, build: F) -> Result<(), AnyError>
 where
     F: Send
         + 'static
@@ -255,49 +370,11 @@ where
 {
     with_db(db, |conn| {
         Box::pin(async move {
+            // Ensure test user exists for authentication
+            ensure_test_user(conn).await?;
+
             let root_id = insert_root_bundle(conn).await?;
             build(conn, root_id).await
         })
     })
-}
-
-async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, AnyError> {
-    let id = create_bundle(
-        conn,
-        &NewBundle {
-            parent_bundle_id: None,
-            name: "Bundle",
-        },
-    )
-    .await?;
-
-    Ok(id)
-}
-
-async fn insert_article(
-    conn: &mut DbConnection,
-    article: &NewArticle<'_>,
-) -> Result<i32, AnyError> {
-    use mxd::schema::news_articles::dsl as a;
-
-    #[cfg(feature = "postgres")]
-    let inserted_id: i32 = diesel::insert_into(a::news_articles)
-        .values(article)
-        .returning(a::id)
-        .get_result(conn)
-        .await?;
-
-    #[cfg(not(feature = "postgres"))]
-    let inserted_id: i32 = {
-        use diesel::sql_types::Integer;
-        diesel::insert_into(a::news_articles)
-            .values(article)
-            .execute(conn)
-            .await?;
-        diesel::select(diesel::dsl::sql::<Integer>("last_insert_rowid()"))
-            .get_result(conn)
-            .await?
-    };
-
-    Ok(inserted_id)
 }

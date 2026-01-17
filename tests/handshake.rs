@@ -7,13 +7,13 @@ use std::{
     time::Duration,
 };
 
-use test_util::AnyError;
+use test_util::{AnyError, DatabaseUrl};
 
 mod common;
 
 #[test]
 fn handshake() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
+    let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
         return Ok(());
     };
     let port = server.port();

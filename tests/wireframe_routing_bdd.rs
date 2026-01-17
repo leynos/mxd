@@ -11,6 +11,7 @@ use mxd::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    privileges::Privileges,
     transaction::{FrameHeader, HEADER_LEN, Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{routes::process_transaction_bytes, test_helpers::dummy_pool},
@@ -74,6 +75,18 @@ impl RoutingWorld {
         self.session.replace(Session::default());
     }
 
+    /// Pre-authenticate the session with default user privileges.
+    ///
+    /// Used for tests that need to bypass the login flow.
+    fn authenticate(&self) {
+        if self.is_skipped() {
+            return;
+        }
+        let mut session = self.session.borrow_mut();
+        session.user_id = Some(1);
+        session.privileges = Privileges::default_user();
+    }
+
     fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
         if self.is_skipped() {
             return;
@@ -134,10 +147,16 @@ fn given_users(world: &RoutingWorld) { world.setup_db(setup_files_db); }
 fn given_files(world: &RoutingWorld) { world.setup_db(setup_files_db); }
 
 #[given("a routing context with news categories")]
-fn given_news_categories(world: &RoutingWorld) { world.setup_db(setup_news_categories_root_db); }
+fn given_news_categories(world: &RoutingWorld) {
+    world.setup_db(setup_news_categories_root_db);
+    world.authenticate();
+}
 
 #[given("a routing context with news articles")]
-fn given_news_articles(world: &RoutingWorld) { world.setup_db(setup_news_db); }
+fn given_news_articles(world: &RoutingWorld) {
+    world.setup_db(setup_news_db);
+    world.authenticate();
+}
 
 #[when("I send a transaction with unknown type 65535")]
 fn when_unknown_type(world: &RoutingWorld) { world.send(TransactionType::Other(65535), 1, &[]); }

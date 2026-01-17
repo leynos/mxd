@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use test_util::AnyError;
+use test_util::{AnyError, DatabaseUrl};
 
 mod common;
 
@@ -14,7 +14,7 @@ mod common;
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn handshake_invalid_protocol() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|_| Ok(()))? else {
+    let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
         return Ok(());
     };
     let port = server.port();

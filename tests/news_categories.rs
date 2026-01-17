@@ -5,7 +5,6 @@
 //! as invalid paths and empty databases.
 
 use std::{
-    convert::TryFrom,
     io::{Read, Write},
     net::TcpStream,
 };
@@ -22,7 +21,10 @@ use mxd::{
 use rstest::rstest;
 use test_util::{
     AnyError,
+    DatabaseUrl,
+    ensure_test_user,
     handshake,
+    login,
     setup_news_categories_nested_db,
     setup_news_categories_root_db,
 };
@@ -34,6 +36,7 @@ fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<St
     stream.set_read_timeout(Some(std::time::Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(std::time::Duration::from_secs(20)))?;
     handshake(&mut stream)?;
+    login(&mut stream, "alice", "secret")?;
     let request_params = path
         .map(|p| vec![(FieldId::NewsPath, p.as_bytes())])
         .unwrap_or_default();
@@ -143,11 +146,15 @@ mod rstest_tests {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_invalid_path() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db: DatabaseUrl| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
-            let mut conn = DbConnection::establish(db).await?;
-            apply_migrations(&mut conn, db).await?;
+            let mut conn = DbConnection::establish(db.as_str()).await?;
+            apply_migrations(&mut conn, db.as_str()).await?;
+
+            // Create test user for authentication
+            ensure_test_user(&mut conn).await?;
+
             create_category(
                 &mut conn,
                 &NewCategory {
@@ -168,6 +175,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
     assert_eq!(hdr.error, NEWS_ERR_PATH_UNSUPPORTED);
     Ok(())
 }
+
 /// Tests that requesting a list of news categories from an empty database returns no categories.
 ///
 /// This test sets up a test server with an empty database, performs a TCP handshake,
@@ -186,11 +194,15 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_empty() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|db| {
+    let Some(server) = common::start_server_or_skip(|db: DatabaseUrl| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
-            let mut conn = DbConnection::establish(db).await?;
-            apply_migrations(&mut conn, db).await?;
+            let mut conn = DbConnection::establish(db.as_str()).await?;
+            apply_migrations(&mut conn, db.as_str()).await?;
+
+            // Create test user for authentication
+            ensure_test_user(&mut conn).await?;
+
             Ok(())
         })
     })?

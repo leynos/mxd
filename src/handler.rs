@@ -3,13 +3,15 @@
 //! The handler owns per-client [`Session`] state and dispatches incoming
 //! transactions to [`Command`] processors. Each connection runs in its own
 //! asynchronous task.
-use std::{net::SocketAddr, sync::Arc};
+use std::{error::Error, fmt, net::SocketAddr, sync::Arc};
 
 use argon2::Argon2;
 
 use crate::{
-    commands::Command,
+    commands::{Command, CommandError},
+    connection_flags::ConnectionFlags,
     db::DbPool,
+    privileges::Privileges,
     transaction::{Transaction, parse_transaction},
 };
 
@@ -25,10 +27,99 @@ pub struct Context {
 }
 
 /// Session state for a single connection.
-#[derive(Clone, Default)]
+///
+/// Tracks authentication status, privileges, and user preferences. The session
+/// is shared across all transaction handlers for a connection via
+/// `Arc<tokio::sync::Mutex<Session>>` in the wireframe middleware.
+#[derive(Clone, Debug, Default)]
 pub struct Session {
     /// Authenticated user identifier, if logged in.
     pub user_id: Option<i32>,
+    /// User access privileges from the Hotline protocol.
+    ///
+    /// Populated on successful login; empty until authenticated.
+    pub privileges: Privileges,
+    /// Connection-level preference flags (refuse messages, auto-response, etc.).
+    ///
+    /// Set during login/agreement and can be updated via `SetClientUserInfo`.
+    pub connection_flags: ConnectionFlags,
+}
+
+/// Error returned when a privilege check fails.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrivilegeError {
+    /// The user is not authenticated (no login has occurred).
+    NotAuthenticated,
+    /// The user lacks the required privilege for this operation.
+    InsufficientPrivileges(Privileges),
+}
+
+impl fmt::Display for PrivilegeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotAuthenticated => write!(f, "authentication required"),
+            Self::InsufficientPrivileges(p) => {
+                write!(f, "insufficient privileges: {}", format_privileges(*p))
+            }
+        }
+    }
+}
+
+impl Error for PrivilegeError {}
+
+fn format_privileges(privileges: Privileges) -> String {
+    let names: Vec<String> = privileges
+        .iter_names()
+        .map(|(name, _)| name.to_ascii_lowercase().replace('_', " "))
+        .collect();
+    if names.is_empty() {
+        "none".to_owned()
+    } else {
+        names.join(", ")
+    }
+}
+
+impl Session {
+    /// Check whether the session is authenticated.
+    #[must_use]
+    pub const fn is_authenticated(&self) -> bool { self.user_id.is_some() }
+
+    /// Check whether the session has a specific privilege.
+    ///
+    /// Returns `false` if the user is not authenticated or lacks the privilege.
+    #[must_use]
+    pub const fn has_privilege(&self, priv_required: Privileges) -> bool {
+        self.user_id.is_some() && self.privileges.contains(priv_required)
+    }
+
+    /// Require that the session is authenticated and has the specified privilege.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PrivilegeError::NotAuthenticated`] if not logged in, or
+    /// [`PrivilegeError::InsufficientPrivileges`] if the privilege is missing.
+    pub const fn require_privilege(&self, priv_required: Privileges) -> Result<(), PrivilegeError> {
+        match (
+            self.user_id.is_some(),
+            self.privileges.contains(priv_required),
+        ) {
+            (false, _) => Err(PrivilegeError::NotAuthenticated),
+            (true, false) => Err(PrivilegeError::InsufficientPrivileges(priv_required)),
+            (true, true) => Ok(()),
+        }
+    }
+
+    /// Require that the session is authenticated (any privilege level).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PrivilegeError::NotAuthenticated`] if not logged in.
+    pub const fn require_authenticated(&self) -> Result<(), PrivilegeError> {
+        match self.user_id {
+            Some(_) => Ok(()),
+            None => Err(PrivilegeError::NotAuthenticated),
+        }
+    }
 }
 
 impl Context {
@@ -52,7 +143,7 @@ pub async fn handle_request(
     ctx: &Context,
     session: &mut Session,
     frame: &[u8],
-) -> Result<Transaction, Box<dyn std::error::Error + Send + Sync + 'static>> {
+) -> Result<Transaction, CommandError> {
     let tx = parse_transaction(frame)?;
     let cmd = Command::from_transaction(tx)?;
     let reply = cmd.process(ctx.peer, ctx.pool.clone(), session).await?;
@@ -101,5 +192,105 @@ mod tests {
         assert_eq!(Arc::strong_count(&argon2), 2);
         drop(ctx_b);
         assert_eq!(Arc::strong_count(&argon2), 1);
+    }
+
+    #[test]
+    fn session_default_is_unauthenticated() {
+        let session = Session::default();
+        assert!(!session.is_authenticated());
+        assert!(session.privileges.is_empty());
+        assert!(session.connection_flags.is_empty());
+    }
+
+    #[test]
+    fn session_is_authenticated_with_user_id() {
+        let session = Session {
+            user_id: Some(42),
+            ..Default::default()
+        };
+        assert!(session.is_authenticated());
+    }
+
+    #[test]
+    fn session_has_privilege_returns_true_when_present() {
+        let session = Session {
+            user_id: Some(1),
+            privileges: Privileges::DOWNLOAD_FILE,
+            ..Default::default()
+        };
+        assert!(session.has_privilege(Privileges::DOWNLOAD_FILE));
+    }
+
+    #[test]
+    fn session_has_privilege_returns_false_when_absent() {
+        let session = Session {
+            user_id: Some(1),
+            privileges: Privileges::DOWNLOAD_FILE,
+            ..Default::default()
+        };
+        assert!(!session.has_privilege(Privileges::UPLOAD_FILE));
+    }
+
+    #[test]
+    fn session_require_privilege_fails_when_unauthenticated() {
+        let session = Session::default();
+        let result = session.require_privilege(Privileges::DOWNLOAD_FILE);
+        assert_eq!(result, Err(PrivilegeError::NotAuthenticated));
+    }
+
+    #[test]
+    fn session_require_privilege_fails_when_missing_privilege() {
+        let session = Session {
+            user_id: Some(1),
+            privileges: Privileges::READ_CHAT,
+            ..Default::default()
+        };
+        let result = session.require_privilege(Privileges::DOWNLOAD_FILE);
+        assert_eq!(
+            result,
+            Err(PrivilegeError::InsufficientPrivileges(
+                Privileges::DOWNLOAD_FILE
+            ))
+        );
+    }
+
+    #[test]
+    fn session_require_privilege_succeeds_when_present() {
+        let session = Session {
+            user_id: Some(1),
+            privileges: Privileges::DOWNLOAD_FILE | Privileges::READ_CHAT,
+            ..Default::default()
+        };
+        let result = session.require_privilege(Privileges::DOWNLOAD_FILE);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn session_require_authenticated_fails_when_unauthenticated() {
+        let session = Session::default();
+        let result = session.require_authenticated();
+        assert_eq!(result, Err(PrivilegeError::NotAuthenticated));
+    }
+
+    #[test]
+    fn session_require_authenticated_succeeds_when_logged_in() {
+        let session = Session {
+            user_id: Some(1),
+            ..Default::default()
+        };
+        let result = session.require_authenticated();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn privilege_error_display_not_authenticated() {
+        let err = PrivilegeError::NotAuthenticated;
+        assert_eq!(err.to_string(), "authentication required");
+    }
+
+    #[test]
+    fn privilege_error_display_insufficient_privileges() {
+        let err = PrivilegeError::InsufficientPrivileges(Privileges::DOWNLOAD_FILE);
+        assert!(err.to_string().contains("insufficient privileges"));
     }
 }

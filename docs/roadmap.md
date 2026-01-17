@@ -122,10 +122,19 @@ and explicit dependencies. Timeframes are intentionally omitted.
   through `mxd-wireframe-server` with the `HotlineFrameCodec`, adding routing
   unit/BDD coverage, and migrating the file/news integration tests.
   Dependencies: 1.4.1.
-- [ ] 1.4.3. Introduce a shared session context that tracks the authenticated
+- [x] 1.4.3. Introduce a shared session context that tracks the authenticated
   user, privileges, and connection flags. Acceptance: Session state survives
   across handlers and enforces privilege checks defined in `docs/protocol.md`.
-  Dependencies: 1.4.2.
+  Status: Completed on 12 January 2026 by extending the `Session` struct with
+  `privileges: Privileges` (38 privilege bits from field 110) and
+  `connection_flags: ConnectionFlags` (3 connection preference bits), adding
+  helper methods (`is_authenticated`, `has_privilege`, `require_privilege`,
+  `require_authenticated`), updating the login handler to populate privileges
+  with `default_user()`, and integrating privilege enforcement into handlers
+  (file list, news handlers). Unit tests cover privilege bitflags and session
+  helpers; BDD tests in `tests/features/session_privileges.feature` verify
+  enforcement for authenticated/unauthenticated and privileged/unprivileged
+  access paths. Dependencies: 1.4.2.
 - [ ] 1.4.4. Provide outbound transport and messaging traits so domain code can
   respond without depending on `wireframe` types. Acceptance: Domain modules
   interact with adapter traits defined alongside the server boundary, and the
