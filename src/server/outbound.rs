@@ -204,12 +204,13 @@ impl OutboundMessaging for NoopOutboundMessaging {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use tokio::runtime::Runtime;
 
     use super::*;
     use crate::transaction::FrameHeader;
 
+    #[fixture]
     fn reply() -> Transaction {
         Transaction {
             header: FrameHeader {
@@ -226,32 +227,32 @@ mod tests {
     }
 
     #[rstest]
-    fn reply_buffer_accepts_single_reply() {
+    fn reply_buffer_accepts_single_reply(reply: Transaction) {
         let mut buffer = ReplyBuffer::new();
 
-        buffer.send_reply(reply()).expect("store reply");
+        buffer.send_reply(reply).expect("store reply");
 
         assert!(buffer.take_reply().is_some());
         assert!(buffer.take_reply().is_none());
     }
 
     #[rstest]
-    fn reply_buffer_rejects_second_reply() {
+    fn reply_buffer_rejects_second_reply(reply: Transaction) {
         let mut buffer = ReplyBuffer::new();
-        buffer.send_reply(reply()).expect("first reply");
+        buffer.send_reply(reply.clone()).expect("first reply");
 
-        let err = buffer.send_reply(reply()).expect_err("second reply");
+        let err = buffer.send_reply(reply).expect_err("second reply");
 
         assert_eq!(err, OutboundError::ReplyAlreadySent);
     }
 
     #[rstest]
-    fn noop_messaging_reports_unavailable() {
+    fn noop_messaging_reports_unavailable(reply: Transaction) {
         let rt = Runtime::new().expect("runtime");
         let messaging = NoopOutboundMessaging;
 
         let err = rt
-            .block_on(messaging.push(OutboundTarget::Current, reply(), OutboundPriority::Low))
+            .block_on(messaging.push(OutboundTarget::Current, reply, OutboundPriority::Low))
             .expect_err("push should fail");
 
         assert_eq!(err, OutboundError::MessagingUnavailable);

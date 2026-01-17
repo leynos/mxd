@@ -16,8 +16,8 @@ wireframe adapter will implement these traits, preserving the hexagonal
 boundary described in `docs/design.md` and
 `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`.
 Success is visible when domain modules only depend on the new traits, the
-wireframe server still runs, and unit plus BDD tests cover both success and
-failure paths for outbound delivery.
+wireframe server still runs, and unit plus behaviour-driven development (BDD)
+tests cover both success and failure paths for outbound delivery.
 
 ## Constraints
 
@@ -34,8 +34,8 @@ failure paths for outbound delivery.
 
 ## Tolerances (Exception Triggers)
 
-- Scope: if more than 12 files change or net changes exceed 500 LOC, stop and
-  escalate.
+- Scope: if more than 12 files change or net changes exceed 500 lines of code
+  (LOC), stop and escalate.
 - Interface: if a public API outside `src/server` or `src/wireframe` must
   change, stop and escalate.
 - Dependencies: if a new external dependency is required, stop and escalate.

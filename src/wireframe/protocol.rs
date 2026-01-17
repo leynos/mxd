@@ -138,7 +138,7 @@ impl WireframeProtocol for HotlineProtocol {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use wireframe::ConnectionContext;
 
     use super::*;
@@ -147,6 +147,7 @@ mod tests {
         test_helpers::dummy_pool,
     };
 
+    #[fixture]
     fn outbound_connection() -> Arc<WireframeOutboundConnection> {
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
@@ -154,22 +155,22 @@ mod tests {
     }
 
     #[rstest]
-    fn protocol_can_be_created() {
+    fn protocol_can_be_created(outbound_connection: Arc<WireframeOutboundConnection>) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
 
-        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection());
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
 
         assert!(Arc::strong_count(protocol.argon2()) >= 1);
     }
 
     #[rstest]
-    fn protocol_shares_argon2_instance() {
+    fn protocol_shares_argon2_instance(outbound_connection: Arc<WireframeOutboundConnection>) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
         let argon2_clone = Arc::clone(&argon2);
 
-        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection());
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
 
         assert!(Arc::ptr_eq(protocol.argon2(), &argon2_clone));
     }
@@ -188,10 +189,13 @@ mod tests {
     #[case::stream_end_frame(LifecycleHook::StreamEndFrame)]
     #[case::on_command_end(LifecycleHook::OnCommandEnd)]
     #[case::before_send(LifecycleHook::BeforeSend)]
-    fn lifecycle_hooks_do_not_panic(#[case] hook: LifecycleHook) {
+    fn lifecycle_hooks_do_not_panic(
+        #[case] hook: LifecycleHook,
+        outbound_connection: Arc<WireframeOutboundConnection>,
+    ) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
-        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection());
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
         let mut ctx = ConnectionContext;
 
         match hook {

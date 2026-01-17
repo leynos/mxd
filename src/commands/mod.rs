@@ -301,7 +301,20 @@ impl Command {
             transport,
             messaging,
         } = context;
-        let reply = match self {
+        let reply = self.execute(peer, pool, session).await?;
+        // TODO: use outbound messaging for server-initiated notifications.
+        let _ = messaging;
+        transport.send_reply(reply)?;
+        Ok(())
+    }
+
+    async fn execute(
+        self,
+        peer: SocketAddr,
+        pool: DbPool,
+        session: &mut crate::handler::Session,
+    ) -> Result<Transaction, CommandError> {
+        match self {
             Self::Login { req } => Self::process_login(peer, pool, session, req).await,
             Self::GetFileNameList { header } => {
                 Self::process_get_file_name_list(pool, session, header).await
@@ -325,10 +338,7 @@ impl Command {
             }
             Self::InvalidPayload { header } => Ok(Self::process_invalid_payload(header)),
             Self::Unknown { header } => Ok(Self::process_unknown(peer, header)),
-        }?;
-        let _ = messaging;
-        transport.send_reply(reply)?;
-        Ok(())
+        }
     }
 }
 

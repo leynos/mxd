@@ -29,20 +29,25 @@ use crate::{
 };
 
 /// Shared registry for mapping outbound connection identifiers to push handles.
-#[derive(Default)]
 pub struct WireframeOutboundRegistry {
     next_id: AtomicU64,
     sessions: SessionRegistry<Vec<u8>>,
+}
+
+impl Default for WireframeOutboundRegistry {
+    fn default() -> Self {
+        Self {
+            next_id: AtomicU64::new(1),
+            sessions: SessionRegistry::default(),
+        }
+    }
 }
 
 impl WireframeOutboundRegistry {
     /// Allocate a new outbound connection identifier.
     #[must_use]
     pub fn allocate_id(&self) -> OutboundConnectionId {
-        let id = self
-            .next_id
-            .fetch_add(1, Ordering::Relaxed)
-            .saturating_add(1);
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         OutboundConnectionId::new(id)
     }
 
@@ -178,13 +183,14 @@ const fn map_push_error(error: PushError) -> OutboundError {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use tokio::runtime::Runtime;
     use wireframe::push::PushQueues;
 
     use super::*;
     use crate::transaction::FrameHeader;
 
+    #[fixture]
     fn reply() -> Transaction {
         Transaction {
             header: FrameHeader {
@@ -201,7 +207,7 @@ mod tests {
     }
 
     #[rstest]
-    fn push_to_current_requires_handle() {
+    fn push_to_current_requires_handle(reply: Transaction) {
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
         let connection = Arc::new(WireframeOutboundConnection::new(id, registry));
@@ -209,14 +215,14 @@ mod tests {
         let rt = Runtime::new().expect("runtime");
 
         let err = rt
-            .block_on(messaging.push(OutboundTarget::Current, reply(), OutboundPriority::High))
+            .block_on(messaging.push(OutboundTarget::Current, reply, OutboundPriority::High))
             .expect_err("missing handle");
 
         assert_eq!(err, OutboundError::TargetUnavailable);
     }
 
     #[rstest]
-    fn push_to_current_enqueues_frame() {
+    fn push_to_current_enqueues_frame(reply: Transaction) {
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
         let connection = Arc::new(WireframeOutboundConnection::new(id, Arc::clone(&registry)));
@@ -230,14 +236,18 @@ mod tests {
             .expect("push queues");
         connection.register_handle(&handle);
 
-        rt.block_on(messaging.push(OutboundTarget::Current, reply(), OutboundPriority::High))
-            .expect("push ok");
+        rt.block_on(messaging.push(
+            OutboundTarget::Current,
+            reply.clone(),
+            OutboundPriority::High,
+        ))
+        .expect("push ok");
 
         let (priority, frame) = rt
             .block_on(async { queues.recv().await })
             .expect("frame queued");
         assert_eq!(priority, wireframe::push::PushPriority::High);
         let parsed = crate::transaction::parse_transaction(&frame).expect("parse reply");
-        assert_eq!(parsed, reply());
+        assert_eq!(parsed, reply);
     }
 }
