@@ -6,7 +6,7 @@
 
 use std::{fmt::Display, net::SocketAddr};
 
-use tracing::{error, warn};
+use tracing::{Level, error, warn};
 
 use crate::{
     header_util::reply_header,
@@ -68,7 +68,54 @@ impl ReplyBuilder {
     }
 
     fn warn_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
+        self.log_with_context(Level::WARN, Some(&err), error_code, message);
+    }
+
+    fn error_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
+        self.log_with_context(Level::ERROR, Some(&err), error_code, message);
+    }
+
+    fn error_without_error(&self, error_code: u32, message: &'static str) {
+        self.log_with_context(Level::ERROR, None, error_code, message);
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "log inputs are intentionally explicit for call sites"
+    )]
+    fn log_with_context(
+        &self,
+        level: Level,
+        error: Option<&dyn Display>,
+        error_code: u32,
+        message: &'static str,
+    ) {
         let (ty, id) = header_fields(self.header.as_ref());
+        let context = LogContext {
+            ty,
+            id,
+            error_code,
+            message,
+        };
+        match (level, error) {
+            (Level::WARN, Some(err)) => self.log_warn_with_error(err, &context),
+            (Level::ERROR, Some(err)) => self.log_error_with_error(err, &context),
+            (Level::ERROR, None) => self.log_error_without_error(&context),
+            #[expect(
+                clippy::unreachable,
+                reason = "unsupported log contexts are unreachable"
+            )]
+            _ => unreachable!("unsupported log context"),
+        }
+    }
+
+    fn log_warn_with_error(&self, err: &dyn Display, context: &LogContext) {
+        let LogContext {
+            ty,
+            id,
+            error_code,
+            message,
+        } = *context;
         warn!(
             %err,
             peer = %self.peer,
@@ -79,8 +126,13 @@ impl ReplyBuilder {
         );
     }
 
-    fn error_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
-        let (ty, id) = header_fields(self.header.as_ref());
+    fn log_error_with_error(&self, err: &dyn Display, context: &LogContext) {
+        let LogContext {
+            ty,
+            id,
+            error_code,
+            message,
+        } = *context;
         error!(
             %err,
             peer = %self.peer,
@@ -91,8 +143,13 @@ impl ReplyBuilder {
         );
     }
 
-    fn error_without_error(&self, error_code: u32, message: &'static str) {
-        let (ty, id) = header_fields(self.header.as_ref());
+    fn log_error_without_error(&self, context: &LogContext) {
+        let LogContext {
+            ty,
+            id,
+            error_code,
+            message,
+        } = *context;
         error!(
             peer = %self.peer,
             ty = ?ty,
@@ -101,6 +158,14 @@ impl ReplyBuilder {
             "{message}"
         );
     }
+}
+
+#[derive(Clone, Copy)]
+struct LogContext {
+    ty: Option<u16>,
+    id: Option<u32>,
+    error_code: u32,
+    message: &'static str,
 }
 
 fn header_fields(header: Option<&FrameHeader>) -> (Option<u16>, Option<u32>) {
