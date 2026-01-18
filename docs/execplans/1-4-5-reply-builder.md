@@ -78,6 +78,9 @@ after implementation and verification.
       and marked the roadmap entry as done.
     - [x] (2026-01-17 19:30Z) Ran formatting, lint, test, and documentation
       checks; captured results.
+    - [x] (2026-01-18 01:05Z) Added a log-capture test harness for tracing
+      fields, added coverage for missing-reply logging, and reviewed remaining
+      test duplication (no further refactors required).
 
 ## Surprises & Discoveries
 
@@ -290,3 +293,11 @@ logging in one place so routing error paths all behave consistently.
 Updated the status to COMPLETE, filled in progress timestamps, recorded the
 error-code mapping decision, and summarised outcomes now that the reply builder
 implementation and tests are in place.
+
+Revision: 2026-01-18
+
+- Status set to IN PROGRESS to cover follow-up test harness work.
+
+Revision: 2026-01-18
+
+- Log-capture harness complete; status returned to COMPLETE.

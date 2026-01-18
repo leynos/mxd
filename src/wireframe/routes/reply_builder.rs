@@ -217,6 +217,16 @@ mod tests {
         message: Option<String>,
     }
 
+    struct ExpectedEvent<'a> {
+        level: Level,
+        peer: &'a str,
+        ty: Option<u16>,
+        id: Option<u32>,
+        error_code: u32,
+        message: Option<&'a str>,
+        err: Option<&'a str>,
+    }
+
     #[derive(Default)]
     struct FieldRecorder {
         fields: HashMap<String, String>,
@@ -280,6 +290,60 @@ mod tests {
         fn exit(&self, _span: &Id) {}
     }
 
+    fn capture_single_event(f: impl FnOnce()) -> RecordedEvent {
+        let subscriber = RecordingSubscriber::default();
+        let dispatch = tracing::Dispatch::new(subscriber.clone());
+
+        tracing::dispatcher::with_default(&dispatch, f);
+
+        let mut events = subscriber.take_events();
+        assert_eq!(events.len(), 1);
+        events.remove(0)
+    }
+
+    fn assert_event_fields(event: &RecordedEvent, expected: &ExpectedEvent<'_>) {
+        assert_event_metadata(event, expected);
+        assert_event_message(event, expected.message);
+        assert_event_error(event, expected.err);
+    }
+
+    fn assert_event_metadata(event: &RecordedEvent, expected: &ExpectedEvent<'_>) {
+        let expected_ty = format!("{:?}", expected.ty);
+        let expected_id = format!("{:?}", expected.id);
+        let expected_error_code = expected.error_code.to_string();
+
+        assert_eq!(event.level, expected.level);
+        assert_field_value(event, "peer", expected.peer);
+        assert_field_value(event, "ty", expected_ty.as_str());
+        assert_field_value(event, "id", expected_id.as_str());
+        assert_field_value(event, "error_code", expected_error_code.as_str());
+    }
+
+    fn assert_event_message(event: &RecordedEvent, expected: Option<&str>) {
+        match expected {
+            Some(message) => assert_eq!(event.message.as_deref(), Some(message)),
+            None => assert!(event.message.is_none(), "expected no message field"),
+        }
+    }
+
+    fn assert_event_error(event: &RecordedEvent, expected: Option<&str>) {
+        match expected {
+            Some(err) => {
+                let value = event
+                    .fields
+                    .get("err")
+                    .map(String::as_str)
+                    .expect("expected err field");
+                assert_eq!(value.trim_matches('"'), err);
+            }
+            None => assert!(!event.fields.contains_key("err"), "expected no err field"),
+        }
+    }
+
+    fn assert_field_value(event: &RecordedEvent, field: &str, expected: &str) {
+        assert_eq!(event.fields.get(field).map(String::as_str), Some(expected));
+    }
+
     #[rstest]
     fn parse_error_logs_transaction_context() {
         let peer: SocketAddr = "127.0.0.1:9000".parse().expect("peer");
@@ -293,61 +357,75 @@ mod tests {
             data_size: 0,
         };
         let frame = transaction_bytes(&header, &[]);
-        let subscriber = RecordingSubscriber::default();
-        let dispatch = tracing::Dispatch::new(subscriber.clone());
-
-        tracing::dispatcher::with_default(&dispatch, || {
+        let event = capture_single_event(|| {
             let builder = ReplyBuilder::from_frame(peer, &frame);
             let _ = builder.parse_error("parse fail", 3);
         });
 
-        let events = subscriber.take_events();
-        assert_eq!(events.len(), 1);
-        let event = &events[0];
-        assert_eq!(event.level, Level::WARN);
-        assert_eq!(
-            event.fields.get("peer").map(String::as_str),
-            Some("127.0.0.1:9000")
-        );
-        assert_eq!(
-            event.fields.get("ty").map(String::as_str),
-            Some("Some(200)")
-        );
-        assert_eq!(event.fields.get("id").map(String::as_str), Some("Some(42)"));
-        assert_eq!(
-            event.fields.get("error_code").map(String::as_str),
-            Some("3")
-        );
-        assert_eq!(
-            event.message.as_deref(),
-            Some("failed to parse transaction from bytes")
+        assert_event_fields(
+            &event,
+            &ExpectedEvent {
+                level: Level::WARN,
+                peer: "127.0.0.1:9000",
+                ty: Some(200),
+                id: Some(42),
+                error_code: 3,
+                message: Some("failed to parse transaction from bytes"),
+                err: Some("parse fail"),
+            },
         );
     }
 
     #[rstest]
     fn parse_error_logs_missing_header_as_none() {
         let peer: SocketAddr = "127.0.0.1:9001".parse().expect("peer");
-        let subscriber = RecordingSubscriber::default();
-        let dispatch = tracing::Dispatch::new(subscriber.clone());
-
-        tracing::dispatcher::with_default(&dispatch, || {
+        let event = capture_single_event(|| {
             let builder = ReplyBuilder::from_frame(peer, &[]);
             let _ = builder.parse_error("short", 3);
         });
 
-        let events = subscriber.take_events();
-        assert_eq!(events.len(), 1);
-        let event = &events[0];
-        assert_eq!(event.level, Level::WARN);
-        assert_eq!(
-            event.fields.get("peer").map(String::as_str),
-            Some("127.0.0.1:9001")
+        assert_event_fields(
+            &event,
+            &ExpectedEvent {
+                level: Level::WARN,
+                peer: "127.0.0.1:9001",
+                ty: None,
+                id: None,
+                error_code: 3,
+                message: Some("failed to parse transaction from bytes"),
+                err: Some("short"),
+            },
         );
-        assert_eq!(event.fields.get("ty").map(String::as_str), Some("None"));
-        assert_eq!(event.fields.get("id").map(String::as_str), Some("None"));
-        assert_eq!(
-            event.fields.get("error_code").map(String::as_str),
-            Some("3")
+    }
+
+    #[rstest]
+    fn missing_reply_logs_without_error_field() {
+        let peer: SocketAddr = "127.0.0.1:9002".parse().expect("peer");
+        let header = FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 7,
+            id: 99,
+            error: 0,
+            total_size: 0,
+            data_size: 0,
+        };
+        let event = capture_single_event(|| {
+            let builder = ReplyBuilder::from_header(peer, header);
+            let _ = builder.missing_reply(5);
+        });
+
+        assert_event_fields(
+            &event,
+            &ExpectedEvent {
+                level: Level::ERROR,
+                peer: "127.0.0.1:9002",
+                ty: Some(7),
+                id: Some(99),
+                error_code: 5,
+                message: Some("command processing did not emit a reply"),
+                err: None,
+            },
         );
     }
 }
