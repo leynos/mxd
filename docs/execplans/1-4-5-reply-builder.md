@@ -81,6 +81,8 @@ after implementation and verification.
     - [x] (2026-01-18 01:05Z) Added a log-capture test harness for tracing
       fields, added coverage for missing-reply logging, and reviewed remaining
       test duplication (no further refactors required).
+    - [x] (2026-01-18 02:15Z) Extracted the tracing capture harness into shared
+      wireframe test helpers and updated reply builder tests to use it.
 
 ## Surprises & Discoveries
 
@@ -301,3 +303,8 @@ Revision: 2026-01-18
 Revision: 2026-01-18
 
 - Log-capture harness complete; status returned to COMPLETE.
+
+Revision: 2026-01-18
+
+- Moved tracing capture helpers into shared test helpers and recorded the
+  additional follow-up work.

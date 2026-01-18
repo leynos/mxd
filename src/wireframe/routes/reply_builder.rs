@@ -179,43 +179,19 @@ const fn default_header() -> FrameHeader {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::HashMap,
-        fmt,
-        net::SocketAddr,
-        sync::{Arc, Mutex},
-    };
+    use std::net::SocketAddr;
 
     use rstest::rstest;
-    use tracing::{
-        Event,
-        Level,
-        Metadata,
-        Subscriber,
-        field::{Field, Visit},
-        span::{Attributes, Id, Record},
-    };
+    use tracing::Level;
 
     use super::ReplyBuilder;
-    use crate::{transaction::FrameHeader, wireframe::test_helpers::transaction_bytes};
-
-    #[derive(Clone, Default)]
-    struct RecordingSubscriber {
-        events: Arc<Mutex<Vec<RecordedEvent>>>,
-    }
-
-    impl RecordingSubscriber {
-        fn take_events(&self) -> Vec<RecordedEvent> {
-            std::mem::take(&mut *self.events.lock().expect("recording lock"))
-        }
-    }
-
-    #[derive(Debug)]
-    struct RecordedEvent {
-        level: Level,
-        fields: HashMap<String, String>,
-        message: Option<String>,
-    }
+    use crate::{
+        transaction::FrameHeader,
+        wireframe::test_helpers::{
+            tracing::{RecordedEvent, capture_single_event},
+            transaction_bytes,
+        },
+    };
 
     struct ExpectedEvent<'a> {
         level: Level,
@@ -225,80 +201,6 @@ mod tests {
         error_code: u32,
         message: Option<&'a str>,
         err: Option<&'a str>,
-    }
-
-    #[derive(Default)]
-    struct FieldRecorder {
-        fields: HashMap<String, String>,
-        message: Option<String>,
-    }
-
-    impl FieldRecorder {
-        fn record_value(&mut self, field: &Field, value: String) {
-            if field.name() == "message" {
-                self.message = Some(value);
-            } else {
-                self.fields.insert(field.name().to_string(), value);
-            }
-        }
-    }
-
-    impl Visit for FieldRecorder {
-        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-            self.record_value(field, format!("{value:?}"));
-        }
-
-        fn record_i64(&mut self, field: &Field, value: i64) {
-            self.record_value(field, value.to_string());
-        }
-
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.record_value(field, value.to_string());
-        }
-
-        fn record_bool(&mut self, field: &Field, value: bool) {
-            self.record_value(field, value.to_string());
-        }
-
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.record_value(field, value.to_string());
-        }
-    }
-
-    impl Subscriber for RecordingSubscriber {
-        fn enabled(&self, _metadata: &Metadata<'_>) -> bool { true }
-
-        fn new_span(&self, _attrs: &Attributes<'_>) -> Id { Id::from_u64(1) }
-
-        fn record(&self, _span: &Id, _values: &Record<'_>) {}
-
-        fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
-
-        fn event(&self, event: &Event<'_>) {
-            let mut recorder = FieldRecorder::default();
-            event.record(&mut recorder);
-            let record = RecordedEvent {
-                level: *event.metadata().level(),
-                fields: recorder.fields,
-                message: recorder.message,
-            };
-            self.events.lock().expect("recording lock").push(record);
-        }
-
-        fn enter(&self, _span: &Id) {}
-
-        fn exit(&self, _span: &Id) {}
-    }
-
-    fn capture_single_event(f: impl FnOnce()) -> RecordedEvent {
-        let subscriber = RecordingSubscriber::default();
-        let dispatch = tracing::Dispatch::new(subscriber.clone());
-
-        tracing::dispatcher::with_default(&dispatch, f);
-
-        let mut events = subscriber.take_events();
-        assert_eq!(events.len(), 1);
-        events.remove(0)
     }
 
     fn assert_event_fields(event: &RecordedEvent, expected: &ExpectedEvent<'_>) {
@@ -312,7 +214,7 @@ mod tests {
         let expected_id = format!("{:?}", expected.id);
         let expected_error_code = expected.error_code.to_string();
 
-        assert_eq!(event.level, expected.level);
+        assert_eq!(event.level(), expected.level);
         assert_field_value(event, "peer", expected.peer);
         assert_field_value(event, "ty", expected_ty.as_str());
         assert_field_value(event, "id", expected_id.as_str());
@@ -321,27 +223,23 @@ mod tests {
 
     fn assert_event_message(event: &RecordedEvent, expected: Option<&str>) {
         match expected {
-            Some(message) => assert_eq!(event.message.as_deref(), Some(message)),
-            None => assert!(event.message.is_none(), "expected no message field"),
+            Some(message) => assert_eq!(event.message(), Some(message)),
+            None => assert!(event.message().is_none(), "expected no message field"),
         }
     }
 
     fn assert_event_error(event: &RecordedEvent, expected: Option<&str>) {
         match expected {
             Some(err) => {
-                let value = event
-                    .fields
-                    .get("err")
-                    .map(String::as_str)
-                    .expect("expected err field");
+                let value = event.field("err").expect("expected err field");
                 assert_eq!(value.trim_matches('"'), err);
             }
-            None => assert!(!event.fields.contains_key("err"), "expected no err field"),
+            None => assert!(event.field("err").is_none(), "expected no err field"),
         }
     }
 
     fn assert_field_value(event: &RecordedEvent, field: &str, expected: &str) {
-        assert_eq!(event.fields.get(field).map(String::as_str), Some(expected));
+        assert_eq!(event.field(field), Some(expected));
     }
 
     #[rstest]

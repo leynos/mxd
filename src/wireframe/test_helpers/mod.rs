@@ -21,6 +21,9 @@ use crate::{
     transaction_type::TransactionType,
 };
 
+#[cfg(test)]
+pub mod tracing;
+
 /// Create a lightweight database pool for tests that don't require real
 /// database connections.
 ///
