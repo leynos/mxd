@@ -6,7 +6,7 @@
 
 use std::{fmt::Display, net::SocketAddr};
 
-use tracing::{Level, event};
+use tracing::{Level, error, warn};
 
 use crate::{
     header_util::reply_header,
@@ -17,6 +17,44 @@ use crate::{
 pub(super) struct ReplyBuilder {
     peer: SocketAddr,
     header: Option<FrameHeader>,
+}
+
+macro_rules! log_method {
+    ($name:ident, $level:ident, with_error) => {
+        fn $name(&self, err: &dyn Display, context: &LogContext) {
+            let LogContext {
+                ty,
+                id,
+                error_code,
+                message,
+            } = *context;
+            $level!(
+                %err,
+                peer = %self.peer,
+                ty = ?ty,
+                id = ?id,
+                error_code,
+                "{message}"
+            );
+        }
+    };
+    ($name:ident, $level:ident, without_error) => {
+        fn $name(&self, context: &LogContext) {
+            let LogContext {
+                ty,
+                id,
+                error_code,
+                message,
+            } = *context;
+            $level!(
+                peer = %self.peer,
+                ty = ?ty,
+                id = ?id,
+                error_code,
+                "{message}"
+            );
+        }
+    };
 }
 
 impl ReplyBuilder {
@@ -101,115 +139,20 @@ impl ReplyBuilder {
     }
 
     fn log_with_context(&self, level: Level, error: Option<&dyn Display>, context: LogContext) {
-        let LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        } = context;
-        let log_context = LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        };
-        match error {
-            Some(err) => self.log_with_error(level, err, log_context),
-            None => self.log_without_error(level, log_context),
-        }
-    }
-
-    fn log_with_error(&self, level: Level, err: &dyn Display, context: LogContext) {
-        match level {
-            Level::WARN => self.emit_warn_with_error(err, context),
-            Level::ERROR => self.emit_error_with_error(err, context),
+        match (level, error) {
+            (Level::WARN, Some(err)) => self.log_warn_with_error(err, &context),
+            (Level::ERROR, Some(err)) => self.log_error_with_error(err, &context),
+            (Level::ERROR, None) => self.log_error_without_error(&context),
             _ => {
-                debug_assert!(matches!(level, Level::WARN | Level::ERROR));
-                self.emit_error_with_error(err, context);
+                debug_assert!(false, "unsupported log context");
+                self.log_error_without_error(&context);
             }
         }
     }
 
-    fn log_without_error(&self, level: Level, context: LogContext) {
-        match level {
-            Level::WARN => self.emit_warn_without_error(context),
-            Level::ERROR => self.emit_error_without_error(context),
-            _ => {
-                debug_assert!(matches!(level, Level::WARN | Level::ERROR));
-                self.emit_error_without_error(context);
-            }
-        }
-    }
-
-    fn emit_warn_with_error(&self, err: &dyn Display, context: LogContext) {
-        let LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        } = context;
-        event!(
-            Level::WARN,
-            %err,
-            peer = %self.peer,
-            ty = ?ty,
-            id = ?id,
-            error_code,
-            "{message}"
-        );
-    }
-
-    fn emit_error_with_error(&self, err: &dyn Display, context: LogContext) {
-        let LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        } = context;
-        event!(
-            Level::ERROR,
-            %err,
-            peer = %self.peer,
-            ty = ?ty,
-            id = ?id,
-            error_code,
-            "{message}"
-        );
-    }
-
-    fn emit_warn_without_error(&self, context: LogContext) {
-        let LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        } = context;
-        event!(
-            Level::WARN,
-            peer = %self.peer,
-            ty = ?ty,
-            id = ?id,
-            error_code,
-            "{message}"
-        );
-    }
-
-    fn emit_error_without_error(&self, context: LogContext) {
-        let LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        } = context;
-        event!(
-            Level::ERROR,
-            peer = %self.peer,
-            ty = ?ty,
-            id = ?id,
-            error_code,
-            "{message}"
-        );
-    }
+    log_method!(log_warn_with_error, warn, with_error);
+    log_method!(log_error_with_error, error, with_error);
+    log_method!(log_error_without_error, error, without_error);
 }
 
 #[derive(Clone, Copy)]
