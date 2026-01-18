@@ -57,6 +57,33 @@ macro_rules! log_method {
     };
 }
 
+macro_rules! wrapper_method {
+    ($name:ident, $level:expr,with_error) => {
+        fn $name<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
+            let (ty, id) = header_fields(self.header.as_ref());
+            let context = LogContext {
+                ty,
+                id,
+                error_code,
+                message,
+            };
+            self.log_with_context($level, Some(&err), context);
+        }
+    };
+    ($name:ident, $level:expr,without_error) => {
+        fn $name(&self, error_code: u32, message: &'static str) {
+            let (ty, id) = header_fields(self.header.as_ref());
+            let context = LogContext {
+                ty,
+                id,
+                error_code,
+                message,
+            };
+            self.log_with_context($level, None, context);
+        }
+    };
+}
+
 impl ReplyBuilder {
     pub(super) fn from_frame(peer: SocketAddr, frame: &[u8]) -> Self {
         let header = frame
@@ -105,38 +132,9 @@ impl ReplyBuilder {
         self.error_transaction(error_code).to_bytes()
     }
 
-    fn warn_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
-        let (ty, id) = header_fields(self.header.as_ref());
-        let context = LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        };
-        self.log_with_context(Level::WARN, Some(&err), context);
-    }
-
-    fn error_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
-        let (ty, id) = header_fields(self.header.as_ref());
-        let context = LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        };
-        self.log_with_context(Level::ERROR, Some(&err), context);
-    }
-
-    fn error_without_error(&self, error_code: u32, message: &'static str) {
-        let (ty, id) = header_fields(self.header.as_ref());
-        let context = LogContext {
-            ty,
-            id,
-            error_code,
-            message,
-        };
-        self.log_with_context(Level::ERROR, None, context);
-    }
+    wrapper_method!(warn_with_error, Level::WARN, with_error);
+    wrapper_method!(error_with_error, Level::ERROR, with_error);
+    wrapper_method!(error_without_error, Level::ERROR, without_error);
 
     fn log_with_context(&self, level: Level, error: Option<&dyn Display>, context: LogContext) {
         match (level, error) {
