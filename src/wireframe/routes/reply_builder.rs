@@ -203,6 +203,14 @@ mod tests {
         err: Option<&'a str>,
     }
 
+    fn capture_and_assert_event<F>(action: F, expected: &ExpectedEvent<'_>)
+    where
+        F: FnOnce(),
+    {
+        let event = capture_single_event(action);
+        assert_event_fields(&event, expected);
+    }
+
     fn assert_event_fields(event: &RecordedEvent, expected: &ExpectedEvent<'_>) {
         assert_event_metadata(event, expected);
         assert_event_message(event, expected.message);
@@ -255,13 +263,11 @@ mod tests {
             data_size: 0,
         };
         let frame = transaction_bytes(&header, &[]);
-        let event = capture_single_event(|| {
-            let builder = ReplyBuilder::from_frame(peer, &frame);
-            let _ = builder.parse_error("parse fail", 3);
-        });
-
-        assert_event_fields(
-            &event,
+        capture_and_assert_event(
+            || {
+                let builder = ReplyBuilder::from_frame(peer, &frame);
+                let _ = builder.parse_error("parse fail", 3);
+            },
             &ExpectedEvent {
                 level: Level::WARN,
                 peer: "127.0.0.1:9000",
@@ -308,13 +314,11 @@ mod tests {
             total_size: 0,
             data_size: 0,
         };
-        let event = capture_single_event(|| {
-            let builder = ReplyBuilder::from_header(peer, header);
-            let _ = builder.missing_reply(5);
-        });
-
-        assert_event_fields(
-            &event,
+        capture_and_assert_event(
+            || {
+                let builder = ReplyBuilder::from_header(peer, header);
+                let _ = builder.missing_reply(5);
+            },
             &ExpectedEvent {
                 level: Level::ERROR,
                 peer: "127.0.0.1:9002",
