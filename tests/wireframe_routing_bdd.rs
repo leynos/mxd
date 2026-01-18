@@ -138,6 +138,34 @@ impl RoutingWorld {
         let tx = assert_step_ok!(reply.as_ref().map_err(ToString::to_string));
         f(tx)
     }
+
+    fn assert_reply_contains_two_strings(&self, field_id: FieldId, first: &str, second: &str) {
+        self.with_reply(|tx| {
+            let params = assert_step_ok!(decode_params(&tx.payload).map_err(|e| e.to_string()));
+            let names =
+                assert_step_ok!(collect_strings(&params, field_id).map_err(|e| e.to_string()));
+            assert_eq!(names, vec![first, second]);
+        });
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "test helper matches step parameters for clarity"
+    )]
+    fn send_header(&self, ty: u16, id: u32, total_size: u32, data_size: u32) {
+        let header = FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty,
+            id,
+            error: 0,
+            total_size,
+            data_size,
+        };
+        let mut header_buf = [0u8; HEADER_LEN];
+        header.write_bytes(&mut header_buf);
+        self.send_raw(&header_buf);
+    }
 }
 
 #[fixture]
@@ -183,18 +211,7 @@ fn when_truncated_payload(world: &RoutingWorld, ty: u16, id: u32) {
     if world.is_skipped() {
         return;
     }
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty,
-        id,
-        error: 0,
-        total_size: 4,
-        data_size: 4,
-    };
-    let mut header_buf = [0u8; HEADER_LEN];
-    header.write_bytes(&mut header_buf);
-    world.send_raw(&header_buf);
+    world.send_header(ty, id, 4, 4);
 }
 
 #[when("I send a transaction with unknown type 65535 and ID {id}")]
@@ -202,18 +219,7 @@ fn when_unknown_with_id(world: &RoutingWorld, id: u32) {
     if world.is_skipped() {
         return;
     }
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 65535,
-        id,
-        error: 0,
-        total_size: 0,
-        data_size: 0,
-    };
-    let mut header_buf = [0u8; HEADER_LEN];
-    header.write_bytes(&mut header_buf);
-    world.send_raw(&header_buf);
+    world.send_header(65535, id, 0, 0);
 }
 
 #[given("I send a login transaction for \"{username}\" with password \"{password}\"")]
@@ -290,12 +296,7 @@ fn then_files(world: &RoutingWorld, first: String, second: String) {
     if world.is_skipped() {
         return;
     }
-    world.with_reply(|tx| {
-        let params = assert_step_ok!(decode_params(&tx.payload).map_err(|e| e.to_string()));
-        let names =
-            assert_step_ok!(collect_strings(&params, FieldId::FileName).map_err(|e| e.to_string()));
-        assert_eq!(names, vec![first.as_str(), second.as_str()]);
-    });
+    world.assert_reply_contains_two_strings(FieldId::FileName, &first, &second);
 }
 
 #[then("the reply lists news categories \"{one}\", \"{two}\", and \"{three}\"")]
@@ -320,13 +321,7 @@ fn then_articles(world: &RoutingWorld, first: String, second: String) {
     if world.is_skipped() {
         return;
     }
-    world.with_reply(|tx| {
-        let params = assert_step_ok!(decode_params(&tx.payload).map_err(|e| e.to_string()));
-        let names = assert_step_ok!(
-            collect_strings(&params, FieldId::NewsArticle).map_err(|e| e.to_string())
-        );
-        assert_eq!(names, vec![first.as_str(), second.as_str()]);
-    });
+    world.assert_reply_contains_two_strings(FieldId::NewsArticle, &first, &second);
 }
 
 #[scenario(path = "tests/features/wireframe_routing.feature", index = 0)]
