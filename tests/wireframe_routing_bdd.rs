@@ -148,20 +148,7 @@ impl RoutingWorld {
         });
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "test helper matches step parameters for clarity"
-    )]
-    fn send_header(&self, ty: u16, id: u32, total_size: u32, data_size: u32) {
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty,
-            id,
-            error: 0,
-            total_size,
-            data_size,
-        };
+    fn send_header(&self, header: &FrameHeader) {
         let mut header_buf = [0u8; HEADER_LEN];
         header.write_bytes(&mut header_buf);
         self.send_raw(&header_buf);
@@ -211,7 +198,16 @@ fn when_truncated_payload(world: &RoutingWorld, ty: u16, id: u32) {
     if world.is_skipped() {
         return;
     }
-    world.send_header(ty, id, 4, 4);
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty,
+        id,
+        error: 0,
+        total_size: 4,
+        data_size: 4,
+    };
+    world.send_header(&header);
 }
 
 #[when("I send a transaction with unknown type 65535 and ID {id}")]
@@ -219,7 +215,16 @@ fn when_unknown_with_id(world: &RoutingWorld, id: u32) {
     if world.is_skipped() {
         return;
     }
-    world.send_header(65535, id, 0, 0);
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 65535,
+        id,
+        error: 0,
+        total_size: 0,
+        data_size: 0,
+    };
+    world.send_header(&header);
 }
 
 #[given("I send a login transaction for \"{username}\" with password \"{password}\"")]
