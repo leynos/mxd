@@ -71,7 +71,7 @@ impl ReplyBuilder {
         let (ty, id) = header_fields(self.header.as_ref());
         warn!(
             %err,
-            %self.peer,
+            peer = %self.peer,
             ty = ?ty,
             id = ?id,
             error_code,
@@ -83,7 +83,7 @@ impl ReplyBuilder {
         let (ty, id) = header_fields(self.header.as_ref());
         error!(
             %err,
-            %self.peer,
+            peer = %self.peer,
             ty = ?ty,
             id = ?id,
             error_code,
@@ -94,7 +94,7 @@ impl ReplyBuilder {
     fn error_without_error(&self, error_code: u32, message: &'static str) {
         let (ty, id) = header_fields(self.header.as_ref());
         error!(
-            %self.peer,
+            peer = %self.peer,
             ty = ?ty,
             id = ?id,
             error_code,
@@ -116,5 +116,180 @@ const fn default_header() -> FrameHeader {
         error: 0,
         total_size: 0,
         data_size: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::HashMap,
+        fmt,
+        net::SocketAddr,
+        sync::{Arc, Mutex},
+    };
+
+    use rstest::rstest;
+    use tracing::{
+        Event,
+        Level,
+        Metadata,
+        Subscriber,
+        field::{Field, Visit},
+        span::{Attributes, Id, Record},
+    };
+
+    use super::ReplyBuilder;
+    use crate::{transaction::FrameHeader, wireframe::test_helpers::transaction_bytes};
+
+    #[derive(Clone, Default)]
+    struct RecordingSubscriber {
+        events: Arc<Mutex<Vec<RecordedEvent>>>,
+    }
+
+    impl RecordingSubscriber {
+        fn take_events(&self) -> Vec<RecordedEvent> {
+            std::mem::take(&mut *self.events.lock().expect("recording lock"))
+        }
+    }
+
+    #[derive(Debug)]
+    struct RecordedEvent {
+        level: Level,
+        fields: HashMap<String, String>,
+        message: Option<String>,
+    }
+
+    #[derive(Default)]
+    struct FieldRecorder {
+        fields: HashMap<String, String>,
+        message: Option<String>,
+    }
+
+    impl FieldRecorder {
+        fn record_value(&mut self, field: &Field, value: String) {
+            if field.name() == "message" {
+                self.message = Some(value);
+            } else {
+                self.fields.insert(field.name().to_string(), value);
+            }
+        }
+    }
+
+    impl Visit for FieldRecorder {
+        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+            self.record_value(field, format!("{value:?}"));
+        }
+
+        fn record_i64(&mut self, field: &Field, value: i64) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_bool(&mut self, field: &Field, value: bool) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.record_value(field, value.to_string());
+        }
+    }
+
+    impl Subscriber for RecordingSubscriber {
+        fn enabled(&self, _metadata: &Metadata<'_>) -> bool { true }
+
+        fn new_span(&self, _attrs: &Attributes<'_>) -> Id { Id::from_u64(1) }
+
+        fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+        fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            let mut recorder = FieldRecorder::default();
+            event.record(&mut recorder);
+            let record = RecordedEvent {
+                level: *event.metadata().level(),
+                fields: recorder.fields,
+                message: recorder.message,
+            };
+            self.events.lock().expect("recording lock").push(record);
+        }
+
+        fn enter(&self, _span: &Id) {}
+
+        fn exit(&self, _span: &Id) {}
+    }
+
+    #[rstest]
+    fn parse_error_logs_transaction_context() {
+        let peer: SocketAddr = "127.0.0.1:9000".parse().expect("peer");
+        let header = FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 200,
+            id: 42,
+            error: 0,
+            total_size: 0,
+            data_size: 0,
+        };
+        let frame = transaction_bytes(&header, &[]);
+        let subscriber = RecordingSubscriber::default();
+        let dispatch = tracing::Dispatch::new(subscriber.clone());
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            let builder = ReplyBuilder::from_frame(peer, &frame);
+            let _ = builder.parse_error("parse fail", 3);
+        });
+
+        let events = subscriber.take_events();
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            event.fields.get("peer").map(String::as_str),
+            Some("127.0.0.1:9000")
+        );
+        assert_eq!(
+            event.fields.get("ty").map(String::as_str),
+            Some("Some(200)")
+        );
+        assert_eq!(event.fields.get("id").map(String::as_str), Some("Some(42)"));
+        assert_eq!(
+            event.fields.get("error_code").map(String::as_str),
+            Some("3")
+        );
+        assert_eq!(
+            event.message.as_deref(),
+            Some("failed to parse transaction from bytes")
+        );
+    }
+
+    #[rstest]
+    fn parse_error_logs_missing_header_as_none() {
+        let peer: SocketAddr = "127.0.0.1:9001".parse().expect("peer");
+        let subscriber = RecordingSubscriber::default();
+        let dispatch = tracing::Dispatch::new(subscriber.clone());
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            let builder = ReplyBuilder::from_frame(peer, &[]);
+            let _ = builder.parse_error("short", 3);
+        });
+
+        let events = subscriber.take_events();
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            event.fields.get("peer").map(String::as_str),
+            Some("127.0.0.1:9001")
+        );
+        assert_eq!(event.fields.get("ty").map(String::as_str), Some("None"));
+        assert_eq!(event.fields.get("id").map(String::as_str), Some("None"));
+        assert_eq!(
+            event.fields.get("error_code").map(String::as_str),
+            Some("3")
+        );
     }
 }
