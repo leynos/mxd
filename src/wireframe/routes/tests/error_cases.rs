@@ -211,25 +211,13 @@ async fn process_transaction_bytes_truncated_input() {
     assert_eq!(reply_header.error, ERR_INTERNAL);
 }
 
-/// Tests that payload length mismatches preserve the original transaction ID.
-#[rstest]
-#[tokio::test]
-async fn process_transaction_bytes_preserves_id_on_payload_mismatch() {
+async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader {
     let pool = dummy_pool();
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
 
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 200,
-        id: 4242,
-        error: 0,
-        total_size: 4,
-        data_size: 4,
-    };
-    let frame = transaction_bytes(&header, &[]);
+    let frame = transaction_bytes(&header, payload);
 
     let result = process_transaction_bytes(
         &frame,
@@ -242,11 +230,27 @@ async fn process_transaction_bytes_preserves_id_on_payload_mismatch() {
     )
     .await;
 
-    let reply_header = FrameHeader::from_bytes(
+    FrameHeader::from_bytes(
         result[..HEADER_LEN]
             .try_into()
             .expect("header slice should be exact size"),
-    );
+    )
+}
+
+/// Tests that payload length mismatches preserve the original transaction ID.
+#[rstest]
+#[tokio::test]
+async fn process_transaction_bytes_preserves_id_on_payload_mismatch() {
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 200,
+        id: 4242,
+        error: 0,
+        total_size: 4,
+        data_size: 4,
+    };
+    let reply_header = assert_error_reply(header, &[]).await;
     assert_eq!(reply_header.id, 4242);
     assert_eq!(reply_header.ty, 200);
     assert_eq!(reply_header.error, ERR_INTERNAL);
@@ -256,11 +260,6 @@ async fn process_transaction_bytes_preserves_id_on_payload_mismatch() {
 #[rstest]
 #[tokio::test]
 async fn process_transaction_bytes_unknown_type() {
-    let pool = dummy_pool();
-    let mut session = Session::default();
-    let peer = "127.0.0.1:12345".parse().expect("valid address");
-    let messaging = NoopOutboundMessaging;
-
     // Create a transaction with unknown type (65535).
     let header = FrameHeader {
         flags: 0,
@@ -271,24 +270,7 @@ async fn process_transaction_bytes_unknown_type() {
         total_size: 0,
         data_size: 0,
     };
-    let frame = transaction_bytes(&header, &[]);
-
-    let result = process_transaction_bytes(
-        &frame,
-        RouteContext {
-            peer,
-            pool,
-            session: &mut session,
-            messaging: &messaging,
-        },
-    )
-    .await;
-
-    let reply_header = FrameHeader::from_bytes(
-        result[..HEADER_LEN]
-            .try_into()
-            .expect("header slice should be exact size"),
-    );
+    let reply_header = assert_error_reply(header, &[]).await;
     assert_eq!(reply_header.is_reply, 1);
     assert_eq!(reply_header.id, 123, "transaction ID should be preserved");
     assert_eq!(reply_header.error, ERR_UNKNOWN_TYPE);
