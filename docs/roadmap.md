@@ -150,7 +150,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   transaction IDs and are logged through the existing tracing infrastructure.
   Status: Completed on 17 January 2026 by introducing a routing reply builder
   that preserves transaction IDs/types for error replies, logging errors with
-  tracing context, and adding unit plus behaviour-driven development (BDD)
+  tracing context, and adding unit tests plus Behavior-Driven Development (BDD)
   coverage. Dependencies: 1.4.4.
 - [ ] 1.4.6. Model routed transactions and session gating in Stateright.
   Acceptance: Stateright models explore login, privilege checks, and
