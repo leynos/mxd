@@ -6,7 +6,7 @@
 
 use std::{fmt::Display, net::SocketAddr};
 
-use tracing::{Level, error, warn};
+use tracing::{error, warn};
 
 use crate::{
     header_util::reply_header,
@@ -17,71 +17,6 @@ use crate::{
 pub(super) struct ReplyBuilder {
     peer: SocketAddr,
     header: Option<FrameHeader>,
-}
-
-macro_rules! log_method {
-    ($name:ident, $level:ident, with_error) => {
-        fn $name(&self, err: &dyn Display, context: &LogContext) {
-            let LogContext {
-                ty,
-                id,
-                error_code,
-                message,
-            } = *context;
-            $level!(
-                %err,
-                peer = %self.peer,
-                ty = ?ty,
-                id = ?id,
-                error_code,
-                "{message}"
-            );
-        }
-    };
-    ($name:ident, $level:ident, without_error) => {
-        fn $name(&self, context: &LogContext) {
-            let LogContext {
-                ty,
-                id,
-                error_code,
-                message,
-            } = *context;
-            $level!(
-                peer = %self.peer,
-                ty = ?ty,
-                id = ?id,
-                error_code,
-                "{message}"
-            );
-        }
-    };
-}
-
-macro_rules! wrapper_method {
-    ($name:ident, $level:expr,with_error) => {
-        fn $name<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
-            let (ty, id) = header_fields(self.header.as_ref());
-            let context = LogContext {
-                ty,
-                id,
-                error_code,
-                message,
-            };
-            self.log_with_context($level, Some(&err), context);
-        }
-    };
-    ($name:ident, $level:expr,without_error) => {
-        fn $name(&self, error_code: u32, message: &'static str) {
-            let (ty, id) = header_fields(self.header.as_ref());
-            let context = LogContext {
-                ty,
-                id,
-                error_code,
-                message,
-            };
-            self.log_with_context($level, None, context);
-        }
-    };
 }
 
 impl ReplyBuilder {
@@ -101,27 +36,27 @@ impl ReplyBuilder {
     }
 
     pub(super) fn parse_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
-        self.warn_with_error(err, error_code, "failed to parse transaction from bytes");
+        self.log_warn_with_error(err, error_code, "failed to parse transaction from bytes");
         self.error_bytes(error_code)
     }
 
     pub(super) fn command_parse_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
-        self.warn_with_error(err, error_code, "failed to parse command from transaction");
+        self.log_warn_with_error(err, error_code, "failed to parse command from transaction");
         self.error_bytes(error_code)
     }
 
     pub(super) fn process_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
-        self.error_with_error(err, error_code, "command processing failed");
+        self.log_error_with_error(err, error_code, "command processing failed");
         self.error_bytes(error_code)
     }
 
     pub(super) fn missing_reply(&self, error_code: u32) -> Vec<u8> {
-        self.error_without_error(error_code, "command processing did not emit a reply");
+        self.log_error_without_error(error_code, "command processing did not emit a reply");
         self.error_bytes(error_code)
     }
 
     pub(super) fn error_transaction(&self, error_code: u32) -> Transaction {
-        let request_header = self.header.clone().unwrap_or_else(default_header);
+        let request_header = self.request_header_or_default();
         Transaction {
             header: reply_header(&request_header, error_code, 0),
             payload: Vec::new(),
@@ -132,48 +67,57 @@ impl ReplyBuilder {
         self.error_transaction(error_code).to_bytes()
     }
 
-    wrapper_method!(warn_with_error, Level::WARN, with_error);
-    wrapper_method!(error_with_error, Level::ERROR, with_error);
-    wrapper_method!(error_without_error, Level::ERROR, without_error);
-
-    fn log_with_context(&self, level: Level, error: Option<&dyn Display>, context: LogContext) {
-        match (level, error) {
-            (Level::WARN, Some(err)) => self.log_warn_with_error(err, &context),
-            (Level::ERROR, Some(err)) => self.log_error_with_error(err, &context),
-            (Level::ERROR, None) => self.log_error_without_error(&context),
-            _ => {
-                debug_assert!(false, "unsupported log context");
-                self.log_error_without_error(&context);
-            }
-        }
+    fn log_warn_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
+        let (ty, id) = self.header_ids();
+        warn!(
+            %err,
+            peer = %self.peer,
+            ty = ?ty,
+            id = ?id,
+            error_code,
+            "{message}"
+        );
     }
 
-    log_method!(log_warn_with_error, warn, with_error);
-    log_method!(log_error_with_error, error, with_error);
-    log_method!(log_error_without_error, error, without_error);
-}
+    fn log_error_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
+        let (ty, id) = self.header_ids();
+        error!(
+            %err,
+            peer = %self.peer,
+            ty = ?ty,
+            id = ?id,
+            error_code,
+            "{message}"
+        );
+    }
 
-#[derive(Clone, Copy)]
-struct LogContext {
-    ty: Option<u16>,
-    id: Option<u32>,
-    error_code: u32,
-    message: &'static str,
-}
+    fn log_error_without_error(&self, error_code: u32, message: &'static str) {
+        let (ty, id) = self.header_ids();
+        error!(
+            peer = %self.peer,
+            ty = ?ty,
+            id = ?id,
+            error_code,
+            "{message}"
+        );
+    }
 
-fn header_fields(header: Option<&FrameHeader>) -> (Option<u16>, Option<u32>) {
-    header.map_or((None, None), |hdr| (Some(hdr.ty), Some(hdr.id)))
-}
+    fn header_ids(&self) -> (Option<u16>, Option<u32>) {
+        self.header
+            .as_ref()
+            .map_or((None, None), |hdr| (Some(hdr.ty), Some(hdr.id)))
+    }
 
-const fn default_header() -> FrameHeader {
-    FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 0,
-        id: 0,
-        error: 0,
-        total_size: 0,
-        data_size: 0,
+    fn request_header_or_default(&self) -> FrameHeader {
+        self.header.clone().unwrap_or(FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 0,
+            id: 0,
+            error: 0,
+            total_size: 0,
+            data_size: 0,
+        })
     }
 }
 

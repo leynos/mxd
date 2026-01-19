@@ -88,7 +88,8 @@ and explicit dependencies. Timeframes are intentionally omitted.
   exhaustion). Status: Completed on 12 December 2025 by adding
   `TransactionStreamReader`, `StreamingTransaction`, and
   `TransactionWriter::write_streaming` with configurable total-size limits and
-  BDD coverage for multi-fragment streaming. Dependencies: 1.3.1.
+  behaviour-driven development (BDD) coverage for multi-fragment streaming.
+  Dependencies: 1.3.1.
 - [x] 1.3.3. Reuse existing parameter encoding helpers within the new codec to
   prevent duplicate implementations. Acceptance: All transactions built through
   the new codec match the byte-for-byte output of the existing encoder for
@@ -149,7 +150,8 @@ and explicit dependencies. Timeframes are intentionally omitted.
   transaction IDs and are logged through the existing tracing infrastructure.
   Status: Completed on 17 January 2026 by introducing a routing reply builder
   that preserves transaction IDs/types for error replies, logging errors with
-  tracing context, and adding unit plus BDD coverage. Dependencies: 1.4.4.
+  tracing context, and adding unit plus behaviour-driven development (BDD)
+  coverage. Dependencies: 1.4.4.
 - [ ] 1.4.6. Model routed transactions and session gating in Stateright.
   Acceptance: Stateright models explore login, privilege checks, and
   out-of-order delivery, and `cargo test -p mxd-verification` passes with

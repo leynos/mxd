@@ -39,8 +39,8 @@ after implementation and verification.
 
 ## Tolerances (Exception Triggers)
 
-- Scope: if more than 10 files change or net changes exceed 400 LOC, stop and
-  escalate.
+- Scope: if more than 10 files change or net changes exceed 400 lines of code
+  (LOC), stop and escalate.
 - Interface: if a public API outside `src/wireframe` or `src/server` must
   change, stop and escalate.
 - Dependencies: if a new external dependency is required, stop and escalate.
@@ -198,7 +198,7 @@ Stage D: Verification and commits.
 Run formatting, lint, and tests per the Makefile targets. Gate each commit with
 `make check-fmt`, `make lint`, and `make test`. If documentation changes, also
 run `make fmt`, `make markdownlint`, and `make nixie`. Capture outputs with
-`tee` logs and summarise results in the Decision Log if any issues arise.
+`tee` logs and summarize results in the Decision Log if any issues arise.
 
 ## Concrete Steps
 
@@ -293,7 +293,7 @@ logging in one place so routing error paths all behave consistently.
 ## Revision note (required when editing an ExecPlan)
 
 Updated the status to COMPLETE, filled in progress timestamps, recorded the
-error-code mapping decision, and summarised outcomes now that the reply builder
+error-code mapping decision, and summarized outcomes now that the reply builder
 implementation and tests are in place.
 
 Revision: 2026-01-18
