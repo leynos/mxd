@@ -212,29 +212,58 @@ mod tests {
         capture_and_assert_event(|| action(peer, header), expected);
     }
 
-    #[rstest]
-    fn parse_error_logs_transaction_context() {
-        let peer: SocketAddr = "127.0.0.1:9000".parse().expect("peer");
-        let header = test_header(200, 42);
-        capture_and_assert_with_header(
-            peer,
-            &header,
-            &ExpectedEvent {
-                level: Level::WARN,
-                peer: "127.0.0.1:9000",
-                ty: Some(200),
-                id: Some(42),
-                error_code: 3,
-                message: Some("failed to parse transaction from bytes"),
-                err: Some("parse fail"),
-            },
-            |peer, header| {
-                let frame = transaction_bytes(header, &[]);
-                let builder = ReplyBuilder::from_frame(peer, &frame);
-                let _ = builder.parse_error("parse fail", 3);
-            },
-        );
+    macro_rules! test_reply_builder_logging {
+        (
+            $name:ident,peer:
+            $peer:expr,header:
+            ($ty:expr, $id:expr),expected:
+            {
+                level:
+                $level:expr,error_code:
+                $error_code:expr,message:
+                $message:expr,err:
+                $err:expr
+            },action:
+            $action:expr $(,)?
+        ) => {
+            #[rstest]
+            fn $name() {
+                let peer: SocketAddr = $peer.parse().expect("peer");
+                let header = test_header($ty, $id);
+                capture_and_assert_with_header(
+                    peer,
+                    &header,
+                    &ExpectedEvent {
+                        level: $level,
+                        peer: $peer,
+                        ty: Some($ty),
+                        id: Some($id),
+                        error_code: $error_code,
+                        message: Some($message),
+                        err: $err,
+                    },
+                    $action,
+                );
+            }
+        };
     }
+
+    test_reply_builder_logging!(
+        parse_error_logs_transaction_context,
+        peer: "127.0.0.1:9000",
+        header: (200, 42),
+        expected: {
+            level: Level::WARN,
+            error_code: 3,
+            message: "failed to parse transaction from bytes",
+            err: Some("parse fail")
+        },
+        action: |peer, header| {
+            let frame = transaction_bytes(header, &[]);
+            let builder = ReplyBuilder::from_frame(peer, &frame);
+            let _ = builder.parse_error("parse fail", 3);
+        },
+    );
 
     #[rstest]
     fn parse_error_logs_missing_header_as_none() {
@@ -256,26 +285,19 @@ mod tests {
         );
     }
 
-    #[rstest]
-    fn missing_reply_logs_without_error_field() {
-        let peer: SocketAddr = "127.0.0.1:9002".parse().expect("peer");
-        let header = test_header(7, 99);
-        capture_and_assert_with_header(
-            peer,
-            &header,
-            &ExpectedEvent {
-                level: Level::ERROR,
-                peer: "127.0.0.1:9002",
-                ty: Some(7),
-                id: Some(99),
-                error_code: 5,
-                message: Some("command processing did not emit a reply"),
-                err: None,
-            },
-            |peer, header| {
-                let builder = ReplyBuilder::from_header(peer, header);
-                let _ = builder.missing_reply(5);
-            },
-        );
-    }
+    test_reply_builder_logging!(
+        missing_reply_logs_without_error_field,
+        peer: "127.0.0.1:9002",
+        header: (7, 99),
+        expected: {
+            level: Level::ERROR,
+            error_code: 5,
+            message: "command processing did not emit a reply",
+            err: None
+        },
+        action: |peer, header| {
+            let builder = ReplyBuilder::from_header(peer, header);
+            let _ = builder.missing_reply(5);
+        },
+    );
 }
