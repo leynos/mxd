@@ -6,8 +6,6 @@
 
 use std::{fmt::Display, net::SocketAddr};
 
-use tracing::{error, warn};
-
 use crate::{
     header_util::reply_header,
     transaction::{FrameHeader, HEADER_LEN, Transaction},
@@ -23,7 +21,7 @@ macro_rules! log_method {
     ($name:ident, $level:ident, with_error) => {
         fn $name<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
             let (ty, id) = self.header_ids();
-            $level!(
+            tracing::$level!(
                 %err,
                 peer = %self.peer,
                 ty = ?ty,
@@ -36,7 +34,7 @@ macro_rules! log_method {
     ($name:ident, $level:ident, without_error) => {
         fn $name(&self, error_code: u32, message: &'static str) {
             let (ty, id) = self.header_ids();
-            $level!(
+            tracing::$level!(
                 peer = %self.peer,
                 ty = ?ty,
                 id = ?id,
