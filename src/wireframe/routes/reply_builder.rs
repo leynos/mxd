@@ -222,13 +222,11 @@ mod tests {
     #[rstest]
     fn parse_error_logs_missing_header_as_none() {
         let peer: SocketAddr = "127.0.0.1:9001".parse().expect("peer");
-        let event = capture_single_event(|| {
-            let builder = ReplyBuilder::from_frame(peer, &[]);
-            let _ = builder.parse_error("short", 3);
-        });
-
-        assert_event_fields(
-            &event,
+        capture_and_assert_event(
+            || {
+                let builder = ReplyBuilder::from_frame(peer, &[]);
+                let _ = builder.parse_error("short", 3);
+            },
             &ExpectedEvent {
                 level: Level::WARN,
                 peer: "127.0.0.1:9001",
