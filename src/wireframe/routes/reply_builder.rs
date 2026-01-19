@@ -265,6 +265,38 @@ mod tests {
         },
     );
 
+    test_reply_builder_logging!(
+        command_parse_error_logs_transaction_context,
+        peer: "127.0.0.1:9003",
+        header: (201, 43),
+        expected: {
+            level: Level::WARN,
+            error_code: 4,
+            message: "failed to parse command from transaction",
+            err: Some("command fail")
+        },
+        action: |peer, header| {
+            let builder = ReplyBuilder::from_header(peer, header);
+            let _ = builder.command_parse_error("command fail", 4);
+        },
+    );
+
+    test_reply_builder_logging!(
+        process_error_logs_transaction_context,
+        peer: "127.0.0.1:9004",
+        header: (202, 44),
+        expected: {
+            level: Level::ERROR,
+            error_code: 6,
+            message: "command processing failed",
+            err: Some("process fail")
+        },
+        action: |peer, header| {
+            let builder = ReplyBuilder::from_header(peer, header);
+            let _ = builder.process_error("process fail", 6);
+        },
+    );
+
     #[rstest]
     fn parse_error_logs_missing_header_as_none() {
         let peer: SocketAddr = "127.0.0.1:9001".parse().expect("peer");
