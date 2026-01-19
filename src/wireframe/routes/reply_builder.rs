@@ -1,6 +1,6 @@
 //! Reply builder for routing errors.
 //!
-//! Centralises error reply construction and logging so routing error paths
+//! Centralizes error reply construction and logging so routing error paths
 //! preserve transaction identifiers whenever possible and emit structured
 //! tracing events.
 
@@ -19,6 +19,34 @@ pub(super) struct ReplyBuilder {
     header: Option<FrameHeader>,
 }
 
+macro_rules! log_method {
+    ($name:ident, $level:ident, with_error) => {
+        fn $name<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
+            let (ty, id) = self.header_ids();
+            $level!(
+                %err,
+                peer = %self.peer,
+                ty = ?ty,
+                id = ?id,
+                error_code,
+                "{message}"
+            );
+        }
+    };
+    ($name:ident, $level:ident, without_error) => {
+        fn $name(&self, error_code: u32, message: &'static str) {
+            let (ty, id) = self.header_ids();
+            $level!(
+                peer = %self.peer,
+                ty = ?ty,
+                id = ?id,
+                error_code,
+                "{message}"
+            );
+        }
+    };
+}
+
 impl ReplyBuilder {
     pub(super) fn from_frame(peer: SocketAddr, frame: &[u8]) -> Self {
         let header = frame
@@ -28,10 +56,10 @@ impl ReplyBuilder {
         Self { peer, header }
     }
 
-    pub(super) const fn from_header(peer: SocketAddr, header: FrameHeader) -> Self {
+    pub(super) fn from_header(peer: SocketAddr, header: &FrameHeader) -> Self {
         Self {
             peer,
-            header: Some(header),
+            header: Some(header.clone()),
         }
     }
 
@@ -67,40 +95,9 @@ impl ReplyBuilder {
         self.error_transaction(error_code).to_bytes()
     }
 
-    fn log_warn_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
-        let (ty, id) = self.header_ids();
-        warn!(
-            %err,
-            peer = %self.peer,
-            ty = ?ty,
-            id = ?id,
-            error_code,
-            "{message}"
-        );
-    }
-
-    fn log_error_with_error<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
-        let (ty, id) = self.header_ids();
-        error!(
-            %err,
-            peer = %self.peer,
-            ty = ?ty,
-            id = ?id,
-            error_code,
-            "{message}"
-        );
-    }
-
-    fn log_error_without_error(&self, error_code: u32, message: &'static str) {
-        let (ty, id) = self.header_ids();
-        error!(
-            peer = %self.peer,
-            ty = ?ty,
-            id = ?id,
-            error_code,
-            "{message}"
-        );
-    }
+    log_method!(log_warn_with_error, warn, with_error);
+    log_method!(log_error_with_error, error, with_error);
+    log_method!(log_error_without_error, error, without_error);
 
     fn header_ids(&self) -> (Option<u16>, Option<u32>) {
         self.header
@@ -260,7 +257,7 @@ mod tests {
         };
         capture_and_assert_event(
             || {
-                let builder = ReplyBuilder::from_header(peer, header);
+                let builder = ReplyBuilder::from_header(peer, &header);
                 let _ = builder.missing_reply(5);
             },
             &ExpectedEvent {

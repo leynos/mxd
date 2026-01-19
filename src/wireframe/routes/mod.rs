@@ -177,7 +177,7 @@ fn handle_command_parse_error(
     header: &FrameHeader,
     e: impl std::fmt::Display,
 ) -> Vec<u8> {
-    ReplyBuilder::from_header(peer, header.clone()).command_parse_error(e, ERR_INTERNAL)
+    ReplyBuilder::from_header(peer, header).command_parse_error(e, ERR_INTERNAL)
 }
 
 /// Handle command processing errors by returning an error reply.
@@ -186,12 +186,12 @@ fn handle_process_error(
     header: &FrameHeader,
     e: impl std::fmt::Display,
 ) -> Vec<u8> {
-    ReplyBuilder::from_header(peer, header.clone()).process_error(e, ERR_INTERNAL)
+    ReplyBuilder::from_header(peer, header).process_error(e, ERR_INTERNAL)
 }
 
 /// Handle missing replies by returning an error reply.
 fn handle_missing_reply(peer: SocketAddr, header: &FrameHeader) -> Vec<u8> {
-    ReplyBuilder::from_header(peer, header.clone()).missing_reply(ERR_INTERNAL)
+    ReplyBuilder::from_header(peer, header).missing_reply(ERR_INTERNAL)
 }
 
 /// Build an error reply as a `HotlineTransaction`.

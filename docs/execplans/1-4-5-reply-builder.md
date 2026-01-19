@@ -8,7 +8,7 @@ Status: COMPLETE
 
 PLANS.md does not exist in this repository.
 
-## Purpose / Big Picture
+## Purpose / big picture
 
 Provide a reply builder in the wireframe routing layer so error replies mirror
 Hotline semantics and logging conventions. Success is visible when error
@@ -37,7 +37,7 @@ after implementation and verification.
 - For Postgres-backed tests, use `pg_embedded_setup_unpriv` as documented in
   `docs/pg-embedded-setup-unpriv-users-guide.md`.
 
-## Tolerances (Exception Triggers)
+## Tolerances (exception triggers)
 
 - Scope: if more than 10 files change or net changes exceed 400 lines of code
   (LOC), stop and escalate.
@@ -69,34 +69,35 @@ after implementation and verification.
 
 ## Progress
 
-    - [x] (2026-01-17 18:40Z) Reviewed routing error paths, reply helpers, and
-      legacy conventions to scope the reply builder.
-    - [x] (2026-01-17 18:55Z) Implemented the reply builder and integrated it
-      with routing error paths to preserve transaction IDs.
-    - [x] (2026-01-17 19:10Z) Added unit and BDD coverage, updated
-          documentation,
-      and marked the roadmap entry as done.
-    - [x] (2026-01-17 19:30Z) Ran formatting, lint, test, and documentation
-      checks; captured results.
-    - [x] (2026-01-18 01:05Z) Added a log-capture test harness for tracing
-      fields, added coverage for missing-reply logging, and reviewed remaining
-      test duplication (no further refactors required).
-    - [x] (2026-01-18 02:15Z) Extracted the tracing capture harness into shared
-      wireframe test helpers and updated reply builder tests to use it.
+- [x] (2026-01-17 18:40Z) Reviewed routing error paths, reply helpers, and
+  legacy conventions to scope the reply builder.
+- [x] (2026-01-17 18:55Z) Implemented the reply builder and integrated it with
+  routing error paths to preserve transaction IDs.
+- [x] (2026-01-17 19:10Z) Added unit and BDD coverage, updated documentation,
+  and marked the roadmap entry as done.
+- [x] (2026-01-17 19:30Z) Ran formatting, lint, test, and documentation checks;
+  captured results.
+- [x] (2026-01-18 01:05Z) Added a log-capture test harness for tracing fields,
+  added coverage for missing-reply logging, and reviewed remaining test
+  duplication (no further refactors required).
+- [x] (2026-01-18 02:15Z) Extracted the tracing capture harness into shared
+  wireframe test helpers and updated reply builder tests to use it.
 
-## Surprises & Discoveries
+## Surprises & discoveries
 
 - None.
 
-## Decision Log
+## Decision log
 
-    - Decision: Keep `ERR_INTERNAL_SERVER` for routing parse and command
-      failures rather than mapping to `ERR_INVALID_PAYLOAD`.
-      Rationale: `docs/design.md` already specifies internal errors for parse
-      failures, and existing tests assert error code 3 for malformed inputs.
-      Date/Author: 2026-01-17 / Codex.
+- Decision: Keep `ERR_INTERNAL_SERVER` for routing parse and command failures
+  rather than mapping to `ERR_INVALID_PAYLOAD`. Rationale: `docs/design.md`
+  already specifies internal errors for parse failures, and existing tests
+  assert error code 3 for malformed inputs. Date/Author: 2026-01-17 / Codex.
+- Decision: Note that initial `make nixie` runs hit `net::ERR_FAILED` during
+  Mermaid CLI rendering; a retry succeeded, suggesting transient network
+  instability in the sandbox. Date/Author: 2026-01-19 / Codex.
 
-## Outcomes & Retrospective
+## Outcomes & retrospective
 
 Error replies now preserve transaction IDs/types when the header is available,
 and routing failures log transaction context through `tracing`. Unit and BDD
@@ -104,7 +105,7 @@ coverage exercise truncated payloads, unknown transactions, and reply
 construction paths. Documentation and roadmap entries were updated to reflect
 the change.
 
-## Context and Orientation
+## Context and orientation
 
 Relevant areas to review before editing:
 
@@ -137,7 +138,7 @@ Terminology used in this plan:
 - Error propagation: mapping internal failures to Hotline error codes and
   emitting a reply without crashing the connection.
 
-## Plan of Work
+## Plan of work
 
 Stage A: Confirm current error handling and conventions (no code changes).
 
@@ -200,7 +201,7 @@ Run formatting, lint, and tests per the Makefile targets. Gate each commit with
 run `make fmt`, `make markdownlint`, and `make nixie`. Capture outputs with
 `tee` logs and summarize results in the Decision Log if any issues arise.
 
-## Concrete Steps
+## Concrete steps
 
 All commands run from the repository root. Pipe long outputs to a log using
 `tee` with `/tmp/$ACTION-$(get-project)-$(git branch --show).out`. If the
@@ -243,7 +244,7 @@ All commands run from the repository root. Pipe long outputs to a log using
     make lint | tee /tmp/lint-$(get-project)-$(git branch --show).out
     make test | tee /tmp/test-$(get-project)-$(git branch --show).out
 
-## Validation and Acceptance
+## Validation and acceptance
 
 Acceptance is met when:
 
@@ -257,18 +258,18 @@ Acceptance is met when:
 - `docs/design.md` reflects the reply builder decision and
   `docs/roadmap.md` marks 1.4.5 as done.
 
-## Idempotence and Recovery
+## Idempotence and recovery
 
 Edits are safe to re-run. If a test fails, fix the issue and re-run the
 relevant command. If documentation linting fails, run `make fmt` and re-run
 `make markdownlint` and `make nixie`.
 
-## Artifacts and Notes
+## Artifacts and notes
 
 Keep the `tee` logs listed above. If any command fails, note the failure and
 resolution in the Decision Log.
 
-## Interfaces and Dependencies
+## Interfaces and dependencies
 
 No new external dependencies are expected. If a new module is added, keep it
 within `src/wireframe/routes/` and document it with a module-level `//!`
@@ -290,7 +291,7 @@ Proposed helper surface (adjust if the codebase requires different naming):
 `ReplyBuilder` should encapsulate header recovery, error-code mapping, and
 logging in one place so routing error paths all behave consistently.
 
-## Revision note (required when editing an ExecPlan)
+## Revision note (required when editing an execplan)
 
 Updated the status to COMPLETE, filled in progress timestamps, recorded the
 error-code mapping decision, and summarized outcomes now that the reply builder
