@@ -1,0 +1,341 @@
+//! Reply builder for routing errors.
+//!
+//! Centralizes error reply construction and logging so routing error paths
+//! preserve transaction identifiers whenever possible and emit structured
+//! tracing events.
+
+use std::{fmt::Display, net::SocketAddr};
+
+use crate::{
+    header_util::reply_header,
+    transaction::{FrameHeader, HEADER_LEN, Transaction},
+};
+
+#[derive(Debug, Clone)]
+pub(super) struct ReplyBuilder {
+    peer: SocketAddr,
+    header: Option<FrameHeader>,
+}
+
+macro_rules! log_method {
+    ($name:ident, $level:ident, with_error) => {
+        fn $name<E: Display>(&self, err: E, error_code: u32, message: &'static str) {
+            let (ty, id) = self.header_ids();
+            tracing::$level!(
+                %err,
+                peer = %self.peer,
+                ty = ?ty,
+                id = ?id,
+                error_code,
+                "{message}"
+            );
+        }
+    };
+    ($name:ident, $level:ident, without_error) => {
+        fn $name(&self, error_code: u32, message: &'static str) {
+            let (ty, id) = self.header_ids();
+            tracing::$level!(
+                peer = %self.peer,
+                ty = ?ty,
+                id = ?id,
+                error_code,
+                "{message}"
+            );
+        }
+    };
+}
+
+impl ReplyBuilder {
+    pub(super) fn from_frame(peer: SocketAddr, frame: &[u8]) -> Self {
+        let header = frame
+            .get(..HEADER_LEN)
+            .and_then(|slice| slice.try_into().ok())
+            .map(FrameHeader::from_bytes);
+        Self { peer, header }
+    }
+
+    pub(super) fn from_header(peer: SocketAddr, header: &FrameHeader) -> Self {
+        Self {
+            peer,
+            header: Some(header.clone()),
+        }
+    }
+
+    pub(super) fn parse_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
+        self.log_warn_with_error(err, error_code, "failed to parse transaction from bytes");
+        self.error_bytes(error_code)
+    }
+
+    pub(super) fn command_parse_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
+        self.log_warn_with_error(err, error_code, "failed to parse command from transaction");
+        self.error_bytes(error_code)
+    }
+
+    pub(super) fn process_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
+        self.log_error_with_error(err, error_code, "command processing failed");
+        self.error_bytes(error_code)
+    }
+
+    pub(super) fn missing_reply(&self, error_code: u32) -> Vec<u8> {
+        self.log_error_without_error(error_code, "command processing did not emit a reply");
+        self.error_bytes(error_code)
+    }
+
+    pub(super) fn error_transaction(&self, error_code: u32) -> Transaction {
+        let request_header = self.request_header_or_default();
+        Transaction {
+            header: reply_header(&request_header, error_code, 0),
+            payload: Vec::new(),
+        }
+    }
+
+    fn error_bytes(&self, error_code: u32) -> Vec<u8> {
+        self.error_transaction(error_code).to_bytes()
+    }
+
+    log_method!(log_warn_with_error, warn, with_error);
+    log_method!(log_error_with_error, error, with_error);
+    log_method!(log_error_without_error, error, without_error);
+
+    fn header_ids(&self) -> (Option<u16>, Option<u32>) {
+        self.header
+            .as_ref()
+            .map_or((None, None), |hdr| (Some(hdr.ty), Some(hdr.id)))
+    }
+
+    fn request_header_or_default(&self) -> FrameHeader {
+        self.header
+            .clone()
+            .unwrap_or_else(Self::default_request_header)
+    }
+
+    const fn default_request_header() -> FrameHeader {
+        FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: 0,
+            id: 0,
+            error: 0,
+            total_size: 0,
+            data_size: 0,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use rstest::rstest;
+    use tracing::Level;
+
+    use super::ReplyBuilder;
+    use crate::{
+        transaction::FrameHeader,
+        wireframe::test_helpers::{
+            tracing::{RecordedEvent, capture_single_event},
+            transaction_bytes,
+        },
+    };
+
+    struct ExpectedEvent<'a> {
+        level: Level,
+        peer: &'a str,
+        ty: Option<u16>,
+        id: Option<u32>,
+        error_code: u32,
+        message: Option<&'a str>,
+        err: Option<&'a str>,
+    }
+
+    fn capture_and_assert_event<F>(action: F, expected: &ExpectedEvent<'_>)
+    where
+        F: FnOnce(),
+    {
+        let event = capture_single_event(action);
+        assert_event_fields(&event, expected);
+    }
+
+    fn assert_event_fields(event: &RecordedEvent, expected: &ExpectedEvent<'_>) {
+        assert_event_metadata(event, expected);
+        assert_event_message(event, expected.message);
+        assert_event_error(event, expected.err);
+    }
+
+    fn assert_event_metadata(event: &RecordedEvent, expected: &ExpectedEvent<'_>) {
+        let expected_ty = format!("{:?}", expected.ty);
+        let expected_id = format!("{:?}", expected.id);
+        let expected_error_code = expected.error_code.to_string();
+
+        assert_eq!(event.level(), expected.level);
+        assert_field_value(event, "peer", expected.peer);
+        assert_field_value(event, "ty", expected_ty.as_str());
+        assert_field_value(event, "id", expected_id.as_str());
+        assert_field_value(event, "error_code", expected_error_code.as_str());
+    }
+
+    fn assert_event_message(event: &RecordedEvent, expected: Option<&str>) {
+        match expected {
+            Some(message) => assert_eq!(event.message(), Some(message)),
+            None => assert!(event.message().is_none(), "expected no message field"),
+        }
+    }
+
+    fn assert_event_error(event: &RecordedEvent, expected: Option<&str>) {
+        match expected {
+            Some(err) => {
+                let value = event.field("err").expect("expected err field");
+                assert_eq!(value.trim_matches('"'), err);
+            }
+            None => assert!(event.field("err").is_none(), "expected no err field"),
+        }
+    }
+
+    fn assert_field_value(event: &RecordedEvent, field: &str, expected: &str) {
+        assert_eq!(event.field(field), Some(expected));
+    }
+
+    fn test_header(ty: u16, id: u32) -> FrameHeader {
+        FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty,
+            id,
+            error: 0,
+            total_size: 0,
+            data_size: 0,
+        }
+    }
+
+    fn capture_and_assert_with_header<F>(
+        peer: SocketAddr,
+        header: &FrameHeader,
+        expected: &ExpectedEvent<'_>,
+        action: F,
+    ) where
+        F: FnOnce(SocketAddr, &FrameHeader),
+    {
+        capture_and_assert_event(|| action(peer, header), expected);
+    }
+
+    #[rustfmt::skip]
+    macro_rules! test_reply_builder_logging {
+        (
+            $name:ident,
+            peer: $peer:expr,
+            header: ($ty:expr, $id:expr),
+            expected: {
+                level: $level:expr,
+                error_code: $error_code:expr,
+                message: $message:expr,
+                err: $err:expr $(,)?
+            },
+            action: $action:expr $(,)?
+        ) => {
+            #[rstest]
+            fn $name() {
+                let peer: SocketAddr = $peer.parse().expect("peer");
+                let header = test_header($ty, $id);
+                capture_and_assert_with_header(
+                    peer,
+                    &header,
+                    &ExpectedEvent {
+                        level: $level,
+                        peer: $peer,
+                        ty: Some($ty),
+                        id: Some($id),
+                        error_code: $error_code,
+                        message: Some($message),
+                        err: $err,
+                    },
+                    $action,
+                );
+            }
+        };
+    }
+
+    test_reply_builder_logging!(
+        parse_error_logs_transaction_context,
+        peer: "127.0.0.1:9000",
+        header: (200, 42),
+        expected: {
+            level: Level::WARN,
+            error_code: 3,
+            message: "failed to parse transaction from bytes",
+            err: Some("parse fail")
+        },
+        action: |peer, header| {
+            let frame = transaction_bytes(header, &[]);
+            let builder = ReplyBuilder::from_frame(peer, &frame);
+            let _ = builder.parse_error("parse fail", 3);
+        },
+    );
+
+    test_reply_builder_logging!(
+        command_parse_error_logs_transaction_context,
+        peer: "127.0.0.1:9003",
+        header: (201, 43),
+        expected: {
+            level: Level::WARN,
+            error_code: 4,
+            message: "failed to parse command from transaction",
+            err: Some("command fail")
+        },
+        action: |peer, header| {
+            let builder = ReplyBuilder::from_header(peer, header);
+            let _ = builder.command_parse_error("command fail", 4);
+        },
+    );
+
+    test_reply_builder_logging!(
+        process_error_logs_transaction_context,
+        peer: "127.0.0.1:9004",
+        header: (202, 44),
+        expected: {
+            level: Level::ERROR,
+            error_code: 6,
+            message: "command processing failed",
+            err: Some("process fail")
+        },
+        action: |peer, header| {
+            let builder = ReplyBuilder::from_header(peer, header);
+            let _ = builder.process_error("process fail", 6);
+        },
+    );
+
+    #[rstest]
+    fn parse_error_logs_missing_header_as_none() {
+        let peer: SocketAddr = "127.0.0.1:9001".parse().expect("peer");
+        capture_and_assert_event(
+            || {
+                let builder = ReplyBuilder::from_frame(peer, &[]);
+                let _ = builder.parse_error("short", 3);
+            },
+            &ExpectedEvent {
+                level: Level::WARN,
+                peer: "127.0.0.1:9001",
+                ty: None,
+                id: None,
+                error_code: 3,
+                message: Some("failed to parse transaction from bytes"),
+                err: Some("short"),
+            },
+        );
+    }
+
+    test_reply_builder_logging!(
+        missing_reply_logs_without_error_field,
+        peer: "127.0.0.1:9002",
+        header: (7, 99),
+        expected: {
+            level: Level::ERROR,
+            error_code: 5,
+            message: "command processing did not emit a reply",
+            err: None
+        },
+        action: |peer, header| {
+            let builder = ReplyBuilder::from_header(peer, header);
+            let _ = builder.missing_reply(5);
+        },
+    );
+}

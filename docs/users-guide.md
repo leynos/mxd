@@ -37,8 +37,10 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   state. The metadata stays available for the lifetime of the connection, so
   compatibility shims can branch on client quirks, and it is cleared during
   teardown to avoid leaking between sessions. The transaction framing codec is
-  in place (including multi-fragment reassembly), but protocol routes remain
-  pending, so behaviour beyond handshake is unchanged.
+  in place (including multi-fragment reassembly). Routing error replies now
+  preserve transaction IDs and types when a header is available, and routing
+  failures are logged through the existing `tracing` infrastructure with
+  transaction context.
 
 ## Selecting a runtime
 

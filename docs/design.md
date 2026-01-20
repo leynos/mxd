@@ -658,7 +658,12 @@ The `process_transaction_bytes()` function implements the core routing logic:
 
 Parse failures at any stage produce an error reply with `ERR_INTERNAL_SERVER`
 (3), while unknown transaction types return `ERR_INTERNAL_SERVER`, matching the
-`handle_unknown()` helper in `src/commands/handlers.rs`.
+`handle_unknown()` helper in `src/commands/handlers.rs`. Routing error replies
+now use `ReplyBuilder` (`src/wireframe/routes/reply_builder.rs`), which
+recovers the request header from raw bytes when possible so error replies
+preserve transaction IDs and types even if the payload is malformed. The reply
+builder emits structured `tracing` events for parse, command, and processing
+failures with peer, transaction metadata, and error code fields.
 
 **Session state management.** Unlike thread-local storage approaches, which
 fail under Tokio's work-stealing scheduler, the middleware passes the session

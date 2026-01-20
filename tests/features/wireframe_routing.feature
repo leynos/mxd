@@ -12,6 +12,13 @@ Feature: Wireframe transaction routing
     When I send a truncated frame of 10 bytes
     Then the reply has error code 3
 
+  Scenario: Preserves transaction ID for truncated payloads
+    Given a wireframe server handling transactions
+    When I send a transaction with type 200 and ID 4242 but a truncated payload
+    Then the reply has transaction ID 4242
+    And the reply has transaction type 200
+    And the reply has error code 3
+
   Scenario: Preserves transaction ID in error replies
     Given a wireframe server handling transactions
     When I send a transaction with unknown type 65535 and ID 12345

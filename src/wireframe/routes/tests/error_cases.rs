@@ -82,7 +82,8 @@ fn error_reply_preserves_header_fields(#[case] ty: u16, #[case] id: u32, #[case]
 /// Tests that malformed input returns an error with `ERR_INTERNAL`.
 #[rstest]
 fn handle_parse_error_returns_internal_error() {
-    let result = handle_parse_error("simulated parse error");
+    let peer = "127.0.0.1:5555".parse().expect("valid peer");
+    let result = handle_parse_error(peer, &[], "simulated parse error");
 
     // Should produce a valid transaction header + empty payload.
     assert!(
@@ -103,6 +104,7 @@ fn handle_parse_error_returns_internal_error() {
 /// Tests that command parse errors preserve the original header fields.
 #[rstest]
 fn handle_command_parse_error_preserves_id() {
+    let peer = "127.0.0.1:5556".parse().expect("valid peer");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -113,7 +115,7 @@ fn handle_command_parse_error_preserves_id() {
         data_size: 0,
     };
 
-    let result = handle_command_parse_error("simulated command error", &header);
+    let result = handle_command_parse_error(peer, &header, "simulated command error");
 
     let reply_header = FrameHeader::from_bytes(
         result[..HEADER_LEN]
@@ -209,26 +211,13 @@ async fn process_transaction_bytes_truncated_input() {
     assert_eq!(reply_header.error, ERR_INTERNAL);
 }
 
-/// Tests that unknown transaction type returns error code 3.
-#[rstest]
-#[tokio::test]
-async fn process_transaction_bytes_unknown_type() {
+async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader {
     let pool = dummy_pool();
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
 
-    // Create a transaction with unknown type (65535).
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 65535,
-        id: 123,
-        error: 0,
-        total_size: 0,
-        data_size: 0,
-    };
-    let frame = transaction_bytes(&header, &[]);
+    let frame = transaction_bytes(&header, payload);
 
     let result = process_transaction_bytes(
         &frame,
@@ -241,11 +230,47 @@ async fn process_transaction_bytes_unknown_type() {
     )
     .await;
 
-    let reply_header = FrameHeader::from_bytes(
+    FrameHeader::from_bytes(
         result[..HEADER_LEN]
             .try_into()
             .expect("header slice should be exact size"),
-    );
+    )
+}
+
+/// Tests that payload length mismatches preserve the original transaction ID.
+#[rstest]
+#[tokio::test]
+async fn process_transaction_bytes_preserves_id_on_payload_mismatch() {
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 200,
+        id: 4242,
+        error: 0,
+        total_size: 4,
+        data_size: 4,
+    };
+    let reply_header = assert_error_reply(header, &[]).await;
+    assert_eq!(reply_header.id, 4242);
+    assert_eq!(reply_header.ty, 200);
+    assert_eq!(reply_header.error, ERR_INTERNAL);
+}
+
+/// Tests that unknown transaction type returns error code 3.
+#[rstest]
+#[tokio::test]
+async fn process_transaction_bytes_unknown_type() {
+    // Create a transaction with unknown type (65535).
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 65535,
+        id: 123,
+        error: 0,
+        total_size: 0,
+        data_size: 0,
+    };
+    let reply_header = assert_error_reply(header, &[]).await;
     assert_eq!(reply_header.is_reply, 1);
     assert_eq!(reply_header.id, 123, "transaction ID should be preserved");
     assert_eq!(reply_header.error, ERR_UNKNOWN_TYPE);
