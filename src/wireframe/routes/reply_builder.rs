@@ -218,19 +218,19 @@ mod tests {
         capture_and_assert_event(|| action(peer, header), expected);
     }
 
+    #[rustfmt::skip]
     macro_rules! test_reply_builder_logging {
         (
-            $name:ident,peer:
-            $peer:expr,header:
-            ($ty:expr, $id:expr),expected:
-            {
-                level:
-                $level:expr,error_code:
-                $error_code:expr,message:
-                $message:expr,err:
-                $err:expr $(,)?
-            },action:
-            $action:expr $(,)?
+            $name:ident,
+            peer: $peer:expr,
+            header: ($ty:expr, $id:expr),
+            expected: {
+                level: $level:expr,
+                error_code: $error_code:expr,
+                message: $message:expr,
+                err: $err:expr $(,)?
+            },
+            action: $action:expr $(,)?
         ) => {
             #[rstest]
             fn $name() {
