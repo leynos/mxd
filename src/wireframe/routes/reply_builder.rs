@@ -104,7 +104,13 @@ impl ReplyBuilder {
     }
 
     fn request_header_or_default(&self) -> FrameHeader {
-        self.header.clone().unwrap_or(FrameHeader {
+        self.header
+            .clone()
+            .unwrap_or_else(Self::default_request_header)
+    }
+
+    const fn default_request_header() -> FrameHeader {
+        FrameHeader {
             flags: 0,
             is_reply: 0,
             ty: 0,
@@ -112,7 +118,7 @@ impl ReplyBuilder {
             error: 0,
             total_size: 0,
             data_size: 0,
-        })
+        }
     }
 }
 
@@ -222,7 +228,7 @@ mod tests {
                 $level:expr,error_code:
                 $error_code:expr,message:
                 $message:expr,err:
-                $err:expr
+                $err:expr $(,)?
             },action:
             $action:expr $(,)?
         ) => {
