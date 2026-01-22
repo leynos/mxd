@@ -82,7 +82,7 @@ tlc-handshake: ## Run TLC on handshake spec
 test: test-postgres test-sqlite test-wireframe-only ## Run sqlite, postgres, and wireframe-only suites
 
 test-postgres: ## Run tests with the postgres backend
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_POSTGRES_FEATURES)
+	RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_POSTGRES_FEATURES)
 
 test-sqlite: ## Run tests with the sqlite backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_SQLITE_FEATURES)
