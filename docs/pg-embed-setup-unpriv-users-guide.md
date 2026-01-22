@@ -621,7 +621,111 @@ still running as `root`, follow these steps:
   the library no longer mutates the process UID mid-test. Configure
   `PG_EMBEDDED_WORKER` instead so the subprocess performs the privilege drop.
 
+## MXD test infrastructure integration
+
+The `test-util` crate provides convenient `rstest` fixtures that wrap
+pg-embed-setup-unpriv with template-based database creation for fast test
+execution.
+
+### Test Fixture Selection Guide
+
+The project provides two PostgreSQL test fixtures with different performance
+characteristics:
+
+| Fixture            | Per-test overhead  | Isolation | Use case                              |
+| ------------------ | ------------------ | --------- | ------------------------------------- |
+| `postgres_db`      | 2-10 seconds       | Full      | Tests modifying cluster settings      |
+| `postgres_db_fast` | 10-50 milliseconds | Database  | Fast isolated databases via templates |
+
+### Using `postgres_db` (Traditional)
+
+Full cluster isolation - each test gets a fresh PostgreSQL instance. This is
+the traditional approach and provides maximum isolation.
+
+```rust
+use rstest::rstest;
+use test_util::postgres_db;
+
+#[rstest]
+fn test_with_full_isolation(postgres_db: PostgresTestDb) {
+    // Each test gets its own cluster
+    // 2-10 seconds startup time
+}
+```
+
+**When to use:**
+
+- Tests that modify cluster-level PostgreSQL settings
+- Tests that require complete isolation from other tests
+- First-time setup or when debugging migration issues
+
+### Using `postgres_db_fast` (Template-based)
+
+Fast database creation via templates. The first test creates a template
+database and runs migrations once. Subsequent tests clone from the template in
+milliseconds.
+
+```rust
+use rstest::rstest;
+use test_util::postgres_db_fast;
+
+#[rstest]
+fn test_with_fast_database(postgres_db_fast: PostgresTestDb) {
+    // Fast database creation via template cloning
+    // 10-50ms for subsequent tests after template creation
+}
+```
+
+**When to use:**
+
+- Large test suites where startup time is significant
+- Tests that don't modify `PostgreSQL` cluster settings
+- Tests that only need database-level isolation
+- When running tests frequently during development
+
+**Performance characteristics:**
+
+- First test: ~5-10 seconds (template creation + migration)
+- Subsequent tests: ~10-50ms (template clone only)
+- 95-99% faster than `postgres_db` for large test suites
+
+**Template naming:**
+
+Template databases are named `template_v{version}` based on the package version
+from `CARGO_PKG_VERSION`. When the version changes, a new template is
+automatically created with updated migrations.
+
+### Thread safety constraints (v0.4.0)
+
+In pg-embed-setup-unpriv v0.4.0, `TestCluster` is intentionally `!Send` (cannot
+be sent between threads) due to its environment variable manipulation via
+`ScopedEnv`. This is a safety feature - environment variables are
+process-global and thread-unsafe.
+
+**Implications:**
+
+- Shared cluster across tests is not supported
+- Each test gets its own `TestCluster` instance
+- Template-based approach provides the primary performance benefit
+- `RSTEST_TIMEOUT` is disabled for postgres tests to avoid Send requirements
+
+### External PostgreSQL support
+
+Both fixtures support the `POSTGRES_TEST_URL` environment variable. When set,
+they will use an external PostgreSQL instance instead of starting an embedded
+one:
+
+```bash
+export POSTGRES_TEST_URL="postgresql://user:pass@localhost/postgres"
+cargo test --features postgres
+```
+
+**Note:** Template-based creation is not yet implemented for external servers.
+When `POSTGRES_TEST_URL` is set, `postgres_db_fast` falls back to regular
+database creation.
+
 ## Further reading
 
 - `README.md` – overview, configuration reference, and troubleshooting tips.
 - `docs/developers-guide.md` – contributor notes and internal testing context.
+- `test-util/src/postgres.rs` – test infrastructure implementation.

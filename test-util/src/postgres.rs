@@ -237,7 +237,8 @@ where
     let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
         .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
 
-    let db_name = generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let db_name =
+        generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
 
     let url = if use_template {
         // Template-based database creation
