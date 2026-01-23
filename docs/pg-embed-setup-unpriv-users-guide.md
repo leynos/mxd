@@ -51,7 +51,7 @@ tool and integrate it into automated test flows.
    cache, 0700 for the runtime and data directories), and initializes the
    cluster with the provided credentials. Invocations that begin as `root`
    prepare directories for `nobody` and execute lifecycle commands through the
-   worker helper so the privileged operations run entirely under the sandbox
+   worker helper, so the privileged operations run entirely under the sandbox
    user. Ownership fix-ups occur on every call so running the tool twice
    remains idempotent.
 
@@ -643,7 +643,7 @@ characteristics:
 
 ### Using `postgres_db` (traditional)
 
-Full cluster isolation - each test gets a fresh PostgreSQL instance. This is
+Full cluster isolation — each test gets a fresh PostgreSQL instance. This is
 the traditional approach and provides maximum isolation.
 
 ```rust
@@ -704,7 +704,7 @@ migrations.
 
 In pg-embed-setup-unpriv v0.4.0, `TestCluster` is intentionally `!Send` (cannot
 be sent between threads) due to its environment variable manipulation via
-`ScopedEnv`. This is a safety feature - environment variables are
+`ScopedEnv`. This is a safety feature — environment variables are
 process-global and thread-unsafe.
 
 **Implications:**
