@@ -55,9 +55,9 @@ tool and integrate it into automated test flows.
    user. Ownership fix-ups occur on every call so running the tool twice
    remains idempotent.
 
-4. Pass the resulting paths and credentials to your tests. If you use
-   `postgresql_embedded` directly after the setup step, it can reuse the staged
-   binaries and data directory without needing `root`.
+4. The resulting paths and credentials are then available for test consumption.
+   When `postgresql_embedded` is started directly after setup, it can reuse the
+   staged binaries and data directory without requiring root privileges.
 
 ## Bootstrap for test suites
 
@@ -217,8 +217,8 @@ fn runs_migrations(test_cluster: TestCluster) {
 }
 ```
 
-The fixture integrates with `rstest-bdd`, a Behavior-Driven Development (BDD)
-crate, so behavior tests can remain declarative as well:
+The fixture integrates with `rstest-bdd`, a Behaviour-Driven Development (BDD)
+crate, so behaviour tests can remain declarative as well:
 
 ```rust,no_run
 use pg_embedded_setup_unpriv::{test_support::test_cluster, TestCluster};
