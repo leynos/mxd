@@ -134,7 +134,7 @@ Enable the feature in your `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-pg-embed-setup-unpriv = { version = "0.2", features = ["async-api"] }
+pg-embed-setup-unpriv = { version = "0.4", features = ["async-api"] }
 ```
 
 Then use `start_async()` and `stop_async()` in your async tests:
@@ -638,8 +638,8 @@ characteristics:
 
 | Fixture            | Per-test overhead  | Isolation | Use case                              |
 | ------------------ | ------------------ | --------- | ------------------------------------- |
-| `postgres_db`      | 2-10 seconds       | Full      | Tests modifying cluster settings      |
-| `postgres_db_fast` | 10-50 milliseconds | Database  | Fast isolated databases via templates |
+| `postgres_db`      | 2–10 seconds       | Full      | Tests modifying cluster settings      |
+| `postgres_db_fast` | 10–50 milliseconds | Database  | Fast isolated databases via templates |
 
 ### Using `postgres_db` (Traditional)
 
@@ -731,6 +731,6 @@ database creation.
 
 ## Further reading
 
-- `README.md` – overview, configuration reference, and troubleshooting tips.
-- `docs/developers-guide.md` – contributor notes and internal testing context.
-- `test-util/src/postgres.rs` – test infrastructure implementation.
+- `README.md` — overview, configuration reference, and troubleshooting tips.
+- `docs/developers-guide.md` — contributor notes and internal testing context.
+- `test-util/src/postgres.rs` — test infrastructure implementation.
