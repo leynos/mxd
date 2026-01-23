@@ -130,14 +130,14 @@ from within a runtime" because it creates its own internal Tokio runtime. Async
 contexts require enabling the `async-api` feature and using the async
 constructor and shutdown methods.
 
-Enable the feature in your `Cargo.toml`:
+Enable the feature in the project's `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
 pg-embed-setup-unpriv = { version = "0.4", features = ["async-api"] }
 ```
 
-Then use `start_async()` and `stop_async()` in your async tests:
+Then use `start_async()` and `stop_async()` in async tests:
 
 ```rust,no_run
 use pg_embedded_setup_unpriv::{TestCluster, error::BootstrapResult};
@@ -291,8 +291,8 @@ overhead from seconds to milliseconds.
 `TestCluster::connection()` exposes `TestClusterConnection`, a lightweight view
 over the running cluster's connection metadata. Use it to read the host, port,
 superuser name, generated password, or the `.pgpass` path without cloning the
-entire bootstrap struct. When you need to persist those values beyond the guard
-you can call `metadata()` to obtain an owned `ConnectionMetadata`.
+entire bootstrap struct. To persist those values beyond the guard, call
+`metadata()` to obtain an owned `ConnectionMetadata`.
 
 Enable the `diesel-support` feature to call `diesel_connection()` and obtain a
 ready-to-use `diesel::PgConnection`. The default feature set keeps Diesel
@@ -444,8 +444,8 @@ let template_name = format!("template_{}", &hash[..8]);
 # }
 ```
 
-If you already track a migration version, include it in the template name
-instead (for example, `format!("template_v{SCHEMA_VERSION}")`). This keeps
+Projects that already track a migration version can include it in the template
+name instead (for example, `format!("template_v{SCHEMA_VERSION}")`). This keeps
 template invalidation explicit without hashing the migration directory.
 
 ### Performance comparison
@@ -603,19 +603,19 @@ still running as `root`, follow these steps:
   without interactive prompts. The
   `bootstrap_for_tests().environment.pgpass_file` helper returns the path if
   the bootstrap ran inside the test process.
-- Provide `TZDIR=/usr/share/zoneinfo` (or the correct path for your
-  distribution) if you are running the CLI. The library helper sets `TZ`
+- Provide `TZDIR=/usr/share/zoneinfo` (or the correct path for the host
+  distribution) when running the CLI. The library helper sets `TZ`
   automatically and, on Unix-like hosts, also seeds `TZDIR` when it discovers a
   valid timezone database.
 
 ## Known issues and mitigations
 
 - **TimeZone errors**: The embedded cluster loads timezone data from the host
-  `tzdata` package. Install it inside the execution environment if you see
-  `invalid value for parameter "TimeZone": "UTC"`.
+  `tzdata` package. Install it inside the execution environment when
+  `invalid value for parameter "TimeZone": "UTC"` appears.
 - **Download rate limits**: `postgresql_embedded` fetches binaries from the
-  Theseus GitHub releases. Supply a `GITHUB_TOKEN` environment variable if you
-  hit rate limits in CI.
+  Theseus GitHub releases. Supply a `GITHUB_TOKEN` environment variable to avoid
+  rate limits in CI.
 - **CLI arguments in tests**: `PgEnvCfg::load()` ignores `std::env::args` during
   library use so Cargo test filters (for example,
   `bootstrap_privileges::bootstrap_as_root`) do not trip the underlying Clap
@@ -631,7 +631,7 @@ The `test-util` crate provides convenient `rstest` fixtures that wrap
 pg-embed-setup-unpriv with template-based database creation for fast test
 execution.
 
-### Test Fixture Selection Guide
+### Test fixture selection guide
 
 The project provides two PostgreSQL test fixtures with different performance
 characteristics:
@@ -641,7 +641,7 @@ characteristics:
 | `postgres_db`      | 2–10 seconds       | Full      | Tests modifying cluster settings      |
 | `postgres_db_fast` | 10–50 milliseconds | Database  | Fast isolated databases via templates |
 
-### Using `postgres_db` (Traditional)
+### Using `postgres_db` (traditional)
 
 Full cluster isolation - each test gets a fresh PostgreSQL instance. This is
 the traditional approach and provides maximum isolation.
@@ -663,7 +663,7 @@ fn test_with_full_isolation(postgres_db: PostgresTestDb) {
 - Tests that require complete isolation from other tests
 - First-time setup or when debugging migration issues
 
-### Using `postgres_db_fast` (Template-based)
+### Using `postgres_db_fast` (template-based)
 
 Fast database creation via templates. The first test creates a template
 database and runs migrations once. Subsequent tests clone from the template in
