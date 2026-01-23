@@ -48,7 +48,7 @@ tool and integrate it into automated test flows.
 3. Run the helper (`cargo run --release --bin pg_embedded_setup_unpriv`). The
    command downloads the specified PostgreSQL release, ensures the directories
    exist, applies PostgreSQL-compatible permissions (0755 for the installation
-   cache, 0700 for the runtime and data directories), and initialises the
+   cache, 0700 for the runtime and data directories), and initializes the
    cluster with the provided credentials. Invocations that begin as `root`
    prepare directories for `nobody` and execute lifecycle commands through the
    worker helper so the privileged operations run entirely under the sandbox
@@ -75,9 +75,13 @@ use pg_embedded_setup_unpriv::error::BootstrapResult;
 fn bootstrap() -> BootstrapResult<TestBootstrapSettings> {
     let prepared = bootstrap_for_tests()?;
     for (key, value) in prepared.environment.to_env() {
-        match value {
-            Some(value) => std::env::set_var(&key, value),
-            None => std::env::remove_var(&key),
+        // SAFETY: This example assumes single-threaded test setup where
+        // environment variable mutation is safe.
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
         }
     }
     Ok(prepared)
@@ -213,8 +217,8 @@ fn runs_migrations(test_cluster: TestCluster) {
 }
 ```
 
-The fixture integrates with `rstest-bdd`, a Behaviour-Driven Development (BDD)
-crate, so behaviour tests can remain declarative as well:
+The fixture integrates with `rstest-bdd`, a Behavior-Driven Development (BDD)
+crate, so behavior tests can remain declarative as well:
 
 ```rust,no_run
 use pg_embedded_setup_unpriv::{test_support::test_cluster, TestCluster};
@@ -691,9 +695,10 @@ fn test_with_fast_database(postgres_db_fast: PostgresTestDb) {
 
 **Template naming:**
 
-Template databases are named `template_v{version}` based on the package version
-from `CARGO_PKG_VERSION`. When the version changes, a new template is
-automatically created with updated migrations.
+Template databases are named `template_{hash}` where `{hash}` is derived from
+the content of the `migrations` directory using `hash_directory`. When any
+migration file changes, a new template is automatically created with updated
+migrations.
 
 ### Thread safety constraints (v0.4.0)
 

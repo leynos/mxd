@@ -13,7 +13,12 @@ use std::{
     time::Duration,
 };
 
-use pg_embedded_setup_unpriv::TestCluster;
+use eyre::eyre;
+use pg_embedded_setup_unpriv::{
+    BootstrapResult as PgBootstrapResult,
+    TestCluster,
+    test_support::hash_directory,
+};
 use postgres::{Client, NoTls};
 use rstest::fixture;
 use url::Url;
@@ -177,11 +182,14 @@ fn generate_db_name(prefix: &str) -> Result<DatabaseName, DatabaseNameError> {
     DatabaseName::new(name)
 }
 
-/// Generates a stable template name based on migration version.
+/// Generates a stable template name based on migration content hash.
 /// Template name changes when migrations change, forcing template recreation.
-fn migration_template_name() -> Result<DatabaseName, DatabaseNameError> {
-    let version = env!("CARGO_PKG_VERSION").replace('.', "_");
-    DatabaseName::new(format!("template_v{version}"))
+fn migration_template_name() -> Result<DatabaseName, Box<dyn StdError + Send + Sync>> {
+    let hash = hash_directory("migrations")?;
+    // Use first 8 chars of hash for a reasonably unique but readable name.
+    // The hash is always hexadecimal ASCII, so char boundary indexing is safe.
+    let prefix = hash.get(..8).unwrap_or(&hash);
+    DatabaseName::new(format!("template_{prefix}")).map_err(|e| Box::new(e) as _)
 }
 
 /// Error type distinguishing `PostgreSQL` unavailability from initialization failures.
@@ -216,7 +224,7 @@ impl StdError for EmbeddedPgError {
 /// When `use_template` is true:
 /// - First test creates a template database and runs migrations
 /// - Subsequent tests clone from template (10-50ms vs 2-10s)
-/// - Template name is based on `CARGO_PKG_VERSION`
+/// - Template name is based on migration directory content hash
 ///
 /// When `use_template` is false:
 /// - Each test gets a fresh database with migrations
@@ -241,41 +249,24 @@ where
         generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
 
     let url = if use_template {
-        // Template-based database creation
-        let template_name =
-            migration_template_name().map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+        // Template-based database creation using ensure_template_exists for
+        // concurrency-safe template creation with per-template locking.
+        let template_name = migration_template_name().map_err(EmbeddedPgError::InitFailed)?;
 
-        // Create template if it doesn't exist
-        if !database_exists(&admin_url, &template_name).map_err(EmbeddedPgError::InitFailed)? {
-            // Create template database and run migrations
-            let (template_url, _) =
-                create_external_db(&admin_url).map_err(EmbeddedPgError::InitFailed)?;
-
-            // Get the actual template name from the URL for renaming
-            let temp_name = DatabaseName::new(
-                Url::parse(template_url.as_ref())
-                    .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?
-                    .path()
-                    .trim_start_matches('/')
-                    .to_owned(),
+        // ensure_template_exists handles the race condition by using per-template
+        // locking - only one caller creates the template while others wait.
+        cluster
+            .ensure_template_exists(
+                template_name.as_ref(),
+                |template_db| -> PgBootstrapResult<()> {
+                    // Run migrations on the newly created template database
+                    let template_url = DatabaseUrl::parse(&connection.database_url(template_db))
+                        .map_err(|e| eyre!("failed to parse template URL: {e}"))?;
+                    setup(&template_url).map_err(|e| eyre!("migration failed: {e}"))?;
+                    Ok(())
+                },
             )
             .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-
-            // Run migrations on the temporary database
-            setup(&template_url).map_err(EmbeddedPgError::InitFailed)?;
-
-            // Rename to template name
-            let mut client = Client::connect(admin_url.as_ref(), NoTls)
-                .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-            let rename_query = format!(
-                "ALTER DATABASE \"{}\" RENAME TO \"{}\"",
-                temp_name.as_ref(),
-                template_name.as_ref()
-            );
-            client
-                .batch_execute(&rename_query)
-                .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-        }
 
         // Clone from template
         create_db_from_template(&admin_url, &db_name, &template_name)
@@ -324,20 +315,6 @@ fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
             eprintln!("error dropping database {db_name}: {e}");
         }
     }
-}
-
-/// Checks if a database exists.
-fn database_exists(
-    admin_url: &DatabaseUrl,
-    db_name: &DatabaseName,
-) -> Result<bool, Box<dyn StdError + Send + Sync>> {
-    let mut client = Client::connect(admin_url.as_ref(), NoTls)?;
-    let query = format!(
-        "SELECT 1 FROM pg_database WHERE datname = '{}'",
-        db_name.as_ref()
-    );
-    let result = client.query(&query, &[])?;
-    Ok(!result.is_empty())
 }
 
 /// Creates a database from a template.

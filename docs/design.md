@@ -941,7 +941,7 @@ implementation differences. For instance:
   `BOOLEAN` is fine in Postgres and in SQLite it ends up as 0/1 integer
   (Diesel’s bool mapping covers
   it)([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L65-L68));
-  `INTEGER` for integer types, etc. Some types don’t line up – e.g. `BYTEA` vs
+   `INTEGER` for integer types, etc. Some types don’t line up – e.g. `BYTEA` vs
   `BLOB` for binary data – but we avoid unsupported types or handle them
   conditionally. The doc notes that JSONB or timezone-aware timestamps aren’t
   portable, so we either avoid them or supply separate SQL. For example, we
