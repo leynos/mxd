@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 
 use mxd_verification::session_model::SessionModel;
+use rstest::rstest;
 use stateright::{Checker, Expectation, HasDiscoveries, Model};
 
 const MIN_STATE_COUNT: usize = 10;
@@ -67,17 +68,23 @@ fn verify_model(model: &SessionModel) -> VerificationSummary {
     }
 }
 
-#[test]
-fn session_model_verifies_with_default_config() {
-    let model = SessionModel::default();
+#[rstest]
+#[case("default config", SessionModel::default())]
+#[case("single client", SessionModel::minimal())]
+#[case("concurrent clients", SessionModel::with_clients(3))]
+fn session_model_verifies(#[case] name: &str, #[case] model: SessionModel) {
     let summary = verify_model(&model);
     assert!(
         summary.is_verified(),
-        "reachability missing: {}, safety counterexamples: {}",
+        "case {name}: reachability missing: {}, safety counterexamples: {}",
         summary.missing_reachability,
         summary.safety_counterexamples
     );
-    assert!(summary.unique_state_count >= MIN_STATE_COUNT);
+    assert!(
+        summary.unique_state_count >= MIN_STATE_COUNT,
+        "case {name}: expected >= {MIN_STATE_COUNT} states, got {}",
+        summary.unique_state_count
+    );
 }
 
 #[test]
@@ -95,30 +102,4 @@ fn session_model_explores_nontrivial_state_space() {
         "expected >= {MIN_STATE_COUNT} states, got {}",
         summary.unique_state_count
     );
-}
-
-#[test]
-fn session_model_verifies_single_client() {
-    let model = SessionModel::minimal();
-    let summary = verify_model(&model);
-    assert!(
-        summary.is_verified(),
-        "reachability missing: {}, safety counterexamples: {}",
-        summary.missing_reachability,
-        summary.safety_counterexamples
-    );
-    assert!(summary.unique_state_count >= MIN_STATE_COUNT);
-}
-
-#[test]
-fn session_model_verifies_concurrent_clients() {
-    let model = SessionModel::with_clients(3);
-    let summary = verify_model(&model);
-    assert!(
-        summary.is_verified(),
-        "reachability missing: {}, safety counterexamples: {}",
-        summary.missing_reachability,
-        summary.safety_counterexamples
-    );
-    assert!(summary.unique_state_count >= MIN_STATE_COUNT);
 }
