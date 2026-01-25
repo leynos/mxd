@@ -16,7 +16,7 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 
@@ -159,8 +159,8 @@ fn then_failure(world: &CreateUserWorld, message: String) {
     world.assert_failure_contains(&message);
 }
 
-#[scenario(path = "tests/features/create_user_command.feature", index = 0)]
-fn create_user_happy(world: CreateUserWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/create_user_command.feature", index = 1)]
-fn create_user_missing_password(world: CreateUserWorld) { let _ = world; }
+scenarios!(
+    "tests/features",
+    tags = "@create-user",
+    fixtures = [world: CreateUserWorld]
+);

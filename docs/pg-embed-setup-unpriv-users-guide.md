@@ -614,8 +614,8 @@ still running as `root`, follow these steps:
   `tzdata` package. Install it inside the execution environment when
   `invalid value for parameter "TimeZone": "UTC"` appears.
 - **Download rate limits**: `postgresql_embedded` fetches binaries from the
-  Theseus GitHub releases. Supply a `GITHUB_TOKEN` environment variable to avoid
-  rate limits in CI.
+  Theseus GitHub releases. Supply a `GITHUB_TOKEN` environment variable to
+  avoid rate limits in CI.
 - **CLI arguments in tests**: `PgEnvCfg::load()` ignores `std::env::args` during
   library use so Cargo test filters (for example,
   `bootstrap_privileges::bootstrap_as_root`) do not trip the underlying Clap
@@ -636,10 +636,10 @@ execution.
 The project provides two PostgreSQL test fixtures with different performance
 characteristics:
 
-| Fixture            | Per-test overhead  | Isolation | Use case                              |
-| ------------------ | ------------------ | --------- | ------------------------------------- |
-| `postgres_db`      | 2–10 seconds       | Full      | Tests modifying cluster settings      |
-| `postgres_db_fast` | 10–50 milliseconds | Database  | Fast isolated databases via templates |
+| Fixture            | Per-test overhead    | Isolation | Use case                              |
+| ------------------ | -------------------- | --------- | ------------------------------------- |
+| `postgres_db`      | 2–10 seconds         | Full      | Tests modifying cluster settings      |
+| `postgres_db_fast` | 10–50 milliseconds   | Database  | Fast isolated databases via templates |
 
 ### Using `postgres_db` (traditional)
 

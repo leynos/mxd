@@ -37,5 +37,5 @@ debugging-plan-*.md
 # TLC model checker generated files
 states/
 
-# AI tool directories
+# grepai index                                                                                                                                                                   
 .grepai/

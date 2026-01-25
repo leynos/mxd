@@ -1,3 +1,4 @@
+@create-user
 Feature: create-user command uses shared server library
   Scenario: successful create-user invocation
     Given a temporary sqlite database
