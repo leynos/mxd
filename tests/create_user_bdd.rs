@@ -20,6 +20,40 @@ use rstest_bdd_macros::{given, scenarios, then, when};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 
+#[derive(Debug, Clone)]
+struct Username(String);
+
+impl From<String> for Username {
+    fn from(s: String) -> Self { Self(s) }
+}
+
+impl AsRef<str> for Username {
+    fn as_ref(&self) -> &str { &self.0 }
+}
+
+impl std::str::FromStr for Username {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> { Ok(Self(s.to_owned())) }
+}
+
+#[derive(Debug, Clone)]
+struct Password(String);
+
+impl From<String> for Password {
+    fn from(s: String) -> Self { Self(s) }
+}
+
+impl Password {
+    fn into_inner(self) -> String { self.0 }
+}
+
+impl std::str::FromStr for Password {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> { Ok(Self(s.to_owned())) }
+}
+
 type CommandResult = Result<()>;
 
 struct CreateUserWorld {
@@ -51,10 +85,14 @@ impl CreateUserWorld {
 
     fn database_path(&self) -> String { self.config.borrow().database.clone() }
 
-    fn run_command(&self, username: String, password: Option<String>) {
+    fn run_command(&self, username: Username, password: Option<Password>) {
+        let password_value = password.map(|value| {
+            let inner = value.into_inner();
+            Password(inner)
+        });
         let args = CreateUserArgs {
-            username: Some(username),
-            password,
+            username: Some(username.0),
+            password: password_value.map(|p| p.0),
         };
         let cli = ResolvedCli {
             config: self.config.borrow().clone(),
@@ -64,9 +102,9 @@ impl CreateUserWorld {
         self.outcome.borrow_mut().replace(result);
     }
 
-    fn assert_user_exists(&self, username: &str) -> Result<()> {
+    fn assert_user_exists(&self, username: &Username) -> Result<()> {
         let db = self.database_path();
-        let lookup = username.to_owned();
+        let lookup = username.as_ref().to_owned();
         let fetched = self.rt.block_on(async move {
             let mut conn = DbConnection::establish(&db)
                 .await
@@ -76,9 +114,10 @@ impl CreateUserWorld {
                 .context("failed to query user")
         })?;
         let found = fetched.map(|u| u.username);
-        if found.as_deref() != Some(username) {
+        if found.as_deref() != Some(username.as_ref()) {
             return Err(anyhow!(
-                "expected user '{username}' to exist, found {found:?}"
+                "expected user '{}' to exist, found {found:?}",
+                username.as_ref()
             ));
         }
         Ok(())
@@ -128,12 +167,12 @@ fn given_config_bound(world: &CreateUserWorld) {
 }
 
 #[when("the operator runs create-user with username \"{username}\" and password \"{password}\"")]
-fn when_run_with_password(world: &CreateUserWorld, username: String, password: String) {
+fn when_run_with_password(world: &CreateUserWorld, username: Username, password: Password) {
     world.run_command(username, Some(password));
 }
 
 #[when("the operator runs create-user with username \"{username}\" and no password")]
-fn when_run_without_password(world: &CreateUserWorld, username: String) {
+fn when_run_without_password(world: &CreateUserWorld, username: Username) {
     world.run_command(username, None);
 }
 
@@ -148,7 +187,7 @@ fn then_success(world: &CreateUserWorld) {
 }
 
 #[then("the database contains a user named \"{username}\"")]
-fn then_user_exists(world: &CreateUserWorld, username: String) {
+fn then_user_exists(world: &CreateUserWorld, username: Username) {
     if let Err(err) = world.assert_user_exists(&username) {
         panic!("user existence check failed: {err}");
     }
