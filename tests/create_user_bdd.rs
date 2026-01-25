@@ -86,13 +86,10 @@ impl CreateUserWorld {
     fn database_path(&self) -> String { self.config.borrow().database.clone() }
 
     fn run_command(&self, username: Username, password: Option<Password>) {
-        let password_value = password.map(|value| {
-            let inner = value.into_inner();
-            Password(inner)
-        });
+        let password_value = password.map(Password::into_inner);
         let args = CreateUserArgs {
             username: Some(username.0),
-            password: password_value.map(|p| p.0),
+            password: password_value,
         };
         let cli = ResolvedCli {
             config: self.config.borrow().clone(),

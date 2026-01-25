@@ -39,73 +39,62 @@ scenario exercises the async scenario path described in
 
 ## Risks
 
-    - Risk: v0.4.0 macro changes could introduce compile-time validation
-      breakage or warnings in existing step definitions.
-      Severity: medium
-      Likelihood: medium
-      Mitigation: upgrade in a focused commit, run `make check-fmt` and a
-      targeted test subset first, then the full suite.
-
-    - Risk: Async scenario support requires different patterns for async work;
-      existing steps call `Runtime::block_on`, which may not be compatible with
-      async scenarios.
-      Severity: medium
-      Likelihood: high
-      Mitigation: only convert scenarios where async work can move into async
-      fixtures or the async test body; otherwise leave steps synchronous.
-
-    - Risk: Fixture lint safety improvements may change how unused fixtures are
-      treated, leading to new or removed warnings.
-      Severity: low
-      Likelihood: medium
-      Mitigation: remove manual `let _ = world;` only after confirming the new
-      macro suppresses unused variable warnings for the affected cases.
+- Risk: v0.4.0 macro changes could introduce compile-time validation breakage
+  or warnings in existing step definitions. Severity: medium Likelihood: medium
+  Mitigation: upgrade in a focused commit, run `make check-fmt` and a targeted
+  test subset first, then the full suite.
+- Risk: Async scenario support requires different patterns for async work;
+  existing steps call `Runtime::block_on`, which may not be compatible with
+  async scenarios. Severity: medium Likelihood: high Mitigation: only convert
+  scenarios where async work can move into async fixtures or the async test
+  body; otherwise leave steps synchronous.
+- Risk: Fixture lint safety improvements may change how unused fixtures are
+  treated, leading to new or removed warnings. Severity: low Likelihood: medium
+  Mitigation: remove manual `let _ = world;` only after confirming the new
+  macro suppresses unused variable warnings for the affected cases.
 
 ## Progress
 
-    - [x] (2026-01-25 00:00Z) Read `docs/rstest-bdd-users-guide.md` async and
-      fixture lint safety guidance.
-    - [x] (2026-01-25 00:00Z) Inventory BDD tests and identify worlds using
-      `tokio::runtime::Runtime` via `leta` and `rg`.
-    - [x] (2026-01-25 00:10Z) Begin implementation and record plan updates.
-    - [x] (2026-01-25 00:14Z) Update rstest-bdd dependencies to v0.4.0.
-    - [x] (2026-01-25 00:16Z) Select runtime-selection scenario for async
-      execution and convert it to Tokio current-thread.
-    - [x] (2026-01-25 00:18Z) Adopt fixture lint safety improvements by
-      switching create-user BDD tests to `scenarios!` with tags.
-    - [x] (2026-01-25 01:05Z) Run `make fmt`, `make check-fmt`,
-      `make markdownlint`, `make nixie`, `make lint`, and `make test`.
-    - [ ] Commit in atomic steps.
+- [x] (2026-01-25 00:00Z) Read `docs/rstest-bdd-users-guide.md` async and
+  fixture lint safety guidance.
+- [x] (2026-01-25 00:00Z) Inventory BDD tests and identify worlds using
+  `tokio::runtime::Runtime` via `leta` and `rg`.
+- [x] (2026-01-25 00:10Z) Begin implementation and record plan updates.
+- [x] (2026-01-25 00:14Z) Update rstest-bdd dependencies to v0.4.0.
+- [x] (2026-01-25 00:16Z) Select runtime-selection scenario for async
+  execution and convert it to Tokio current-thread.
+- [x] (2026-01-25 00:18Z) Adopt fixture lint safety improvements by switching
+  create-user BDD tests to `scenarios!` with tags.
+- [x] (2026-01-25 01:05Z) Run `make fmt`, `make check-fmt`,
+  `make markdownlint`, `make nixie`, `make lint`, and `make test`.
+- [ ] Commit in atomic steps.
 
 ## Surprises & Discoveries
 
-    - Observation: No `scenarios!` macro usage exists in `tests/`.
-      Evidence: `rg "scenarios!" tests` returned no matches.
-      Impact: fixture lint safety improvements may require either adopting
-      `scenarios!` or confirming `#[scenario]` now suppresses unused fixtures.
-    - Observation: Formatting tools updated documentation tables and the
-      `.gitignore` comment describing the grepai index.
-      Evidence: `make fmt` changed `docs/pg-embed-setup-unpriv-users-guide.md`,
-      `docs/rstest-bdd-users-guide.md`, and `.gitignore`.
-      Impact: include these in the documentation commit to keep the tree clean.
+- Observation: No `scenarios!` macro usage exists in `tests/`.
+  Evidence: `rg "scenarios!" tests` returned no matches. Impact: fixture lint
+  safety improvements may require either adopting `scenarios!` or confirming
+  `#[scenario]` now suppresses unused fixtures.
+- Observation: Formatting tools updated documentation tables and the
+  `.gitignore` comment describing the grepai index. Evidence: `make fmt`
+  changed `docs/pg-embed-setup-unpriv-users-guide.md`,
+  `docs/rstest-bdd-users-guide.md`, and `.gitignore`. Impact: include these in
+  the documentation commit to keep the tree clean.
 
 ## Decision Log
 
-    - Decision: Keep step functions synchronous and prefer async fixtures or
-      async scenario bodies when adopting async execution.
-      Rationale: The v0.4.0 guidance states steps remain synchronous and warns
-      against nested runtimes inside async scenarios.
-      Date/Author: 2026-01-25 / Codex
-    - Decision: Use `scenarios!` with a feature tag to generate create-user
-      tests and rely on the macro's unused-fixture suppression.
-      Rationale: Demonstrates the fixture lint safety improvements without
-      duplicating existing scenario tests.
-      Date/Author: 2026-01-25 / Codex
-    - Decision: Convert `tests/runtime_selection_bdd.rs` scenarios to async
-      Tokio current-thread tests to exercise async scenario support.
-      Rationale: The scenarios are synchronous and safe to execute under the
-      async runner without nested runtimes.
-      Date/Author: 2026-01-25 / Codex
+- Decision: Keep step functions synchronous and prefer async fixtures or async
+  scenario bodies when adopting async execution. Rationale: The v0.4.0 guidance
+  states steps remain synchronous and warns against nested runtimes inside
+  async scenarios. Date/Author: 2026-01-25 / Codex
+- Decision: Use `scenarios!` with a feature tag to generate create-user tests
+  and rely on the macro's unused-fixture suppression. Rationale: Demonstrates
+  the fixture lint safety improvements without duplicating existing scenario
+  tests. Date/Author: 2026-01-25 / Codex
+- Decision: Convert `tests/runtime_selection_bdd.rs` scenarios to async Tokio
+  current-thread tests to exercise async scenario support. Rationale: The
+  scenarios are synchronous and safe to execute under the async runner without
+  nested runtimes. Date/Author: 2026-01-25 / Codex
 
 ## Outcomes & Retrospective
 
