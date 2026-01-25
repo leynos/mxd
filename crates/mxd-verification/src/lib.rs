@@ -14,3 +14,15 @@
 //!
 //! - `MxdHandshake.tla` — Models the handshake state machine and verifies timeout, error-code, and
 //!   readiness invariants.
+//!
+//! # Stateright models
+//!
+//! Stateright models live in Rust modules and explore concurrency and ordering
+//! properties through exhaustive state-space search.
+//!
+//! Current models:
+//!
+//! - [`session_model`] — Verifies session gating and privilege enforcement across multiple
+//!   concurrent client sessions, including out-of-order message delivery scenarios.
+
+pub mod session_model;

@@ -6,6 +6,7 @@ description = "Formal verification specs and harnesses for mxd"
 publish = false
 
 [dependencies]
+stateright = "0.30"
 
 [dev-dependencies]
 rstest = { workspace = true }
