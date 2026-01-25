@@ -8,7 +8,7 @@ Status: COMPLETE
 
 No PLANS.md was found in the repository root.
 
-## Purpose / Big Picture
+## Purpose / big picture
 
 Upgrade the test suite to rstest-bdd v0.4.0 so behaviour tests can run in
 Tokio's current-thread async runtime and benefit from improved fixture lint
@@ -28,7 +28,7 @@ scenario exercises the async scenario path described in
   `docs/rstest-bdd-users-guide.md`.
 - Use Makefile targets for validation and capture long outputs with `tee`.
 
-## Tolerances (Exception Triggers)
+## Tolerances (exception triggers)
 
 - Scope: more than 20 files modified or more than 800 net LOC changed.
 - Interface: any public API signature changes outside test code.
@@ -69,7 +69,7 @@ scenario exercises the async scenario path described in
   `make markdownlint`, `make nixie`, `make lint`, and `make test`.
 - [ ] Commit in atomic steps.
 
-## Surprises & Discoveries
+## Surprises & discoveries
 
 - Observation: No `scenarios!` macro usage exists in `tests/`.
   Evidence: `rg "scenarios!" tests` returned no matches. Impact: fixture lint
@@ -81,7 +81,7 @@ scenario exercises the async scenario path described in
   `docs/rstest-bdd-users-guide.md`, and `.gitignore`. Impact: include these in
   the documentation commit to keep the tree clean.
 
-## Decision Log
+## Decision log
 
 - Decision: Keep step functions synchronous and prefer async fixtures or async
   scenario bodies when adopting async execution. Rationale: The v0.4.0 guidance
@@ -96,7 +96,7 @@ scenario exercises the async scenario path described in
   scenarios are synchronous and safe to execute under the async runner without
   nested runtimes. Date/Author: 2026-01-25 / Codex
 
-## Outcomes & Retrospective
+## Outcomes & retrospective
 
 Upgraded rstest-bdd dependencies to v0.4.0, adopted async scenarios in
 `tests/runtime_selection_bdd.rs`, and switched the create-user BDD suite to
@@ -105,7 +105,7 @@ quality gates passed (`make check-fmt`, `make lint`, `make test`, plus
 documentation formatting and diagram validation). Future work could extend
 async scenarios to additional BDD suites that can move async work into fixtures.
 
-## Context and Orientation
+## Context and orientation
 
 The repository uses rstest-bdd for BDD tests under `tests/` and feature files
 under `tests/features/`. The dev dependencies in `Cargo.toml` now pin
@@ -125,7 +125,7 @@ safety. Async scenarios require `#[tokio::test(flavor = "current_thread")]` and
 present, addressing unused fixture warnings. The create-user BDD suite now uses
 `scenarios!` with a feature tag to rely on this behaviour.
 
-## Plan of Work
+## Plan of work
 
 Stage A: Confirm upgrade expectations and identify candidates.
 
@@ -170,31 +170,39 @@ Stage D: Documentation and cleanup.
    capture logs via `tee`.
 3. Commit the dependency bump and test updates as separate, gated commits.
 
-## Concrete Steps
+## Concrete steps
 
 All commands run from the repository root
 (`/data/leynos/Projects/mxd.worktrees/adopt-rstest-bdd-v0-4-0`). For long
 outputs, capture logs using:
 
-    /tmp/$ACTION-$(get-project)-$(git branch --show).out
+```text
+/tmp/$ACTION-$(get-project)-$(git branch --show).out
+```
 
 If `get-project` is unavailable, replace it with `$(basename "$(pwd)")`.
 
 1. Update dependencies in `Cargo.toml` (dev-dependencies).
 2. Probe build/test on one BDD target:
 
-    cargo test --test create_user_bdd
+```sh
+cargo test --test create_user_bdd
+```
 
-3. Run formatting and lint gates:
+1. Run formatting and lint gates:
 
-    make check-fmt | tee /tmp/check-fmt-$(get-project)-$(git branch --show).out
-    make lint | tee /tmp/lint-$(get-project)-$(git branch --show).out
+```sh
+make check-fmt | tee /tmp/check-fmt-$(get-project)-$(git branch --show).out
+make lint | tee /tmp/lint-$(get-project)-$(git branch --show).out
+```
 
-4. Run the full test suite:
+1. Run the full test suite:
 
-    make test | tee /tmp/test-$(get-project)-$(git branch --show).out
+```sh
+make test | tee /tmp/test-$(get-project)-$(git branch --show).out
+```
 
-## Validation and Acceptance
+## Validation and acceptance
 
 Acceptance criteria:
 
@@ -210,27 +218,31 @@ Quality method:
 - Run the commands listed in `Concrete Steps` and review the `tee` logs for
   errors or warnings.
 
-## Idempotence and Recovery
+## Idempotence and recovery
 
 The dependency bump and test conversions are reversible by editing `Cargo.toml`
 and reverting the specific test files. If a step fails, rerun the command after
 addressing the reported error. Keep intermediate edits small to allow surgical
 rollbacks.
 
-## Artifacts and Notes
+## Artifacts and notes
 
 Expected command snippets (abbreviated):
 
-    Finished test [unoptimized + debuginfo] target(s) in …
-    Running tests/create_user_bdd.rs
-    test … ok
+```text
+Finished test [unoptimized + debuginfo] target(s) in …
+Running tests/create_user_bdd.rs
+test … ok
+```
 
-## Interfaces and Dependencies
+## Interfaces and dependencies
 
 Dependencies to update:
 
-    rstest-bdd = "0.4.0"
-    rstest-bdd-macros = { version = "0.4.0", features = ["compile-time-validation"] }
+```toml
+rstest-bdd = "0.4.0"
+rstest-bdd-macros = { version = "0.4.0", features = ["compile-time-validation"] }
+```
 
 Key interfaces:
 
