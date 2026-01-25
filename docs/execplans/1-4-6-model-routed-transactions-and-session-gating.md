@@ -72,11 +72,11 @@ states minimum).
 - [x] Stage D: Create action types and transition logic.
 - [x] Stage E: Create invariant property definitions.
 - [x] Stage F: Implement Stateright Model trait for SessionModel.
-- [ ] Stage G: Create test harness with verification tests.
-- [ ] Stage H: Add BDD tests for session gating verification scenarios.
-- [ ] Stage I: Update documentation (verification-strategy.md, users-guide.md).
+- [x] Stage G: Create test harness with verification tests.
+- [x] Stage H: Add BDD tests for session gating verification scenarios.
+- [x] Stage I: Update documentation (verification-strategy.md, users-guide.md).
 - [x] Stage J: Run quality gates (fmt, lint, test, markdownlint).
-- [ ] Stage K: Mark roadmap entry as complete.
+- [x] Stage K: Mark roadmap entry as complete.
 
 ## Surprises & discoveries
 

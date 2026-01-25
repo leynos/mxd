@@ -10,6 +10,8 @@ stateright = "0.30"
 
 [dev-dependencies]
 rstest = { workspace = true }
+rstest-bdd = "0.3.2"
+rstest-bdd-macros = { version = "0.3.2", features = ["compile-time-validation"] }
 
 [lints]
 workspace = true

@@ -64,7 +64,15 @@ Use Stateright when:
 - effects must be gated by authentication or privileges.
 
 Models live in `crates/mxd-verification/` and call the domain `step` function
-directly. Properties should assert both state invariants and effect safety.
+directly where it is available. Some models (such as session gating) encode
+protocol semantics in isolation to keep the verification crate dependency
+light. Properties should assert both state invariants and effect safety.
+
+The session gating Stateright model lives in
+`crates/mxd-verification/src/session_model` and explores login, logout,
+privilege checks, and out-of-order delivery across multiple concurrent clients.
+It asserts that privileged effects never occur before authentication and that
+insufficient privileges are rejected.
 
 ### Kani
 
@@ -210,6 +218,9 @@ make tlc-handshake
 
 # Stateright models (bounded)
 cargo test -p mxd-verification -- --nocapture
+
+# Session gating model (explicit harness)
+cargo test -p mxd-verification --test session_gating -- --nocapture
 
 # Kani harnesses (transaction framing invariants)
 cargo kani -p mxd --harness kani_validate_header_matches_predicate

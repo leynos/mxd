@@ -93,3 +93,6 @@ High-level behaviour tests are defined in `tests/features/create_user_command`
 and `tests/features/runtime_selection.feature`, bound via `rstest-bdd`. They
 cover successful account creation, missing-credential errors, and runtime
 selection so the adapter strategy remains observable to end users.
+Verification-focused behaviour scenarios for the session gating Stateright
+model live in `tests/features/session_gating_verification.feature` and are
+bound by the `mxd-verification` test harness.

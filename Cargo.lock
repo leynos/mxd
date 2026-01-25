@@ -2361,6 +2361,8 @@ name = "mxd-verification"
 version = "0.1.0"
 dependencies = [
  "rstest 0.26.1",
+ "rstest-bdd",
+ "rstest-bdd-macros",
  "stateright",
 ]
 
