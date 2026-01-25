@@ -199,6 +199,8 @@ pub fn is_valid_action(state: &SystemState, action: &Action) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
     use crate::session_model::privileges::{DEFAULT_USER_PRIVILEGES, DOWNLOAD_FILE};
 
@@ -263,39 +265,86 @@ mod tests {
         );
     }
 
-    #[test]
-    fn deliver_request_rejects_unauthenticated() {
-        let mut state = SystemState::new(2);
-        state
-            .queues
-            .first_mut()
-            .expect("queue exists")
-            .push(ModelMessage::new(RequestType::GetFileList));
-
-        let action = Action::DeliverRequest {
-            client: 0,
-            queue_index: 0,
-        };
-        let next = apply_action(&state, &action);
-
-        assert!(next.queues.first().expect("queue exists").is_empty()); // Message was removed
-        assert!(matches!(
-            next.effects.last(),
-            Some(Effect::RejectedUnauthenticated { client: 0, .. })
-        ));
+    #[derive(Clone, Copy, Debug)]
+    struct DeliverScenario {
+        name: &'static str,
+        user_id: Option<u32>,
+        privileges: u64,
+        request: RequestType,
+        expected_effect: fn(Effect) -> bool,
     }
 
-    #[test]
-    fn deliver_request_rejects_insufficient_privilege() {
+    #[rstest]
+    #[case(
+        DeliverScenario {
+            name: "deliver_request_rejects_unauthenticated",
+            user_id: None,
+            privileges: 0,
+            request: RequestType::GetFileList,
+            expected_effect: |effect| {
+                matches!(effect, Effect::RejectedUnauthenticated { client: 0, .. })
+            },
+        }
+    )]
+    #[case(
+        DeliverScenario {
+            name: "deliver_request_rejects_insufficient_privilege",
+            user_id: Some(42),
+            privileges: 0,
+            request: RequestType::GetFileList,
+            expected_effect: |effect| {
+                matches!(
+                    effect,
+                    Effect::RejectedInsufficientPrivilege {
+                        client: 0,
+                        required,
+                        ..
+                    } if required == DOWNLOAD_FILE
+                )
+            },
+        }
+    )]
+    #[case(
+        DeliverScenario {
+            name: "deliver_request_succeeds_with_privilege",
+            user_id: Some(42),
+            privileges: DOWNLOAD_FILE,
+            request: RequestType::GetFileList,
+            expected_effect: |effect| {
+                matches!(
+                    effect,
+                    Effect::PrivilegedEffectCompleted {
+                        client: 0,
+                        privilege,
+                        ..
+                    } if privilege == DOWNLOAD_FILE
+                )
+            },
+        }
+    )]
+    #[case(
+        DeliverScenario {
+            name: "ping_succeeds_without_authentication",
+            user_id: None,
+            privileges: 0,
+            request: RequestType::Ping,
+            expected_effect: |effect| {
+                matches!(effect, Effect::UnprivilegedEffectCompleted { client: 0, .. })
+            },
+        }
+    )]
+    fn deliver_request_scenarios(#[case] scenario: DeliverScenario) {
         let mut state = SystemState::new(2);
-        let session = state.sessions.first_mut().expect("session exists");
-        session.user_id = Some(42);
-        session.privileges = 0; // No privileges
+        if let Some(auth_user_id) = scenario.user_id {
+            let session = state.sessions.first_mut().expect("session exists");
+            session.user_id = Some(auth_user_id);
+            session.privileges = scenario.privileges;
+        }
         state
             .queues
             .first_mut()
             .expect("queue exists")
-            .push(ModelMessage::new(RequestType::GetFileList));
+            .push(ModelMessage::new(scenario.request));
 
         let action = Action::DeliverRequest {
             client: 0,
@@ -303,63 +352,17 @@ mod tests {
         };
         let next = apply_action(&state, &action);
 
-        assert!(matches!(
-            next.effects.last(),
-            Some(Effect::RejectedInsufficientPrivilege {
-                client: 0,
-                required,
-                ..
-            }) if *required == DOWNLOAD_FILE
-        ));
-    }
-
-    #[test]
-    fn deliver_request_succeeds_with_privilege() {
-        let mut state = SystemState::new(2);
-        let session = state.sessions.first_mut().expect("session exists");
-        session.user_id = Some(42);
-        session.privileges = DOWNLOAD_FILE;
-        state
-            .queues
-            .first_mut()
-            .expect("queue exists")
-            .push(ModelMessage::new(RequestType::GetFileList));
-
-        let action = Action::DeliverRequest {
-            client: 0,
-            queue_index: 0,
-        };
-        let next = apply_action(&state, &action);
-
-        assert!(matches!(
-            next.effects.last(),
-            Some(Effect::PrivilegedEffectCompleted {
-                client: 0,
-                privilege,
-                ..
-            }) if *privilege == DOWNLOAD_FILE
-        ));
-    }
-
-    #[test]
-    fn ping_succeeds_without_authentication() {
-        let mut state = SystemState::new(2);
-        state
-            .queues
-            .first_mut()
-            .expect("queue exists")
-            .push(ModelMessage::new(RequestType::Ping));
-
-        let action = Action::DeliverRequest {
-            client: 0,
-            queue_index: 0,
-        };
-        let next = apply_action(&state, &action);
-
-        assert!(matches!(
-            next.effects.last(),
-            Some(Effect::UnprivilegedEffectCompleted { client: 0, .. })
-        ));
+        assert!(
+            next.queues.first().expect("queue exists").is_empty(),
+            "case {}: message was not removed",
+            scenario.name
+        );
+        let effect = *next.effects.last().expect("effect exists");
+        assert!(
+            (scenario.expected_effect)(effect),
+            "case {}: unexpected effect {effect:?}",
+            scenario.name
+        );
     }
 
     #[test]
