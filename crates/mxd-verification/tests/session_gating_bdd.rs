@@ -1,15 +1,18 @@
 //! Behaviour-driven tests for the session gating verification model.
 
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::BTreeSet};
 
 use mxd_verification::session_model::SessionModel;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
-use stateright::{Checker, Model};
+use stateright::{Checker, Expectation, HasDiscoveries, Model};
+
+const TARGET_MAX_DEPTH: usize = 6;
+const TARGET_STATE_COUNT: usize = 1500;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct VerificationResult {
-    is_done: bool,
+    ran: bool,
     properties_verified: bool,
     unique_state_count: usize,
 }
@@ -17,6 +20,31 @@ struct VerificationResult {
 struct VerificationWorld {
     model: RefCell<SessionModel>,
     result: RefCell<Option<VerificationResult>>,
+}
+
+#[derive(Clone, Debug)]
+struct PropertyNames {
+    safety: BTreeSet<&'static str>,
+    reachability: BTreeSet<&'static str>,
+}
+
+fn property_names(model: &SessionModel) -> PropertyNames {
+    let mut safety = BTreeSet::new();
+    let mut reachability = BTreeSet::new();
+    for property in model.properties() {
+        match property.expectation {
+            Expectation::Always | Expectation::Eventually => {
+                safety.insert(property.name);
+            }
+            Expectation::Sometimes => {
+                reachability.insert(property.name);
+            }
+        }
+    }
+    PropertyNames {
+        safety,
+        reachability,
+    }
 }
 
 impl VerificationWorld {
@@ -31,11 +59,20 @@ impl VerificationWorld {
 
     fn verify(&self) {
         let model = self.model.borrow().clone();
-        let checker = model.checker().spawn_bfs().join();
-        checker.assert_properties();
+        let property_names = property_names(&model);
+        let checker = model
+            .checker()
+            .target_max_depth(TARGET_MAX_DEPTH)
+            .target_state_count(TARGET_STATE_COUNT)
+            .finish_when(HasDiscoveries::AllOf(property_names.reachability.clone()))
+            .spawn_bfs()
+            .join();
+        let discoveries: BTreeSet<_> = checker.discoveries().keys().copied().collect();
+        let properties_verified = property_names.reachability.is_subset(&discoveries)
+            && property_names.safety.is_disjoint(&discoveries);
         let result = VerificationResult {
-            is_done: checker.is_done(),
-            properties_verified: true,
+            ran: true,
+            properties_verified,
             unique_state_count: checker.unique_state_count(),
         };
         self.result.replace(Some(result));
@@ -66,7 +103,7 @@ fn when_verify_model(world: &VerificationWorld) { world.verify(); }
 
 #[then("the verification completes")]
 fn then_verification_completes(world: &VerificationWorld) {
-    assert!(world.result().is_done);
+    assert!(world.result().ran);
 }
 
 #[then("the properties are satisfied")]

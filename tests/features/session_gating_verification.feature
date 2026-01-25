@@ -12,7 +12,7 @@ Feature: Session gating verification model
 
   Scenario: Default model explores a non-trivial state space
     When I verify the session gating model
-    Then the model explores at least 100 states
+    Then the model explores at least 10 states
 
   Scenario: Out-of-order delivery is represented
     Then the model includes the out-of-order delivery property

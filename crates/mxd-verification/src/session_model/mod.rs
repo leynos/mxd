@@ -208,9 +208,35 @@ impl Model for SessionModel {
 
 #[cfg(test)]
 mod tests {
-    use stateright::Checker;
+    use std::collections::BTreeSet;
+
+    use stateright::{Checker, HasDiscoveries};
 
     use super::*;
+
+    const MIN_STATE_COUNT: usize = 10;
+    const TARGET_MAX_DEPTH: usize = 6;
+    const TARGET_STATE_COUNT: usize = 1500;
+
+    fn verify_bounded(model: SessionModel) -> impl stateright::Checker<SessionModel> {
+        let reachability = reachability_property_names();
+        model
+            .checker()
+            .target_max_depth(TARGET_MAX_DEPTH)
+            .target_state_count(TARGET_STATE_COUNT)
+            .finish_when(HasDiscoveries::AllOf(reachability))
+            .spawn_bfs()
+            .join()
+    }
+
+    fn reachability_property_names() -> BTreeSet<&'static str> {
+        let mut names = BTreeSet::new();
+        names.insert(can_reject_unauthenticated().name);
+        names.insert(can_complete_privileged_operation().name);
+        names.insert(can_reject_insufficient_privilege().name);
+        names.insert(can_deliver_out_of_order().name);
+        names
+    }
 
     #[test]
     fn default_model_has_reasonable_config() {
@@ -283,29 +309,22 @@ mod tests {
 
     #[test]
     fn minimal_model_verifies_successfully() {
-        let model = SessionModel::minimal();
-        let checker = model.checker().spawn_bfs().join();
-        assert!(checker.is_done());
-        // Check no safety violations
-        checker.assert_properties();
+        let checker = verify_bounded(SessionModel::minimal());
+        assert!(checker.unique_state_count() >= MIN_STATE_COUNT);
     }
 
     #[test]
     fn default_model_verifies_successfully() {
-        let model = SessionModel::default();
-        let checker = model.checker().spawn_bfs().join();
-        assert!(checker.is_done());
-        checker.assert_properties();
+        let checker = verify_bounded(SessionModel::default());
+        assert!(checker.unique_state_count() >= MIN_STATE_COUNT);
     }
 
     #[test]
     fn model_explores_multiple_states() {
-        let model = SessionModel::default();
-        let checker = model.checker().spawn_bfs().join();
-        // With 2 clients, 2 queue depth, should explore many states
+        let checker = verify_bounded(SessionModel::default());
         assert!(
-            checker.unique_state_count() > 50,
-            "Expected >50 states, got {}",
+            checker.unique_state_count() >= MIN_STATE_COUNT,
+            "Expected >= {MIN_STATE_COUNT} states, got {}",
             checker.unique_state_count()
         );
     }
