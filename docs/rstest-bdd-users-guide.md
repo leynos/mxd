@@ -849,7 +849,7 @@ scenarios!(
 
 - **Use a per-step runtime only in synchronous scenarios:** If a step must call
   async code and the scenario is not running under Tokio, build a runtime in
-  the step and block on the async work. Avoid this inside an async scenario,
+  the step and block on the async work. Avoid this inside an async scenario
   because nested runtimes can fail. For async scenarios, prefer fixtures or the
   async test body instead. See [ADR-005](adr-005-async-step-functions.md) for
   the current strategy.

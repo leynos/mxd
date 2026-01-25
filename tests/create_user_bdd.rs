@@ -27,6 +27,10 @@ impl From<String> for Username {
     fn from(s: String) -> Self { Self(s) }
 }
 
+impl From<&str> for Username {
+    fn from(s: &str) -> Self { Self(s.to_owned()) }
+}
+
 impl AsRef<str> for Username {
     fn as_ref(&self) -> &str { &self.0 }
 }
@@ -34,7 +38,7 @@ impl AsRef<str> for Username {
 impl std::str::FromStr for Username {
     type Err = std::convert::Infallible;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> { Ok(Self(s.to_owned())) }
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> { Ok(Self(s.to_owned())) }
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +48,14 @@ impl From<String> for Password {
     fn from(s: String) -> Self { Self(s) }
 }
 
+impl From<&str> for Password {
+    fn from(s: &str) -> Self { Self(s.to_owned()) }
+}
+
+impl AsRef<str> for Password {
+    fn as_ref(&self) -> &str { &self.0 }
+}
+
 impl Password {
     fn into_inner(self) -> String { self.0 }
 }
@@ -51,7 +63,7 @@ impl Password {
 impl std::str::FromStr for Password {
     type Err = std::convert::Infallible;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> { Ok(Self(s.to_owned())) }
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> { Ok(Self(s.to_owned())) }
 }
 
 type CommandResult = Result<()>;
