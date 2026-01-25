@@ -266,14 +266,30 @@ mod tests {
     }
 
     #[test]
-    fn authenticated_session_has_privileges() {
+    fn authenticated_session_is_authenticated() {
         let session = ModelSession {
             user_id: Some(1),
             privileges: DOWNLOAD_FILE | NEWS_READ_ARTICLE,
         };
         assert!(session.is_authenticated());
+    }
+
+    #[test]
+    fn authenticated_session_has_granted_privileges() {
+        let session = ModelSession {
+            user_id: Some(1),
+            privileges: DOWNLOAD_FILE | NEWS_READ_ARTICLE,
+        };
         assert!(session.has_privilege(DOWNLOAD_FILE));
         assert!(session.has_privilege(NEWS_READ_ARTICLE));
+    }
+
+    #[test]
+    fn authenticated_session_lacks_ungranted_privileges() {
+        let session = ModelSession {
+            user_id: Some(1),
+            privileges: DOWNLOAD_FILE | NEWS_READ_ARTICLE,
+        };
         assert!(!session.has_privilege(NEWS_POST_ARTICLE));
     }
 
@@ -287,14 +303,30 @@ mod tests {
     }
 
     #[test]
-    fn request_type_privilege_requirements() {
+    fn ping_requires_no_privileges() {
         assert_eq!(RequestType::Ping.required_privilege(), NO_PRIVILEGES);
+    }
+
+    #[test]
+    fn get_user_info_requires_no_privileges() {
         assert_eq!(RequestType::GetUserInfo.required_privilege(), NO_PRIVILEGES);
+    }
+
+    #[test]
+    fn get_file_list_requires_download_privilege() {
         assert_eq!(RequestType::GetFileList.required_privilege(), DOWNLOAD_FILE);
+    }
+
+    #[test]
+    fn get_news_categories_requires_read_privilege() {
         assert_eq!(
             RequestType::GetNewsCategories.required_privilege(),
             NEWS_READ_ARTICLE
         );
+    }
+
+    #[test]
+    fn post_news_article_requires_post_privilege() {
         assert_eq!(
             RequestType::PostNewsArticle.required_privilege(),
             NEWS_POST_ARTICLE
@@ -309,21 +341,34 @@ mod tests {
     }
 
     #[test]
-    fn request_type_is_privileged() {
+    fn unprivileged_requests_are_not_privileged() {
         assert!(!RequestType::Ping.is_privileged());
         assert!(!RequestType::GetUserInfo.is_privileged());
+    }
+
+    #[test]
+    fn privileged_requests_are_privileged() {
         assert!(RequestType::GetFileList.is_privileged());
         assert!(RequestType::PostNewsArticle.is_privileged());
     }
 
     #[test]
-    fn system_state_initializes_correctly() {
+    fn system_state_creates_correct_number_of_clients() {
         let state = SystemState::new(3);
         assert_eq!(state.num_clients(), 3);
+    }
+
+    #[test]
+    fn system_state_initializes_collections() {
+        let state = SystemState::new(3);
         assert_eq!(state.sessions.len(), 3);
         assert_eq!(state.queues.len(), 3);
         assert!(state.effects.is_empty());
+    }
 
+    #[test]
+    fn system_state_clients_start_unauthenticated() {
+        let state = SystemState::new(3);
         for session in &state.sessions {
             assert!(!session.is_authenticated());
         }
