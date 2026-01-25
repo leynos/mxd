@@ -134,21 +134,56 @@ pub fn authentication_precedes_privileged_effect() -> Property<SessionModel> {
     )
 }
 
+/// Helper function to create a reachability property that checks for a specific effect.
+fn has_effect_sometimes(
+    description: &'static str,
+    predicate: impl Fn(&Effect) -> bool + 'static,
+) -> Property<SessionModel> {
+    let _ = &predicate;
+    match description {
+        "can reject unauthenticated request" => {
+            Property::sometimes(description, |_model: &SessionModel, state: &SystemState| {
+                state
+                    .effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::RejectedUnauthenticated { .. }))
+            })
+        }
+        "can complete privileged operation" => {
+            Property::sometimes(description, |_model: &SessionModel, state: &SystemState| {
+                state
+                    .effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::PrivilegedEffectCompleted { .. }))
+            })
+        }
+        "can reject insufficient privilege" => {
+            Property::sometimes(description, |_model: &SessionModel, state: &SystemState| {
+                state
+                    .effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::RejectedInsufficientPrivilege { .. }))
+            })
+        }
+        _ => {
+            debug_assert!(false, "Unsupported reachability property: {description}");
+            Property::sometimes(
+                description,
+                |_model: &SessionModel, _state: &SystemState| false,
+            )
+        }
+    }
+}
+
 /// Reachability property: The model can reject unauthenticated requests.
 ///
 /// Verifies that there exists a path where a `RejectedUnauthenticated` effect
 /// occurs. This confirms the model exercises the rejection code path.
 #[must_use]
 pub fn can_reject_unauthenticated() -> Property<SessionModel> {
-    Property::sometimes(
-        "can reject unauthenticated request",
-        |_model, state: &SystemState| {
-            state
-                .effects
-                .iter()
-                .any(|e| matches!(e, Effect::RejectedUnauthenticated { .. }))
-        },
-    )
+    has_effect_sometimes("can reject unauthenticated request", |e| {
+        matches!(e, Effect::RejectedUnauthenticated { .. })
+    })
 }
 
 /// Reachability property: The model can complete a privileged operation.
@@ -157,15 +192,9 @@ pub fn can_reject_unauthenticated() -> Property<SessionModel> {
 /// effect occurs. This confirms the model exercises the success code path.
 #[must_use]
 pub fn can_complete_privileged_operation() -> Property<SessionModel> {
-    Property::sometimes(
-        "can complete privileged operation",
-        |_model, state: &SystemState| {
-            state
-                .effects
-                .iter()
-                .any(|e| matches!(e, Effect::PrivilegedEffectCompleted { .. }))
-        },
-    )
+    has_effect_sometimes("can complete privileged operation", |e| {
+        matches!(e, Effect::PrivilegedEffectCompleted { .. })
+    })
 }
 
 /// Reachability property: The model can reject due to insufficient privileges.
@@ -174,15 +203,9 @@ pub fn can_complete_privileged_operation() -> Property<SessionModel> {
 /// effect occurs. This confirms the model exercises the privilege check path.
 #[must_use]
 pub fn can_reject_insufficient_privilege() -> Property<SessionModel> {
-    Property::sometimes(
-        "can reject insufficient privilege",
-        |_model, state: &SystemState| {
-            state
-                .effects
-                .iter()
-                .any(|e| matches!(e, Effect::RejectedInsufficientPrivilege { .. }))
-        },
-    )
+    has_effect_sometimes("can reject insufficient privilege", |e| {
+        matches!(e, Effect::RejectedInsufficientPrivilege { .. })
+    })
 }
 
 /// Reachability property: The model can deliver messages out of order.
