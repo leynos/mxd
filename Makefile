@@ -81,8 +81,12 @@ tlc-handshake: ## Run TLC on handshake spec
 
 test: test-postgres test-sqlite test-wireframe-only ## Run sqlite, postgres, and wireframe-only suites
 
+# Note: RSTEST_TIMEOUT is intentionally omitted for postgres tests because
+# TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
+# timeout feature requires Send. See docs/pg-embed-setup-unpriv-users-guide.md
+# "Thread safety constraints (v0.4.0)" for details.
 test-postgres: ## Run tests with the postgres backend
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_POSTGRES_FEATURES)
+	RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_POSTGRES_FEATURES)
 
 test-sqlite: ## Run tests with the sqlite backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_SQLITE_FEATURES)
