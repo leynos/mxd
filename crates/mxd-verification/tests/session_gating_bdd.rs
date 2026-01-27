@@ -10,6 +10,21 @@ use rstest_bdd_macros::{given, scenario, then, when};
 use stateright::Model;
 use verification_harness::{MIN_STATE_COUNT, verify_session_model};
 
+#[derive(Debug)]
+enum VerificationError {
+    NotExecuted,
+}
+
+impl std::fmt::Display for VerificationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotExecuted => write!(f, "verification not executed"),
+        }
+    }
+}
+
+impl std::error::Error for VerificationError {}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct VerificationResult {
     ran: bool,
@@ -47,65 +62,88 @@ impl VerificationWorld {
         self.result.replace(Some(result));
     }
 
-    fn result(&self) -> VerificationResult {
-        self.result
-            .borrow()
-            .map_or_else(|| panic!("verification not executed"), |result| result)
+    fn result(&self) -> Result<VerificationResult, VerificationError> {
+        self.result.borrow().ok_or(VerificationError::NotExecuted)
     }
 }
 
 #[fixture]
 fn world() -> VerificationWorld {
     let world = VerificationWorld::new();
-    debug_assert!(
-        world.result.borrow().is_none(),
-        "verification results start empty"
-    );
+    assert!(world.result.borrow().is_none());
     world
 }
 
+fn ensure_unverified(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+    if world.result.borrow().is_some() {
+        return Err(Box::new(std::io::Error::other(
+            "verification already executed",
+        )));
+    }
+    Ok(())
+}
+
 #[given("the session gating model uses default bounds")]
-fn given_default_model(world: &VerificationWorld) { world.set_model(SessionModel::default()); }
+fn given_default_model(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+    ensure_unverified(world)?;
+    world.set_model(SessionModel::default());
+    Ok(())
+}
 
 #[when("I verify the session gating model")]
-fn when_verify_model(world: &VerificationWorld) { world.verify(); }
+fn when_verify_model(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+    ensure_unverified(world)?;
+    world.verify();
+    Ok(())
+}
 
 #[then("the verification completes")]
-fn then_verification_completes(world: &VerificationWorld) {
-    assert!(world.result().ran);
+fn then_verification_completes(
+    world: &VerificationWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert!(world.result()?.ran);
+    Ok(())
 }
 
 #[then("the properties are satisfied")]
-fn then_properties_satisfied(world: &VerificationWorld) {
-    let result = world.result();
+fn then_properties_satisfied(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+    let result = world.result()?;
     assert!(
         result.properties_verified,
         "reachability missing: {}, safety counterexamples: {}",
         result.missing_reachability, result.safety_counterexamples
     );
+    Ok(())
 }
 
 #[then("the model explores at least {count} states")]
-fn then_state_space_size(world: &VerificationWorld, count: usize) {
+fn then_state_space_size(
+    world: &VerificationWorld,
+    count: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
     debug_assert!(
         count >= MIN_STATE_COUNT,
         "feature expectations should not undercut the harness minimum"
     );
+    let result = world.result()?;
     assert!(
-        world.result().unique_state_count >= count,
+        result.unique_state_count >= count,
         "expected at least {count} states, got {}",
-        world.result().unique_state_count
+        result.unique_state_count
     );
+    Ok(())
 }
 
 #[then("the model includes the out-of-order delivery property")]
-fn then_out_of_order_property(world: &VerificationWorld) {
+fn then_out_of_order_property(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+    ensure_unverified(world)?;
     let properties = world.model.borrow().properties();
     assert!(
         properties
             .iter()
             .any(|property| property.name.contains("queued messages"))
     );
+    Ok(())
 }
 
 #[scenario(
