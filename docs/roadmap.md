@@ -452,6 +452,11 @@ and explicit dependencies. Timeframes are intentionally omitted.
   catch regressions quickly. Acceptance: Alerts fire when error rates exceed
   thresholds, and dashboards expose trend data for release readiness.
   Dependencies: 6.2.2.
+- [ ] 6.2.4. Adopt async behavioural scenarios for async-sensitive BDD suites.
+  Acceptance: Async scenarios cover queue delivery, handshake metadata polling,
+  and streaming fragment iteration without per-world runtimes, following the
+  plan in `docs/execplans/adopt-rstest-bdd-v0-4-0.md` under "Roadmap follow-up:
+  async behavioural scenarios". Dependencies: 6.2.3.
 
 ### 6.3. Maintain documentation accuracy
 

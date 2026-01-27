@@ -252,6 +252,38 @@ Key interfaces:
 - Tokio current-thread runtime via `#[tokio::test(flavor = "current_thread")]`
   on async scenario functions.
 
+## Roadmap follow-up: async behavioural scenarios
+
+rstest-bdd v0.4.0 allows async scenario bodies to run on Tokio's current-thread
+runtime. Several existing behavioural tests still run async work by embedding a
+per-world runtime and calling `block_on`, which limits behavioural coverage
+across steps.
+
+Follow-up work should convert the most async-sensitive BDD suites to async
+scenarios and remove nested runtimes:
+
+- `tests/wireframe_handshake_metadata.rs`: exercise handshake recording and
+  timeout-style polling across steps without `Runtime::block_on`.
+- `tests/outbound_messaging_bdd.rs`: await queue delivery and ordering in steps
+  using the scenario runtime instead of a dedicated runtime.
+- `tests/transaction_streaming.rs`: stream fragments incrementally across steps
+  using async fixtures or an async scenario body.
+
+Implementation sketch:
+
+- Prefer `scenarios!("tests/features/...", runtime = "tokio-current-thread")`
+  where directory discovery is already appropriate; otherwise keep
+  `#[scenario]` and add
+  `#[tokio::test(flavor = "current_thread")] async fn ...`.
+- Remove `tokio::runtime::Runtime` fields from worlds and lift async work into
+  async fixtures or async scenario bodies.
+- Keep step functions synchronous; steps should consume already-resolved data
+  provided by fixtures or scenario state.
+- Gate the change with `make check-fmt`, `make typecheck`, `make lint`, and
+  `make test`, capturing output via `tee`.
+
+This follow-up is captured as roadmap task 6.2.4 in `docs/roadmap.md`.
+
 ## Revision note
 
 Initial draft created after reviewing the user guide and existing BDD tests.
