@@ -94,7 +94,7 @@ scenario exercises the async scenario path described in
 - Decision: Convert `tests/runtime_selection_bdd.rs` scenarios to async Tokio
   current-thread tests to exercise async scenario support. Rationale: The
   scenarios are synchronous and safe to execute under the async runner without
-  nested runtimes. Date/Author: 2026-01-25 / Codex
+  nested runtimes. Date/Author: 2026-01-25 / Codex.
 
 ## Outcomes & retrospective
 
