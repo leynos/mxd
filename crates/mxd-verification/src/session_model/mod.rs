@@ -318,12 +318,6 @@ mod tests {
     }
 
     #[test]
-    fn default_model_verifies_successfully() {
-        let checker = verify_bounded(SessionModel::default());
-        assert!(checker.unique_state_count() >= MIN_STATE_COUNT);
-    }
-
-    #[test]
     fn model_explores_multiple_states() {
         let checker = verify_bounded(SessionModel::default());
         assert!(

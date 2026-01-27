@@ -115,7 +115,7 @@ states minimum).
 The mxd codebase is a Hotline protocol server implementation in Rust. Key
 directories:
 
-- `src/` — Main crate with server implementation, including:
+- `src/` — Main crate with server implementation, for example:
   - `src/handler.rs` — Session struct with `user_id`, `privileges`,
     `connection_flags`, and privilege checking methods
   - `src/privileges.rs` — 38-bit privilege flags matching Hotline protocol
@@ -125,7 +125,7 @@ directories:
   - `tla/MxdHandshake.tla` — Temporal Logic of Actions (TLA+) handshake
     state machine
   - `tests/tlc_handshake.rs` — TLA+ model checker (TLC) integration test
-- `docs/` — Documentation including:
+- `docs/` — Documentation, for example:
   - `docs/verification-strategy.md` — Three-tier verification approach
   - `docs/roadmap.md` — Project roadmap with task 1.4.6
 
@@ -322,7 +322,7 @@ Quality criteria (what "done" means):
 - Coverage: Model explores > 100 unique states (confirms non-trivial coverage)
 - Documentation: `make markdownlint` passes
 
-Quality method (how we check):
+Quality method (how to check):
 
     # Run the full quality gate suite
     make check-fmt && make lint && make test && make markdownlint
