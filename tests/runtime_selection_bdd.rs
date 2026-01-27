@@ -44,9 +44,11 @@ fn then_runtime(world: &RuntimeWorld, runtime: NetworkRuntime) {
 }
 
 #[cfg(feature = "legacy-networking")]
+#[tokio::test(flavor = "current_thread")]
 #[scenario(path = "tests/features/runtime_selection.feature", index = 0)]
-fn legacy_runtime_enabled(world: RuntimeWorld) { let _ = world; }
+async fn legacy_runtime_enabled(world: RuntimeWorld) { let _ = world; }
 
 #[cfg(not(feature = "legacy-networking"))]
+#[tokio::test(flavor = "current_thread")]
 #[scenario(path = "tests/features/runtime_selection.feature", index = 1)]
-fn legacy_runtime_disabled(world: RuntimeWorld) { let _ = world; }
+async fn legacy_runtime_disabled(world: RuntimeWorld) { let _ = world; }
