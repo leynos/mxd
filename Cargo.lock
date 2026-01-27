@@ -2337,8 +2337,8 @@ dependencies = [
  "proptest",
  "rand 0.8.5",
  "rstest 0.26.1",
- "rstest-bdd",
- "rstest-bdd-macros",
+ "rstest-bdd 0.4.0",
+ "rstest-bdd-macros 0.4.0",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2361,8 +2361,8 @@ name = "mxd-verification"
 version = "0.1.0"
 dependencies = [
  "rstest 0.26.1",
- "rstest-bdd",
- "rstest-bdd-macros",
+ "rstest-bdd 0.3.2",
+ "rstest-bdd-macros 0.3.2",
  "stateright",
 ]
 
@@ -3505,6 +3505,30 @@ dependencies = [
 
 [[package]]
 name = "rstest-bdd"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7451d147800bd8b0b8621116a2c553b13408f2b7914a5b818eccaa37240ed9a"
+dependencies = [
+ "ctor",
+ "derive_more 0.99.20",
+ "fluent",
+ "gherkin",
+ "hashbrown 0.16.0",
+ "i18n-embed",
+ "inventory",
+ "log",
+ "once_cell",
+ "regex",
+ "rstest-bdd-patterns 0.3.2",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "unic-langid",
+]
+
+[[package]]
+name = "rstest-bdd"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e741d97bce6ea0a7d0f074716041e0d0eebe6ab9edcd243e7d12f9fd2b5e8b6"
@@ -3518,13 +3542,36 @@ dependencies = [
  "inventory",
  "log",
  "regex",
- "rstest-bdd-patterns",
+ "rstest-bdd-patterns 0.4.0",
  "rstest-bdd-policy",
  "rust-embed",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "unic-langid",
+]
+
+[[package]]
+name = "rstest-bdd-macros"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c58aca0e441b276f7e52a6fe1b9bb8c341004110f610e7dfda112578c0c18837"
+dependencies = [
+ "camino",
+ "cap-std",
+ "cfg-if",
+ "convert_case 0.6.0",
+ "gherkin",
+ "newt-hype",
+ "once_cell",
+ "proc-macro-crate",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rstest-bdd-patterns 0.3.2",
+ "syn 2.0.110",
+ "walkdir",
 ]
 
 [[package]]
@@ -3544,11 +3591,22 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "rstest-bdd-patterns",
+ "rstest-bdd-patterns 0.4.0",
  "rstest-bdd-policy",
  "syn 2.0.110",
  "thiserror 1.0.69",
  "walkdir",
+]
+
+[[package]]
+name = "rstest-bdd-patterns"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59a52766aaee3793eec30ff351a5ebddba34dddab8500b18891cddece364a66d"
+dependencies = [
+ "gherkin",
+ "regex",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
