@@ -383,6 +383,7 @@ affected files or reset to the previous commit.
 ### External dependency
 
     stateright = "0.30"
+    rstest-bdd = "0.3.2"
 
 Stateright is a model-checking framework for Rust that explores all reachable
 states of a system model to verify safety and liveness properties.
@@ -416,9 +417,9 @@ states of a system model to verify safety and liveness properties.
 
     pub enum RequestType {
         Ping,
-    GetUserInfo,
-    GetClientInfo,
-    GetFileList,
+        GetUserInfo,
+        GetClientInfo,
+        GetFileList,
         GetNewsCategories,
         PostNewsArticle,
     }
