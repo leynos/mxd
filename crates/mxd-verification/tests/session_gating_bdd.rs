@@ -75,20 +75,13 @@ fn world() -> Result<VerificationWorld, Box<dyn std::error::Error>> {
     if world.result.borrow().is_some() {
         return Err(Box::new(VerificationError::AlreadyExecuted));
     }
-    assert_world_unexecuted(&world);
     Ok(world)
-}
-
-fn assert_world_unexecuted(world: &VerificationWorld) {
-    assert!(world.result.borrow().is_none());
 }
 
 fn resolve_world(
     world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
 ) -> Result<&VerificationWorld, Box<dyn std::error::Error>> {
-    world
-        .as_ref()
-        .map_err(|_| Box::new(VerificationError::AlreadyExecuted) as Box<dyn std::error::Error>)
+    world.as_ref().map_err(|error| error.to_string().into())
 }
 
 fn ensure_unverified(

@@ -70,6 +70,9 @@ pub struct SessionModel {
     pub privilege_sets: Vec<u64>,
 }
 
+/// Upper bound for modelled client sessions to keep the state space tractable.
+pub const MAX_MODEL_CLIENTS: usize = 16;
+
 impl Default for SessionModel {
     fn default() -> Self {
         Self {
@@ -91,7 +94,7 @@ impl SessionModel {
     #[must_use]
     pub fn with_clients(num_clients: usize) -> Self {
         // Stateright expects at least one client; saturate zero to one.
-        let bounded_clients = num_clients.clamp(1, u32::MAX as usize);
+        let bounded_clients = num_clients.clamp(1, MAX_MODEL_CLIENTS);
         let max_user_id = u32::try_from(bounded_clients).unwrap_or(u32::MAX);
         Self {
             num_clients: bounded_clients,

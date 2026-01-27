@@ -8,7 +8,7 @@ proceeds.
 Status: COMPLETE
 
 This document must be maintained in accordance with the execplans skill
-instructions in the execplans skill.
+instructions.
 
 ## Purpose / big picture
 
@@ -142,7 +142,7 @@ The Session struct tracks per-connection authentication state:
 Key methods:
 
 - `is_authenticated()` — Returns true if `user_id` is `Some`
-- `has_privilege(priv_bit)` — Returns true if authenticated AND has bit set
+- `has_privilege(priv_bit)` — Returns true if authenticated AND has the bit set
 - `require_privilege(priv_bit)` — Returns `Ok(())` or `PrivilegeError`
 - `require_authenticated()` — Returns `Ok(())` or
   `PrivilegeError::NotAuthenticated`
