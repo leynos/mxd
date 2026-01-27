@@ -118,7 +118,7 @@ under `tests/features/`. The dev dependencies in `Cargo.toml` now pin
 - `tests/session_privileges_bdd.rs` (`PrivilegeWorld`)
 - `tests/wireframe_routing_bdd.rs` (`RoutingWorld`)
 
-The users guide documents v0.4.0 async scenario execution and fixture lint
+The user's guide documents v0.4.0 async scenario execution and fixture lint
 safety. Async scenarios require `#[tokio::test(flavor = "current_thread")]` and
 `async fn` scenario bodies; steps remain synchronous. The guide notes that the
 `scenarios!` macro adds `#[expect(unused_variables)]` when fixtures are
