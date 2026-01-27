@@ -132,6 +132,18 @@ const fn is_rejected_insufficient_privilege(effect: &Effect) -> bool {
     matches!(effect, Effect::RejectedInsufficientPrivilege { .. })
 }
 
+/// Reachability property name: reject unauthenticated request.
+pub const CAN_REJECT_UNAUTHENTICATED_NAME: &str = "can reject unauthenticated request";
+
+/// Reachability property name: complete privileged operation.
+pub const CAN_COMPLETE_PRIVILEGED_OPERATION_NAME: &str = "can complete privileged operation";
+
+/// Reachability property name: reject insufficient privilege.
+pub const CAN_REJECT_INSUFFICIENT_PRIVILEGE_NAME: &str = "can reject insufficient privilege";
+
+/// Reachability property name: observe multiple queued messages.
+pub const CAN_DELIVER_OUT_OF_ORDER_NAME: &str = "can have multiple queued messages";
+
 fn rejected_unauthenticated_condition(_model: &SessionModel, state: &SystemState) -> bool {
     state_has_effect(state, is_rejected_unauthenticated)
 }
@@ -160,7 +172,7 @@ fn has_effect_sometimes(
 #[must_use]
 pub fn can_reject_unauthenticated() -> Property<SessionModel> {
     has_effect_sometimes(
-        "can reject unauthenticated request",
+        CAN_REJECT_UNAUTHENTICATED_NAME,
         rejected_unauthenticated_condition,
     )
 }
@@ -172,7 +184,7 @@ pub fn can_reject_unauthenticated() -> Property<SessionModel> {
 #[must_use]
 pub fn can_complete_privileged_operation() -> Property<SessionModel> {
     has_effect_sometimes(
-        "can complete privileged operation",
+        CAN_COMPLETE_PRIVILEGED_OPERATION_NAME,
         privileged_operation_condition,
     )
 }
@@ -184,7 +196,7 @@ pub fn can_complete_privileged_operation() -> Property<SessionModel> {
 #[must_use]
 pub fn can_reject_insufficient_privilege() -> Property<SessionModel> {
     has_effect_sometimes(
-        "can reject insufficient privilege",
+        CAN_REJECT_INSUFFICIENT_PRIVILEGE_NAME,
         rejected_insufficient_privilege_condition,
     )
 }
@@ -200,7 +212,7 @@ pub fn can_deliver_out_of_order() -> Property<SessionModel> {
     // index to be selected. We verify by checking that we can reach a state
     // where a queue has multiple messages (precondition for out-of-order).
     Property::sometimes(
-        "can have multiple queued messages",
+        CAN_DELIVER_OUT_OF_ORDER_NAME,
         |_model, state: &SystemState| state.queues.iter().any(|q| q.len() > 1),
     )
 }
@@ -274,5 +286,32 @@ mod tests {
             .iter()
             .any(|e| matches!(e, Effect::RejectedUnauthenticated { .. }));
         assert!(has_rejection);
+    }
+
+    #[test]
+    fn no_privileged_effect_without_required_privilege_fails_when_missing() {
+        use crate::session_model::{
+            privileges::{DOWNLOAD_FILE, NO_PRIVILEGES},
+            state::RequestType,
+        };
+
+        let mut state = SystemState::new(1);
+        state.effects.push(Effect::PrivilegedEffectCompleted {
+            client: 0,
+            request: RequestType::GetFileList,
+            privilege: DOWNLOAD_FILE,
+            session_privileges: NO_PRIVILEGES,
+        });
+
+        let has_required_privilege = state.effects.iter().all(|effect| match effect {
+            Effect::PrivilegedEffectCompleted {
+                privilege,
+                session_privileges,
+                ..
+            } => (*session_privileges & *privilege) == *privilege,
+            _ => true,
+        });
+
+        assert!(!has_required_privilege);
     }
 }

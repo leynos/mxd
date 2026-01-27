@@ -217,6 +217,12 @@ mod tests {
     use stateright::{Checker, HasDiscoveries};
 
     use super::*;
+    use crate::session_model::properties::{
+        CAN_COMPLETE_PRIVILEGED_OPERATION_NAME,
+        CAN_DELIVER_OUT_OF_ORDER_NAME,
+        CAN_REJECT_INSUFFICIENT_PRIVILEGE_NAME,
+        CAN_REJECT_UNAUTHENTICATED_NAME,
+    };
 
     const MIN_STATE_COUNT: usize = 10;
     const TARGET_MAX_DEPTH: usize = 6;
@@ -234,12 +240,14 @@ mod tests {
     }
 
     fn reachability_property_names() -> BTreeSet<&'static str> {
-        let mut names = BTreeSet::new();
-        names.insert(can_reject_unauthenticated().name);
-        names.insert(can_complete_privileged_operation().name);
-        names.insert(can_reject_insufficient_privilege().name);
-        names.insert(can_deliver_out_of_order().name);
-        names
+        [
+            CAN_REJECT_UNAUTHENTICATED_NAME,
+            CAN_COMPLETE_PRIVILEGED_OPERATION_NAME,
+            CAN_REJECT_INSUFFICIENT_PRIVILEGE_NAME,
+            CAN_DELIVER_OUT_OF_ORDER_NAME,
+        ]
+        .into_iter()
+        .collect()
     }
 
     #[test]

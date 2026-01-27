@@ -19,6 +19,9 @@ pub const SEND_CHAT: u64 = 1 << 10;
 /// Bit 13: Show in List - User appears in the user list.
 pub const SHOW_IN_LIST: u64 = 1 << 13;
 
+/// Bit 14: Create User - User may create new user accounts (admin privilege).
+pub const CREATE_USER: u64 = 1 << 14;
+
 /// Bit 18: Change Own Password - User may change their own password.
 pub const CHANGE_OWN_PASSWORD: u64 = 1 << 18;
 
@@ -31,14 +34,11 @@ pub const NEWS_READ_ARTICLE: u64 = 1 << 20;
 /// Bit 21: News Post Article - User may post news articles.
 pub const NEWS_POST_ARTICLE: u64 = 1 << 21;
 
-/// Bit 24: Get Client Info - User may view other users' info.
-pub const GET_CLIENT_INFO: u64 = 1 << 24;
-
-/// Bit 14: Create User - User may create new user accounts (admin privilege).
-pub const CREATE_USER: u64 = 1 << 14;
-
 /// Bit 22: Disconnect User - User may disconnect other users (admin privilege).
 pub const DISCONNECT_USER: u64 = 1 << 22;
+
+/// Bit 24: Get Client Info - User may view other users' info.
+pub const GET_CLIENT_INFO: u64 = 1 << 24;
 
 /// Default privileges for a standard authenticated user.
 ///

@@ -12,12 +12,14 @@ use verification_harness::{MIN_STATE_COUNT, verify_session_model};
 
 #[derive(Debug)]
 enum VerificationError {
+    AlreadyExecuted,
     NotExecuted,
 }
 
 impl std::fmt::Display for VerificationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::AlreadyExecuted => write!(f, "verification already executed"),
             Self::NotExecuted => write!(f, "verification not executed"),
         }
     }
@@ -68,46 +70,66 @@ impl VerificationWorld {
 }
 
 #[fixture]
-fn world() -> VerificationWorld {
+fn world() -> Result<VerificationWorld, Box<dyn std::error::Error>> {
     let world = VerificationWorld::new();
-    assert!(world.result.borrow().is_none());
-    world
+    if world.result.borrow().is_some() {
+        return Err(Box::new(VerificationError::AlreadyExecuted));
+    }
+    Ok(world)
 }
 
-fn ensure_unverified(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
-    if world.result.borrow().is_some() {
-        return Err(Box::new(std::io::Error::other(
-            "verification already executed",
-        )));
+fn resolve_world(
+    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+) -> Result<&VerificationWorld, Box<dyn std::error::Error>> {
+    world
+        .as_ref()
+        .map_err(|_| Box::new(VerificationError::AlreadyExecuted) as Box<dyn std::error::Error>)
+}
+
+fn ensure_unverified(
+    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if resolve_world(world)?.result.borrow().is_some() {
+        return Err(Box::new(VerificationError::AlreadyExecuted));
     }
     Ok(())
 }
 
 #[given("the session gating model uses default bounds")]
-fn given_default_model(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn given_default_model(
+    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
-    world.set_model(SessionModel::default());
+    let resolved_world = resolve_world(world)?;
+    resolved_world.set_model(SessionModel::default());
     Ok(())
 }
 
 #[when("I verify the session gating model")]
-fn when_verify_model(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn when_verify_model(
+    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
-    world.verify();
+    let resolved_world = resolve_world(world)?;
+    resolved_world.verify();
     Ok(())
 }
 
 #[then("the verification completes")]
 fn then_verification_completes(
-    world: &VerificationWorld,
+    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    assert!(world.result()?.ran);
+    let resolved_world = resolve_world(world)?;
+    assert!(resolved_world.result()?.ran);
     Ok(())
 }
 
 #[then("the properties are satisfied")]
-fn then_properties_satisfied(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
-    let result = world.result()?;
+fn then_properties_satisfied(
+    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let resolved_world = resolve_world(world)?;
+    let result = resolved_world.result()?;
     assert!(
         result.properties_verified,
         "reachability missing: {}, safety counterexamples: {}",
@@ -118,14 +140,15 @@ fn then_properties_satisfied(world: &VerificationWorld) -> Result<(), Box<dyn st
 
 #[then("the model explores at least {count} states")]
 fn then_state_space_size(
-    world: &VerificationWorld,
+    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
     count: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    debug_assert!(
+    assert!(
         count >= MIN_STATE_COUNT,
         "feature expectations should not undercut the harness minimum"
     );
-    let result = world.result()?;
+    let resolved_world = resolve_world(world)?;
+    let result = resolved_world.result()?;
     assert!(
         result.unique_state_count >= count,
         "expected at least {count} states, got {}",
@@ -135,9 +158,12 @@ fn then_state_space_size(
 }
 
 #[then("the model includes the out-of-order delivery property")]
-fn then_out_of_order_property(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn then_out_of_order_property(
+    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
-    let properties = world.model.borrow().properties();
+    let resolved_world = resolve_world(world)?;
+    let properties = resolved_world.model.borrow().properties();
     assert!(
         properties
             .iter()
@@ -150,16 +176,34 @@ fn then_out_of_order_property(world: &VerificationWorld) -> Result<(), Box<dyn s
     path = "../../tests/features/session_gating_verification.feature",
     index = 0
 )]
-fn session_model_verifies_default_bounds(world: VerificationWorld) { let _ = world; }
+fn session_model_verifies_default_bounds(
+    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
+) {
+    if let Err(error) = world {
+        panic!("world fixture failed: {error}");
+    }
+}
 
 #[scenario(
     path = "../../tests/features/session_gating_verification.feature",
     index = 1
 )]
-fn session_model_explores_state_space(world: VerificationWorld) { let _ = world; }
+fn session_model_explores_state_space(
+    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
+) {
+    if let Err(error) = world {
+        panic!("world fixture failed: {error}");
+    }
+}
 
 #[scenario(
     path = "../../tests/features/session_gating_verification.feature",
     index = 2
 )]
-fn session_model_registers_out_of_order_property(world: VerificationWorld) { let _ = world; }
+fn session_model_registers_out_of_order_property(
+    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
+) {
+    if let Err(error) = world {
+        panic!("world fixture failed: {error}");
+    }
+}

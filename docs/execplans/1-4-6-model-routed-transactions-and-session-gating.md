@@ -43,8 +43,8 @@ states minimum).
   lines of code (net), stop and escalate.
 - **Interface**: If any public application programming interface (API) in the
   main `mxd` crate must change, stop and escalate.
-- **Dependencies**: If a dependency other than `stateright` is required in
-  `mxd-verification`, stop and escalate.
+- **Dependencies**: If a dependency other than `stateright` or `rstest-bdd` is
+  required in `mxd-verification`, stop and escalate.
 - **Iterations**: If tests still fail after 3 debug/fix cycles, stop and
   escalate.
 - **Ambiguity**: If multiple valid interpretations exist for any invariant,
@@ -311,7 +311,7 @@ Expected output (sample):
 
 Expected: All commands succeed with exit code 0.
 
-## Validation and Acceptance
+## Validation and acceptance
 
 Quality criteria (what "done" means):
 
@@ -336,7 +336,7 @@ The test output should show:
 2. State count > 100 (logged by the state space test)
 3. All properties (safety and reachability) satisfied
 
-## Idempotence and Recovery
+## Idempotence and recovery
 
 All steps are idempotent:
 
@@ -378,7 +378,7 @@ affected files or reset to the previous commit.
     ERR_NOT_AUTHENTICATED = 1
     ERR_INSUFFICIENT_PRIVILEGES = 4
 
-## Interfaces and Dependencies
+## Interfaces and dependencies
 
 ### External dependency
 

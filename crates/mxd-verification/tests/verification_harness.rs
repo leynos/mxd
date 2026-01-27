@@ -22,6 +22,7 @@ fn property_names(model: &SessionModel) -> PropertyNames {
     for property in model.properties() {
         match property.expectation {
             Expectation::Always | Expectation::Eventually => {
+                // Treat both as counterexample-producing invariants for harness reporting.
                 safety.insert(property.name);
             }
             Expectation::Sometimes => {
