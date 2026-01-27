@@ -1,50 +1,27 @@
 //! Behaviour-driven tests for the session gating verification model.
 
-use std::{cell::RefCell, collections::BTreeSet};
+mod verification_harness;
+
+use std::cell::RefCell;
 
 use mxd_verification::session_model::SessionModel;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
-use stateright::{Checker, Expectation, HasDiscoveries, Model};
-
-const TARGET_MAX_DEPTH: usize = 6;
-const TARGET_STATE_COUNT: usize = 1500;
+use stateright::Model;
+use verification_harness::{MIN_STATE_COUNT, verify_session_model};
 
 #[derive(Clone, Copy, Debug, Default)]
 struct VerificationResult {
     ran: bool,
     properties_verified: bool,
     unique_state_count: usize,
+    missing_reachability: usize,
+    safety_counterexamples: usize,
 }
 
 struct VerificationWorld {
     model: RefCell<SessionModel>,
     result: RefCell<Option<VerificationResult>>,
-}
-
-#[derive(Clone, Debug)]
-struct PropertyNames {
-    safety: BTreeSet<&'static str>,
-    reachability: BTreeSet<&'static str>,
-}
-
-fn property_names(model: &SessionModel) -> PropertyNames {
-    let mut safety = BTreeSet::new();
-    let mut reachability = BTreeSet::new();
-    for property in model.properties() {
-        match property.expectation {
-            Expectation::Always | Expectation::Eventually => {
-                safety.insert(property.name);
-            }
-            Expectation::Sometimes => {
-                reachability.insert(property.name);
-            }
-        }
-    }
-    PropertyNames {
-        safety,
-        reachability,
-    }
 }
 
 impl VerificationWorld {
@@ -59,21 +36,13 @@ impl VerificationWorld {
 
     fn verify(&self) {
         let model = self.model.borrow().clone();
-        let property_names = property_names(&model);
-        let checker = model
-            .checker()
-            .target_max_depth(TARGET_MAX_DEPTH)
-            .target_state_count(TARGET_STATE_COUNT)
-            .finish_when(HasDiscoveries::AllOf(property_names.reachability.clone()))
-            .spawn_bfs()
-            .join();
-        let discoveries: BTreeSet<_> = checker.discoveries().keys().copied().collect();
-        let properties_verified = property_names.reachability.is_subset(&discoveries)
-            && property_names.safety.is_disjoint(&discoveries);
+        let outcome = verify_session_model(&model);
         let result = VerificationResult {
             ran: true,
-            properties_verified,
-            unique_state_count: checker.unique_state_count(),
+            properties_verified: outcome.is_verified(),
+            unique_state_count: outcome.unique_state_count,
+            missing_reachability: outcome.missing_reachability,
+            safety_counterexamples: outcome.safety_counterexamples,
         };
         self.result.replace(Some(result));
     }
@@ -108,11 +77,20 @@ fn then_verification_completes(world: &VerificationWorld) {
 
 #[then("the properties are satisfied")]
 fn then_properties_satisfied(world: &VerificationWorld) {
-    assert!(world.result().properties_verified);
+    let result = world.result();
+    assert!(
+        result.properties_verified,
+        "reachability missing: {}, safety counterexamples: {}",
+        result.missing_reachability, result.safety_counterexamples
+    );
 }
 
 #[then("the model explores at least {count} states")]
 fn then_state_space_size(world: &VerificationWorld, count: usize) {
+    debug_assert!(
+        count >= MIN_STATE_COUNT,
+        "feature expectations should not undercut the harness minimum"
+    );
     assert!(
         world.result().unique_state_count >= count,
         "expected at least {count} states, got {}",

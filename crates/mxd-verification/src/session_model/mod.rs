@@ -5,7 +5,7 @@
 //! multiple concurrent client sessions. The model verifies that:
 //!
 //! 1. **Safety**: Privileged operations cannot complete without proper authentication and
-//!    authorisation.
+//!    authorization.
 //! 2. **Temporal ordering**: Authentication must precede any privileged effect.
 //! 3. **Out-of-order resilience**: Message reordering cannot bypass security.
 //!
@@ -22,7 +22,7 @@
 //!
 //! # Model configuration
 //!
-//! The model is parameterised by:
+//! The model is parameterized by:
 //! - `num_clients`: Number of concurrent client sessions (default: 2)
 //! - `max_queue_depth`: Maximum messages queued per client (default: 2)
 //! - `user_ids`: Pool of user IDs for login actions

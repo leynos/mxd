@@ -1,10 +1,11 @@
 # Task 1.4.6: Model routed transactions and session gating in stateright
 
-This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
-`Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
-`Outcomes & Retrospective` must be kept up to date as work proceeds.
+This Execution Plan (ExecPlan) is a living document. The sections
+`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
+`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
+proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 This document must be maintained in accordance with the execplans skill
 instructions at `/home/leynos/.claude/skills/execplans`.
@@ -27,20 +28,21 @@ states minimum).
   on the main `mxd` crate (which would pull in async runtime and database
   types).
 - Privilege bit constants in the verification model must mirror those in
-  `src/privileges.rs` exactly. Any drift indicates a synchronisation failure.
+  `src/privileges.rs` exactly. Any drift indicates a synchronization failure.
 - The model must focus on the privilege enforcement semantics, not transport
   details (framing, codecs, sockets).
 - No single code file may exceed 400 lines per AGENTS.md.
 - All code must pass `make check-fmt`, `make lint`, and `make test`.
-- BDD tests must use `rstest-bdd` v0.3.2 as specified in the task.
+- Behaviour-Driven Development (BDD) tests must use `rstest-bdd` v0.3.2 as
+  specified in the task.
 - Documentation must use en-GB-oxendict spelling.
 
 ## Tolerances (exception triggers)
 
 - **Scope**: If implementation requires changes to more than 10 files or 500
   lines of code (net), stop and escalate.
-- **Interface**: If any public API in the main `mxd` crate must change, stop
-  and escalate.
+- **Interface**: If any public application programming interface (API) in the
+  main `mxd` crate must change, stop and escalate.
 - **Dependencies**: If a dependency other than `stateright` is required in
   `mxd-verification`, stop and escalate.
 - **Iterations**: If tests still fail after 3 debug/fix cycles, stop and
@@ -57,7 +59,8 @@ states minimum).
 
 - Risk: Privilege constant drift between `src/privileges.rs` and model.
   Severity: low. Likelihood: low. Mitigation: Add explicit comments noting the
-  source of truth; consider a compile-time or CI check in future.
+  source of truth; consider a compile-time or continuous integration (CI) check
+  in future.
 
 - Risk: Out-of-order delivery model may not capture all real-world reordering
   scenarios. Severity: low. Likelihood: medium. Mitigation: Queue-based model
@@ -119,8 +122,9 @@ directories:
     field 110
   - `src/commands/` — Transaction handlers with privilege enforcement
 - `crates/mxd-verification/` — Verification crate containing:
-  - `tla/MxdHandshake.tla` — TLA+ handshake state machine
-  - `tests/tlc_handshake.rs` — TLC integration test
+  - `tla/MxdHandshake.tla` — Temporal Logic of Actions (TLA+) handshake
+    state machine
+  - `tests/tlc_handshake.rs` — TLA+ model checker (TLC) integration test
 - `docs/` — Documentation including:
   - `docs/verification-strategy.md` — Three-tier verification approach
   - `docs/roadmap.md` — Project roadmap with task 1.4.6
@@ -149,7 +153,7 @@ Error codes: 1 = not authenticated, 4 = insufficient privileges.
 
 The project uses a three-tier verification approach:
 
-1. TLA+/TLC for abstract state machines (handshake spec exists)
+1. TLA+ and TLC for abstract state machines (handshake spec exists)
 2. Stateright for executable models with concurrency (this task)
 3. Kani for local invariants (codec harnesses exist)
 
@@ -191,7 +195,7 @@ Create `crates/mxd-verification/src/session_model/state.rs` with:
 
 ### Stage D: Create action types and transitions
 
-Create `crates/mxd-verification/src/session_model/actions.rs` with:
+Create `crates/mxd-verification/src/session_model/actions/mod.rs` with:
 
 - `Action` enum — Login, Logout, SendRequest, DeliverRequest
 - `apply_action(state, action) -> state'` — Pure transition function that
@@ -285,7 +289,7 @@ Create directory and files:
     crates/mxd-verification/src/session_model/mod.rs
     crates/mxd-verification/src/session_model/privileges.rs
     crates/mxd-verification/src/session_model/state.rs
-    crates/mxd-verification/src/session_model/actions.rs
+    crates/mxd-verification/src/session_model/actions/mod.rs
     crates/mxd-verification/src/session_model/properties.rs
 
 ### 3. Run verification tests
@@ -433,7 +437,7 @@ states of a system model to verify safety and liveness properties.
         pub effects: Vec<Effect>,
     }
 
-### Action types (crates/mxd-verification/src/session_model/actions.rs)
+### Action types (crates/mxd-verification/src/session_model/actions/mod.rs)
 
     pub enum Action {
         Login { client: usize, user_id: u32, privileges: u64 },

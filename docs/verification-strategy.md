@@ -65,8 +65,9 @@ Use Stateright when:
 
 Models live in `crates/mxd-verification/` and call the domain `step` function
 directly where it is available. Some models (such as session gating) encode
-protocol semantics in isolation to keep the verification crate dependency
-light. Properties should assert both state invariants and effect safety.
+protocol semantics in isolation to keep the verification crate
+dependency-light. Properties should assert both state invariants and effect
+safety.
 
 The session gating Stateright model lives in
 `crates/mxd-verification/src/session_model` and explores login, logout,

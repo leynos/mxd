@@ -1,7 +1,7 @@
 //! Privilege bit constants for the session gating model.
 //!
 //! These constants mirror the values in `src/privileges.rs` and must be kept
-//! in sync manually. Any drift indicates a synchronisation failure that must
+//! in sync manually. Any drift indicates a synchronization failure that must
 //! be corrected before verification results can be trusted.
 //!
 //! The constants are defined as raw `u64` values rather than using bitflags

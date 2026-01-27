@@ -161,6 +161,8 @@ pub enum Effect {
         request: RequestType,
         /// The privilege that was exercised.
         privilege: u64,
+        /// The session's privilege set at delivery time.
+        session_privileges: u64,
     },
     /// An unprivileged operation completed successfully.
     UnprivilegedEffectCompleted {
