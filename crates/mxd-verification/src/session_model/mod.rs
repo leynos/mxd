@@ -92,7 +92,7 @@ impl SessionModel {
     pub fn with_clients(num_clients: usize) -> Self {
         // Stateright expects at least one client; saturate zero to one.
         let bounded_clients = num_clients.clamp(1, u32::MAX as usize);
-        let max_user_id = u32::try_from(bounded_clients).map_or(u32::MAX, |id| id);
+        let max_user_id = u32::try_from(bounded_clients).unwrap_or(u32::MAX);
         Self {
             num_clients: bounded_clients,
             user_ids: (1..=max_user_id).collect(),

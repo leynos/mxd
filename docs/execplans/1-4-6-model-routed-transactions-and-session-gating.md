@@ -93,7 +93,7 @@ states minimum).
   types. Importing would require feature gates and complicate the build.
   Date/Author: Plan phase.
 
-- Decision: Use queue-based out-of-order delivery model rather than a full
+- Decision: Use a queue-based out-of-order delivery model rather than a full
   network actor model. Rationale: Simpler state space, captures essential
   reordering semantics without network topology complexity. A queue per client
   with non-deterministic delivery index selection models the key scenario
@@ -416,8 +416,9 @@ states of a system model to verify safety and liveness properties.
 
     pub enum RequestType {
         Ping,
-        GetUserInfo,
-        GetFileList,
+    GetUserInfo,
+    GetClientInfo,
+    GetFileList,
         GetNewsCategories,
         PostNewsArticle,
     }
