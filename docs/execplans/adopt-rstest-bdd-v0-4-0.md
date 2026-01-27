@@ -182,6 +182,7 @@ outputs, capture logs using:
 
 If `get-project` is unavailable, replace it with `$(basename "$(pwd)")`.
 
+<!-- markdownlint-disable MD029 -->
 1. Update dependencies in `Cargo.toml` (dev-dependencies).
 2. Probe build/test on one BDD target:
 
@@ -189,18 +190,19 @@ If `get-project` is unavailable, replace it with `$(basename "$(pwd)")`.
 cargo test --test create_user_bdd
 ```
 
-1. Run formatting and lint gates:
+3. Run formatting and lint gates:
 
 ```sh
 make check-fmt | tee /tmp/check-fmt-$(get-project)-$(git branch --show).out
 make lint | tee /tmp/lint-$(get-project)-$(git branch --show).out
 ```
 
-1. Run the full test suite:
+4. Run the full test suite:
 
 ```sh
 make test | tee /tmp/test-$(get-project)-$(git branch --show).out
 ```
+<!-- markdownlint-enable MD029 -->
 
 ## Validation and acceptance
 
