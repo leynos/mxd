@@ -8,7 +8,7 @@ proceeds.
 Status: COMPLETE
 
 This document must be maintained in accordance with the execplans skill
-instructions at `/home/leynos/.claude/skills/execplans`.
+instructions in the execplans skill.
 
 ## Purpose / big picture
 
@@ -101,7 +101,7 @@ states minimum).
 
 - Decision: Track effects history for temporal invariants. Rationale: The core
   invariant "authentication precedes privileged effect" requires temporal
-  reasoning about event ordering. Maintaining an effects log in the state
+  reasoning about event ordering. Maintaining the effects log in the state
   enables expressing this as a state invariant. Date/Author: Plan phase.
 
 ## Outcomes & retrospective
@@ -217,7 +217,7 @@ Create `crates/mxd-verification/src/session_model/mod.rs` with:
 
 - `SessionModel` struct with configuration (num_clients, max_queue_depth, etc.)
 - `Model` trait implementation with init_states, actions, next_state, properties
-- Default configuration targeting 2 clients, queue depth 2, 4 privilege sets
+- Default configuration targeting 2 clients, queue depth 2, 4 privilege sets.
 
 Update `crates/mxd-verification/src/lib.rs` to export the new module.
 
@@ -266,8 +266,7 @@ Update `docs/roadmap.md` to mark task 1.4.6 as complete with status note.
 
 ## Concrete Steps
 
-All commands run from repository root:
-`/data/leynos/Projects/mxd.worktrees/1-4-6-model-routed-transactions-and-session-gating`
+All commands run from the repository root.
 
 ### 1. Add Stateright dependency
 

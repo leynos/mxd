@@ -86,11 +86,15 @@ impl Default for SessionModel {
 
 impl SessionModel {
     /// Creates a new model with the specified number of clients.
+    ///
+    /// Values below one are saturated to one to keep the model valid.
     #[must_use]
     pub fn with_clients(num_clients: usize) -> Self {
-        let max_user_id = u32::try_from(num_clients.min(u32::MAX as usize)).unwrap_or(u32::MAX);
+        // Stateright expects at least one client; saturate zero to one.
+        let bounded_clients = num_clients.clamp(1, u32::MAX as usize);
+        let max_user_id = u32::try_from(bounded_clients).map_or(u32::MAX, |id| id);
         Self {
-            num_clients,
+            num_clients: bounded_clients,
             user_ids: (1..=max_user_id).collect(),
             ..Default::default()
         }

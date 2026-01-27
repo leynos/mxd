@@ -258,6 +258,8 @@ impl SystemState {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -304,54 +306,34 @@ mod tests {
         assert!(!session.has_privilege(DOWNLOAD_FILE));
     }
 
-    #[test]
-    fn ping_requires_no_privileges() {
-        assert_eq!(RequestType::Ping.required_privilege(), NO_PRIVILEGES);
+    #[rstest]
+    #[case(RequestType::Ping, NO_PRIVILEGES)]
+    #[case(RequestType::GetUserInfo, NO_PRIVILEGES)]
+    #[case(RequestType::GetFileList, DOWNLOAD_FILE)]
+    #[case(RequestType::GetNewsCategories, NEWS_READ_ARTICLE)]
+    #[case(RequestType::PostNewsArticle, NEWS_POST_ARTICLE)]
+    fn request_type_privilege_requirements(#[case] request: RequestType, #[case] expected: u64) {
+        assert_eq!(request.required_privilege(), expected);
     }
 
-    #[test]
-    fn get_user_info_requires_no_privileges() {
-        assert_eq!(RequestType::GetUserInfo.required_privilege(), NO_PRIVILEGES);
+    #[rstest]
+    #[case(RequestType::Ping, false)]
+    #[case(RequestType::GetUserInfo, true)]
+    #[case(RequestType::GetFileList, true)]
+    #[case(RequestType::GetNewsCategories, true)]
+    #[case(RequestType::PostNewsArticle, true)]
+    fn request_type_auth_requirements(#[case] request: RequestType, #[case] expected: bool) {
+        assert_eq!(request.requires_authentication(), expected);
     }
 
-    #[test]
-    fn get_file_list_requires_download_privilege() {
-        assert_eq!(RequestType::GetFileList.required_privilege(), DOWNLOAD_FILE);
-    }
-
-    #[test]
-    fn get_news_categories_requires_read_privilege() {
-        assert_eq!(
-            RequestType::GetNewsCategories.required_privilege(),
-            NEWS_READ_ARTICLE
-        );
-    }
-
-    #[test]
-    fn post_news_article_requires_post_privilege() {
-        assert_eq!(
-            RequestType::PostNewsArticle.required_privilege(),
-            NEWS_POST_ARTICLE
-        );
-    }
-
-    #[test]
-    fn request_type_auth_requirements() {
-        assert!(!RequestType::Ping.requires_authentication());
-        assert!(RequestType::GetUserInfo.requires_authentication());
-        assert!(RequestType::GetFileList.requires_authentication());
-    }
-
-    #[test]
-    fn unprivileged_requests_are_not_privileged() {
-        assert!(!RequestType::Ping.is_privileged());
-        assert!(!RequestType::GetUserInfo.is_privileged());
-    }
-
-    #[test]
-    fn privileged_requests_are_privileged() {
-        assert!(RequestType::GetFileList.is_privileged());
-        assert!(RequestType::PostNewsArticle.is_privileged());
+    #[rstest]
+    #[case(RequestType::Ping, false)]
+    #[case(RequestType::GetUserInfo, false)]
+    #[case(RequestType::GetFileList, true)]
+    #[case(RequestType::GetNewsCategories, true)]
+    #[case(RequestType::PostNewsArticle, true)]
+    fn request_type_privilege_classification(#[case] request: RequestType, #[case] expected: bool) {
+        assert_eq!(request.is_privileged(), expected);
     }
 
     #[test]

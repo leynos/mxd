@@ -67,62 +67,73 @@ pub const fn has_privilege(privileges: u64, required: u64) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
-    #[test]
-    fn download_file_bit_position() {
-        assert_eq!(DOWNLOAD_FILE, 4, "DOWNLOAD_FILE should be 1 << 2 = 4");
+    #[rstest]
+    #[case(DOWNLOAD_FILE, 1 << 2, "DOWNLOAD_FILE should be at bit 2")]
+    #[case(
+        NEWS_READ_ARTICLE,
+        1 << 20,
+        "NEWS_READ_ARTICLE should be at bit 20"
+    )]
+    #[case(
+        NEWS_POST_ARTICLE,
+        1 << 21,
+        "NEWS_POST_ARTICLE should be at bit 21"
+    )]
+    fn privilege_bit_positions(#[case] actual: u64, #[case] expected: u64, #[case] message: &str) {
+        assert_eq!(actual, expected, "{message}");
     }
 
-    #[test]
-    fn news_read_article_bit_position() {
-        assert_eq!(
-            NEWS_READ_ARTICLE,
-            1 << 20,
-            "NEWS_READ_ARTICLE should be at bit 20"
-        );
-    }
-
-    #[test]
-    fn news_post_article_bit_position() {
-        assert_eq!(
-            NEWS_POST_ARTICLE,
-            1 << 21,
-            "NEWS_POST_ARTICLE should be at bit 21"
-        );
-    }
-
-    #[test]
-    fn default_user_has_download() {
-        assert!(has_privilege(DEFAULT_USER_PRIVILEGES, DOWNLOAD_FILE));
-    }
-
-    #[test]
-    fn default_user_has_news_read() {
-        assert!(has_privilege(DEFAULT_USER_PRIVILEGES, NEWS_READ_ARTICLE));
-    }
-
-    #[test]
-    fn default_user_has_news_post() {
-        assert!(has_privilege(DEFAULT_USER_PRIVILEGES, NEWS_POST_ARTICLE));
-    }
-
-    #[test]
-    fn default_user_lacks_admin_privs() {
-        assert!(!has_privilege(DEFAULT_USER_PRIVILEGES, CREATE_USER));
-        assert!(!has_privilege(DEFAULT_USER_PRIVILEGES, DISCONNECT_USER));
-    }
-
-    #[test]
-    fn no_privileges_has_nothing() {
-        assert!(!has_privilege(NO_PRIVILEGES, DOWNLOAD_FILE));
-        assert!(!has_privilege(NO_PRIVILEGES, NEWS_READ_ARTICLE));
-    }
-
-    #[test]
-    fn admin_has_all() {
-        assert!(has_privilege(ADMIN_PRIVILEGES, DOWNLOAD_FILE));
-        assert!(has_privilege(ADMIN_PRIVILEGES, CREATE_USER));
-        assert!(has_privilege(ADMIN_PRIVILEGES, DISCONNECT_USER));
+    #[rstest]
+    #[case(
+        DEFAULT_USER_PRIVILEGES,
+        DOWNLOAD_FILE,
+        true,
+        "default user has download"
+    )]
+    #[case(
+        DEFAULT_USER_PRIVILEGES,
+        NEWS_READ_ARTICLE,
+        true,
+        "default user has news read"
+    )]
+    #[case(
+        DEFAULT_USER_PRIVILEGES,
+        NEWS_POST_ARTICLE,
+        true,
+        "default user has news post"
+    )]
+    #[case(
+        DEFAULT_USER_PRIVILEGES,
+        CREATE_USER,
+        false,
+        "default user lacks create user"
+    )]
+    #[case(
+        DEFAULT_USER_PRIVILEGES,
+        DISCONNECT_USER,
+        false,
+        "default user lacks disconnect user"
+    )]
+    #[case(NO_PRIVILEGES, DOWNLOAD_FILE, false, "no privileges lacks download")]
+    #[case(
+        NO_PRIVILEGES,
+        NEWS_READ_ARTICLE,
+        false,
+        "no privileges lacks news read"
+    )]
+    #[case(ADMIN_PRIVILEGES, DOWNLOAD_FILE, true, "admin has download")]
+    #[case(ADMIN_PRIVILEGES, CREATE_USER, true, "admin has create user")]
+    #[case(ADMIN_PRIVILEGES, DISCONNECT_USER, true, "admin has disconnect user")]
+    fn privilege_membership_cases(
+        #[case] privileges: u64,
+        #[case] required: u64,
+        #[case] expected: bool,
+        #[case] message: &str,
+    ) {
+        assert_eq!(has_privilege(privileges, required), expected, "{message}");
     }
 }
