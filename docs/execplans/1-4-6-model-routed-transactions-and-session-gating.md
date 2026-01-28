@@ -264,7 +264,7 @@ Execute:
 
 Update `docs/roadmap.md` to mark task 1.4.6 as complete with status note.
 
-## Concrete Steps
+## Concrete steps
 
 All commands run from the repository root.
 
@@ -352,7 +352,7 @@ If a step fails partway through:
 Rollback: If the entire change needs to be reverted, `git checkout` the
 affected files or reset to the previous commit.
 
-## Artifacts and Notes
+## Artifacts and notes
 
 ### Key privilege bit constants (from src/privileges.rs)
 
