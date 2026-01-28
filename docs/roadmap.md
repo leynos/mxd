@@ -152,7 +152,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   that preserves transaction IDs/types for error replies, logging errors with
   tracing context, and adding unit tests plus Behavior-Driven Development (BDD)
   coverage. Dependencies: 1.4.4.
-- [ ] 1.4.6. Model routed transactions and session gating in Stateright.
+- [x] 1.4.6. Model routed transactions and session gating in Stateright.
   Acceptance: Stateright models explore login, privilege checks, and
   out-of-order delivery, and `cargo test -p mxd-verification` passes with
   invariants preventing privileged effects before authentication. Dependencies:

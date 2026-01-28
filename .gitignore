@@ -36,6 +36,5 @@ debugging-plan-*.md
 
 # TLC model checker generated files
 states/
-
-# grepai index                                                                                                                                                                   
+# grepai index
 .grepai/

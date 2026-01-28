@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
+.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only test-verification lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
 
 APP ?= mxd
 CARGO ?= cargo
@@ -79,7 +79,7 @@ tlc: tlc-handshake ## Run all TLA+ model checks
 tlc-handshake: ## Run TLC on handshake spec
 	TLC_IMAGE=$(TLC_IMAGE) $(TLC_RUNNER) crates/mxd-verification/tla/MxdHandshake.tla
 
-test: test-postgres test-sqlite test-wireframe-only ## Run sqlite, postgres, and wireframe-only suites
+test: test-postgres test-sqlite test-wireframe-only test-verification ## Run sqlite, postgres, wireframe-only, and verification suites
 
 # Note: RSTEST_TIMEOUT is intentionally omitted for postgres tests because
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
@@ -93,6 +93,9 @@ test-sqlite: ## Run tests with the sqlite backend
 
 test-wireframe-only: ## Run tests with legacy networking disabled
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(WIREFRAME_ONLY_FEATURES)
+
+test-verification: ## Run verification crate tests
+	RUSTFLAGS="-D warnings" $(CARGO) nextest run -p mxd-verification
 
 sqlite: target/debug/$(APP) ## Build debug sqlite binary
 
