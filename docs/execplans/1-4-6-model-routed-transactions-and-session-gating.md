@@ -19,8 +19,8 @@ out-of-order message delivery across multiple concurrent client sessions.
 
 Observable success: Running `cargo test -p mxd-verification` passes, including
 new tests that exercise the Stateright session model. The model checker reports
-no invariant violations and explores a non-trivial state space (hundreds of
-states minimum).
+no invariant violations and explores a non-trivial state space (more than 100
+states).
 
 ## Constraints
 
