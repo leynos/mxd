@@ -1,4 +1,4 @@
-# Task 1.4.6: Model routed transactions and session gating in stateright
+# Task 1.4.6: Model routed transactions and session gating in Stateright
 
 This Execution Plan (ExecPlan) is a living document. The sections
 `Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
