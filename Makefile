@@ -61,12 +61,15 @@ lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy for all featur
 
 lint-postgres: ## Run Clippy with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
+	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_POSTGRES_FEATURES)
 
 lint-sqlite: ## Run Clippy with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
+	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_SQLITE_FEATURES)
 
 lint-wireframe-only: ## Run Clippy with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
+	RUSTFLAGS="-D warnings" whitaker --all -- $(WIREFRAME_ONLY_FEATURES)
 
 markdownlint: ## Lint Markdown files
 	$(MDLINT) '**/*.md'

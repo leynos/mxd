@@ -43,8 +43,13 @@ jobs:
           url: postgres://postgres:password@localhost/test
       - name: Format
         run: make check-fmt
-      - name: Lint
+      - name: Lint with Clippy
         run: cargo clippy --no-default-features --features "${{ matrix.feature }} test-support" -- -D warnings
+      - name: Lint with Whitaker
+        run: |
+          cargo install whitaker
+          whitaker-installer --experimental
+          whitaker --all -- --no-default-features --features "${{ matrix.feature }} test-support"
       - name: Test
         run: cargo test --no-default-features --features "${{ matrix.feature }} test-support"
 
