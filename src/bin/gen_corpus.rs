@@ -79,7 +79,9 @@ fn news_article_data_tx() -> Result<Transaction> {
 
 fn save_tx(dir: &Dir, name: &Utf8Path, tx: &Transaction) -> Result<()> {
     let bytes = tx.to_bytes();
-    let mut f = dir.create(name)?;
+    let mut f = dir
+        .create(name)
+        .with_context(|| format!("create corpus file {name}"))?;
     f.write_all(&bytes).context("write corpus file")
 }
 

@@ -154,20 +154,20 @@ fn announce_listening(addr: SocketAddr) {
     }
 }
 
-fn require_connection_context() -> ConnectionContext {
-    let Some(context) = take_current_context() else {
-        error!("missing handshake context in app factory");
-        panic!("missing handshake context in app factory");
-    };
-    context
+fn require_peer_from_current_context() -> SocketAddr {
+    let context = take_current_context().unwrap_or_else(missing_handshake_context);
+    let (_handshake, peer) = context.into_parts();
+    peer.unwrap_or_else(missing_peer_address)
 }
 
-fn require_peer(peer: Option<SocketAddr>) -> SocketAddr {
-    let Some(peer) = peer else {
-        error!("peer address missing in app factory");
-        panic!("peer address missing in app factory");
-    };
-    peer
+fn missing_handshake_context() -> ConnectionContext {
+    error!("missing handshake context in app factory");
+    panic!("missing handshake context in app factory");
+}
+
+fn missing_peer_address() -> SocketAddr {
+    error!("peer address missing in app factory");
+    panic!("peer address missing in app factory");
 }
 
 fn build_app_or_panic(
@@ -193,9 +193,7 @@ fn build_app_for_connection(
     // Missing connection context indicates handshake setup failed; abort the
     // connection rather than running without routing state. Returning a
     // degraded app would accept traffic with broken routing and state.
-    let context = require_connection_context();
-    let (_handshake, peer) = context.into_parts();
-    let peer = require_peer(peer);
+    let peer = require_peer_from_current_context();
     build_app_or_panic(pool, argon2, outbound_registry, peer)
 }
 

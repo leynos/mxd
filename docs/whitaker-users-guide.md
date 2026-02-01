@@ -100,8 +100,8 @@ libraries = [
 
 Whitaker lints are divided into two categories:
 
-- **Standard lints** are stable, well-tested, and included in the default suite.
-  They are recommended for general use and have predictable behaviour.
+- **Standard lints** are stable, well-tested, and included in the default
+  suite. They are recommended for general use and have predictable behaviour.
 - **Experimental lints** are newer or more aggressive checks that may produce
   false positives or undergo breaking changes between releases. They must be
   explicitly enabled.
@@ -290,7 +290,8 @@ excluded_crates = ["my_cli_entrypoint", "my_test_utilities"]
 The `excluded_crates` option allows specified crates to use `std::fs`
 operations without triggering diagnostics. This is useful for:
 
-- CLI entry points where ambient filesystem access is the intended boundary
+- Command-line interface (CLI) entry points where ambient filesystem access is
+  the intended boundary
 - Test support utilities that manage fixtures with ambient access
 - Build scripts or code generators that require direct filesystem operations
 

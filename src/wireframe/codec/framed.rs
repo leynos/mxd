@@ -91,15 +91,22 @@ impl HotlineCodec {
         Ok(Some(header))
     }
 
-    fn take_frame_payload(src: &mut BytesMut, header: &FrameHeader) -> Option<Vec<u8>> {
-        let frame_len = HEADER_LEN + header.data_size as usize;
+    fn take_frame_payload(
+        src: &mut BytesMut,
+        header: &FrameHeader,
+    ) -> Result<Option<Vec<u8>>, io::Error> {
+        let data_size = usize::try_from(header.data_size)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "frame data size too large"))?;
+        let frame_len = HEADER_LEN
+            .checked_add(data_size)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "frame length overflow"))?;
         if src.len() < frame_len {
             src.reserve(frame_len - src.len());
-            return None;
+            return Ok(None);
         }
 
         src.advance(HEADER_LEN);
-        Some(src.split_to(header.data_size as usize).to_vec())
+        Ok(Some(src.split_to(data_size).to_vec()))
     }
 
     fn finalize_transaction(
@@ -112,27 +119,11 @@ impl HotlineCodec {
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))
     }
 
-    fn handle_fragment(
-        &mut self,
-        header: FrameHeader,
-        payload: Vec<u8>,
-    ) -> Result<Option<HotlineTransaction>, io::Error> {
-        if self.reassembly.is_some() {
-            self.append_fragment(&header, &payload)
-        } else {
-            self.start_or_complete(header, payload)
-        }
-    }
-
     fn append_fragment(
-        &mut self,
+        state: &mut ReassemblyState,
         header: &FrameHeader,
         payload: &[u8],
-    ) -> Result<Option<HotlineTransaction>, io::Error> {
-        let state = self.reassembly.as_mut().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "missing reassembly state")
-        })?;
-
+    ) -> Result<bool, io::Error> {
         super::validate_fragment_consistency(&state.first_header, header)
             .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
 
@@ -143,8 +134,18 @@ impl HotlineCodec {
             ));
         }
 
-        let remaining = state.first_header.total_size as usize - state.payload.len();
-        if header.data_size as usize > remaining {
+        let total_size = usize::try_from(state.first_header.total_size).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "frame total size too large")
+        })?;
+        let data_size = usize::try_from(header.data_size)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "frame data size too large"))?;
+        let remaining = total_size.checked_sub(state.payload.len()).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "reassembly payload exceeds declared total size",
+            )
+        })?;
+        if data_size > remaining {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "fragment exceeds remaining payload size",
@@ -153,31 +154,11 @@ impl HotlineCodec {
 
         state.payload.extend_from_slice(payload);
 
-        if state.payload.len() == state.first_header.total_size as usize {
-            let completed = self.reassembly.take().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "missing reassembly state")
-            })?;
-            let tx = Self::finalize_transaction(completed.first_header, completed.payload)?;
-            return Ok(Some(tx));
-        }
-
-        Ok(None)
+        Ok(state.payload.len() == total_size)
     }
 
-    fn start_or_complete(
-        &mut self,
-        header: FrameHeader,
-        payload: Vec<u8>,
-    ) -> Result<Option<HotlineTransaction>, io::Error> {
-        if header.data_size < header.total_size {
-            self.reassembly = Some(ReassemblyState {
-                first_header: header,
-                payload,
-            });
-            return Ok(None);
-        }
-
-        Self::finalize_transaction(header, payload).map(Some)
+    fn missing_reassembly_state() -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidData, "missing reassembly state")
     }
 }
 
@@ -189,10 +170,33 @@ impl Decoder for HotlineCodec {
         let Some(header) = Self::peek_header(src)? else {
             return Ok(None);
         };
-        let Some(payload) = Self::take_frame_payload(src, &header) else {
+        let Some(payload) = Self::take_frame_payload(src, &header)? else {
             return Ok(None);
         };
-        self.handle_fragment(header, payload)
+
+        if let Some(state) = self.reassembly.as_mut() {
+            let is_complete = Self::append_fragment(state, &header, &payload)?;
+            if !is_complete {
+                return Ok(None);
+            }
+            let completed_state = self
+                .reassembly
+                .take()
+                .ok_or_else(Self::missing_reassembly_state)?;
+            let tx =
+                Self::finalize_transaction(completed_state.first_header, completed_state.payload)?;
+            return Ok(Some(tx));
+        }
+
+        if header.data_size < header.total_size {
+            self.reassembly = Some(ReassemblyState {
+                first_header: header,
+                payload,
+            });
+            return Ok(None);
+        }
+
+        Self::finalize_transaction(header, payload).map(Some)
     }
 
     fn decode_eof(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -244,8 +248,7 @@ impl Encoder<HotlineTransaction> for HotlineCodec {
         let mut offset = 0usize;
         while offset < payload.len() {
             let end = (offset + MAX_FRAME_DATA).min(payload.len());
-            // SAFETY: offset starts at 0 and increments by chunk size; end is capped at
-            // payload.len()
+            // Offset starts at 0, increments by chunk size, and end is capped at payload.len().
             let chunk = payload.get(offset..end).ok_or_else(|| {
                 io::Error::new(io::ErrorKind::InvalidInput, "payload chunk out of bounds")
             })?;

@@ -15,7 +15,6 @@ use super::{
 use crate::{
     db::DbPool,
     field_id::FieldId,
-    handler::PrivilegeError,
     header_util::reply_header,
     login::{LoginRequest, handle_login},
     privileges::Privileges,
@@ -44,9 +43,12 @@ impl Command {
             &header,
             Privileges::DOWNLOAD_FILE,
             || async move {
-                let uid = session_ref
-                    .user_id
-                    .ok_or(PrivilegeError::NotAuthenticated)?;
+                let Some(uid) = session_ref.user_id else {
+                    tracing::error!("authenticated session missing user id in file list handler");
+                    return Err(CommandError::Invariant(
+                        "authenticated session missing user id",
+                    ));
+                };
                 let mut conn = pool.get().await?;
                 let files = crate::db::list_files_for_user(&mut conn, uid).await?;
                 let params: Vec<(FieldId, &[u8])> = files

@@ -44,12 +44,22 @@ jobs:
       - name: Format
         run: make check-fmt
       - name: Lint with Clippy
-        run: cargo clippy --no-default-features --features "${{ matrix.feature }} test-support" -- -D warnings
+        run: RUSTFLAGS="-D warnings" cargo clippy --no-default-features --features "${{ matrix.feature }} test-support" -- -D warnings
+      - name: Cache Whitaker installer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-whitaker-${{ hashFiles('**/Cargo.lock') }}
       - name: Lint with Whitaker
         run: |
-          cargo install whitaker-installer
-          whitaker-installer --experimental
-          whitaker --all -- --no-default-features --features "${{ matrix.feature }} test-support"
+          if ! command -v whitaker >/dev/null 2>&1; then
+            cargo install --locked whitaker-installer --version 0.1.0
+            whitaker-installer --experimental
+          fi
+          RUSTFLAGS="-D warnings" whitaker --all -- --no-default-features --features "${{ matrix.feature }} test-support"
       - name: Test
         run: cargo test --no-default-features --features "${{ matrix.feature }} test-support"
 

@@ -41,9 +41,23 @@ mod tests {
     use super::{hash_password, verify_password};
 
     #[test]
-    fn test_hash_password() {
+    fn test_verify_password_accepts_valid_hash() {
         let argon2 = Argon2::default();
-        let hashed = hash_password(&argon2, "secret").unwrap();
+        let hashed = hash_password(&argon2, "secret").expect("hash password");
         assert!(verify_password(&hashed, "secret"));
+    }
+
+    #[test]
+    fn test_verify_password_rejects_wrong_password() {
+        let argon2 = Argon2::default();
+        let hashed = hash_password(&argon2, "secret").expect("hash password");
+        assert!(!verify_password(&hashed, "not-secret"));
+    }
+
+    #[test]
+    fn test_verify_password_rejects_invalid_hash() {
+        let result = std::panic::catch_unwind(|| verify_password("not-a-hash", "secret"));
+        assert!(result.is_ok());
+        assert!(!result.expect("verify password result"));
     }
 }

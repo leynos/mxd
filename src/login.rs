@@ -76,3 +76,72 @@ pub(crate) async fn handle_login(
     }
     Ok(reply)
 }
+
+#[cfg(test)]
+mod tests {
+    //! Behavioural coverage for login edge cases.
+
+    use std::net::SocketAddr;
+
+    use anyhow::anyhow;
+    use test_util::{AnyError, DatabaseUrl, build_test_db, with_db};
+    use tokio::runtime::Runtime;
+
+    use super::{LoginRequest, handle_login};
+    use crate::{
+        db::create_user,
+        handler::Session,
+        models::NewUser,
+        transaction::FrameHeader,
+        transaction_type::TransactionType,
+    };
+
+    fn setup_user_with_invalid_hash(db: DatabaseUrl) -> Result<(), AnyError> {
+        with_db(db, |conn| {
+            Box::pin(async move {
+                let new_user = NewUser {
+                    username: "alice",
+                    password: "not-a-valid-hash",
+                };
+                create_user(conn, &new_user).await?;
+                Ok(())
+            })
+        })
+    }
+
+    #[test]
+    fn handle_login_rejects_invalid_password_hashes() -> Result<(), AnyError> {
+        let rt = Runtime::new()?;
+        let Some(db) = build_test_db(&rt, setup_user_with_invalid_hash)? else {
+            return Ok(());
+        };
+        let mut session = Session::default();
+        let peer: SocketAddr = "127.0.0.1:12345".parse()?;
+        let req = LoginRequest {
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            header: FrameHeader {
+                flags: 0,
+                is_reply: 0,
+                ty: TransactionType::Login.into(),
+                id: 1,
+                error: 0,
+                total_size: 0,
+                data_size: 0,
+            },
+        };
+
+        let reply = rt.block_on(handle_login(peer, &mut session, db.pool(), req))?;
+
+        if reply.header.error != 1 {
+            return Err(anyhow!(
+                "expected error code 1 for invalid hash, got {}",
+                reply.header.error
+            ));
+        }
+        if session.user_id.is_some() {
+            return Err(anyhow!("session should remain unauthenticated"));
+        }
+        Ok(())
+    }
+}
