@@ -2,6 +2,8 @@
 
 #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
 mod inner {
+    //! SQLite-specific helpers for retrieving last insert row ids.
+
     use diesel::{result::QueryResult, sql_types::Integer};
     use diesel_async::RunQueryDsl;
 

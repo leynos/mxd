@@ -50,7 +50,7 @@ use crate::{
     server::admin,
     wireframe::{
         codec::HotlineFrameCodec,
-        connection::take_current_context,
+        connection::{ConnectionContext, take_current_context},
         handshake,
         outbound::{
             WireframeOutboundConnection,
@@ -154,6 +154,37 @@ fn announce_listening(addr: SocketAddr) {
     }
 }
 
+fn require_connection_context() -> ConnectionContext {
+    let Some(context) = take_current_context() else {
+        error!("missing handshake context in app factory");
+        panic!("missing handshake context in app factory");
+    };
+    context
+}
+
+fn require_peer(peer: Option<SocketAddr>) -> SocketAddr {
+    let Some(peer) = peer else {
+        error!("peer address missing in app factory");
+        panic!("peer address missing in app factory");
+    };
+    peer
+}
+
+fn build_app_or_panic(
+    pool: &DbPool,
+    argon2: &Arc<Argon2<'static>>,
+    outbound_registry: &Arc<WireframeOutboundRegistry>,
+    peer: SocketAddr,
+) -> HotlineApp {
+    match build_app(pool, argon2, outbound_registry, peer) {
+        Ok(app) => app,
+        Err(err) => {
+            error!(error = %err, "failed to build wireframe application");
+            panic!("failed to build wireframe application: {err}");
+        }
+    }
+}
+
 fn build_app_for_connection(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
@@ -162,19 +193,10 @@ fn build_app_for_connection(
     // Missing connection context indicates handshake setup failed; abort the
     // connection rather than running without routing state. Returning a
     // degraded app would accept traffic with broken routing and state.
-    let context = take_current_context().unwrap_or_else(|| {
-        error!("missing handshake context in app factory");
-        panic!("missing handshake context in app factory");
-    });
+    let context = require_connection_context();
     let (_handshake, peer) = context.into_parts();
-    let peer = peer.unwrap_or_else(|| {
-        error!("peer address missing in app factory");
-        panic!("peer address missing in app factory");
-    });
-    build_app(pool, argon2, outbound_registry, peer).unwrap_or_else(|err| {
-        error!(error = %err, "failed to build wireframe application");
-        panic!("failed to build wireframe application: {err}");
-    })
+    let peer = require_peer(peer);
+    build_app_or_panic(pool, argon2, outbound_registry, peer)
 }
 
 fn build_app(

@@ -104,6 +104,8 @@ impl ConnectionContext {
     reason = "RefCell initialisation cannot be const for thread locals"
 )]
 mod handshake_local {
+    //! Thread-local storage for handshake metadata when task-local state is absent.
+
     use std::cell::RefCell;
 
     thread_local! {

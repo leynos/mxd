@@ -3,11 +3,6 @@
 //! Functions in this module provide a thin wrapper around the `argon2` crate
 //! to hash and verify user passwords for authentication purposes.
 
-#![expect(
-    clippy::expect_used,
-    reason = "password hash format is validated by argon2 library"
-)]
-
 use argon2::{
     Argon2,
     password_hash::{
@@ -31,7 +26,9 @@ pub fn hash_password(argon2: &Argon2, pw: &str) -> Result<String, Error> {
 }
 
 pub(crate) fn verify_password(hash: &str, pw: &str) -> bool {
-    let parsed_hash = PasswordHash::new(hash).expect("Failed to parse hash");
+    let Ok(parsed_hash) = PasswordHash::new(hash) else {
+        return false;
+    };
     Argon2::default()
         .verify_password(pw.as_bytes(), &parsed_hash)
         .is_ok()

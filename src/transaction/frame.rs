@@ -179,11 +179,12 @@ pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
         return Err(TransactionError::SizeMismatch);
     }
     debug_assert!(buf.len() >= HEADER_LEN, "buffer too short for header");
-    #[expect(
-        clippy::expect_used,
-        reason = "slice conversion cannot fail after length check"
-    )]
-    let hdr: &[u8; HEADER_LEN] = buf[0..HEADER_LEN].try_into().expect("length checked above");
+    let header_slice = buf
+        .get(0..HEADER_LEN)
+        .ok_or(TransactionError::SizeMismatch)?;
+    let hdr: &[u8; HEADER_LEN] = header_slice
+        .try_into()
+        .map_err(|_| TransactionError::SizeMismatch)?;
     let header = FrameHeader::from_bytes(hdr);
     if header.total_size as usize > MAX_PAYLOAD_SIZE {
         return Err(TransactionError::PayloadTooLarge);
