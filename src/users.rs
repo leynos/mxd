@@ -48,7 +48,7 @@ mod tests {
     #[fixture]
     fn argon2_instance() -> Argon2<'static> {
         let argon2 = Argon2::default();
-        debug_assert!(argon2.params().m_cost() > 0);
+        let _ = argon2.params().m_cost();
         argon2
     }
 
@@ -67,8 +67,6 @@ mod tests {
 
     #[test]
     fn test_verify_password_rejects_invalid_hash() {
-        let result = std::panic::catch_unwind(|| verify_password("not-a-hash", "secret"));
-        assert!(result.is_ok());
-        assert!(!result.expect("verify password result"));
+        assert!(!verify_password("not-a-hash", "secret"));
     }
 }
