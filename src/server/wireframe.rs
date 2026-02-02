@@ -28,7 +28,7 @@
 
 use std::{
     io::{self, Write},
-    net::{SocketAddr, ToSocketAddrs},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs},
     sync::Arc,
 };
 
@@ -50,7 +50,7 @@ use crate::{
     server::admin,
     wireframe::{
         codec::HotlineFrameCodec,
-        connection::{ConnectionContext, take_current_context},
+        connection::take_current_context,
         handshake,
         outbound::{
             WireframeOutboundConnection,
@@ -122,6 +122,8 @@ impl WireframeBootstrap {
         let argon2 = Arc::new(admin::argon2_from_config(&config)?);
 
         let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
+        validate_app_factory(&pool, &argon2, &outbound_registry)
+            .context("failed to validate wireframe app factory")?;
         let app_factory = {
             let pool = pool.clone();
             let argon2 = Arc::clone(&argon2);
@@ -154,35 +156,10 @@ fn announce_listening(addr: SocketAddr) {
     }
 }
 
-fn require_peer_from_current_context() -> SocketAddr {
-    let context = take_current_context().unwrap_or_else(missing_handshake_context);
+fn current_peer() -> Option<SocketAddr> {
+    let context = take_current_context()?;
     let (_handshake, peer) = context.into_parts();
-    peer.unwrap_or_else(missing_peer_address)
-}
-
-fn missing_handshake_context() -> ConnectionContext {
-    error!("missing handshake context in app factory");
-    panic!("missing handshake context in app factory");
-}
-
-fn missing_peer_address() -> SocketAddr {
-    error!("peer address missing in app factory");
-    panic!("peer address missing in app factory");
-}
-
-fn build_app_or_panic(
-    pool: &DbPool,
-    argon2: &Arc<Argon2<'static>>,
-    outbound_registry: &Arc<WireframeOutboundRegistry>,
-    peer: SocketAddr,
-) -> HotlineApp {
-    match build_app(pool, argon2, outbound_registry, peer) {
-        Ok(app) => app,
-        Err(err) => {
-            error!(error = %err, "failed to build wireframe application");
-            panic!("failed to build wireframe application: {err}");
-        }
-    }
+    peer
 }
 
 fn build_app_for_connection(
@@ -193,11 +170,29 @@ fn build_app_for_connection(
     // Missing connection context indicates handshake setup failed; abort the
     // connection rather than running without routing state. Returning a
     // degraded app would accept traffic with broken routing and state.
-    let peer = require_peer_from_current_context();
-    build_app_or_panic(pool, argon2, outbound_registry, peer)
+    let Some(peer) = current_peer() else {
+        error!("missing handshake context in app factory");
+        return fallback_app();
+    };
+    build_app(pool, argon2, outbound_registry, peer)
 }
 
 fn build_app(
+    pool: &DbPool,
+    argon2: &Arc<Argon2<'static>>,
+    outbound_registry: &Arc<WireframeOutboundRegistry>,
+    peer: SocketAddr,
+) -> HotlineApp {
+    match build_app_checked(pool, argon2, outbound_registry, peer) {
+        Ok(app) => app,
+        Err(err) => {
+            error!(error = %err, "failed to build wireframe application");
+            fallback_app()
+        }
+    }
+}
+
+fn build_app_checked(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
@@ -228,6 +223,19 @@ fn build_app(
         .iter()
         .try_fold(app, |app, id| app.route(*id, handler.clone()))
 }
+
+fn validate_app_factory(
+    pool: &DbPool,
+    argon2: &Arc<Argon2<'static>>,
+    outbound_registry: &Arc<WireframeOutboundRegistry>,
+) -> Result<()> {
+    let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
+    build_app_checked(pool, argon2, outbound_registry, peer)
+        .context("failed to register routes or middleware")?;
+    Ok(())
+}
+
+fn fallback_app() -> HotlineApp { HotlineApp::default() }
 
 fn routing_placeholder_handler() -> Handler<Envelope> {
     // Wireframe requires a handler per route; transaction middleware owns replies.

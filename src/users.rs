@@ -37,21 +37,28 @@ pub(crate) fn verify_password(hash: &str, pw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use argon2::Argon2;
+    use rstest::{fixture, rstest};
 
     use super::{hash_password, verify_password};
 
-    #[test]
-    fn test_verify_password_accepts_valid_hash() {
+    #[fixture]
+    fn argon2_instance() -> Argon2<'static> {
         let argon2 = Argon2::default();
-        let hashed = hash_password(&argon2, "secret").expect("hash password");
-        assert!(verify_password(&hashed, "secret"));
+        debug_assert!(argon2.params().m_cost() > 0);
+        argon2
     }
 
-    #[test]
-    fn test_verify_password_rejects_wrong_password() {
-        let argon2 = Argon2::default();
-        let hashed = hash_password(&argon2, "secret").expect("hash password");
-        assert!(!verify_password(&hashed, "not-secret"));
+    #[rstest]
+    #[case("secret", "secret", true)]
+    #[case("secret", "not-secret", false)]
+    fn test_verify_password_matches_expected(
+        argon2_instance: Argon2<'static>,
+        #[case] plain: &str,
+        #[case] candidate: &str,
+        #[case] expected: bool,
+    ) {
+        let hashed = hash_password(&argon2_instance, plain).expect("hash password");
+        assert_eq!(verify_password(&hashed, candidate), expected);
     }
 
     #[test]
