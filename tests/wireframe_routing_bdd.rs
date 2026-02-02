@@ -5,6 +5,7 @@
 use std::{
     cell::{Cell, RefCell},
     net::SocketAddr,
+    sync::Arc,
 };
 
 use mxd::{
@@ -16,6 +17,7 @@ use mxd::{
     transaction::{FrameHeader, HEADER_LEN, Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{
+        compat::XorCompatibility,
         routes::{RouteContext, process_transaction_bytes},
         test_helpers::dummy_pool,
     },
@@ -42,6 +44,7 @@ struct RoutingWorld {
     db_guard: RefCell<Option<TestDb>>,
     session: RefCell<Session>,
     reply: RefCell<Option<Result<Transaction, String>>>,
+    compat: Arc<XorCompatibility>,
     skipped: Cell<bool>,
 }
 
@@ -56,6 +59,7 @@ impl RoutingWorld {
             db_guard: RefCell::new(None),
             session: RefCell::new(Session::default()),
             reply: RefCell::new(None),
+            compat: Arc::new(XorCompatibility::disabled()),
             skipped: Cell::new(false),
         }
     }
@@ -113,6 +117,7 @@ impl RoutingWorld {
         let peer = self.peer;
         let mut session = self.session.replace(Session::default());
         let messaging = NoopOutboundMessaging;
+        let compat = Arc::clone(&self.compat);
         let reply = self.rt.block_on(async {
             process_transaction_bytes(
                 frame,
@@ -121,6 +126,7 @@ impl RoutingWorld {
                     pool,
                     session: &mut session,
                     messaging: &messaging,
+                    compat: compat.as_ref(),
                 },
             )
             .await

@@ -15,6 +15,8 @@ pub enum FieldId {
     Password,
     /// Client version information.
     Version,
+    /// Generic data payload (often message text).
+    Data,
     /// News category list entry returned by the server.
     NewsCategory,
     /// News article list entry returned by the server.
@@ -57,6 +59,7 @@ pub enum FieldId {
 impl From<u16> for FieldId {
     fn from(v: u16) -> Self {
         match v {
+            101 => Self::Data,
             105 => Self::Login,
             106 => Self::Password,
             160 => Self::Version,
@@ -86,6 +89,7 @@ impl From<FieldId> for u16 {
             FieldId::Login => 105,
             FieldId::Password => 106,
             FieldId::Version => 160,
+            FieldId::Data => 101,
             FieldId::NewsCategory => 323,
             FieldId::NewsArticle => 321,
             FieldId::NewsArticleId => 326,
@@ -112,6 +116,7 @@ impl std::fmt::Display for FieldId {
             Self::Login => f.write_str("Login"),
             Self::Password => f.write_str("Password"),
             Self::Version => f.write_str("Version"),
+            Self::Data => f.write_str("Data"),
             Self::NewsCategory => f.write_str("NewsCategory"),
             Self::NewsArticle => f.write_str("NewsArticle"),
             Self::NewsArticleId => f.write_str("NewsArticleId"),

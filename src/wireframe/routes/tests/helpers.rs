@@ -1,6 +1,6 @@
 //! Shared helpers for wireframe routing tests.
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use test_util::AnyError;
 use tokio::runtime::{Builder, Runtime};
@@ -14,7 +14,7 @@ use crate::{
     server::outbound::NoopOutboundMessaging,
     transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
-    wireframe::routes::{RouteContext, process_transaction_bytes},
+    wireframe::{compat::XorCompatibility, routes::{RouteContext, process_transaction_bytes}},
 };
 
 /// Test harness context that bundles routing state for wireframe handlers.
@@ -25,6 +25,8 @@ pub(super) struct RouteTestContext {
     pub(super) session: Session,
     /// Peer socket address supplied to routing for auditing and auth checks.
     peer: SocketAddr,
+    /// XOR compatibility state shared across test calls.
+    compat: Arc<XorCompatibility>,
 }
 
 impl RouteTestContext {
@@ -43,6 +45,7 @@ impl RouteTestContext {
             pool,
             session: Session::default(),
             peer,
+            compat: Arc::new(XorCompatibility::disabled()),
         })
     }
 
@@ -84,6 +87,7 @@ impl RouteTestContext {
     ) -> Result<Transaction, AnyError> {
         let frame = build_frame(ty, id, params)?;
         let messaging = NoopOutboundMessaging;
+        let compat = Arc::clone(&self.compat);
         let reply = process_transaction_bytes(
             &frame,
             RouteContext {
@@ -91,11 +95,15 @@ impl RouteTestContext {
                 pool: self.pool.clone(),
                 session: &mut self.session,
                 messaging: &messaging,
+                compat: compat.as_ref(),
             },
         )
         .await;
         Ok(parse_transaction(&reply)?)
     }
+
+    /// Access the XOR compatibility state for assertions.
+    pub(super) fn compat(&self) -> &Arc<XorCompatibility> { &self.compat }
 }
 
 /// Build a single-threaded Tokio runtime with all features enabled.

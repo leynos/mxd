@@ -3,6 +3,7 @@
 use std::{
     cell::{Cell, RefCell},
     net::SocketAddr,
+    sync::Arc,
 };
 
 use diesel::prelude::*;
@@ -19,6 +20,7 @@ use mxd::{
     transaction::{Transaction, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{
+        compat::XorCompatibility,
         routes::{RouteContext, process_transaction_bytes},
         test_helpers::dummy_pool,
     },
@@ -43,6 +45,7 @@ struct PrivilegeWorld {
     db_guard: RefCell<Option<TestDb>>,
     session: RefCell<Session>,
     reply: RefCell<Option<Result<Transaction, String>>>,
+    compat: Arc<XorCompatibility>,
     skipped: Cell<bool>,
 }
 
@@ -58,6 +61,7 @@ impl PrivilegeWorld {
             db_guard: RefCell::new(None),
             session: RefCell::new(Session::default()),
             reply: RefCell::new(None),
+            compat: Arc::new(XorCompatibility::disabled()),
             skipped: Cell::new(false),
         }
     }
@@ -98,6 +102,7 @@ impl PrivilegeWorld {
         let peer = self.peer;
         let mut session = self.session.borrow().clone();
         let messaging = NoopOutboundMessaging;
+        let compat = Arc::clone(&self.compat);
         let reply = self.rt.block_on(async {
             process_transaction_bytes(
                 &frame,
@@ -106,6 +111,7 @@ impl PrivilegeWorld {
                     pool,
                     session: &mut session,
                     messaging: &messaging,
+                    compat: compat.as_ref(),
                 },
             )
             .await

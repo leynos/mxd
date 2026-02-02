@@ -50,6 +50,7 @@ use crate::{
     server::admin,
     wireframe::{
         codec::HotlineFrameCodec,
+        compat::XorCompatibility,
         connection::take_current_context,
         handshake,
         outbound::{
@@ -156,24 +157,28 @@ fn announce_listening(addr: SocketAddr) {
     }
 }
 
-fn current_peer() -> Option<SocketAddr> {
-    let context = take_current_context()?;
-    let (_handshake, peer) = context.into_parts();
-    peer
-}
-
 fn build_app_for_connection(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
 ) -> HotlineApp {
-    // Missing connection context indicates handshake setup failed; return a
-    // fallback app so the connection stays inert rather than crashing.
-    let Some(peer) = current_peer() else {
+    // Missing connection context indicates handshake setup failed; abort the
+    // connection rather than running without routing state. Returning a
+    // degraded app would accept traffic with broken routing and state.
+    let Some(context) = take_current_context() else {
         error!("missing handshake context in app factory");
         return fallback_app();
     };
-    build_app(pool, argon2, outbound_registry, peer)
+    let (handshake, peer) = context.into_parts();
+    let Some(peer) = peer else {
+        error!("peer address missing in app factory");
+        return fallback_app();
+    };
+    let compat = Arc::new(XorCompatibility::from_handshake(&handshake));
+    build_app(pool, argon2, outbound_registry, peer, compat).unwrap_or_else(|err| {
+        error!(error = %err, "failed to build wireframe application");
+        fallback_app()
+    })
 }
 
 fn build_app(
@@ -181,21 +186,7 @@ fn build_app(
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
     peer: SocketAddr,
-) -> HotlineApp {
-    match build_app_checked(pool, argon2, outbound_registry, peer) {
-        Ok(app) => app,
-        Err(err) => {
-            error!(error = %err, "failed to build wireframe application");
-            fallback_app()
-        }
-    }
-}
-
-fn build_app_checked(
-    pool: &DbPool,
-    argon2: &Arc<Argon2<'static>>,
-    outbound_registry: &Arc<WireframeOutboundRegistry>,
-    peer: SocketAddr,
+    compat: Arc<XorCompatibility>,
 ) -> wireframe::app::Result<HotlineApp> {
     let session = Arc::new(TokioMutex::new(Session::default()));
     let outbound_id = outbound_registry.allocate_id();
@@ -204,7 +195,12 @@ fn build_app_checked(
         Arc::clone(outbound_registry),
     ));
     let outbound_messaging = WireframeOutboundMessaging::new(Arc::clone(&outbound_connection));
-    let protocol = HotlineProtocol::new(pool.clone(), Arc::clone(argon2), outbound_connection);
+    let protocol = HotlineProtocol::new(
+        pool.clone(),
+        Arc::clone(argon2),
+        outbound_connection,
+        Arc::clone(&compat),
+    );
 
     let app = HotlineApp::default()
         .fragmentation(None)
@@ -214,6 +210,7 @@ fn build_app_checked(
             Arc::clone(&session),
             peer,
             Arc::new(outbound_messaging),
+            compat,
         ))?;
 
     let handler = routing_placeholder_handler();
@@ -229,8 +226,14 @@ fn validate_app_factory(
     outbound_registry: &Arc<WireframeOutboundRegistry>,
 ) -> Result<()> {
     let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
-    build_app_checked(pool, argon2, outbound_registry, peer)
-        .context("failed to register routes or middleware")?;
+    build_app(
+        pool,
+        argon2,
+        outbound_registry,
+        peer,
+        Arc::new(XorCompatibility::disabled()),
+    )
+    .context("failed to register routes or middleware")?;
     Ok(())
 }
 
@@ -297,10 +300,7 @@ mod tests {
     #[rstest]
     fn bootstrap_captures_bind(bound_config: AppConfig) {
         let bootstrap = WireframeBootstrap::prepare(bound_config).expect("bootstrap");
-        assert_eq!(
-            bootstrap.bind_addr,
-            "127.0.0.1:7777".parse().expect("parse bind addr")
-        );
+        assert_eq!(bootstrap.bind_addr, "127.0.0.1:7777".parse().unwrap());
         assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
     }
 }

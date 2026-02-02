@@ -36,7 +36,8 @@ use crate::{
     db::DbPool,
     handler::Session,
     server::outbound::{OutboundMessaging, ReplyBuffer},
-    transaction::{FrameHeader, parse_transaction},
+    transaction::{FrameHeader, Transaction, parse_transaction},
+    wireframe::compat::XorCompatibility,
 };
 #[cfg(test)]
 use crate::{header_util::reply_header, transaction::Transaction};
@@ -58,6 +59,8 @@ pub struct RouteContext<'a> {
     pub session: &'a mut Session,
     /// Outbound messaging adapter for push notifications.
     pub messaging: &'a dyn OutboundMessaging,
+    /// XOR compatibility state for this connection.
+    pub compat: &'a XorCompatibility,
 }
 
 #[cfg(test)]
@@ -118,6 +121,7 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
         pool,
         session,
         messaging,
+        compat,
     } = context;
     // Parse the frame as a domain Transaction
     let tx = match parse_transaction(frame) {
@@ -126,6 +130,10 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
     };
 
     let header = tx.header.clone();
+    let tx = match compat.decode_payload(&tx.payload) {
+        Ok(payload) => Transaction { payload, ..tx },
+        Err(e) => return handle_command_parse_error(peer, &header, e),
+    };
 
     // Parse into Command and process
     let cmd = match Command::from_transaction(tx) {
@@ -231,6 +239,7 @@ pub struct TransactionMiddleware {
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
+    compat: Arc<XorCompatibility>,
 }
 
 impl TransactionMiddleware {
@@ -241,12 +250,14 @@ impl TransactionMiddleware {
         session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
         peer: SocketAddr,
         messaging: Arc<dyn OutboundMessaging>,
+        compat: Arc<XorCompatibility>,
     ) -> Self {
         Self {
             pool,
             session,
             peer,
             messaging,
+            compat,
         }
     }
 }
@@ -258,6 +269,7 @@ struct TransactionHandler {
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
+    compat: Arc<XorCompatibility>,
 }
 
 #[async_trait]
@@ -274,6 +286,7 @@ impl Service for TransactionHandler {
                     pool: self.pool.clone(),
                     session: &mut session_guard,
                     messaging: self.messaging.as_ref(),
+                    compat: &self.compat,
                 },
             )
             .await
@@ -299,6 +312,7 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
             session: Arc::clone(&self.session),
             peer: self.peer,
             messaging: Arc::clone(&self.messaging),
+            compat: Arc::clone(&self.compat),
         };
         HandlerService::from_service(id, wrapped)
     }
