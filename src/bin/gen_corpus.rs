@@ -41,20 +41,8 @@ fn login_tx() -> Result<Transaction> {
     payload_tx(TransactionType::Login, 1, &params)
 }
 
-fn get_file_list_tx() -> Transaction {
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: TransactionType::GetFileNameList.into(),
-        id: 2,
-        error: 0,
-        total_size: 0,
-        data_size: 0,
-    };
-    Transaction {
-        header,
-        payload: Vec::new(),
-    }
+fn get_file_list_tx() -> Result<Transaction> {
+    payload_tx(TransactionType::GetFileNameList, 2, &[])
 }
 
 fn news_category_root_tx() -> Result<Transaction> {
@@ -93,7 +81,7 @@ fn main() -> Result<()> {
 
     let login = login_tx()?;
     save_tx(&dir, Utf8Path::new("login.bin"), &login)?;
-    let list = get_file_list_tx();
+    let list = get_file_list_tx()?;
     save_tx(&dir, Utf8Path::new("get_file_list.bin"), &list)?;
     let root = news_category_root_tx()?;
     save_tx(&dir, Utf8Path::new("news_category_root.bin"), &root)?;
