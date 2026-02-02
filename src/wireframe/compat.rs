@@ -23,7 +23,7 @@ pub struct XorCompatibility {
 impl XorCompatibility {
     /// Construct a compatibility state seeded from handshake metadata.
     #[must_use]
-    pub fn from_handshake(_handshake: &HandshakeMetadata) -> Self {
+    pub const fn from_handshake(_handshake: &HandshakeMetadata) -> Self {
         Self {
             enabled: AtomicBool::new(false),
         }
@@ -71,11 +71,7 @@ impl XorCompatibility {
         }
 
         let enabled = self.is_enabled();
-        let should_xor = if enabled {
-            true
-        } else {
-            detect_xor(&params)
-        };
+        let should_xor = if enabled { true } else { detect_xor(&params) };
 
         if should_xor {
             let transformed = xor_params(&params);
@@ -143,9 +139,9 @@ fn xor_params(params: &[(FieldId, Vec<u8>)]) -> Vec<(FieldId, Vec<u8>)> {
         .collect()
 }
 
-fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xFF).collect() }
+fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xff).collect() }
 
-fn is_text_field(field: FieldId) -> bool {
+const fn is_text_field(field: FieldId) -> bool {
     matches!(
         field,
         FieldId::Login
@@ -195,9 +191,7 @@ mod tests {
             (FieldId::Password, encoded_password.as_slice()),
         ]);
 
-        let decoded = compat
-            .decode_payload(&payload)
-            .expect("decode payload");
+        let decoded = compat.decode_payload(&payload).expect("decode payload");
         let params = decode_param_map(&decoded);
 
         assert!(compat.is_enabled());
@@ -212,9 +206,7 @@ mod tests {
         let compat = XorCompatibility::disabled();
         let payload = build_payload(&[(FieldId::Password, b"secret")]);
 
-        let decoded = compat
-            .decode_payload(&payload)
-            .expect("decode payload");
+        let decoded = compat.decode_payload(&payload).expect("decode payload");
 
         assert!(!compat.is_enabled());
         assert_eq!(decoded, payload);
@@ -228,9 +220,7 @@ mod tests {
             (FieldId::NewsArticleId, 42i32.to_be_bytes().as_ref()),
         ]);
 
-        let encoded = compat
-            .encode_payload(&payload)
-            .expect("encode payload");
+        let encoded = compat.encode_payload(&payload).expect("encode payload");
         let params = decode_param_map(&encoded);
 
         assert_eq!(params[0].0, FieldId::Data);
@@ -244,9 +234,7 @@ mod tests {
         let compat = XorCompatibility::disabled();
         let payload = build_payload(&[(FieldId::Password, b"secret")]);
 
-        let encoded = compat
-            .encode_payload(&payload)
-            .expect("encode payload");
+        let encoded = compat.encode_payload(&payload).expect("encode payload");
 
         assert_eq!(encoded, payload);
     }

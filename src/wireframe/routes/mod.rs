@@ -30,6 +30,8 @@ use wireframe::{
 };
 
 #[cfg(test)]
+use crate::header_util::reply_header;
+#[cfg(test)]
 use crate::wireframe::codec::HotlineTransaction;
 use crate::{
     commands::{Command, CommandContext},
@@ -39,8 +41,6 @@ use crate::{
     transaction::{FrameHeader, Transaction, parse_transaction},
     wireframe::compat::XorCompatibility,
 };
-#[cfg(test)]
-use crate::{header_util::reply_header, transaction::Transaction};
 
 mod reply_builder;
 
@@ -124,15 +124,19 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
         compat,
     } = context;
     // Parse the frame as a domain Transaction
-    let tx = match parse_transaction(frame) {
+    let transaction = match parse_transaction(frame) {
         Ok(tx) => tx,
         Err(e) => return handle_parse_error(peer, frame, e),
     };
 
-    let header = tx.header.clone();
-    let tx = match compat.decode_payload(&tx.payload) {
-        Ok(payload) => Transaction { payload, ..tx },
+    let header = transaction.header.clone();
+    let decoded_payload = match compat.decode_payload(&transaction.payload) {
+        Ok(payload) => payload,
         Err(e) => return handle_command_parse_error(peer, &header, e),
+    };
+    let tx = Transaction {
+        payload: decoded_payload,
+        ..transaction
     };
 
     // Parse into Command and process
@@ -242,22 +246,30 @@ pub struct TransactionMiddleware {
     compat: Arc<XorCompatibility>,
 }
 
+/// Construction parameters for [`TransactionMiddleware`].
+pub struct TransactionMiddlewareConfig {
+    /// Database connection pool.
+    pub(crate) pool: DbPool,
+    /// Session state for the connection.
+    pub(crate) session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    /// Remote peer address.
+    pub(crate) peer: SocketAddr,
+    /// Outbound messaging adapter for push notifications.
+    pub(crate) messaging: Arc<dyn OutboundMessaging>,
+    /// XOR compatibility state for the connection.
+    pub(crate) compat: Arc<XorCompatibility>,
+}
+
 impl TransactionMiddleware {
     /// Create a new transaction middleware with the given pool and session.
     #[must_use]
-    pub const fn new(
-        pool: DbPool,
-        session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
-        peer: SocketAddr,
-        messaging: Arc<dyn OutboundMessaging>,
-        compat: Arc<XorCompatibility>,
-    ) -> Self {
+    pub fn new(config: TransactionMiddlewareConfig) -> Self {
         Self {
-            pool,
-            session,
-            peer,
-            messaging,
-            compat,
+            pool: config.pool,
+            session: config.session,
+            peer: config.peer,
+            messaging: config.messaging,
+            compat: config.compat,
         }
     }
 }

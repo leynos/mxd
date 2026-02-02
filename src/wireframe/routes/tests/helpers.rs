@@ -14,7 +14,10 @@ use crate::{
     server::outbound::NoopOutboundMessaging,
     transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
-    wireframe::{compat::XorCompatibility, routes::{RouteContext, process_transaction_bytes}},
+    wireframe::{
+        compat::XorCompatibility,
+        routes::{RouteContext, process_transaction_bytes},
+    },
 };
 
 /// Test harness context that bundles routing state for wireframe handlers.

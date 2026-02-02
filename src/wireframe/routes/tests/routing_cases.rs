@@ -19,7 +19,7 @@ use super::helpers::{
 };
 use crate::{field_id::FieldId, privileges::Privileges, transaction_type::TransactionType};
 
-fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xFF).collect() }
+fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xff).collect() }
 
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]

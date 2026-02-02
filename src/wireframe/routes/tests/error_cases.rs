@@ -18,6 +18,7 @@ use super::{
     super::{
         RouteContext,
         TransactionMiddleware,
+        TransactionMiddlewareConfig,
         dispatch_spy,
         error_reply,
         error_transaction,
@@ -297,13 +298,13 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     let peer = "127.0.0.1:12345".parse().expect("peer addr");
     let messaging = Arc::new(NoopOutboundMessaging);
     let compat = Arc::new(XorCompatibility::disabled());
-    let middleware = TransactionMiddleware::new(
+    let middleware = TransactionMiddleware::new(TransactionMiddlewareConfig {
         pool,
-        Arc::clone(&session),
+        session: Arc::clone(&session),
         peer,
         messaging,
         compat,
-    );
+    });
 
     let calls = Arc::new(AtomicUsize::new(0));
     let spy = SpyService::new(Arc::clone(&calls));

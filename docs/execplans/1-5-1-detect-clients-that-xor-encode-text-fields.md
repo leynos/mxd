@@ -4,14 +4,14 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: DONE
 
 PLANS.md does not exist in this repository.
 
 ## Purpose / big picture
 
-Enable compatibility with clients (including SynHX) that XOR-encode text
-fields by transparently decoding inbound text parameters and encoding outbound
+Enable compatibility with clients (including SynHX) that XOR-encode text fields
+by transparently decoding inbound text parameters and encoding outbound
 responses when required. Success is visible when SynHX parity tests cover
 passwords, messages, and news bodies with the XOR toggle enabled, and when
 `rstest` unit tests plus `rstest-bdd` v0.4.0 behavioural scenarios pass.
@@ -51,18 +51,19 @@ marked done.
 
 - Risk: XOR detection rules (sub-version mapping, sub-protocol tag, or config
   toggle) are ambiguous. Severity: medium. Likelihood: medium. Mitigation:
-  cross-check `docs/migration-plan-moving-mxd-protocol-implementation-to-
-  wireframe.md`, `docs/protocol.md`, and hx behaviour; document the decision
-  in `docs/design.md` and the Decision Log; escalate if ambiguity remains.
+  cross-check
+  `docs/migration-plan-moving-mxd-protocol-implementation-to- wireframe.md`,
+  `docs/protocol.md`, and hx behaviour; document the decision in
+  `docs/design.md` and the Decision Log; escalate if ambiguity remains.
 - Risk: “message” field mapping is unclear because message transactions are
   not yet implemented. Severity: medium. Likelihood: medium. Mitigation:
   confirm which field IDs represent message text (likely field 101) and record
-  the mapping; add tests that exercise the chosen field and update
-  `FieldId` or helper lists accordingly.
+  the mapping; add tests that exercise the chosen field and update `FieldId` or
+  helper lists accordingly.
 - Risk: outbound XOR encoding could corrupt binary payloads or mismatched
-  parameter lists. Severity: high. Likelihood: low. Mitigation: only apply
-  XOR to decoded parameter payloads and known text fields; skip transformation
-  when payload parsing fails and log at debug level.
+  parameter lists. Severity: high. Likelihood: low. Mitigation: only apply XOR
+  to decoded parameter payloads and known text fields; skip transformation when
+  payload parsing fails and log at debug level.
 - Risk: double-encoding or missing decode path if transforms are applied in
   multiple layers. Severity: medium. Likelihood: medium. Mitigation: centralise
   inbound decode in transaction routing and outbound encode in a single hook
@@ -74,16 +75,21 @@ marked done.
 ## Progress
 
 - [x] (2026-02-01 00:00Z) Drafted ExecPlan and gathered context.
-- [ ] (2026-02-01 00:00Z) Confirm XOR detection policy and text-field list.
-- [ ] (2026-02-01 00:00Z) Implement adapter-level XOR decode/encode pipeline.
-- [ ] (2026-02-01 00:00Z) Add rstest unit coverage and rstest-bdd scenarios.
-- [ ] (2026-02-01 00:00Z) Extend validator hx parity tests.
-- [ ] (2026-02-01 00:00Z) Update documentation and roadmap entry.
-- [ ] (2026-02-01 00:00Z) Run quality gates and record results.
+- [x] (2026-02-02 00:00Z) Confirm XOR detection policy and text-field list.
+- [x] (2026-02-02 00:00Z) Implement adapter-level XOR decode/encode pipeline.
+- [x] (2026-02-02 00:00Z) Add rstest unit coverage and rstest-bdd scenarios.
+- [x] (2026-02-02 00:00Z) Extend validator hx parity tests.
+- [x] (2026-02-02 00:00Z) Update documentation and roadmap entry.
+- [x] (2026-02-02 00:00Z) Run quality gates and record results.
 
 ## Surprises & discoveries
 
-- (To be populated during implementation.)
+- Qdrant note storage was unavailable (connection failures) during discovery.
+- The hx client exposes XOR toggling via a user variable named `encode`.
+- Postgres recursive news-path CTEs needed explicit integer casts for the
+  seed `id` column to avoid type mismatches during path lookups.
+- Nextest runs with default parallelism caused intermittent Postgres
+  connection resets; serial execution avoided the failures locally.
 
 ## Decision log
 
@@ -92,17 +98,30 @@ marked done.
   domain remains unaware of client quirks. Rationale: preserves hexagonal
   boundaries and keeps protocol shims at the edge. Date/Author: 2026-02-01 /
   Codex.
-- Decision: derive the XOR compatibility mode from handshake metadata and keep
-  the mapping in a dedicated compatibility policy module. Rationale: keeps the
-  logic centralised and testable, and avoids scattering `if sub_version` checks
-  across handlers. Date/Author: 2026-02-01 / Codex.
+- Decision: keep `from_handshake` default disabled and rely on runtime XOR
+  detection until a reliable sub-version mapping is known. Rationale: avoids
+  false positives while the SynHX handshake mapping remains ambiguous.
+  Date/Author: 2026-02-02 / Codex.
 - Decision: treat hx validator tests as parity checks and back them with
   deterministic unit/BDD tests for CI reliability. Rationale: external client
   tests are valuable but inherently flaky. Date/Author: 2026-02-01 / Codex.
+- Decision: use heuristic XOR detection by validating UTF-8 before/after XOR
+  and enable the compatibility flag per connection after the first successful
+  decode. Rationale: sub-version mappings remain ambiguous, and the heuristic
+  provides deterministic behaviour without leaking client quirks into the
+  domain. Date/Author: 2026-02-02 / Codex.
+- Decision: align Postgres news-path CTEs with explicit `json_array_elements`
+  ordinality and `CAST(NULL AS INTEGER)` in the seed to keep type inference
+  stable. Rationale: avoids integer/text mismatch errors in recursive CTEs
+  while preserving SQLite behaviour. Date/Author: 2026-02-02 / Codex.
 
 ## Outcomes & retrospective
 
-- (To be populated at completion.)
+- XOR compatibility is wired through routing and protocol hooks with unit,
+  BDD, and validator coverage; news-path CTEs now resolve correctly on Postgres.
+- Quality gates completed: `make fmt`, `make check-fmt`, `make lint`, and
+  `make test` (with `NEXTEST_TEST_THREADS=1` after running
+  `pg_embedded_setup_unpriv`).
 
 ## Context and orientation
 
@@ -140,11 +159,11 @@ Documentation references:
 
 ### Stage A: Confirm compatibility policy and field mapping
 
-Review the migration plan and protocol documentation to determine the exact
-XOR trigger (sub-version mapping, sub-protocol tag, or configuration flag).
+Review the migration plan and protocol documentation to determine the exact XOR
+trigger (sub-version mapping, sub-protocol tag, or configuration flag).
 Inventory which field IDs represent text and must be XOR-transformed, paying
-special attention to password (field 106), message body (likely field 101),
-and news article bodies (field 333). If any mapping is ambiguous, pause and
+special attention to password (field 106), message body (likely field 101), and
+news article bodies (field 333). If any mapping is ambiguous, pause and
 escalate for clarification. Record the final policy in `docs/design.md` and
 this plan’s Decision Log.
 
@@ -162,8 +181,7 @@ is available in both inbound and outbound paths. Options include:
 - storing the derived compatibility mode inside the per-connection
   `HotlineProtocol` instance so `before_send` can encode responses, and
 - adding a compatibility field to `TransactionMiddleware`/`RouteContext` so
-  `process_transaction_bytes` can decode inbound frames before parsing
-  commands.
+  `process_transaction_bytes` can decode inbound frames before parsing commands.
 
 Ensure outbound encoding happens exactly once. The simplest approach is to
 perform outbound XOR in `HotlineProtocol::before_send`, which is called for
@@ -184,8 +202,8 @@ Add rstest unit coverage for the XOR helper module:
 
 Add unit tests around the routing pipeline to assert that XOR decoding makes
 login/password parsing succeed when the client sends XOR-encoded values. Add
-unit coverage for outbound encoding (for example by invoking `before_send`
-with a frame that contains text parameters and verifying the payload bytes are
+unit coverage for outbound encoding (for example by invoking `before_send` with
+a frame that contains text parameters and verifying the payload bytes are
 XOR-ed).
 
 ### Stage D: Behavioural tests with rstest-bdd v0.4.0
@@ -218,13 +236,13 @@ available, stop and escalate with the observed limitation.
 Update `docs/design.md` with the XOR compatibility policy (trigger, field
 coverage, and transform location). Update `docs/users-guide.md` if the server
 behaviour or configuration surface changes (for example, if a new toggle or
-logging is added). Mark roadmap task 1.5.1 as done in `docs/roadmap.md` with
-an explicit date and summary.
+logging is added). Mark roadmap task 1.5.1 as done in `docs/roadmap.md` with an
+explicit date and summary.
 
 ### Stage G: Verification and quality gates
 
-Run formatting, lint, and test suites using Makefile targets with `tee`
-logging and `set -o pipefail`. Run validator tests separately. Use
+Run formatting, lint, and test suites using Makefile targets with `tee` logging
+and `set -o pipefail`. Run validator tests separately. Use
 `pg_embedded_setup_unpriv` before Postgres tests as documented.
 
 ## Concrete steps
@@ -327,11 +345,11 @@ expose a small surface such as:
     }
 
     impl XorCompatibility {
-        pub fn from_handshake(handshake: &HandshakeMetadata) -> Self { ... }
+        pub fn from_handshake(handshake: &HandshakeMetadata) -> Self { … }
         pub fn decode_payload(&self, payload: &[u8]) ->
-            Result<Vec<u8>, TransactionError> { ... }
+            Result<Vec<u8>, TransactionError> { … }
         pub fn encode_payload(&self, payload: &[u8]) ->
-            Result<Vec<u8>, TransactionError> { ... }
+            Result<Vec<u8>, TransactionError> { … }
     }
 
 Use `TransactionError` for parse failures so routing can reuse existing error

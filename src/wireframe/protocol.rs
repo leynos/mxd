@@ -130,13 +130,11 @@ impl WireframeProtocol for HotlineProtocol {
         if !self.compat.is_enabled() {
             return;
         }
-        let tx = match parse_transaction(frame) {
-            Ok(tx) => tx,
-            Err(_) => return,
+        let Ok(tx) = parse_transaction(frame) else {
+            return;
         };
-        let encoded = match self.compat.encode_payload(&tx.payload) {
-            Ok(payload) => payload,
-            Err(_) => return,
+        let Ok(encoded) = self.compat.encode_payload(&tx.payload) else {
+            return;
         };
         if encoded == tx.payload {
             return;
@@ -177,7 +175,7 @@ mod tests {
         test_helpers::dummy_pool,
     };
 
-    fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xFF).collect() }
+    fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xff).collect() }
 
     #[fixture]
     fn outbound_connection() -> Arc<WireframeOutboundConnection> {
@@ -187,7 +185,16 @@ mod tests {
     }
 
     #[fixture]
-    fn compat() -> Arc<XorCompatibility> { Arc::new(XorCompatibility::disabled()) }
+    fn compat() -> Arc<XorCompatibility> {
+        #[expect(
+            clippy::allow_attributes,
+            reason = "cannot use expect due to macro interaction"
+        )]
+        #[allow(unused_braces, reason = "rustfmt requires braces")]
+        {
+            Arc::new(XorCompatibility::disabled())
+        }
+    }
 
     #[rstest]
     fn protocol_can_be_created(
@@ -269,7 +276,7 @@ mod tests {
             b"message".as_ref(),
         )])
         .expect("payload encodes");
-        let payload_len = payload.len() as u32;
+        let payload_len = u32::try_from(payload.len()).expect("payload length fits u32");
         let header = crate::transaction::FrameHeader {
             flags: 0,
             is_reply: 1,

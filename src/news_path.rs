@@ -17,19 +17,20 @@ cfg_if::cfg_if! {
                 concat!(
                     "SELECT tree.idx + 1 AS idx, b.id AS id\n",
                     "FROM tree\n",
-                    "JOIN json_each($1) seg ON seg.key = tree.idx\n",
+                    "JOIN json_array_elements_text($1::json) WITH ORDINALITY seg(value, idx)\n",
+                    "  ON seg.idx::int = tree.idx + 1\n",
                     $jt,
                     " news_bundles b ON b.name = seg.value AND\n  ((tree.id IS NULL AND \
-                     b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)"
+                     b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id::int)"
                 )
             };
         }
 
-        pub(crate) const BUNDLE_BODY_SQL: &str = "SELECT id FROM tree WHERE idx = $1";
+        pub(crate) const BUNDLE_BODY_SQL: &str = "SELECT id FROM tree WHERE idx = $2";
         pub(crate) const CATEGORY_BODY_SQL: &str = concat!(
             "SELECT c.id AS id \n",
             "FROM news_categories c \n",
-            "WHERE c.name = $1 AND c.bundle_id IS NOT DISTINCT FROM (SELECT id FROM tree WHERE idx = $2)"
+            "WHERE c.name = $2 AND c.bundle_id IS NOT DISTINCT FROM (SELECT id FROM tree WHERE idx = $3)"
         );
     } else {
         macro_rules! step_sql {
@@ -54,7 +55,7 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) const CTE_SEED_SQL: &str = "SELECT 0 AS idx, NULL AS id";
+pub(crate) const CTE_SEED_SQL: &str = "SELECT 0 AS idx, CAST(NULL AS INTEGER) AS id";
 pub(crate) const BUNDLE_STEP_SQL: &str = step_sql!("JOIN");
 pub(crate) const CATEGORY_STEP_SQL: &str = step_sql!("LEFT JOIN");
 
@@ -128,18 +129,24 @@ mod tests {
     const BODY_SQL: &str = "SELECT id FROM tree";
 
     fn expected_step_sql(join_type: &str) -> String {
-        let sql = r"SELECT tree.idx + 1 AS idx, b.id AS id
+        if cfg!(feature = "postgres") {
+            let sql = r"SELECT tree.idx + 1 AS idx, b.id AS id
+FROM tree
+JOIN json_array_elements_text({source}::json) WITH ORDINALITY seg(value, idx)
+  ON seg.idx::int = tree.idx + 1
+{join_type} news_bundles b ON b.name = seg.value AND
+  ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id::int)";
+            sql.replace("{source}", "$1")
+                .replace("{join_type}", join_type)
+        } else {
+            let sql = r"SELECT tree.idx + 1 AS idx, b.id AS id
 FROM tree
 JOIN json_each({source}) seg ON seg.key = tree.idx
 {join_type} news_bundles b ON b.name = seg.value AND
   ((tree.id IS NULL AND b.parent_bundle_id IS NULL) OR b.parent_bundle_id = tree.id)";
-        let source = if cfg!(feature = "postgres") {
-            "$1"
-        } else {
-            "?"
-        };
-        sql.replace("{source}", source)
-            .replace("{join_type}", join_type)
+            sql.replace("{source}", "?")
+                .replace("{join_type}", join_type)
+        }
     }
 
     #[fixture]
@@ -169,7 +176,7 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     #[test]
     fn bundle_body_sql_matches_expected() {
         let expected = if cfg!(feature = "postgres") {
-            "SELECT id FROM tree WHERE idx = $1"
+            "SELECT id FROM tree WHERE idx = $2"
         } else {
             "SELECT id FROM tree WHERE idx = ?"
         };
@@ -179,8 +186,8 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     #[test]
     fn category_body_sql_matches_expected() {
         let expected = if cfg!(feature = "postgres") {
-            "SELECT c.id AS id \nFROM news_categories c \nWHERE c.name = $1 AND c.bundle_id IS NOT \
-             DISTINCT FROM (SELECT id FROM tree WHERE idx = $2)"
+            "SELECT c.id AS id \nFROM news_categories c \nWHERE c.name = $2 AND c.bundle_id IS NOT \
+             DISTINCT FROM (SELECT id FROM tree WHERE idx = $3)"
         } else {
             "SELECT c.id AS id \nFROM news_categories c \nWHERE c.name = ? AND c.bundle_id IS \
              (SELECT id FROM tree WHERE idx = ?)"
@@ -199,8 +206,8 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     fn expected_recursive_sql(quote: char) -> String {
         format!(
             "WITH RECURSIVE {quote}tree{quote} ({quote}idx{quote}, {quote}id{quote}) AS (SELECT 0 \
-             AS idx, NULL AS id UNION ALL SELECT tree.idx + 1 AS idx, tree.id AS id FROM tree) \
-             SELECT id FROM tree"
+             AS idx, CAST(NULL AS INTEGER) AS id UNION ALL SELECT tree.idx + 1 AS idx, tree.id AS \
+             id FROM tree) SELECT id FROM tree"
         )
     }
 

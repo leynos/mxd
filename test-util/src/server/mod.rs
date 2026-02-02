@@ -4,22 +4,23 @@
 //! `PostgreSQL` backend, monitor readiness, and tear it down once tests complete.
 
 use std::{
-    collections::VecDeque,
     ffi::OsString,
-    fmt,
-    io::{self, BufRead, BufReader},
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{Child, ChildStdout, Command, Stdio},
-    sync::Mutex,
-    time::{Duration, Instant},
+    process::{Child, Command, Stdio},
 };
 
+mod env;
+mod readiness;
+
+use env::SERVER_BINARY_ENV;
+pub use env::{DbUrl, ManifestPath, ensure_server_binary_env, with_env_var};
 #[cfg(unix)]
 use nix::{
     sys::signal::{Signal, kill},
     unistd::Pid,
 };
+use readiness::wait_for_server;
 use tempfile::TempDir;
 use tracing::{debug, info, warn};
 
@@ -27,155 +28,11 @@ use crate::AnyError;
 #[cfg(feature = "postgres")]
 use crate::postgres::PostgresTestDb;
 
-/// Newtype wrapping the path to a Cargo manifest, providing type-safe handling
-/// and ergonomic conversions.
-#[derive(Debug, Clone)]
-pub struct ManifestPath(String);
-
-impl ManifestPath {
-    /// Constructs a new manifest path from any string-like type.
-    pub fn new(path: impl Into<String>) -> Self { Self(path.into()) }
-    /// Returns the path as a string slice.
-    pub fn as_str(&self) -> &str { &self.0 }
-}
-
-impl From<&str> for ManifestPath {
-    fn from(value: &str) -> Self { Self(value.to_owned()) }
-}
-
-impl From<String> for ManifestPath {
-    fn from(value: String) -> Self { Self(value) }
-}
-
-impl AsRef<str> for ManifestPath {
-    fn as_ref(&self) -> &str { &self.0 }
-}
-
-impl AsRef<Path> for ManifestPath {
-    fn as_ref(&self) -> &Path { Path::new(&self.0) }
-}
-
-impl fmt::Display for ManifestPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
-}
-
-/// Newtype wrapping a database connection URL that provides ergonomic
-/// conversions for type-safe handling.
-#[derive(Debug, Clone)]
-pub struct DbUrl(String);
-
-impl DbUrl {
-    /// Constructs a new database URL from any string-like type.
-    pub fn new(url: impl Into<String>) -> Self { Self(url.into()) }
-    /// Returns the URL as a string slice.
-    pub fn as_str(&self) -> &str { &self.0 }
-}
-
-impl From<&str> for DbUrl {
-    fn from(value: &str) -> Self { Self(value.to_owned()) }
-}
-
-impl From<String> for DbUrl {
-    fn from(value: String) -> Self { Self(value) }
-}
-
-impl AsRef<str> for DbUrl {
-    fn as_ref(&self) -> &str { &self.0 }
-}
-
-impl fmt::Display for DbUrl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
-}
-
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
 /// Name of the server binary to use for integration tests.
 ///
 /// The wireframe server (`mxd-wireframe-server`) is the default, as it provides
 /// the production-ready transport layer implementation.
 const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
-
-/// Environment variable name for the prebuilt server binary path.
-const SERVER_BINARY_ENV: &str = "CARGO_BIN_EXE_mxd-wireframe-server";
-/// Marker emitted on stdout to signal that the server is ready.
-const READY_MARKER: &str = "listening on";
-
-/// Ensure the server binary environment variable is populated from the provided
-/// compile-time path.
-///
-/// The mutation is guarded by a global mutex and the result is propagated so
-/// callers can handle synchronisation failures instead of panicking.
-///
-/// # Errors
-///
-/// Returns an error if the environment mutex is poisoned.
-pub fn ensure_server_binary_env(bin_path: &str) -> Result<(), AnyError> {
-    let _guard = ENV_LOCK
-        .lock()
-        .map_err(|_| io::Error::other("environment mutex poisoned"))?;
-    if std::env::var_os(SERVER_BINARY_ENV).is_none() {
-        // SAFETY: Environment mutation is serialized by `ENV_LOCK`, ensuring no
-        // concurrent readers/writers observe a partially updated state.
-        unsafe { std::env::set_var(SERVER_BINARY_ENV, bin_path) };
-    }
-    Ok(())
-}
-
-struct EnvVarGuard {
-    key: String,
-    previous: Option<OsString>,
-}
-
-impl Drop for EnvVarGuard {
-    fn drop(&mut self) {
-        match &self.previous {
-            Some(value) => {
-                // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
-                unsafe { std::env::set_var(&self.key, value) };
-            }
-            None => {
-                // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
-                unsafe { std::env::remove_var(&self.key) };
-            }
-        }
-    }
-}
-
-/// Temporarily sets an environment variable for the duration of a closure.
-///
-/// The mutation is guarded by a global mutex and is restored after the closure
-/// returns, even when it returns an error.
-///
-/// # Errors
-///
-/// Returns an error if the environment mutex is poisoned or the closure fails.
-pub fn with_env_var<T>(
-    key: &str,
-    value: Option<&str>,
-    f: impl FnOnce() -> Result<T, AnyError>,
-) -> Result<T, AnyError> {
-    let _guard = ENV_LOCK
-        .lock()
-        .map_err(|_| io::Error::other("environment mutex poisoned"))?;
-    let previous = std::env::var_os(key);
-    match value {
-        Some(env_value) => {
-            // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
-            unsafe { std::env::set_var(key, env_value) };
-        }
-        None => {
-            // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
-            unsafe { std::env::remove_var(key) };
-        }
-    }
-    let restore = EnvVarGuard {
-        key: key.to_owned(),
-        previous,
-    };
-    let result = f();
-    drop(restore);
-    result
-}
 
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
@@ -209,57 +66,6 @@ where
     let url = DbUrl::from(path_str);
     setup(&url)?;
     Ok(url)
-}
-
-fn collect_stdout_for_diagnostics(
-    reader: &mut BufReader<&mut ChildStdout>,
-    max_lines: usize,
-    timeout: Duration,
-) -> Result<(Vec<String>, bool), AnyError> {
-    let mut lines = VecDeque::with_capacity(max_lines);
-    let mut line = String::new();
-    let start = Instant::now();
-    loop {
-        line.clear();
-        if reader.read_line(&mut line)? == 0 {
-            return Ok((lines.into_iter().collect(), false));
-        }
-        record_diagnostic_line(&mut lines, max_lines, line.trim());
-        if line.contains(READY_MARKER) {
-            return Ok((lines.into_iter().collect(), true));
-        }
-        if start.elapsed() > timeout {
-            return Ok((lines.into_iter().collect(), false));
-        }
-    }
-}
-
-fn record_diagnostic_line(lines: &mut VecDeque<String>, max_lines: usize, line: &str) {
-    if max_lines == 0 {
-        return;
-    }
-    if lines.len() == max_lines {
-        lines.pop_front();
-    }
-    lines.push_back(line.to_owned());
-}
-
-/// Waits up to ten seconds for the child `mxd` process to announce readiness
-/// on stdout, returning an error if it exits early or never signals.
-fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
-    if let Some(out) = &mut child.stdout {
-        let mut reader = BufReader::new(out);
-        let timeout = Duration::from_secs(10);
-        let (lines_received, ready) = collect_stdout_for_diagnostics(&mut reader, 50, timeout)?;
-        if ready {
-            Ok(())
-        } else {
-            warn!(lines_received = ?lines_received, "server did not signal readiness");
-            Err(anyhow::anyhow!("server failed to signal readiness"))
-        }
-    } else {
-        Err(anyhow::anyhow!("missing stdout from server"))
-    }
 }
 
 fn resolve_server_binary() -> Option<PathBuf> {
@@ -373,7 +179,8 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
 }
 
 /// Spawns the configured server process on an ephemeral port and waits for the
-/// readiness banner before returning the child handle and chosen port.
+/// socket to accept connections before returning the child handle and chosen
+/// port.
 #[expect(
     clippy::cognitive_complexity,
     reason = "process spawning with cleanup on failure has inherent complexity"
@@ -393,7 +200,7 @@ fn launch_server_process(
     info!(port, db_url = %db_url, "launching server");
     let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
     debug!("spawned server process, waiting for readiness");
-    if let Err(e) = wait_for_server(&mut child) {
+    if let Err(e) = wait_for_server(&mut child, port) {
         warn!(error = %e, "wait_for_server failed");
         let _ = child.kill();
         let _ = child.wait();

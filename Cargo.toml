@@ -50,6 +50,11 @@ name = "wireframe_transaction"
 path = "tests/wireframe_transaction.rs"
 required-features = ["test-support"]
 
+[[test]]
+name = "wireframe_xor_compat"
+path = "tests/wireframe_xor_compat.rs"
+required-features = ["test-support"]
+
 [dependencies]
 bitflags = "2.10.0"
 tokio = { version = "1", features = ["full"] }

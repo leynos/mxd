@@ -61,7 +61,7 @@ use crate::{
         preamble::HotlinePreamble,
         protocol::HotlineProtocol,
         route_ids::{FALLBACK_ROUTE_ID, ROUTE_IDS},
-        routes::TransactionMiddleware,
+        routes::{TransactionMiddleware, TransactionMiddlewareConfig},
     },
 };
 
@@ -175,19 +175,35 @@ fn build_app_for_connection(
         return fallback_app();
     };
     let compat = Arc::new(XorCompatibility::from_handshake(&handshake));
-    build_app(pool, argon2, outbound_registry, peer, compat).unwrap_or_else(|err| {
+    let build_context = AppBuildContext {
+        pool,
+        argon2,
+        outbound_registry,
+        peer,
+        compat,
+    };
+    build_app(build_context).unwrap_or_else(|err| {
         error!(error = %err, "failed to build wireframe application");
         fallback_app()
     })
 }
 
-fn build_app(
-    pool: &DbPool,
-    argon2: &Arc<Argon2<'static>>,
-    outbound_registry: &Arc<WireframeOutboundRegistry>,
+struct AppBuildContext<'a> {
+    pool: &'a DbPool,
+    argon2: &'a Arc<Argon2<'static>>,
+    outbound_registry: &'a Arc<WireframeOutboundRegistry>,
     peer: SocketAddr,
     compat: Arc<XorCompatibility>,
-) -> wireframe::app::Result<HotlineApp> {
+}
+
+fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp> {
+    let AppBuildContext {
+        pool,
+        argon2,
+        outbound_registry,
+        peer,
+        compat,
+    } = context;
     let session = Arc::new(TokioMutex::new(Session::default()));
     let outbound_id = outbound_registry.allocate_id();
     let outbound_connection = Arc::new(WireframeOutboundConnection::new(
@@ -205,13 +221,13 @@ fn build_app(
     let app = HotlineApp::default()
         .fragmentation(None)
         .with_protocol(protocol)
-        .wrap(TransactionMiddleware::new(
-            pool.clone(),
-            Arc::clone(&session),
+        .wrap(TransactionMiddleware::new(TransactionMiddlewareConfig {
+            pool: pool.clone(),
+            session: Arc::clone(&session),
             peer,
-            Arc::new(outbound_messaging),
+            messaging: Arc::new(outbound_messaging),
             compat,
-        ))?;
+        }))?;
 
     let handler = routing_placeholder_handler();
     let app = app.route(FALLBACK_ROUTE_ID, handler.clone())?;

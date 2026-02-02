@@ -41,6 +41,10 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   preserve transaction IDs and types when a header is available, and routing
   failures are logged through the existing `tracing` infrastructure with
   transaction context.
+- The wireframe adapter automatically detects clients that XOR-encode text
+  fields (for example, SynHX with the `encode` toggle enabled). Once detected,
+  inbound payloads are decoded and outbound replies are encoded to match the
+  client, without any additional configuration.
 
 ## Selecting a runtime
 

@@ -133,9 +133,18 @@ impl XorWorld {
 }
 
 #[fixture]
-fn world() -> XorWorld { XorWorld::new() }
+fn world() -> XorWorld {
+    #[expect(
+        clippy::allow_attributes,
+        reason = "cannot use expect due to macro interaction"
+    )]
+    #[allow(unused_braces, reason = "rustfmt requires braces")]
+    {
+        XorWorld::new()
+    }
+}
 
-fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xFF).collect() }
+fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xff).collect() }
 
 #[given("a routing context with user accounts")]
 fn given_users(world: &XorWorld) { world.setup_db(setup_files_db); }
@@ -170,6 +179,10 @@ fn when_message_xor(world: &XorWorld, message: String) {
     );
 }
 
+#[expect(
+    clippy::big_endian_bytes,
+    reason = "wire protocol uses big-endian bytes"
+)]
 #[when("I post a news article with XOR-encoded fields")]
 fn when_post_news_xor(world: &XorWorld) {
     let encoded_path = xor_bytes(b"General");
