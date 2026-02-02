@@ -167,9 +167,8 @@ fn build_app_for_connection(
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
 ) -> HotlineApp {
-    // Missing connection context indicates handshake setup failed; abort the
-    // connection rather than running without routing state. Returning a
-    // degraded app would accept traffic with broken routing and state.
+    // Missing connection context indicates handshake setup failed; return a
+    // fallback app so the connection stays inert rather than crashing.
     let Some(peer) = current_peer() else {
         error!("missing handshake context in app factory");
         return fallback_app();

@@ -46,11 +46,8 @@ mod tests {
     use super::{hash_password, verify_password};
 
     #[fixture]
-    fn argon2_instance() -> Argon2<'static> {
-        let argon2 = Argon2::default();
-        let _ = argon2.params().m_cost();
-        argon2
-    }
+    #[rustfmt::skip]
+    fn argon2_instance() -> Argon2<'static> { let argon2 = Argon2::default(); std::hint::black_box(&argon2); argon2 }
 
     #[rstest]
     #[case("secret", "secret", true)]
