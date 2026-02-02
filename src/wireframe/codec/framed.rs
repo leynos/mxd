@@ -71,106 +71,132 @@ impl HotlineCodec {
     /// Create a new Hotline codec.
     #[must_use]
     pub fn new() -> Self { Self::default() }
+
+    fn peek_header(src: &BytesMut) -> Result<Option<FrameHeader>, io::Error> {
+        if src.len() < HEADER_LEN {
+            return Ok(None);
+        }
+
+        let header_slice = src
+            .get(..HEADER_LEN)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "missing header bytes"))?;
+        let header_bytes: &[u8; HEADER_LEN] = header_slice
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid header length"))?;
+        let header = FrameHeader::from_bytes(header_bytes);
+
+        super::validate_header(&header)
+            .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
+
+        Ok(Some(header))
+    }
+
+    fn take_frame_payload(
+        src: &mut BytesMut,
+        header: &FrameHeader,
+    ) -> Result<Option<Vec<u8>>, io::Error> {
+        let data_size = usize::try_from(header.data_size)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "frame data size too large"))?;
+        let frame_len = HEADER_LEN
+            .checked_add(data_size)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "frame length overflow"))?;
+        if src.len() < frame_len {
+            src.reserve(frame_len - src.len());
+            return Ok(None);
+        }
+
+        src.advance(HEADER_LEN);
+        Ok(Some(src.split_to(data_size).to_vec()))
+    }
+
+    fn finalize_transaction(
+        header: FrameHeader,
+        payload: Vec<u8>,
+    ) -> Result<HotlineTransaction, io::Error> {
+        let mut final_header = header;
+        final_header.data_size = final_header.total_size;
+        HotlineTransaction::from_parts(final_header, payload)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))
+    }
+
+    fn append_fragment(
+        state: &mut ReassemblyState,
+        header: &FrameHeader,
+        payload: &[u8],
+    ) -> Result<bool, io::Error> {
+        super::validate_fragment_consistency(&state.first_header, header)
+            .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
+
+        if header.data_size == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "continuation fragment has zero data size",
+            ));
+        }
+
+        let total_size = usize::try_from(state.first_header.total_size).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "frame total size too large")
+        })?;
+        let data_size = usize::try_from(header.data_size)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "frame data size too large"))?;
+        let remaining = total_size.checked_sub(state.payload.len()).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "reassembly payload exceeds declared total size",
+            )
+        })?;
+        if data_size > remaining {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "fragment exceeds remaining payload size",
+            ));
+        }
+
+        state.payload.extend_from_slice(payload);
+
+        Ok(state.payload.len() == total_size)
+    }
+
+    fn missing_reassembly_state() -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidData, "missing reassembly state")
+    }
 }
 
 impl Decoder for HotlineCodec {
     type Error = io::Error;
     type Item = HotlineTransaction;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "reassembly state is guaranteed to exist when inside the if-let arm"
-    )]
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // Check if we have enough bytes for a header
-        if src.len() < HEADER_LEN {
+        let Some(header) = Self::peek_header(src)? else {
             return Ok(None);
+        };
+        let Some(payload) = Self::take_frame_payload(src, &header)? else {
+            return Ok(None);
+        };
+
+        if let Some(state) = self.reassembly.as_mut() {
+            let is_complete = Self::append_fragment(state, &header, &payload)?;
+            if !is_complete {
+                return Ok(None);
+            }
+            let completed_state = self
+                .reassembly
+                .take()
+                .ok_or_else(Self::missing_reassembly_state)?;
+            let tx =
+                Self::finalize_transaction(completed_state.first_header, completed_state.payload)?;
+            return Ok(Some(tx));
         }
 
-        // Peek at the header without consuming
-        // SAFETY: Length checked at start of function ensures HEADER_LEN bytes exist
-        let header_slice = src
-            .get(..HEADER_LEN)
-            .expect("length verified at function start");
-        let header = FrameHeader::from_bytes(
-            header_slice
-                .try_into()
-                .expect("slice length guaranteed by get()"),
-        );
-
-        // Validate header
-        super::validate_header(&header)
-            .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
-
-        // Check if we have the full frame
-        let frame_len = HEADER_LEN + header.data_size as usize;
-        if src.len() < frame_len {
-            // Reserve space for the remaining bytes
-            src.reserve(frame_len - src.len());
-            return Ok(None);
-        }
-
-        // Consume the header
-        src.advance(HEADER_LEN);
-
-        // Read the payload
-        let payload_data = src.split_to(header.data_size as usize).to_vec();
-
-        // Handle reassembly
-        if let Some(ref mut state) = self.reassembly {
-            // Validate fragment consistency
-            super::validate_fragment_consistency(&state.first_header, &header)
-                .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
-
-            // Validate continuation fragment
-            if header.data_size == 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "continuation fragment has zero data size",
-                ));
-            }
-
-            let remaining = state.first_header.total_size as usize - state.payload.len();
-            if header.data_size as usize > remaining {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "fragment exceeds remaining payload size",
-                ));
-            }
-
-            // Append to accumulated payload
-            state.payload.extend_from_slice(&payload_data);
-
-            // Check if complete
-            if state.payload.len() == state.first_header.total_size as usize {
-                let completed = self.reassembly.take().expect("state exists");
-                let mut final_header = completed.first_header;
-                final_header.data_size = final_header.total_size;
-                let tx = HotlineTransaction::from_parts(final_header, completed.payload)
-                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
-                return Ok(Some(tx));
-            }
-
-            // Need more fragments
-            return Ok(None);
-        }
-
-        // First/only fragment
         if header.data_size < header.total_size {
-            // Multi-fragment transaction; start reassembly
             self.reassembly = Some(ReassemblyState {
                 first_header: header,
-                payload: payload_data,
+                payload,
             });
             return Ok(None);
         }
 
-        // Single-frame transaction
-        let mut final_header = header;
-        final_header.data_size = final_header.total_size;
-        let tx = HotlineTransaction::from_parts(final_header, payload_data)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
-        Ok(Some(tx))
+        Self::finalize_transaction(header, payload).map(Some)
     }
 
     fn decode_eof(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -190,10 +216,6 @@ impl Decoder for HotlineCodec {
 impl Encoder<HotlineTransaction> for HotlineCodec {
     type Error = io::Error;
 
-    #[expect(
-        clippy::expect_used,
-        reason = "slice bounds verified by loop invariant: offset starts at 0, end capped at len()"
-    )]
     fn encode(&mut self, item: HotlineTransaction, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let (header, payload) = item.into_parts();
 
@@ -226,11 +248,10 @@ impl Encoder<HotlineTransaction> for HotlineCodec {
         let mut offset = 0usize;
         while offset < payload.len() {
             let end = (offset + MAX_FRAME_DATA).min(payload.len());
-            // SAFETY: offset starts at 0 and increments by chunk size; end is capped at
-            // payload.len()
-            let chunk = payload
-                .get(offset..end)
-                .expect("offset and end are within bounds");
+            // Offset starts at 0, increments by chunk size, and end is capped at payload.len().
+            let chunk = payload.get(offset..end).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "payload chunk out of bounds")
+            })?;
             let mut frame_header = header.clone();
             frame_header.data_size = u32::try_from(chunk.len())
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "chunk too large"))?;

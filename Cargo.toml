@@ -53,6 +53,8 @@ required-features = ["test-support"]
 [dependencies]
 bitflags = "2.10.0"
 tokio = { version = "1", features = ["full"] }
+cap-std = { version = "4.0.0", features = ["fs_utf8"] }
+camino = "1.2.1"
 diesel = { version = "2.3", default-features = false, features = ["chrono"] }
 diesel-async = { version = "0.7", default-features = false, features = ["bb8", "sync-connection-wrapper"] }
 diesel_migrations = { version = "2.3", default-features = false }
@@ -129,6 +131,8 @@ pg-embedded-setup-unpriv = { package = "pg-embed-setup-unpriv", version = "0.4.0
 kani = "0.0.1"
 
 [build-dependencies]
+cap-std = { version = "4.0.0", features = ["fs_utf8"] }
+camino = "1.2.1"
 clap = { version = "4.5.51", features = ["derive"] }
 clap_mangen = "0.2.31"
 cli-defs = { path = "cli-defs" }

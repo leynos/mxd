@@ -62,6 +62,9 @@ pub enum CommandError {
     /// Privilege checks failed unexpectedly.
     #[error("privilege error: {0}")]
     Privilege(#[from] PrivilegeError),
+    /// Command processing invariants were violated.
+    #[error("invariant violation: {0}")]
+    Invariant(&'static str),
     /// Outbound transport failed to deliver a reply.
     #[error("outbound transport error: {0}")]
     Outbound(#[from] OutboundError),

@@ -43,14 +43,12 @@ impl Command {
             &header,
             Privileges::DOWNLOAD_FILE,
             || async move {
-                // Invariant: require_privilege guarantees authentication before this closure runs.
-                #[expect(
-                    clippy::expect_used,
-                    reason = "require_privilege guarantees user_id is Some"
-                )]
-                let uid = session_ref
-                    .user_id
-                    .expect("authenticated after require_privilege");
+                let Some(uid) = session_ref.user_id else {
+                    tracing::error!("authenticated session missing user id in file list handler");
+                    return Err(CommandError::Invariant(
+                        "authenticated session missing user id",
+                    ));
+                };
                 let mut conn = pool.get().await?;
                 let files = crate::db::list_files_for_user(&mut conn, uid).await?;
                 let params: Vec<(FieldId, &[u8])> = files

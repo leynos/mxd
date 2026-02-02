@@ -9,24 +9,23 @@
 ///
 /// # Panics
 /// Panics if `payload_len` does not fit within `u32`.
-#[expect(
-    clippy::expect_used,
-    reason = "payload size is validated earlier in protocol layer"
-)]
 #[must_use]
 pub fn reply_header(
     req: &crate::transaction::FrameHeader,
     payload_error: u32,
     payload_len: usize,
 ) -> crate::transaction::FrameHeader {
+    let Ok(payload_len_u32) = u32::try_from(payload_len) else {
+        panic!("payload length exceeds u32::MAX: {payload_len}");
+    };
     crate::transaction::FrameHeader {
         flags: 0,
         is_reply: 1,
         ty: req.ty,
         id: req.id,
         error: payload_error,
-        total_size: u32::try_from(payload_len).expect("payload fits in u32"),
-        data_size: u32::try_from(payload_len).expect("payload fits in u32"),
+        total_size: payload_len_u32,
+        data_size: payload_len_u32,
     }
 }
 

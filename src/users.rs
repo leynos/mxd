@@ -3,11 +3,6 @@
 //! Functions in this module provide a thin wrapper around the `argon2` crate
 //! to hash and verify user passwords for authentication purposes.
 
-#![expect(
-    clippy::expect_used,
-    reason = "password hash format is validated by argon2 library"
-)]
-
 use argon2::{
     Argon2,
     password_hash::{
@@ -30,8 +25,14 @@ pub fn hash_password(argon2: &Argon2, pw: &str) -> Result<String, Error> {
     Ok(argon2.hash_password(pw.as_bytes(), &salt)?.to_string())
 }
 
+/// Verify a password against a stored Argon2 hash.
+///
+/// Returns `true` if the password matches the hash, `false` otherwise.
+/// Invalid or unparseable hashes yield `false` without panicking.
 pub(crate) fn verify_password(hash: &str, pw: &str) -> bool {
-    let parsed_hash = PasswordHash::new(hash).expect("Failed to parse hash");
+    let Ok(parsed_hash) = PasswordHash::new(hash) else {
+        return false;
+    };
     Argon2::default()
         .verify_password(pw.as_bytes(), &parsed_hash)
         .is_ok()
@@ -40,13 +41,29 @@ pub(crate) fn verify_password(hash: &str, pw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use argon2::Argon2;
+    use rstest::{fixture, rstest};
 
     use super::{hash_password, verify_password};
 
+    #[fixture]
+    #[rustfmt::skip]
+    fn argon2_instance() -> Argon2<'static> { let argon2 = Argon2::default(); std::hint::black_box(&argon2); argon2 }
+
+    #[rstest]
+    #[case("secret", "secret", true)]
+    #[case("secret", "not-secret", false)]
+    fn test_verify_password_matches_expected(
+        argon2_instance: Argon2<'static>,
+        #[case] plain: &str,
+        #[case] candidate: &str,
+        #[case] expected: bool,
+    ) {
+        let hashed = hash_password(&argon2_instance, plain).expect("hash password");
+        assert_eq!(verify_password(&hashed, candidate), expected);
+    }
+
     #[test]
-    fn test_hash_password() {
-        let argon2 = Argon2::default();
-        let hashed = hash_password(&argon2, "secret").unwrap();
-        assert!(verify_password(&hashed, "secret"));
+    fn test_verify_password_rejects_invalid_hash() {
+        assert!(!verify_password("not-a-hash", "secret"));
     }
 }

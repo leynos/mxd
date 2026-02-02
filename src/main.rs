@@ -3,7 +3,13 @@
 //! All runtime logic lives in `mxd::server`, allowing future binaries to re-use
 //! the same domain modules and configuration plumbing.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use tokio::runtime::Builder;
 
-#[tokio::main]
-async fn main() -> Result<()> { mxd::server::run().await }
+fn main() -> Result<()> {
+    let runtime = Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("failed to build Tokio runtime")?;
+    runtime.block_on(async { mxd::server::run().await })
+}

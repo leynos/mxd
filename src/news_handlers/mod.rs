@@ -2,7 +2,6 @@
 //!
 //! These helpers keep news-related transactions and database access logic
 //! grouped together for reuse by command processing.
-
 #![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 use futures_util::future::BoxFuture;
@@ -397,6 +396,5 @@ fn internal_error_reply(header: &FrameHeader) -> Transaction {
         payload: Vec::new(),
     }
 }
-
 #[cfg(test)]
 mod tests;
