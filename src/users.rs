@@ -25,6 +25,10 @@ pub fn hash_password(argon2: &Argon2, pw: &str) -> Result<String, Error> {
     Ok(argon2.hash_password(pw.as_bytes(), &salt)?.to_string())
 }
 
+/// Verify a password against a stored Argon2 hash.
+///
+/// Returns `true` if the password matches the hash, `false` otherwise.
+/// Invalid or unparseable hashes yield `false` without panicking.
 pub(crate) fn verify_password(hash: &str, pw: &str) -> bool {
     let Ok(parsed_hash) = PasswordHash::new(hash) else {
         return false;
