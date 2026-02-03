@@ -162,29 +162,52 @@ fn build_app_for_connection(
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
 ) -> HotlineApp {
+    build_app_with_logging(pool, argon2, outbound_registry)
+}
+
+fn build_app_with_logging(
+    pool: &DbPool,
+    argon2: &Arc<Argon2<'static>>,
+    outbound_registry: &Arc<WireframeOutboundRegistry>,
+) -> HotlineApp {
+    match try_build_app(pool, argon2, outbound_registry) {
+        Ok(app) => app,
+        Err(err) => {
+            error!(error = %err, "failed to build wireframe application");
+            fallback_app()
+        }
+    }
+}
+
+fn try_build_app(
+    pool: &DbPool,
+    argon2: &Arc<Argon2<'static>>,
+    outbound_registry: &Arc<WireframeOutboundRegistry>,
+) -> Result<HotlineApp> {
+    let build_context = build_app_context(pool, argon2, outbound_registry)
+        .context("failed to build wireframe app context")?;
+    build_app(build_context).context("failed to build wireframe application")
+}
+
+fn build_app_context<'a>(
+    pool: &'a DbPool,
+    argon2: &'a Arc<Argon2<'static>>,
+    outbound_registry: &'a Arc<WireframeOutboundRegistry>,
+) -> Result<AppBuildContext<'a>> {
     // Missing connection context indicates handshake setup failed; abort the
     // connection rather than running without routing state. Returning a
     // degraded app would accept traffic with broken routing and state.
-    let Some(context) = take_current_context() else {
-        error!("missing handshake context in app factory");
-        return fallback_app();
-    };
+    let context = take_current_context()
+        .ok_or_else(|| anyhow!("missing handshake context in app factory"))?;
     let (handshake, peer) = context.into_parts();
-    let Some(peer) = peer else {
-        error!("peer address missing in app factory");
-        return fallback_app();
-    };
+    let peer = peer.ok_or_else(|| anyhow!("peer address missing in app factory"))?;
     let compat = Arc::new(XorCompatibility::from_handshake(&handshake));
-    let build_context = AppBuildContext {
+    Ok(AppBuildContext {
         pool,
         argon2,
         outbound_registry,
         peer,
         compat,
-    };
-    build_app(build_context).unwrap_or_else(|err| {
-        error!(error = %err, "failed to build wireframe application");
-        fallback_app()
     })
 }
 
@@ -242,14 +265,14 @@ fn validate_app_factory(
     outbound_registry: &Arc<WireframeOutboundRegistry>,
 ) -> Result<()> {
     let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
-    build_app(
+    let build_context = AppBuildContext {
         pool,
         argon2,
         outbound_registry,
         peer,
-        Arc::new(XorCompatibility::disabled()),
-    )
-    .context("failed to register routes or middleware")?;
+        compat: Arc::new(XorCompatibility::disabled()),
+    };
+    build_app(build_context).context("failed to register routes or middleware")?;
     Ok(())
 }
 
@@ -277,130 +300,7 @@ fn resolve_hostname(target: &str) -> Result<SocketAddr> {
 }
 
 #[cfg(test)]
-mod tests {
-    use rstest::{fixture, rstest};
-
-    use super::*;
-
-    #[fixture]
-    fn bound_config() -> AppConfig {
-        AppConfig {
-            bind: "127.0.0.1:7777".to_string(),
-            ..AppConfig::default()
-        }
-    }
-
-    #[rstest]
-    #[case("127.0.0.1:6000")]
-    #[case("[::1]:7000")]
-    fn parses_socket_addrs(#[case] bind: &str) {
-        let addr = parse_bind_addr(bind).expect("bind");
-        assert_eq!(addr.to_string(), bind);
-    }
-
-    #[rstest]
-    #[case("invalid")]
-    #[case("127.0.0.1")]
-    fn rejects_invalid_addrs(#[case] bind: &str) {
-        let err = parse_bind_addr(bind).expect_err("must fail");
-        assert!(err.to_string().contains("invalid bind address"));
-    }
-
-    #[rstest]
-    fn resolves_hostnames() {
-        let addr = parse_bind_addr("localhost:6010").expect("bind");
-        assert!(addr.ip().is_loopback());
-        assert_eq!(addr.port(), 6010);
-    }
-
-    #[rstest]
-    fn bootstrap_captures_bind(bound_config: AppConfig) {
-        let bootstrap = WireframeBootstrap::prepare(bound_config).expect("bootstrap");
-        assert_eq!(bootstrap.bind_addr, "127.0.0.1:7777".parse().unwrap());
-        assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
-    }
-}
+mod tests;
 
 #[cfg(test)]
-mod bdd {
-    use std::cell::RefCell;
-
-    use rstest::fixture;
-    use rstest_bdd::{assert_step_err, assert_step_ok};
-    use rstest_bdd_macros::{given, scenario, then, when};
-
-    use super::*;
-
-    struct BootstrapWorld {
-        config: RefCell<AppConfig>,
-        outcome: RefCell<Option<Result<WireframeBootstrap>>>,
-    }
-
-    impl BootstrapWorld {
-        fn new() -> Self {
-            Self {
-                config: RefCell::new(AppConfig::default()),
-                outcome: RefCell::new(None),
-            }
-        }
-
-        fn set_bind(&self, bind: String) { self.config.borrow_mut().bind = bind; }
-
-        fn bootstrap(&self) {
-            let cfg = self.config.borrow().clone();
-            let result = WireframeBootstrap::prepare(cfg);
-            self.outcome.borrow_mut().replace(result);
-        }
-    }
-
-    #[fixture]
-    fn world() -> BootstrapWorld {
-        let world = BootstrapWorld::new();
-        world.config.borrow_mut().bind = "127.0.0.1:0".to_string();
-        world
-    }
-
-    #[given("a wireframe configuration binding to \"{bind}\"")]
-    fn given_bind(world: &BootstrapWorld, bind: String) { world.set_bind(bind); }
-
-    #[when("I bootstrap the wireframe server")]
-    fn when_bootstrap(world: &BootstrapWorld) { world.bootstrap(); }
-
-    #[then("bootstrap succeeds")]
-    fn then_success(world: &BootstrapWorld) {
-        let outcome_ref = world.outcome.borrow();
-        let Some(outcome) = outcome_ref.as_ref() else {
-            panic!("bootstrap not executed");
-        };
-        assert_step_ok!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
-    }
-
-    #[then("the resolved bind address is \"{bind}\"")]
-    fn then_matches_bind(world: &BootstrapWorld, bind: String) {
-        let outcome_ref = world.outcome.borrow();
-        let Some(outcome) = outcome_ref.as_ref() else {
-            panic!("bootstrap not executed");
-        };
-        let bootstrap = assert_step_ok!(outcome.as_ref().map_err(ToString::to_string));
-        assert_eq!(bootstrap.bind_addr.to_string(), bind);
-    }
-
-    #[then("bootstrap fails with message \"{message}\"")]
-    fn then_failure(world: &BootstrapWorld, message: String) {
-        let outcome_ref = world.outcome.borrow();
-        let Some(outcome) = outcome_ref.as_ref() else {
-            panic!("bootstrap not executed");
-        };
-        let text = assert_step_err!(outcome.as_ref().map(|_| ()).map_err(ToString::to_string));
-        assert!(
-            text.contains(&message),
-            "expected '{text}' to contain '{message}'"
-        );
-    }
-
-    #[scenario(path = "tests/features/wireframe_server.feature", index = 0)]
-    fn accepts_bind(world: BootstrapWorld) { let _ = world; }
-
-    #[scenario(path = "tests/features/wireframe_server.feature", index = 1)]
-    fn rejects_bind(world: BootstrapWorld) { let _ = world; }
-}
+mod bdd;
