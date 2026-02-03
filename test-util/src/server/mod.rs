@@ -267,18 +267,32 @@ impl TestServer {
         }
     }
 
+    fn launch_with<F>(
+        manifest_path: &ManifestPath,
+        db_url: &DbUrl,
+        build_self: F,
+    ) -> Result<Self, AnyError>
+    where
+        F: FnOnce(Child, u16, DbUrl) -> Self,
+    {
+        let (child, port) = launch_server_process(manifest_path, db_url)?;
+        Ok(build_self(child, port, db_url.clone()))
+    }
+
     #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
     fn launch_sqlite(
         manifest_path: &ManifestPath,
         db_url: DbUrl,
         temp_dir: Option<TempDir>,
     ) -> Result<Self, AnyError> {
-        let (child, port) = launch_server_process(manifest_path, &db_url)?;
-        Ok(Self {
-            child,
-            port,
-            db_url,
-            temp_dir,
+        let db_url_clone = db_url.clone();
+        Self::launch_with(manifest_path, &db_url_clone, move |child, port, _db_url| {
+            Self {
+                child,
+                port,
+                db_url,
+                temp_dir,
+            }
         })
     }
 
@@ -288,13 +302,15 @@ impl TestServer {
         db: PostgresTestDb,
         db_url: DbUrl,
     ) -> Result<Self, AnyError> {
-        let (child, port) = launch_server_process(manifest_path, &db_url)?;
-        Ok(Self {
-            child,
-            port,
-            db_url,
-            db,
-            temp_dir: None,
+        let db_url_clone = db_url.clone();
+        Self::launch_with(manifest_path, &db_url_clone, move |child, port, _db_url| {
+            Self {
+                child,
+                port,
+                db_url,
+                db,
+                temp_dir: None,
+            }
         })
     }
 
