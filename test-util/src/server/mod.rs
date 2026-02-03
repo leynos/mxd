@@ -33,6 +33,8 @@ use crate::postgres::PostgresTestDb;
 /// The wireframe server (`mxd-wireframe-server`) is the default, as it provides
 /// the production-ready transport layer implementation.
 const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
+const DEFAULT_BIND_HOST: &str = "localhost";
+const TEST_BIND_HOST_ENV: &str = "MXD_TEST_BIND_HOST";
 
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
@@ -178,6 +180,14 @@ fn cargo_run_command(manifest_path: &ManifestPath, addr: SocketAddr, db_url: &Db
     cmd
 }
 
+fn resolve_bind_host() -> Result<String, AnyError> {
+    let value =
+        std::env::var_os(TEST_BIND_HOST_ENV).unwrap_or_else(|| OsString::from(DEFAULT_BIND_HOST));
+    value
+        .into_string()
+        .map_err(|_| anyhow::anyhow!("{TEST_BIND_HOST_ENV} must be valid UTF-8"))
+}
+
 /// Spawns the configured server process on an ephemeral port and waits for the
 /// socket to accept connections before returning the child handle and chosen
 /// port.
@@ -191,12 +201,13 @@ fn cargo_run_command(manifest_path: &ManifestPath, addr: SocketAddr, db_url: &Db
 )]
 fn launch_server_process(
     manifest_path: &ManifestPath,
+    bind_host: &str,
     db_url: &DbUrl,
 ) -> Result<(Child, u16), AnyError> {
-    let socket = TcpListener::bind("127.0.0.1:0")?;
-    let port = socket.local_addr()?.port();
+    let socket = TcpListener::bind((bind_host, 0))?;
+    let addr = socket.local_addr()?;
+    let port = addr.port();
     drop(socket);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     info!(port, db_url = %db_url, "launching server");
     let mut child = build_server_command(manifest_path, addr, db_url).spawn()?;
@@ -251,12 +262,13 @@ impl TestServer {
         F: FnOnce(&DbUrl) -> Result<(), AnyError>,
     {
         let manifest_path = manifest_path.into();
+        let bind_host = resolve_bind_host()?;
         ensure_single_backend();
         #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
         {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
-            Self::launch_sqlite(&manifest_path, db_url, Some(temp))
+            Self::launch_sqlite(&manifest_path, &bind_host, db_url, Some(temp))
         }
 
         #[cfg(feature = "postgres")]
@@ -264,55 +276,64 @@ impl TestServer {
             let db = crate::postgres::PostgresTestDb::new()?;
             let db_url = DbUrl::from(db.url.as_ref());
             setup(&db_url)?;
-            Self::launch_postgres(&manifest_path, db, db_url)
+            Self::launch_postgres(&manifest_path, &bind_host, db, db_url)
         }
     }
 
     fn launch_with<F>(
         manifest_path: &ManifestPath,
+        bind_host: &str,
         db_url: &DbUrl,
         build_self: F,
     ) -> Result<Self, AnyError>
     where
         F: FnOnce(Child, u16, DbUrl) -> Self,
     {
-        let (child, port) = launch_server_process(manifest_path, db_url)?;
+        let (child, port) = launch_server_process(manifest_path, bind_host, db_url)?;
         Ok(build_self(child, port, db_url.clone()))
     }
 
     #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
     fn launch_sqlite(
         manifest_path: &ManifestPath,
+        bind_host: &str,
         db_url: DbUrl,
         temp_dir: Option<TempDir>,
     ) -> Result<Self, AnyError> {
         let db_url_clone = db_url.clone();
-        Self::launch_with(manifest_path, &db_url_clone, move |child, port, _db_url| {
-            Self {
+        Self::launch_with(
+            manifest_path,
+            bind_host,
+            &db_url_clone,
+            move |child, port, _db_url| Self {
                 child,
                 port,
                 db_url,
                 temp_dir,
-            }
-        })
+            },
+        )
     }
 
     #[cfg(feature = "postgres")]
     fn launch_postgres(
         manifest_path: &ManifestPath,
+        bind_host: &str,
         db: PostgresTestDb,
         db_url: DbUrl,
     ) -> Result<Self, AnyError> {
         let db_url_clone = db_url.clone();
-        Self::launch_with(manifest_path, &db_url_clone, move |child, port, _db_url| {
-            Self {
+        Self::launch_with(
+            manifest_path,
+            bind_host,
+            &db_url_clone,
+            move |child, port, _db_url| Self {
                 child,
                 port,
                 db_url,
                 db,
                 temp_dir: None,
-            }
-        })
+            },
+        )
     }
 
     /// Returns the ephemeral port on which the server is listening.

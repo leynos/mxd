@@ -199,18 +199,19 @@ preamble. Entries are cleared on connection teardown to prevent leakage between
 sessions while keeping the data available for the full lifetime of each
 connection.
 
-### XOR text-field compatibility
+### Exclusive OR (XOR) text-field compatibility
 
-Some Hotline clients (including SynHX) obfuscate text parameters by XOR-ing
-each byte with `0xFF`. The wireframe adapter maintains a per-connection
-`XorCompatibility` flag. Inbound routing (`process_transaction_bytes`) decodes
-parameter payloads: when any text field is invalid UTF-8 but becomes valid
-after XOR, the connection is marked as XOR-enabled and the payload is rewritten
-with decoded bytes. Outbound replies are re-encoded in
-`HotlineProtocol::before_send` whenever the flag is enabled, ensuring responses
-match the client expectation. Only text-bearing fields (login, password,
-data/message, news path/title/poster, news data flavor/body, and file names)
-are transformed; numeric and binary payloads are left untouched.
+Some Hotline clients (including SynHX) obfuscate text parameters by exclusive
+OR (XOR)-ing each byte with `0xFF`. The wireframe adapter maintains a
+per-connection exclusive OR (XOR) compatibility flag (`XorCompatibility`).
+Inbound routing (`process_transaction_bytes`) decodes parameter payloads: when
+any text field is invalid UTF-8 but becomes valid after exclusive OR (XOR), the
+connection is marked as XOR-enabled and the payload is rewritten with decoded
+bytes. Outbound replies are re-encoded in `HotlineProtocol::before_send`
+whenever the flag is enabled, ensuring responses match the client expectation.
+Only text-bearing fields (login, password, data/message, news
+path/title/poster, news data flavor/body, and file names) are transformed;
+numeric and binary payloads are left untouched.
 
 The handshake sub-version does not yet provide a reliable XOR signal, so
 detection is heuristic and locked in per connection after the first successful
