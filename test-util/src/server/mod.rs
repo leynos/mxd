@@ -5,7 +5,7 @@
 
 use std::{
     ffi::OsString,
-    net::{SocketAddr, TcpListener},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -206,12 +206,21 @@ fn launch_server_process(
 ) -> Result<(Child, SocketAddr), AnyError> {
     let socket = TcpListener::bind((bind_host, 0))?;
     let addr = socket.local_addr()?;
+    let readiness_addr = match addr.ip() {
+        IpAddr::V4(ip) if ip.is_unspecified() => {
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), addr.port())
+        }
+        IpAddr::V6(ip) if ip.is_unspecified() => {
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), addr.port())
+        }
+        _ => addr,
+    };
     drop(socket);
 
     info!(port = addr.port(), db_url = %db_url, "launching server");
     let mut child = build_server_command(manifest_path, addr, db_url).spawn()?;
     debug!("spawned server process, waiting for readiness");
-    if let Err(e) = wait_for_server(&mut child, addr) {
+    if let Err(e) = wait_for_server(&mut child, readiness_addr) {
         warn!(error = %e, "wait_for_server failed");
         let _ = child.kill();
         let _ = child.wait();
