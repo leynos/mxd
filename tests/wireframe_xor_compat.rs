@@ -127,7 +127,10 @@ impl XorWorld {
         let Some(reply) = reply_ref.as_ref() else {
             panic!("no reply received");
         };
-        let tx = reply.as_ref().expect("reply should be Ok");
+        let tx = match reply.as_ref() {
+            Ok(tx) => tx,
+            Err(error) => panic!("reply parse failed: {error}"),
+        };
         f(tx)
     }
 }

@@ -209,8 +209,8 @@ after XOR, the connection is marked as XOR-enabled and the payload is rewritten
 with decoded bytes. Outbound replies are re-encoded in
 `HotlineProtocol::before_send` whenever the flag is enabled, ensuring responses
 match the client expectation. Only text-bearing fields (login, password,
-data/message, news path/title/poster, news data flavor/body, file names) are
-transformed; numeric and binary payloads are left untouched.
+data/message, news path/title/poster, news data flavor/body, and file names)
+are transformed; numeric and binary payloads are left untouched.
 
 The handshake sub-version does not yet provide a reliable XOR signal, so
 detection is heuristic and locked in per connection after the first successful

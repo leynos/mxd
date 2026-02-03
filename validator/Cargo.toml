@@ -23,3 +23,4 @@ mxd = { path = "..", default-features = false }
 argon2 = { version = "0.5", features = ["std"] }
 diesel = { version = "2.3", default-features = false, features = ["sqlite", "postgres"] }
 diesel-async = { version = "0.7", default-features = false, features = ["sqlite", "postgres", "sync-connection-wrapper"] }
+wait-timeout = "0.2"

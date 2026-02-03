@@ -6,12 +6,12 @@
 use std::{
     io::Read,
     process::{Child, Command, Stdio},
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use expectrl::{Regex, Session, spawn};
 use test_util::{AnyError, DatabaseUrl, TestServer, setup_news_db, with_db};
+use wait_timeout::ChildExt;
 use which::which;
 
 #[test]
@@ -92,28 +92,25 @@ fn hx_is_helix() -> bool {
     else {
         return false;
     };
-    let start = Instant::now();
     let timeout = Duration::from_millis(500);
-    let poll_interval = Duration::from_millis(20);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                let stdout = read_stream(child.stdout.take());
-                let stderr = read_stream(child.stderr.take());
-                let combined = format!("{stdout}{stderr}").to_lowercase();
-                return combined.contains("helix");
-            }
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    terminate_child(&mut child);
-                    return false;
-                }
-                thread::sleep(poll_interval);
-            }
-            Err(_) => {
-                terminate_child(&mut child);
-                return false;
-            }
+    #[expect(
+        clippy::match_same_arms,
+        reason = "retain explicit timeout and error branches"
+    )]
+    match child.wait_timeout(timeout) {
+        Ok(Some(_)) => {
+            let stdout = read_stream(child.stdout.take());
+            let stderr = read_stream(child.stderr.take());
+            let combined = format!("{stdout}{stderr}").to_lowercase();
+            combined.contains("helix")
+        }
+        Ok(None) => {
+            terminate_child(&mut child);
+            false
+        }
+        Err(_) => {
+            terminate_child(&mut child);
+            false
         }
     }
 }

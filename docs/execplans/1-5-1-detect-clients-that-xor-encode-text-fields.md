@@ -255,61 +255,79 @@ with `tee` to preserve exit codes.
 
 1) Discovery and design
 
-    rg -n "sub_version|HandshakeMetadata|take_current_context" src/wireframe
-    rg -n "before_send" src/wireframe/protocol.rs
-    rg -n "process_transaction_bytes|parse_transaction" \\
-        src/wireframe/routes/mod.rs
-    rg -n "FieldId" src/field_id.rs
-    rg -n "encode_params|decode_params" src/transaction/params.rs
-    rg -n "hx|validator" validator/tests
+```bash
+rg -n "sub_version|HandshakeMetadata|take_current_context" src/wireframe
+rg -n "before_send" src/wireframe/protocol.rs
+rg -n "process_transaction_bytes|parse_transaction" \
+    src/wireframe/routes/mod.rs
+rg -n "FieldId" src/field_id.rs
+rg -n "encode_params|decode_params" src/transaction/params.rs
+rg -n "hx|validator" validator/tests
+```
 
-2) Implement XOR compatibility module and plumbing
+1) Implement XOR compatibility module and plumbing
 
-    $EDITOR src/wireframe/compat.rs
-    $EDITOR src/server/wireframe.rs
-    $EDITOR src/wireframe/protocol.rs
-    $EDITOR src/wireframe/routes/mod.rs
+```bash
+$EDITOR src/wireframe/compat.rs
+$EDITOR src/server/wireframe.rs
+$EDITOR src/wireframe/protocol.rs
+$EDITOR src/wireframe/routes/mod.rs
+```
 
-3) Unit tests
+1) Unit tests
 
-    $EDITOR src/wireframe/routes/tests/xor_compat.rs
-    $EDITOR src/wireframe/compat.rs
+```bash
+$EDITOR src/wireframe/routes/tests/xor_compat.rs
+$EDITOR src/wireframe/compat.rs
+```
 
-4) Behaviour tests (rstest-bdd)
+1) Behaviour tests (rstest-bdd)
 
-    $EDITOR tests/features/xor_text_fields.feature
-    $EDITOR tests/wireframe_xor_compat.rs
+```bash
+$EDITOR tests/features/xor_text_fields.feature
+$EDITOR tests/wireframe_xor_compat.rs
+```
 
-5) Validator parity tests
+1) Validator parity tests
 
-    $EDITOR validator/tests/xor_compat.rs
+```bash
+$EDITOR validator/tests/xor_compat.rs
+```
 
-6) Documentation and roadmap
+1) Documentation and roadmap
 
-    $EDITOR docs/design.md
-    $EDITOR docs/users-guide.md
-    $EDITOR docs/roadmap.md
+```bash
+$EDITOR docs/design.md
+$EDITOR docs/users-guide.md
+$EDITOR docs/roadmap.md
+```
 
-7) Postgres setup (once per machine)
+1) Postgres setup (once per machine)
 
-    set -o pipefail
-    cargo install --locked pg-embed-setup-unpriv | tee /tmp/pg-embed-install.log
-    pg_embedded_setup_unpriv 2>&1 | tee /tmp/pg-embed-setup.log
+```bash
+set -o pipefail
+cargo install --locked pg-embed-setup-unpriv | tee /tmp/pg-embed-install.log
+pg_embedded_setup_unpriv 2>&1 | tee /tmp/pg-embed-setup.log
+```
 
-8) Quality gates
+1) Quality gates
 
-    set -o pipefail
-    make fmt | tee /tmp/fmt-$(basename "$PWD").log
-    make markdownlint | tee /tmp/markdownlint-$(basename "$PWD").log
-    make nixie | tee /tmp/nixie-$(basename "$PWD").log
-    make check-fmt | tee /tmp/check-fmt-$(basename "$PWD").log
-    make lint | tee /tmp/lint-$(basename "$PWD").log
-    make test | tee /tmp/test-$(basename "$PWD").log
+```bash
+set -o pipefail
+make fmt | tee /tmp/fmt-$(basename "$PWD").log
+make markdownlint | tee /tmp/markdownlint-$(basename "$PWD").log
+make nixie | tee /tmp/nixie-$(basename "$PWD").log
+make check-fmt | tee /tmp/check-fmt-$(basename "$PWD").log
+make lint | tee /tmp/lint-$(basename "$PWD").log
+make test | tee /tmp/test-$(basename "$PWD").log
+```
 
-9) Validator tests (hx required)
+1) Validator tests (hx required)
 
-    set -o pipefail
-    cargo test -p validator | tee /tmp/validator-$(basename "$PWD").log
+```bash
+set -o pipefail
+cargo test -p validator | tee /tmp/validator-$(basename "$PWD").log
+```
 
 ## Validation and acceptance
 
@@ -343,17 +361,19 @@ what happened and the resolution in the Decision Log.
 No new external dependencies are expected. The compatibility module should
 expose a small surface such as:
 
-    pub struct XorCompatibility {
-        enabled: bool,
-    }
+```rust
+pub struct XorCompatibility {
+    enabled: bool,
+}
 
-    impl XorCompatibility {
-        pub fn from_handshake(handshake: &HandshakeMetadata) -> Self { … }
-        pub fn decode_payload(&self, payload: &[u8]) ->
-            Result<Vec<u8>, TransactionError> { … }
-        pub fn encode_payload(&self, payload: &[u8]) ->
-            Result<Vec<u8>, TransactionError> { … }
-    }
+impl XorCompatibility {
+    pub fn from_handshake(handshake: &HandshakeMetadata) -> Self { … }
+    pub fn decode_payload(&self, payload: &[u8]) ->
+        Result<Vec<u8>, TransactionError> { … }
+    pub fn encode_payload(&self, payload: &[u8]) ->
+        Result<Vec<u8>, TransactionError> { … }
+}
+```
 
 Use `TransactionError` for parse failures so routing can reuse existing error
 handling. Keep the compatibility module within `src/wireframe` to avoid

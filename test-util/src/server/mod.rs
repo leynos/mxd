@@ -50,11 +50,11 @@ fn ensure_single_backend() {
     // Intentionally empty - cfg guards handle feature selection at compile time
 }
 
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 /// Creates a temporary `SQLite` database at `temp/mxd.db`, runs the provided
 /// setup callback with its URL, and returns that URL on success. The callback
 /// must implement `FnOnce(&DbUrl) -> Result<(), AnyError>`. Returns an error if
 /// the path is not valid UTF-8 or if the callback fails.
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<DbUrl, AnyError>
 where
     F: FnOnce(&DbUrl) -> Result<(), AnyError>,
@@ -225,23 +225,23 @@ pub struct TestServer {
 
 impl TestServer {
     /// Launches a server with the default (empty) setup, returning an error if
-    /// the database or server cannot be initialised or readiness times out (ten
+    /// the database or server cannot be initialized or readiness times out (ten
     /// seconds).
     ///
     /// # Errors
     ///
-    /// Returns an error if database or server initialisation fails.
+    /// Returns an error if database or server initialization fails.
     pub fn start(manifest_path: impl Into<ManifestPath>) -> Result<Self, AnyError> {
         Self::start_with_setup(manifest_path, |_| Ok(()))
     }
 
     /// Launches a server and runs the setup callback with the database URL
     /// before starting, useful for seeding data or running migrations; returns
-    /// an error if setup, database initialisation, or launch fails.
+    /// an error if setup, database initialization, or launch fails.
     ///
     /// # Errors
     ///
-    /// Returns an error if setup, database initialisation, or launch fails.
+    /// Returns an error if setup, database initialization, or launch fails.
     #[expect(clippy::shadow_reuse, reason = "standard Into pattern")]
     pub fn start_with_setup<F>(
         manifest_path: impl Into<ManifestPath>,
@@ -328,9 +328,9 @@ impl TestServer {
     #[must_use]
     pub const fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
-    #[cfg(feature = "postgres")]
     /// Returns `true` when the server is using an embedded `PostgreSQL` instance
     /// rather than an external server.
+    #[cfg(feature = "postgres")]
     #[must_use]
     pub const fn uses_embedded_postgres(&self) -> bool { self.db.uses_embedded() }
 }

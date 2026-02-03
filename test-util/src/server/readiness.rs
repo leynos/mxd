@@ -69,12 +69,12 @@ mod tests {
 
     #[fixture]
     fn listening_socket() -> TcpListener {
-        TcpListener::bind("127.0.0.1:0").expect("listen socket should bind")
+        TcpListener::bind("localhost:0").expect("listen socket should bind")
     }
 
     #[fixture]
     fn unused_addr() -> SocketAddr {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("ephemeral socket should bind");
+        let listener = TcpListener::bind("localhost:0").expect("ephemeral socket should bind");
         let addr = listener
             .local_addr()
             .expect("ephemeral socket should provide a local address");
