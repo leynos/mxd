@@ -22,6 +22,10 @@ pub struct XorCompatibility {
 
 impl XorCompatibility {
     /// Construct a compatibility state seeded from handshake metadata.
+    ///
+    /// This currently ignores the provided metadata and defaults to XOR
+    /// disabled. It exists as a placeholder until a reliable handshake-based
+    /// XOR detection rule is available.
     #[must_use]
     pub const fn from_handshake(_handshake: &HandshakeMetadata) -> Self {
         Self {

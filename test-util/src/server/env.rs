@@ -73,7 +73,7 @@ impl fmt::Display for DbUrl {
 /// compile-time path.
 ///
 /// The mutation is guarded by a global mutex and the result is propagated so
-/// callers can handle synchronisation failures instead of panicking.
+/// callers can handle synchronization failures instead of panicking.
 ///
 /// # Errors
 ///

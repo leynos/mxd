@@ -5,7 +5,7 @@
 
 use std::{
     ffi::OsString,
-    net::TcpListener,
+    net::{SocketAddr, TcpListener},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -116,21 +116,21 @@ fn log_server_binary_resolution(message: &'static str, binary: Option<&Path>) {
 }
 
 /// Constructs the base `cargo run` command for launching the server with the
-/// requested manifest, bind port, and database URL, enabling the active backend.
-fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
+/// requested manifest, bind address, and database URL, enabling the active backend.
+fn build_server_command(manifest_path: &ManifestPath, addr: SocketAddr, db_url: &DbUrl) -> Command {
     if let Some(bin) = resolve_server_binary() {
-        return server_binary_command(bin, port, db_url);
+        return server_binary_command(bin, addr, db_url);
     }
     debug!("falling back to cargo run");
-    cargo_run_command(manifest_path, port, db_url)
+    cargo_run_command(manifest_path, addr, db_url)
 }
 
 /// Builds a command that executes an already-built wireframe server binary bound
-/// to the requested port and database URL, bypassing `cargo run` entirely.
-fn server_binary_command(bin: PathBuf, port: u16, db_url: &DbUrl) -> Command {
+/// to the requested address and database URL, bypassing `cargo run` entirely.
+fn server_binary_command(bin: PathBuf, addr: SocketAddr, db_url: &DbUrl) -> Command {
     let mut cmd = Command::new(bin);
     cmd.arg("--bind");
-    cmd.arg(format!("127.0.0.1:{port}"));
+    cmd.arg(addr.to_string());
     cmd.arg("--database");
     cmd.arg(db_url.as_str());
     cmd.stdout(Stdio::piped()).stderr(Stdio::inherit());
@@ -139,7 +139,7 @@ fn server_binary_command(bin: PathBuf, port: u16, db_url: &DbUrl) -> Command {
 
 /// Produces a `cargo run` invocation tailored to the active backend, falling
 /// back to this path when no prebuilt binary is available.
-fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
+fn cargo_run_command(manifest_path: &ManifestPath, addr: SocketAddr, db_url: &DbUrl) -> Command {
     let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut cmd = Command::new(cargo);
     cmd.arg("run");
@@ -169,7 +169,7 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
         "--quiet",
         "--",
         "--bind",
-        &format!("127.0.0.1:{port}"),
+        &addr.to_string(),
         "--database",
         db_url.as_str(),
     ])
@@ -196,11 +196,12 @@ fn launch_server_process(
     let socket = TcpListener::bind("127.0.0.1:0")?;
     let port = socket.local_addr()?.port();
     drop(socket);
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     info!(port, db_url = %db_url, "launching server");
-    let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
+    let mut child = build_server_command(manifest_path, addr, db_url).spawn()?;
     debug!("spawned server process, waiting for readiness");
-    if let Err(e) = wait_for_server(&mut child, port) {
+    if let Err(e) = wait_for_server(&mut child, addr) {
         warn!(error = %e, "wait_for_server failed");
         let _ = child.kill();
         let _ = child.wait();

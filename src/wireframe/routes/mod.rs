@@ -39,6 +39,7 @@ use crate::{
     handler::Session,
     server::outbound::{OutboundMessaging, ReplyBuffer},
     transaction::{FrameHeader, Transaction, parse_transaction},
+    transaction_type::TransactionType,
     wireframe::compat::XorCompatibility,
 };
 
@@ -130,9 +131,13 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
     };
 
     let header = transaction.header.clone();
-    let decoded_payload = match compat.decode_payload(&transaction.payload) {
-        Ok(payload) => payload,
-        Err(e) => return handle_command_parse_error(peer, &header, e),
+    let decoded_payload = if TransactionType::from(header.ty).allows_payload() {
+        match compat.decode_payload(&transaction.payload) {
+            Ok(payload) => payload,
+            Err(e) => return handle_command_parse_error(peer, &header, e),
+        }
+    } else {
+        transaction.payload.clone()
     };
     let tx = Transaction {
         payload: decoded_payload,

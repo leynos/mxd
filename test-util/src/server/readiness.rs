@@ -1,13 +1,15 @@
 //! Readiness checks for spawned servers.
 
+#[cfg(test)]
+use std::thread;
 use std::{
     net::{SocketAddr, TcpStream},
     process::Child,
-    thread,
     time::{Duration, Instant},
 };
 
 use tracing::warn;
+use wait_timeout::ChildExt;
 
 use crate::AnyError;
 
@@ -15,13 +17,15 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-pub(super) fn wait_for_server(child: &mut Child, port: u16) -> Result<(), AnyError> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+/// Wait for a spawned server to accept connections on the provided address.
+///
+/// # Errors
+///
+/// Returns an error if the server exits early or fails to start listening
+/// before the startup timeout elapses.
+pub(super) fn wait_for_server(child: &mut Child, addr: SocketAddr) -> Result<(), AnyError> {
     let start = Instant::now();
     loop {
-        if let Some(status) = child.try_wait()? {
-            return Err(anyhow::anyhow!("server exited before readiness ({status})"));
-        }
         if is_listening(addr) {
             return Ok(());
         }
@@ -29,7 +33,9 @@ pub(super) fn wait_for_server(child: &mut Child, port: u16) -> Result<(), AnyErr
             warn!(?addr, "server did not open listening port before timeout");
             return Err(anyhow::anyhow!("server failed to open listening port"));
         }
-        thread::sleep(POLL_INTERVAL);
+        if let Some(status) = child.wait_timeout(POLL_INTERVAL)? {
+            return Err(anyhow::anyhow!("server exited before readiness ({status})"));
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use std::{
 };
 
 use expectrl::{Regex, Session, spawn};
-use test_util::{AnyError, DatabaseUrl, TestServer, setup_news_db};
+use test_util::{AnyError, DatabaseUrl, TestServer, setup_news_db, with_db};
 use which::which;
 
 #[test]
@@ -50,8 +50,10 @@ fn xor_compat_validation() -> Result<(), AnyError> {
         return Ok(());
     }
 
-    p.send_line("/msg alice xor test message")?;
-    p.send_line("/post xor test news body")?;
+    let xor_message = "xor test message";
+    let news_body = "xor test news body";
+    p.send_line(format!("/msg alice {xor_message}"))?;
+    p.send_line(format!("/post {news_body}"))?;
     if !expect_or_skip(
         &mut p,
         Regex("(?i)news posted"),
@@ -60,6 +62,7 @@ fn xor_compat_validation() -> Result<(), AnyError> {
         terminate_hx(&mut p);
         return Ok(());
     }
+    assert_news_body(&server, news_body)?;
 
     p.send_line("/quit")?;
     terminate_hx(&mut p);
@@ -134,6 +137,34 @@ fn expect_or_skip(session: &mut Session, regex: Regex<&'static str>, reason: &st
         return false;
     }
     true
+}
+
+fn assert_news_body(server: &TestServer, expected: &str) -> Result<(), AnyError> {
+    let expected_text = expected.to_owned();
+    let expected_query = expected_text.clone();
+    let url = DatabaseUrl::new(server.db_url().as_ref());
+    let count = with_db(url, move |conn| {
+        let expected_query_local = expected_query.clone();
+        Box::pin(async move {
+            use diesel::{dsl::count_star, prelude::*};
+            use diesel_async::RunQueryDsl;
+            use mxd::schema::news_articles::dsl as a;
+
+            let expected_ref = expected_query_local.as_str();
+            let count: i64 = a::news_articles
+                .filter(a::title.eq(expected_ref).or(a::data.eq(Some(expected_ref))))
+                .select(count_star())
+                .first(conn)
+                .await?;
+            Ok(count)
+        })
+    })?;
+    if count == 0 {
+        return Err(AnyError::msg(format!(
+            "expected news article containing '{expected_text}'"
+        )));
+    }
+    Ok(())
 }
 
 fn terminate_hx(session: &mut Session) {

@@ -172,10 +172,8 @@ mod tests {
     use crate::wireframe::{
         compat::XorCompatibility,
         outbound::{WireframeOutboundConnection, WireframeOutboundRegistry},
-        test_helpers::dummy_pool,
+        test_helpers::{dummy_pool, xor_bytes},
     };
-
-    fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xff).collect() }
 
     #[fixture]
     fn outbound_connection() -> Arc<WireframeOutboundConnection> {
@@ -186,14 +184,9 @@ mod tests {
 
     #[fixture]
     fn compat() -> Arc<XorCompatibility> {
-        #[expect(
-            clippy::allow_attributes,
-            reason = "cannot use expect due to macro interaction"
-        )]
-        #[allow(unused_braces, reason = "rustfmt requires braces")]
-        {
-            Arc::new(XorCompatibility::disabled())
-        }
+        let compat = Arc::new(XorCompatibility::disabled());
+        let _ = compat.is_enabled();
+        compat
     }
 
     #[rstest]

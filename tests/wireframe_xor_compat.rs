@@ -1,5 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 //! Behavioural tests for XOR compatibility in wireframe routing.
 
 use std::{
@@ -19,6 +17,7 @@ use mxd::{
     wireframe::{
         compat::XorCompatibility,
         routes::{RouteContext, process_transaction_bytes},
+        test_helpers::xor_bytes,
     },
 };
 use rstest::fixture;
@@ -37,6 +36,7 @@ struct XorWorld {
     skipped: Cell<bool>,
 }
 
+#[expect(clippy::expect_used, reason = "test assertions")]
 impl XorWorld {
     fn new() -> Self {
         let rt = Runtime::new().expect("runtime");
@@ -134,17 +134,10 @@ impl XorWorld {
 
 #[fixture]
 fn world() -> XorWorld {
-    #[expect(
-        clippy::allow_attributes,
-        reason = "cannot use expect due to macro interaction"
-    )]
-    #[allow(unused_braces, reason = "rustfmt requires braces")]
-    {
-        XorWorld::new()
-    }
+    let world = XorWorld::new();
+    let _ = world.is_skipped();
+    world
 }
-
-fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xff).collect() }
 
 #[given("a routing context with user accounts")]
 fn given_users(world: &XorWorld) { world.setup_db(setup_files_db); }

@@ -10,13 +10,13 @@ PLANS.md does not exist in this repository.
 
 ## Purpose / big picture
 
-Enable compatibility with clients (including SynHX) that XOR-encode text fields
-by transparently decoding inbound text parameters and encoding outbound
-responses when required. Success is visible when SynHX parity tests cover
-passwords, messages, and news bodies with the XOR toggle enabled, and when
-`rstest` unit tests plus `rstest-bdd` v0.4.0 behavioural scenarios pass.
-Documentation reflects the compatibility policy, and roadmap entry 1.5.1 is
-marked done.
+Enable compatibility with clients (including SynHX) that use exclusive OR (XOR)
+encoding for text fields by transparently decoding inbound text parameters and
+encoding outbound responses when required. Success is visible when SynHX parity
+tests cover passwords, messages, and news bodies with the XOR toggle enabled,
+and when `rstest` unit tests plus `rstest-bdd` v0.4.0 behavioural scenarios
+pass. Documentation reflects the compatibility policy, and roadmap entry 1.5.1
+is marked done.
 
 ## Constraints
 
@@ -37,8 +37,8 @@ marked done.
 
 ## Tolerances (exception triggers)
 
-- Scope: if more than 12 files change or net changes exceed 450 LOC, stop and
-  escalate.
+- Scope: if more than 12 files change or net changes exceed 450 lines of code
+  (LOC), stop and escalate.
 - Interface: if a public API outside `src/wireframe` or `src/transaction`
   must change, stop and escalate.
 - Dependencies: if a new external dependency is required, stop and escalate.
@@ -52,7 +52,7 @@ marked done.
 - Risk: XOR detection rules (sub-version mapping, sub-protocol tag, or config
   toggle) are ambiguous. Severity: medium. Likelihood: medium. Mitigation:
   cross-check
-  `docs/migration-plan-moving-mxd-protocol-implementation-to- wireframe.md`,
+  `docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md`,
   `docs/protocol.md`, and hx behaviour; document the decision in
   `docs/design.md` and the Decision Log; escalate if ambiguity remains.
 - Risk: “message” field mapping is unclear because message transactions are
@@ -65,12 +65,13 @@ marked done.
   to decoded parameter payloads and known text fields; skip transformation when
   payload parsing fails and log at debug level.
 - Risk: double-encoding or missing decode path if transforms are applied in
-  multiple layers. Severity: medium. Likelihood: medium. Mitigation: centralise
+  multiple layers. Severity: medium. Likelihood: medium. Mitigation: centralize
   inbound decode in transaction routing and outbound encode in a single hook
   (preferably `HotlineProtocol::before_send`) with clear tests.
 - Risk: hx-based validator tests are flaky or skipped when hx is missing.
   Severity: low. Likelihood: medium. Mitigation: keep tests skippable with
-  clear messages, and rely on unit/BDD tests for CI coverage.
+  clear messages, and rely on unit/Behaviour-Driven Development (BDD) tests for
+  Continuous Integration (CI) coverage.
 
 ## Progress
 
@@ -86,8 +87,9 @@ marked done.
 
 - Qdrant note storage was unavailable (connection failures) during discovery.
 - The hx client exposes XOR toggling via a user variable named `encode`.
-- Postgres recursive news-path CTEs needed explicit integer casts for the
-  seed `id` column to avoid type mismatches during path lookups.
+- Postgres recursive news-path Common Table Expressions (CTEs) needed explicit
+  integer casts for the seed `id` column to avoid type mismatches during path
+  lookups.
 - Nextest runs with default parallelism caused intermittent Postgres
   connection resets; serial execution avoided the failures locally.
 
@@ -219,8 +221,9 @@ for login and news payloads. Implement step definitions using
 - cover an unhappy path where XOR is disabled and the same payload is rejected
   or results in invalid UTF-8 errors.
 
-Reuse `wireframe::test_helpers::build_frame` and direct TCP connections for
-precise byte-level assertions. Keep scenarios small and focused.
+Reuse `wireframe::test_helpers::build_frame` and direct Transmission Control
+Protocol (TCP) connections for precise byte-level assertions. Keep scenarios
+small and focused.
 
 ### Stage E: SynHX parity tests (validator crate)
 

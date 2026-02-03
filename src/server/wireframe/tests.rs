@@ -38,6 +38,9 @@ fn resolves_hostnames() {
 #[rstest]
 fn bootstrap_captures_bind(bound_config: AppConfig) {
     let bootstrap = WireframeBootstrap::prepare(bound_config).expect("bootstrap");
-    assert_eq!(bootstrap.bind_addr, "127.0.0.1:7777".parse().unwrap());
+    assert_eq!(
+        bootstrap.bind_addr,
+        "127.0.0.1:7777".parse().expect("valid socket address")
+    );
     assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
 }

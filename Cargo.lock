@@ -4526,6 +4526,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "wait-timeout",
 ]
 
 [[package]]
@@ -5189,6 +5190,8 @@ name = "validator"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "diesel",
+ "diesel-async",
  "expectrl",
  "mxd",
  "nix 0.27.1",
