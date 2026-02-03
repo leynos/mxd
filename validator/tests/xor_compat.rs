@@ -24,7 +24,9 @@ fn xor_compat_validation() -> Result<(), AnyError> {
         setup_news_db(DatabaseUrl::new(db.as_str()))
     })?;
 
-    let port = server.port();
+    let bind_addr = server.bind_addr();
+    let host = bind_addr.ip();
+    let port = bind_addr.port();
     let mut p = spawn("hx")?;
     p.set_expect_timeout(Some(Duration::from_secs(10)));
     if !expect_or_skip(&mut p, Regex("HX"), "hx did not present Hotline prompt") {
@@ -40,7 +42,7 @@ fn xor_compat_validation() -> Result<(), AnyError> {
         terminate_hx(&mut p);
         return Ok(());
     }
-    p.send_line(format!("/server -l alice -p secret 127.0.0.1 {port}"))?;
+    p.send_line(format!("/server -l alice -p secret {host} {port}"))?;
     if !expect_or_skip(
         &mut p,
         Regex("(?i)connected"),

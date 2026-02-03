@@ -203,13 +203,12 @@ fn launch_server_process(
     manifest_path: &ManifestPath,
     bind_host: &str,
     db_url: &DbUrl,
-) -> Result<(Child, u16), AnyError> {
+) -> Result<(Child, SocketAddr), AnyError> {
     let socket = TcpListener::bind((bind_host, 0))?;
     let addr = socket.local_addr()?;
-    let port = addr.port();
     drop(socket);
 
-    info!(port, db_url = %db_url, "launching server");
+    info!(port = addr.port(), db_url = %db_url, "launching server");
     let mut child = build_server_command(manifest_path, addr, db_url).spawn()?;
     debug!("spawned server process, waiting for readiness");
     if let Err(e) = wait_for_server(&mut child, addr) {
@@ -218,8 +217,8 @@ fn launch_server_process(
         let _ = child.wait();
         return Err(e);
     }
-    info!(port, "server ready");
-    Ok((child, port))
+    info!(port = addr.port(), "server ready");
+    Ok((child, addr))
 }
 
 /// Integration test server wrapper that spawns the `mxd` process with the
@@ -228,6 +227,7 @@ fn launch_server_process(
 pub struct TestServer {
     child: Child,
     port: u16,
+    bind_addr: SocketAddr,
     db_url: DbUrl,
     #[cfg(feature = "postgres")]
     db: PostgresTestDb,
@@ -287,10 +287,10 @@ impl TestServer {
         build_self: F,
     ) -> Result<Self, AnyError>
     where
-        F: FnOnce(Child, u16, DbUrl) -> Self,
+        F: FnOnce(Child, SocketAddr, DbUrl) -> Self,
     {
-        let (child, port) = launch_server_process(manifest_path, bind_host, &db_url)?;
-        Ok(build_self(child, port, db_url))
+        let (child, bind_addr) = launch_server_process(manifest_path, bind_host, &db_url)?;
+        Ok(build_self(child, bind_addr, db_url))
     }
 
     #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
@@ -304,9 +304,10 @@ impl TestServer {
             manifest_path,
             bind_host,
             db_url,
-            move |child, port, db_url_value| Self {
+            move |child, bind_addr, db_url_value| Self {
                 child,
-                port,
+                port: bind_addr.port(),
+                bind_addr,
                 db_url: db_url_value,
                 temp_dir,
             },
@@ -324,9 +325,10 @@ impl TestServer {
             manifest_path,
             bind_host,
             db_url,
-            move |child, port, db_url_value| Self {
+            move |child, bind_addr, db_url_value| Self {
                 child,
-                port,
+                port: bind_addr.port(),
+                bind_addr,
                 db_url: db_url_value,
                 db,
                 temp_dir: None,
@@ -341,6 +343,10 @@ impl TestServer {
     /// Returns the database URL used by the server.
     #[must_use]
     pub const fn db_url(&self) -> &DbUrl { &self.db_url }
+
+    /// Returns the bind address used by the server.
+    #[must_use]
+    pub const fn bind_addr(&self) -> SocketAddr { self.bind_addr }
 
     /// Returns the temporary directory holding the `SQLite` database, if
     /// applicable. Returns `None` when using `PostgreSQL`.

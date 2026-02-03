@@ -6,7 +6,7 @@
 
 use std::{
     io::{Read, Write},
-    net::TcpStream,
+    net::{SocketAddr, TcpStream},
 };
 
 use diesel_async::AsyncConnection;
@@ -31,8 +31,11 @@ use test_util::{
 mod common;
 
 #[expect(clippy::expect_used, reason = "test helper: size and UTF-8 assertions")]
-fn list_categories(port: u16, path: Option<&str>) -> Result<(FrameHeader, Vec<String>), AnyError> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+fn list_categories(
+    addr: SocketAddr,
+    path: Option<&str>,
+) -> Result<(FrameHeader, Vec<String>), AnyError> {
+    let mut stream = TcpStream::connect(addr)?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(std::time::Duration::from_secs(20)))?;
     handshake(&mut stream)?;
@@ -102,8 +105,8 @@ mod rstest_tests {
             return Ok(());
         };
 
-        let port = server.port();
-        let (_, mut names) = list_categories(port, path)?;
+        let addr = server.bind_addr();
+        let (_, mut names) = list_categories(addr, path)?;
 
         names.sort_unstable();
         let mut expected = vec!["Bundle", "General", "Updates"];
@@ -127,8 +130,8 @@ mod rstest_tests {
             return Ok(());
         };
 
-        let port = server.port();
-        let (_, names) = list_categories(port, Some(path))?;
+        let addr = server.bind_addr();
+        let (_, names) = list_categories(addr, Some(path))?;
 
         assert_eq!(names, vec!["Inside"]);
         Ok(())
@@ -170,8 +173,8 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let port = server.port();
-    let (hdr, _) = list_categories(port, Some("some/path"))?;
+    let addr = server.bind_addr();
+    let (hdr, _) = list_categories(addr, Some("some/path"))?;
     assert_eq!(hdr.error, NEWS_ERR_PATH_UNSUPPORTED);
     Ok(())
 }
@@ -210,8 +213,8 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let port = server.port();
-    let (_, names) = list_categories(port, None)?;
+    let addr = server.bind_addr();
+    let (_, names) = list_categories(addr, None)?;
     assert!(names.is_empty());
     Ok(())
 }

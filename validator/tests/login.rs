@@ -38,10 +38,12 @@ fn login_validation() -> Result<(), AnyError> {
         })
     })?;
 
-    let port = server.port();
+    let bind_addr = server.bind_addr();
+    let host = bind_addr.ip();
+    let port = bind_addr.port();
     let mut p = spawn("hx")?;
     p.expect(Regex("HX"))?;
-    p.send_line(format!("/server -l test -p secret 127.0.0.1 {port}"))?;
+    p.send_line(format!("/server -l test -p secret {host} {port}"))?;
     p.expect(Regex("connected"))?;
     p.send_line("/quit")?;
     Ok(())
