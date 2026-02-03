@@ -283,14 +283,14 @@ impl TestServer {
     fn launch_with<F>(
         manifest_path: &ManifestPath,
         bind_host: &str,
-        db_url: &DbUrl,
+        db_url: DbUrl,
         build_self: F,
     ) -> Result<Self, AnyError>
     where
         F: FnOnce(Child, u16, DbUrl) -> Self,
     {
-        let (child, port) = launch_server_process(manifest_path, bind_host, db_url)?;
-        Ok(build_self(child, port, db_url.clone()))
+        let (child, port) = launch_server_process(manifest_path, bind_host, &db_url)?;
+        Ok(build_self(child, port, db_url))
     }
 
     #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
@@ -300,15 +300,14 @@ impl TestServer {
         db_url: DbUrl,
         temp_dir: Option<TempDir>,
     ) -> Result<Self, AnyError> {
-        let db_url_clone = db_url.clone();
         Self::launch_with(
             manifest_path,
             bind_host,
-            &db_url_clone,
-            move |child, port, _db_url| Self {
+            db_url,
+            move |child, port, db_url_value| Self {
                 child,
                 port,
-                db_url,
+                db_url: db_url_value,
                 temp_dir,
             },
         )
@@ -321,15 +320,14 @@ impl TestServer {
         db: PostgresTestDb,
         db_url: DbUrl,
     ) -> Result<Self, AnyError> {
-        let db_url_clone = db_url.clone();
         Self::launch_with(
             manifest_path,
             bind_host,
-            &db_url_clone,
-            move |child, port, _db_url| Self {
+            db_url,
+            move |child, port, db_url_value| Self {
                 child,
                 port,
-                db_url,
+                db_url: db_url_value,
                 db,
                 temp_dir: None,
             },
