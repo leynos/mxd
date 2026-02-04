@@ -130,9 +130,9 @@ fn test_stream(
     let Some(server) = common::start_server_or_skip(setup)? else {
         return Ok(None);
     };
-    let port = server.port();
-    debug!(port, "connecting to server");
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    let addr = server.bind_addr();
+    debug!(addr = %addr, "connecting to server");
+    let mut stream = TcpStream::connect(addr)?;
     debug!("connected, setting timeouts");
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(Duration::from_secs(20)))?;

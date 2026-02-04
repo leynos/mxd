@@ -18,6 +18,7 @@ use super::{
     super::{
         RouteContext,
         TransactionMiddleware,
+        TransactionMiddlewareConfig,
         dispatch_spy,
         error_reply,
         error_transaction,
@@ -33,7 +34,10 @@ use crate::{
     server::outbound::NoopOutboundMessaging,
     transaction::{FrameHeader, HEADER_LEN, Transaction, parse_transaction},
     transaction_type::TransactionType,
-    wireframe::test_helpers::{dummy_pool, transaction_bytes},
+    wireframe::{
+        compat::XorCompatibility,
+        test_helpers::{dummy_pool, transaction_bytes},
+    },
 };
 
 /// Error code indicating a permission failure.
@@ -187,6 +191,7 @@ async fn process_transaction_bytes_truncated_input() {
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
+    let compat = XorCompatibility::disabled();
 
     // Send only 10 bytes (less than HEADER_LEN = 20).
     let truncated = vec![0u8; 10];
@@ -197,6 +202,7 @@ async fn process_transaction_bytes_truncated_input() {
             pool,
             session: &mut session,
             messaging: &messaging,
+            compat: &compat,
         },
     )
     .await;
@@ -216,6 +222,7 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
+    let compat = XorCompatibility::disabled();
 
     let frame = transaction_bytes(&header, payload);
 
@@ -226,6 +233,7 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
             pool,
             session: &mut session,
             messaging: &messaging,
+            compat: &compat,
         },
     )
     .await;
@@ -289,7 +297,14 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
     let peer = "127.0.0.1:12345".parse().expect("peer addr");
     let messaging = Arc::new(NoopOutboundMessaging);
-    let middleware = TransactionMiddleware::new(pool, Arc::clone(&session), peer, messaging);
+    let compat = Arc::new(XorCompatibility::disabled());
+    let middleware = TransactionMiddleware::new(TransactionMiddlewareConfig {
+        pool,
+        session: Arc::clone(&session),
+        peer,
+        messaging,
+        compat,
+    });
 
     let calls = Arc::new(AtomicUsize::new(0));
     let spy = SpyService::new(Arc::clone(&calls));

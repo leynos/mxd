@@ -86,6 +86,16 @@ pub fn transaction_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
     buf
 }
 
+/// XOR each byte with `0xFF`, matching the legacy Hotline text obfuscation.
+///
+/// # Examples
+/// ```
+/// # use mxd::wireframe::test_helpers::xor_bytes;
+/// assert_eq!(xor_bytes(b"\x00\xff"), vec![0xff, 0x00]);
+/// ```
+#[must_use]
+pub fn xor_bytes(data: &[u8]) -> Vec<u8> { data.iter().map(|byte| byte ^ 0xff).collect() }
+
 /// Build a transaction frame buffer from typed parameters.
 ///
 /// # Errors

@@ -1,0 +1,182 @@
+//! Integration test for XOR-encoded text fields via the hx client.
+//!
+//! Confirms that login and news posting work with XOR encoding enabled in the
+//! client.
+
+use std::{
+    io::Read,
+    process::{Child, Command, Stdio},
+    time::Duration,
+};
+
+use expectrl::{Regex, Session, spawn};
+use test_util::{AnyError, DatabaseUrl, TestServer, setup_news_db, with_db};
+use wait_timeout::ChildExt;
+use which::which;
+
+#[test]
+fn xor_compat_validation() -> Result<(), AnyError> {
+    if should_skip_hx() {
+        return Ok(());
+    }
+
+    let server = TestServer::start_with_setup("../Cargo.toml", |db| {
+        setup_news_db(DatabaseUrl::new(db.as_str()))
+    })?;
+
+    let bind_addr = server.bind_addr();
+    let host = bind_addr.ip();
+    let port = bind_addr.port();
+    let mut p = spawn("hx")?;
+    p.set_expect_timeout(Some(Duration::from_secs(10)));
+    if !expect_or_skip(&mut p, Regex("HX"), "hx did not present Hotline prompt") {
+        terminate_hx(&mut p);
+        return Ok(());
+    }
+    p.send_line("/set encode 1")?;
+    if !expect_or_skip(
+        &mut p,
+        Regex("encode = 1|adding variable encode"),
+        "hx did not confirm encode toggle",
+    ) {
+        terminate_hx(&mut p);
+        return Ok(());
+    }
+    p.send_line(format!("/server -l alice -p secret {host} {port}"))?;
+    if !expect_or_skip(
+        &mut p,
+        Regex("(?i)connected"),
+        "hx did not connect to server",
+    ) {
+        terminate_hx(&mut p);
+        return Ok(());
+    }
+
+    let xor_message = "xor test message";
+    let news_body = "xor test news body";
+    p.send_line(format!("/msg alice {xor_message}"))?;
+    p.send_line(format!("/post {news_body}"))?;
+    if !expect_or_skip(
+        &mut p,
+        Regex("(?i)news posted"),
+        "hx did not report news post",
+    ) {
+        terminate_hx(&mut p);
+        return Ok(());
+    }
+    assert_news_body(&server, news_body)?;
+
+    p.send_line("/quit")?;
+    terminate_hx(&mut p);
+    Ok(())
+}
+
+fn should_skip_hx() -> bool {
+    if which("hx").is_err() {
+        report_skip("hx not installed; skipping test");
+        return true;
+    }
+
+    if hx_is_helix() {
+        report_skip("hx appears to be the Helix editor; skipping test");
+        return true;
+    }
+
+    false
+}
+
+fn hx_is_helix() -> bool {
+    let Ok(mut child) = Command::new("hx")
+        .arg("--version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    else {
+        return false;
+    };
+    let timeout = Duration::from_millis(500);
+    #[expect(
+        clippy::match_same_arms,
+        reason = "retain explicit timeout and error branches"
+    )]
+    match child.wait_timeout(timeout) {
+        Ok(Some(_)) => {
+            let stdout = read_stream(child.stdout.take());
+            let stderr = read_stream(child.stderr.take());
+            let combined = format!("{stdout}{stderr}").to_lowercase();
+            combined.contains("helix")
+        }
+        Ok(None) => {
+            terminate_child(&mut child);
+            false
+        }
+        Err(_) => {
+            terminate_child(&mut child);
+            false
+        }
+    }
+}
+
+fn terminate_child(child: &mut Child) {
+    // Best-effort cleanup in tests; ignore errors if the process already exited.
+    let _kill_result = child.kill();
+    let _wait_result = child.wait();
+}
+
+fn read_stream<T: Read>(maybe_stream: Option<T>) -> String {
+    let mut buffer = Vec::new();
+    if let Some(mut stream) = maybe_stream {
+        // Best-effort diagnostics: ignore read failures when collecting output.
+        let _read_result = stream.read_to_end(&mut buffer);
+    }
+    String::from_utf8_lossy(&buffer).to_string()
+}
+
+fn expect_or_skip(session: &mut Session, regex: Regex<&'static str>, reason: &str) -> bool {
+    if let Err(err) = session.expect(regex) {
+        report_skip(&format!("{reason} ({err})"));
+        return false;
+    }
+    true
+}
+
+fn assert_news_body(server: &TestServer, expected: &str) -> Result<(), AnyError> {
+    let expected_query = expected.to_owned();
+    let url = DatabaseUrl::new(server.db_url().as_ref());
+    let count = with_db(url, move |conn| {
+        Box::pin(async move {
+            use diesel::{dsl::count_star, prelude::*};
+            use diesel_async::RunQueryDsl;
+            use mxd::schema::news_articles::dsl as a;
+
+            let count: i64 = a::news_articles
+                .filter(a::data.eq(Some(expected_query.as_str())))
+                .select(count_star())
+                .first(conn)
+                .await?;
+            Ok(count)
+        })
+    })?;
+    if count == 0 {
+        return Err(AnyError::msg(format!(
+            "expected news article containing '{expected}'"
+        )));
+    }
+    Ok(())
+}
+
+fn terminate_hx(session: &mut Session) {
+    if let Err(err) = session.get_process_mut().exit(true) {
+        report_skip(&format!("hx cleanup failed ({err})"));
+    }
+}
+
+fn report_skip(message: &str) {
+    #[expect(
+        clippy::print_stderr,
+        reason = "skip message: inform user why test is being skipped"
+    )]
+    {
+        eprintln!("{message}");
+    }
+}

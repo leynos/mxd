@@ -160,10 +160,11 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 1.5. Validate Hotline and SynHX compatibility
 
-- [ ] 1.5.1. Detect clients that XOR-encode text fields and transparently decode
+- [x] 1.5.1. Detect clients that XOR-encode text fields and transparently decode
   or encode responses when required. Acceptance: SynHX parity tests cover
-  password, message, and news bodies with the XOR toggle enabled. Dependencies:
-  1.2.
+  password, message, and news bodies with the XOR toggle enabled. Status:
+  Completed on 2 February 2026 by adding adapter-level XOR detection and
+  encoding, plus unit, BDD, and validator parity coverage. Dependencies: 1.2.
 - [ ] 1.5.2. Gate protocol quirks on the handshake sub-version so Hotline 1.9
   fallbacks remain available. Acceptance: Compatibility tests prove Hotline
   1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange messages

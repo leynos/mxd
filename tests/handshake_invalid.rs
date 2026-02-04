@@ -17,9 +17,9 @@ fn handshake_invalid_protocol() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
         return Ok(());
     };
-    let port = server.port();
+    let addr = server.bind_addr();
 
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    let mut stream = TcpStream::connect(addr)?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     let mut handshake = Vec::new();

@@ -33,16 +33,16 @@ mod common;
 
 type ParamList = Vec<(FieldId, Vec<u8>)>;
 
-fn connect_and_handshake(port: u16) -> Result<TcpStream, AnyError> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+fn connect_and_handshake(addr: std::net::SocketAddr) -> Result<TcpStream, AnyError> {
+    let mut stream = TcpStream::connect(addr)?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     handshake(&mut stream)?;
     Ok(stream)
 }
 
-fn connect_handshake_and_login(port: u16) -> Result<TcpStream, AnyError> {
-    let mut stream = connect_and_handshake(port)?;
+fn connect_handshake_and_login(addr: std::net::SocketAddr) -> Result<TcpStream, AnyError> {
+    let mut stream = connect_and_handshake(addr)?;
     login(&mut stream, "alice", "secret")?;
     Ok(stream)
 }
@@ -145,8 +145,8 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let port = server.port();
-    let mut stream = connect_handshake_and_login(port)?;
+    let addr = server.bind_addr();
+    let mut stream = connect_handshake_and_login(addr)?;
     send_transaction_with_params(
         &mut stream,
         TransactionType::NewsArticleNameList,
@@ -166,7 +166,7 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let mut stream = connect_handshake_and_login(server.port())?;
+    let mut stream = connect_handshake_and_login(server.bind_addr())?;
     send_transaction_with_params(
         &mut stream,
         TransactionType::NewsArticleNameList,
@@ -203,7 +203,7 @@ fn get_news_article_data() -> Result<(), AnyError> {
     };
 
     let article_id_value = article_id.get().expect("fixture should set article id");
-    let mut stream = connect_handshake_and_login(server.port())?;
+    let mut stream = connect_handshake_and_login(server.bind_addr())?;
 
     let mut params = Vec::new();
     params.push((FieldId::NewsPath, b"General".as_ref()));
@@ -254,7 +254,7 @@ fn post_news_article_root() -> Result<(), AnyError> {
         return Ok(());
     };
 
-    let mut stream = connect_handshake_and_login(server.port())?;
+    let mut stream = connect_handshake_and_login(server.bind_addr())?;
 
     let mut request_params = Vec::new();
     request_params.push((FieldId::NewsPath, b"General".as_ref()));

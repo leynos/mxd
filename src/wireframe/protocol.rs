@@ -21,7 +21,7 @@
 //! Register the protocol adapter with the wireframe app:
 //!
 //! ```rust,ignore
-//! use mxd::wireframe::protocol::HotlineProtocol;
+//! use mxd::wireframe::{compat::XorCompatibility, protocol::HotlineProtocol};
 //! use mxd::wireframe::outbound::{WireframeOutboundConnection, WireframeOutboundRegistry};
 //! use std::sync::Arc;
 //!
@@ -30,7 +30,8 @@
 //!     registry.allocate_id(),
 //!     Arc::clone(&registry),
 //! ));
-//! let protocol = HotlineProtocol::new(pool.clone(), argon2.clone(), connection);
+//! let compat = Arc::new(XorCompatibility::disabled());
+//! let protocol = HotlineProtocol::new(pool.clone(), argon2.clone(), connection, compat);
 //! let app = WireframeApp::default()
 //!     .with_protocol(protocol);
 //! ```
@@ -48,7 +49,11 @@ use argon2::Argon2;
 use tracing::info;
 use wireframe::{ConnectionContext, WireframeProtocol, push::PushHandle};
 
-use crate::{db::DbPool, wireframe::outbound::WireframeOutboundConnection};
+use crate::{
+    db::DbPool,
+    transaction::{HEADER_LEN, parse_transaction},
+    wireframe::{compat::XorCompatibility, outbound::WireframeOutboundConnection},
+};
 
 /// `WireframeProtocol` implementation for the Hotline protocol.
 ///
@@ -66,6 +71,7 @@ pub struct HotlineProtocol {
     pool: DbPool,
     argon2: Arc<Argon2<'static>>,
     outbound: Arc<WireframeOutboundConnection>,
+    compat: Arc<XorCompatibility>,
 }
 
 impl HotlineProtocol {
@@ -80,11 +86,13 @@ impl HotlineProtocol {
         pool: DbPool,
         argon2: Arc<Argon2<'static>>,
         outbound: Arc<WireframeOutboundConnection>,
+        compat: Arc<XorCompatibility>,
     ) -> Self {
         Self {
             pool,
             argon2,
             outbound,
+            compat,
         }
     }
 
@@ -99,6 +107,10 @@ impl HotlineProtocol {
     /// Return the outbound connection state for this protocol instance.
     #[must_use]
     pub const fn outbound(&self) -> &Arc<WireframeOutboundConnection> { &self.outbound }
+
+    /// Return the XOR compatibility state for this connection.
+    #[must_use]
+    pub const fn compat(&self) -> &Arc<XorCompatibility> { &self.compat }
 }
 
 impl WireframeProtocol for HotlineProtocol {
@@ -114,9 +126,24 @@ impl WireframeProtocol for HotlineProtocol {
         info!("hotline connection established");
     }
 
-    fn before_send(&self, _frame: &mut Self::Frame, _ctx: &mut ConnectionContext) {
-        // Future work: Apply compatibility shims based on handshake sub_version.
-        // For example, XOR-encode text fields for legacy SynHX clients.
+    fn before_send(&self, frame: &mut Self::Frame, _ctx: &mut ConnectionContext) {
+        if !self.compat.is_enabled() {
+            return;
+        }
+        let Ok(tx) = parse_transaction(frame) else {
+            return;
+        };
+        let Ok(encoded) = self.compat.encode_payload(&tx.payload) else {
+            return;
+        };
+        if encoded == tx.payload {
+            return;
+        }
+        let mut header_buf = [0u8; HEADER_LEN];
+        tx.header.write_bytes(&mut header_buf);
+        frame.clear();
+        frame.extend_from_slice(&header_buf);
+        frame.extend_from_slice(&encoded);
     }
 
     fn on_command_end(&self, _ctx: &mut ConnectionContext) {
@@ -143,8 +170,9 @@ mod tests {
 
     use super::*;
     use crate::wireframe::{
+        compat::XorCompatibility,
         outbound::{WireframeOutboundConnection, WireframeOutboundRegistry},
-        test_helpers::dummy_pool,
+        test_helpers::{dummy_pool, xor_bytes},
     };
 
     #[fixture]
@@ -154,23 +182,36 @@ mod tests {
         Arc::new(WireframeOutboundConnection::new(id, registry))
     }
 
+    #[fixture]
+    fn compat() -> Arc<XorCompatibility> {
+        let compat = Arc::new(XorCompatibility::disabled());
+        let _ = compat.is_enabled();
+        compat
+    }
+
     #[rstest]
-    fn protocol_can_be_created(outbound_connection: Arc<WireframeOutboundConnection>) {
+    fn protocol_can_be_created(
+        outbound_connection: Arc<WireframeOutboundConnection>,
+        compat: Arc<XorCompatibility>,
+    ) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
 
-        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection, compat);
 
         assert!(Arc::strong_count(protocol.argon2()) >= 1);
     }
 
     #[rstest]
-    fn protocol_shares_argon2_instance(outbound_connection: Arc<WireframeOutboundConnection>) {
+    fn protocol_shares_argon2_instance(
+        outbound_connection: Arc<WireframeOutboundConnection>,
+        compat: Arc<XorCompatibility>,
+    ) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
         let argon2_clone = Arc::clone(&argon2);
 
-        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection, compat);
 
         assert!(Arc::ptr_eq(protocol.argon2(), &argon2_clone));
     }
@@ -192,10 +233,11 @@ mod tests {
     fn lifecycle_hooks_do_not_panic(
         #[case] hook: LifecycleHook,
         outbound_connection: Arc<WireframeOutboundConnection>,
+        compat: Arc<XorCompatibility>,
     ) {
         let pool = dummy_pool();
         let argon2 = Arc::new(Argon2::default());
-        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection);
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection, compat);
         let mut ctx = ConnectionContext;
 
         match hook {
@@ -210,5 +252,43 @@ mod tests {
                 protocol.before_send(&mut frame, &mut ctx);
             }
         }
+    }
+
+    #[rstest]
+    fn before_send_encodes_text_fields_when_enabled(
+        outbound_connection: Arc<WireframeOutboundConnection>,
+    ) {
+        let pool = dummy_pool();
+        let argon2 = Arc::new(Argon2::default());
+        let compat = Arc::new(XorCompatibility::enabled());
+        let protocol = HotlineProtocol::new(pool, argon2, outbound_connection, compat);
+        let mut ctx = ConnectionContext;
+
+        let payload = crate::transaction::encode_params(&[(
+            crate::field_id::FieldId::Data,
+            b"message".as_ref(),
+        )])
+        .expect("payload encodes");
+        let payload_len = u32::try_from(payload.len()).expect("payload length fits u32");
+        let header = crate::transaction::FrameHeader {
+            flags: 0,
+            is_reply: 1,
+            ty: crate::transaction_type::TransactionType::Error.into(),
+            id: 9,
+            error: 0,
+            total_size: payload_len,
+            data_size: payload_len,
+        };
+        let tx = crate::transaction::Transaction { header, payload };
+        let mut frame = tx.to_bytes();
+
+        protocol.before_send(&mut frame, &mut ctx);
+
+        let reply = crate::transaction::parse_transaction(&frame).expect("parse reply");
+        let params = crate::transaction::decode_params(&reply.payload).expect("decode params");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].0, crate::field_id::FieldId::Data);
+        let decoded = xor_bytes(&params[0].1);
+        assert_eq!(decoded, b"message");
     }
 }

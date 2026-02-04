@@ -199,6 +199,26 @@ preamble. Entries are cleared on connection teardown to prevent leakage between
 sessions while keeping the data available for the full lifetime of each
 connection.
 
+### Exclusive OR (XOR) text-field compatibility
+
+Some Hotline clients (including SynHX) obfuscate text parameters by exclusive
+OR (XOR)-ing each byte with `0xFF`. The wireframe adapter maintains a
+per-connection exclusive OR (XOR) compatibility flag (`XorCompatibility`).
+Inbound routing (`process_transaction_bytes`) decodes parameter payloads: when
+any text field is invalid UTF-8 but becomes valid after exclusive OR (XOR), the
+connection is marked as XOR-enabled and the payload is rewritten with decoded
+bytes. Outbound replies are re-encoded in `HotlineProtocol::before_send`
+whenever the flag is enabled, ensuring responses match the client expectation.
+Only text-bearing fields (login, password, data/message, news
+path/title/poster, news data flavor/body, and file names) are transformed;
+numeric and binary payloads are left untouched.
+
+The handshake sub-version does not yet provide a reliable XOR signal, so
+detection is heuristic and locked in per connection after the first successful
+XOR decode. This keeps the domain layer free of client quirks while allowing
+future handshake-based toggles to replace the heuristic when the mapping is
+known.
+
 - *Storage layer*: Implements **outbound ports** (database operations) using
   Diesel. For instance, the domain core may call
   `db::get_user_by_name(username)` which is implemented with a Diesel query
@@ -941,7 +961,7 @@ implementation differences. For instance:
   `BOOLEAN` is fine in Postgres and in SQLite it ends up as 0/1 integer
   (Diesel’s bool mapping covers
   it)([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L65-L68));
-  `INTEGER` for integer types, etc. Some types don’t line up – e.g. `BYTEA` vs
+   `INTEGER` for integer types, etc. Some types don’t line up – e.g. `BYTEA` vs
   `BLOB` for binary data – but we avoid unsupported types or handle them
   conditionally. The doc notes that JSONB or timezone-aware timestamps aren’t
   portable, so we either avoid them or supply separate SQL. For example, we

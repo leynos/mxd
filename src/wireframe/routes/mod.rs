@@ -30,16 +30,18 @@ use wireframe::{
 };
 
 #[cfg(test)]
+use crate::header_util::reply_header;
+#[cfg(test)]
 use crate::wireframe::codec::HotlineTransaction;
 use crate::{
     commands::{Command, CommandContext},
     db::DbPool,
     handler::Session,
     server::outbound::{OutboundMessaging, ReplyBuffer},
-    transaction::{FrameHeader, parse_transaction},
+    transaction::{FrameHeader, Transaction, parse_transaction},
+    transaction_type::TransactionType,
+    wireframe::compat::XorCompatibility,
 };
-#[cfg(test)]
-use crate::{header_util::reply_header, transaction::Transaction};
 
 mod reply_builder;
 
@@ -58,6 +60,8 @@ pub struct RouteContext<'a> {
     pub session: &'a mut Session,
     /// Outbound messaging adapter for push notifications.
     pub messaging: &'a dyn OutboundMessaging,
+    /// XOR compatibility state for this connection.
+    pub compat: &'a XorCompatibility,
 }
 
 #[cfg(test)]
@@ -118,14 +122,27 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
         pool,
         session,
         messaging,
+        compat,
     } = context;
     // Parse the frame as a domain Transaction
-    let tx = match parse_transaction(frame) {
+    let transaction = match parse_transaction(frame) {
         Ok(tx) => tx,
         Err(e) => return handle_parse_error(peer, frame, e),
     };
 
-    let header = tx.header.clone();
+    let header = transaction.header.clone();
+    let decoded_payload = if TransactionType::from(header.ty).allows_payload() {
+        match compat.decode_payload(&transaction.payload) {
+            Ok(payload) => payload,
+            Err(e) => return handle_command_parse_error(peer, &header, e),
+        }
+    } else {
+        transaction.payload.clone()
+    };
+    let tx = Transaction {
+        payload: decoded_payload,
+        ..transaction
+    };
 
     // Parse into Command and process
     let cmd = match Command::from_transaction(tx) {
@@ -231,22 +248,33 @@ pub struct TransactionMiddleware {
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
+    compat: Arc<XorCompatibility>,
+}
+
+/// Construction parameters for [`TransactionMiddleware`].
+pub struct TransactionMiddlewareConfig {
+    /// Database connection pool.
+    pub(crate) pool: DbPool,
+    /// Session state for the connection.
+    pub(crate) session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
+    /// Remote peer address.
+    pub(crate) peer: SocketAddr,
+    /// Outbound messaging adapter for push notifications.
+    pub(crate) messaging: Arc<dyn OutboundMessaging>,
+    /// XOR compatibility state for the connection.
+    pub(crate) compat: Arc<XorCompatibility>,
 }
 
 impl TransactionMiddleware {
     /// Create a new transaction middleware with the given pool and session.
     #[must_use]
-    pub const fn new(
-        pool: DbPool,
-        session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
-        peer: SocketAddr,
-        messaging: Arc<dyn OutboundMessaging>,
-    ) -> Self {
+    pub fn new(config: TransactionMiddlewareConfig) -> Self {
         Self {
-            pool,
-            session,
-            peer,
-            messaging,
+            pool: config.pool,
+            session: config.session,
+            peer: config.peer,
+            messaging: config.messaging,
+            compat: config.compat,
         }
     }
 }
@@ -258,6 +286,7 @@ struct TransactionHandler {
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
+    compat: Arc<XorCompatibility>,
 }
 
 #[async_trait]
@@ -274,6 +303,7 @@ impl Service for TransactionHandler {
                     pool: self.pool.clone(),
                     session: &mut session_guard,
                     messaging: self.messaging.as_ref(),
+                    compat: &self.compat,
                 },
             )
             .await
@@ -299,6 +329,7 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
             session: Arc::clone(&self.session),
             peer: self.peer,
             messaging: Arc::clone(&self.messaging),
+            compat: Arc::clone(&self.compat),
         };
         HandlerService::from_service(id, wrapped)
     }

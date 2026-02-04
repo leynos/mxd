@@ -48,8 +48,8 @@ fn download_banner_reject_payload() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
         return Ok(());
     };
-    let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    let addr = server.bind_addr();
+    let mut stream = TcpStream::connect(addr)?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     stream.set_write_timeout(Some(Duration::from_secs(20)))?;
     handshake(&mut stream)?;
@@ -83,8 +83,8 @@ fn user_name_list_reject_payload() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
         return Ok(());
     };
-    let port = server.port();
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    let addr = server.bind_addr();
+    let mut stream = TcpStream::connect(addr)?;
     handshake(&mut stream)?;
 
     let params = encode_params(&[(FieldId::Other(1), b"bogus".as_ref())])?;

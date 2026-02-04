@@ -17,6 +17,7 @@
 //! - [`route_ids`]: Route identifiers for transaction types
 
 pub mod codec;
+pub mod compat;
 pub mod connection;
 pub mod context;
 pub mod handshake;

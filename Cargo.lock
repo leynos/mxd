@@ -2401,6 +2401,7 @@ dependencies = [
  "tracing",
  "uncased",
  "url",
+ "wait-timeout",
  "wireframe",
  "xdg",
 ]
@@ -4526,6 +4527,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "wait-timeout",
 ]
 
 [[package]]
@@ -5189,11 +5191,14 @@ name = "validator"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "diesel",
+ "diesel-async",
  "expectrl",
  "mxd",
  "nix 0.27.1",
  "tempfile",
  "test-util",
+ "wait-timeout",
  "which",
 ]
 

@@ -4,22 +4,23 @@
 //! `PostgreSQL` backend, monitor readiness, and tear it down once tests complete.
 
 use std::{
-    collections::VecDeque,
     ffi::OsString,
-    fmt,
-    io::{self, BufRead, BufReader},
-    net::TcpListener,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener},
     path::{Path, PathBuf},
-    process::{Child, ChildStdout, Command, Stdio},
-    sync::Mutex,
-    time::{Duration, Instant},
+    process::{Child, Command, Stdio},
 };
 
+mod env;
+mod readiness;
+
+use env::SERVER_BINARY_ENV;
+pub use env::{DbUrl, ManifestPath, ensure_server_binary_env, with_env_var};
 #[cfg(unix)]
 use nix::{
     sys::signal::{Signal, kill},
     unistd::Pid,
 };
+use readiness::wait_for_server;
 use tempfile::TempDir;
 use tracing::{debug, info, warn};
 
@@ -27,155 +28,13 @@ use crate::AnyError;
 #[cfg(feature = "postgres")]
 use crate::postgres::PostgresTestDb;
 
-/// Newtype wrapping the path to a Cargo manifest, providing type-safe handling
-/// and ergonomic conversions.
-#[derive(Debug, Clone)]
-pub struct ManifestPath(String);
-
-impl ManifestPath {
-    /// Constructs a new manifest path from any string-like type.
-    pub fn new(path: impl Into<String>) -> Self { Self(path.into()) }
-    /// Returns the path as a string slice.
-    pub fn as_str(&self) -> &str { &self.0 }
-}
-
-impl From<&str> for ManifestPath {
-    fn from(value: &str) -> Self { Self(value.to_owned()) }
-}
-
-impl From<String> for ManifestPath {
-    fn from(value: String) -> Self { Self(value) }
-}
-
-impl AsRef<str> for ManifestPath {
-    fn as_ref(&self) -> &str { &self.0 }
-}
-
-impl AsRef<Path> for ManifestPath {
-    fn as_ref(&self) -> &Path { Path::new(&self.0) }
-}
-
-impl fmt::Display for ManifestPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
-}
-
-/// Newtype wrapping a database connection URL that provides ergonomic
-/// conversions for type-safe handling.
-#[derive(Debug, Clone)]
-pub struct DbUrl(String);
-
-impl DbUrl {
-    /// Constructs a new database URL from any string-like type.
-    pub fn new(url: impl Into<String>) -> Self { Self(url.into()) }
-    /// Returns the URL as a string slice.
-    pub fn as_str(&self) -> &str { &self.0 }
-}
-
-impl From<&str> for DbUrl {
-    fn from(value: &str) -> Self { Self(value.to_owned()) }
-}
-
-impl From<String> for DbUrl {
-    fn from(value: String) -> Self { Self(value) }
-}
-
-impl AsRef<str> for DbUrl {
-    fn as_ref(&self) -> &str { &self.0 }
-}
-
-impl fmt::Display for DbUrl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
-}
-
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
 /// Name of the server binary to use for integration tests.
 ///
 /// The wireframe server (`mxd-wireframe-server`) is the default, as it provides
 /// the production-ready transport layer implementation.
 const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
-
-/// Environment variable name for the prebuilt server binary path.
-const SERVER_BINARY_ENV: &str = "CARGO_BIN_EXE_mxd-wireframe-server";
-/// Marker emitted on stdout to signal that the server is ready.
-const READY_MARKER: &str = "listening on";
-
-/// Ensure the server binary environment variable is populated from the provided
-/// compile-time path.
-///
-/// The mutation is guarded by a global mutex and the result is propagated so
-/// callers can handle synchronisation failures instead of panicking.
-///
-/// # Errors
-///
-/// Returns an error if the environment mutex is poisoned.
-pub fn ensure_server_binary_env(bin_path: &str) -> Result<(), AnyError> {
-    let _guard = ENV_LOCK
-        .lock()
-        .map_err(|_| io::Error::other("environment mutex poisoned"))?;
-    if std::env::var_os(SERVER_BINARY_ENV).is_none() {
-        // SAFETY: Environment mutation is serialized by `ENV_LOCK`, ensuring no
-        // concurrent readers/writers observe a partially updated state.
-        unsafe { std::env::set_var(SERVER_BINARY_ENV, bin_path) };
-    }
-    Ok(())
-}
-
-struct EnvVarGuard {
-    key: String,
-    previous: Option<OsString>,
-}
-
-impl Drop for EnvVarGuard {
-    fn drop(&mut self) {
-        match &self.previous {
-            Some(value) => {
-                // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
-                unsafe { std::env::set_var(&self.key, value) };
-            }
-            None => {
-                // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
-                unsafe { std::env::remove_var(&self.key) };
-            }
-        }
-    }
-}
-
-/// Temporarily sets an environment variable for the duration of a closure.
-///
-/// The mutation is guarded by a global mutex and is restored after the closure
-/// returns, even when it returns an error.
-///
-/// # Errors
-///
-/// Returns an error if the environment mutex is poisoned or the closure fails.
-pub fn with_env_var<T>(
-    key: &str,
-    value: Option<&str>,
-    f: impl FnOnce() -> Result<T, AnyError>,
-) -> Result<T, AnyError> {
-    let _guard = ENV_LOCK
-        .lock()
-        .map_err(|_| io::Error::other("environment mutex poisoned"))?;
-    let previous = std::env::var_os(key);
-    match value {
-        Some(env_value) => {
-            // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
-            unsafe { std::env::set_var(key, env_value) };
-        }
-        None => {
-            // SAFETY: Environment mutation is serialized by `ENV_LOCK`.
-            unsafe { std::env::remove_var(key) };
-        }
-    }
-    let restore = EnvVarGuard {
-        key: key.to_owned(),
-        previous,
-    };
-    let result = f();
-    drop(restore);
-    result
-}
+const DEFAULT_BIND_HOST: &str = "localhost";
+const TEST_BIND_HOST_ENV: &str = "MXD_TEST_BIND_HOST";
 
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
@@ -193,11 +52,11 @@ fn ensure_single_backend() {
     // Intentionally empty - cfg guards handle feature selection at compile time
 }
 
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 /// Creates a temporary `SQLite` database at `temp/mxd.db`, runs the provided
 /// setup callback with its URL, and returns that URL on success. The callback
 /// must implement `FnOnce(&DbUrl) -> Result<(), AnyError>`. Returns an error if
 /// the path is not valid UTF-8 or if the callback fails.
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 fn setup_sqlite<F>(temp: &TempDir, setup: F) -> Result<DbUrl, AnyError>
 where
     F: FnOnce(&DbUrl) -> Result<(), AnyError>,
@@ -209,57 +68,6 @@ where
     let url = DbUrl::from(path_str);
     setup(&url)?;
     Ok(url)
-}
-
-fn collect_stdout_for_diagnostics(
-    reader: &mut BufReader<&mut ChildStdout>,
-    max_lines: usize,
-    timeout: Duration,
-) -> Result<(Vec<String>, bool), AnyError> {
-    let mut lines = VecDeque::with_capacity(max_lines);
-    let mut line = String::new();
-    let start = Instant::now();
-    loop {
-        line.clear();
-        if reader.read_line(&mut line)? == 0 {
-            return Ok((lines.into_iter().collect(), false));
-        }
-        record_diagnostic_line(&mut lines, max_lines, line.trim());
-        if line.contains(READY_MARKER) {
-            return Ok((lines.into_iter().collect(), true));
-        }
-        if start.elapsed() > timeout {
-            return Ok((lines.into_iter().collect(), false));
-        }
-    }
-}
-
-fn record_diagnostic_line(lines: &mut VecDeque<String>, max_lines: usize, line: &str) {
-    if max_lines == 0 {
-        return;
-    }
-    if lines.len() == max_lines {
-        lines.pop_front();
-    }
-    lines.push_back(line.to_owned());
-}
-
-/// Waits up to ten seconds for the child `mxd` process to announce readiness
-/// on stdout, returning an error if it exits early or never signals.
-fn wait_for_server(child: &mut Child) -> Result<(), AnyError> {
-    if let Some(out) = &mut child.stdout {
-        let mut reader = BufReader::new(out);
-        let timeout = Duration::from_secs(10);
-        let (lines_received, ready) = collect_stdout_for_diagnostics(&mut reader, 50, timeout)?;
-        if ready {
-            Ok(())
-        } else {
-            warn!(lines_received = ?lines_received, "server did not signal readiness");
-            Err(anyhow::anyhow!("server failed to signal readiness"))
-        }
-    } else {
-        Err(anyhow::anyhow!("missing stdout from server"))
-    }
 }
 
 fn resolve_server_binary() -> Option<PathBuf> {
@@ -310,21 +118,21 @@ fn log_server_binary_resolution(message: &'static str, binary: Option<&Path>) {
 }
 
 /// Constructs the base `cargo run` command for launching the server with the
-/// requested manifest, bind port, and database URL, enabling the active backend.
-fn build_server_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
+/// requested manifest, bind address, and database URL, enabling the active backend.
+fn build_server_command(manifest_path: &ManifestPath, addr: SocketAddr, db_url: &DbUrl) -> Command {
     if let Some(bin) = resolve_server_binary() {
-        return server_binary_command(bin, port, db_url);
+        return server_binary_command(bin, addr, db_url);
     }
     debug!("falling back to cargo run");
-    cargo_run_command(manifest_path, port, db_url)
+    cargo_run_command(manifest_path, addr, db_url)
 }
 
 /// Builds a command that executes an already-built wireframe server binary bound
-/// to the requested port and database URL, bypassing `cargo run` entirely.
-fn server_binary_command(bin: PathBuf, port: u16, db_url: &DbUrl) -> Command {
+/// to the requested address and database URL, bypassing `cargo run` entirely.
+fn server_binary_command(bin: PathBuf, addr: SocketAddr, db_url: &DbUrl) -> Command {
     let mut cmd = Command::new(bin);
     cmd.arg("--bind");
-    cmd.arg(format!("127.0.0.1:{port}"));
+    cmd.arg(addr.to_string());
     cmd.arg("--database");
     cmd.arg(db_url.as_str());
     cmd.stdout(Stdio::piped()).stderr(Stdio::inherit());
@@ -333,7 +141,7 @@ fn server_binary_command(bin: PathBuf, port: u16, db_url: &DbUrl) -> Command {
 
 /// Produces a `cargo run` invocation tailored to the active backend, falling
 /// back to this path when no prebuilt binary is available.
-fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) -> Command {
+fn cargo_run_command(manifest_path: &ManifestPath, addr: SocketAddr, db_url: &DbUrl) -> Command {
     let cargo: OsString = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let mut cmd = Command::new(cargo);
     cmd.arg("run");
@@ -363,7 +171,7 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
         "--quiet",
         "--",
         "--bind",
-        &format!("127.0.0.1:{port}"),
+        &addr.to_string(),
         "--database",
         db_url.as_str(),
     ])
@@ -372,8 +180,17 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
     cmd
 }
 
+fn resolve_bind_host() -> Result<String, AnyError> {
+    let value =
+        std::env::var_os(TEST_BIND_HOST_ENV).unwrap_or_else(|| OsString::from(DEFAULT_BIND_HOST));
+    value
+        .into_string()
+        .map_err(|_| anyhow::anyhow!("{TEST_BIND_HOST_ENV} must be valid UTF-8"))
+}
+
 /// Spawns the configured server process on an ephemeral port and waits for the
-/// readiness banner before returning the child handle and chosen port.
+/// socket to accept connections before returning the child handle and chosen
+/// port.
 #[expect(
     clippy::cognitive_complexity,
     reason = "process spawning with cleanup on failure has inherent complexity"
@@ -384,23 +201,33 @@ fn cargo_run_command(manifest_path: &ManifestPath, port: u16, db_url: &DbUrl) ->
 )]
 fn launch_server_process(
     manifest_path: &ManifestPath,
+    bind_host: &str,
     db_url: &DbUrl,
-) -> Result<(Child, u16), AnyError> {
-    let socket = TcpListener::bind("127.0.0.1:0")?;
-    let port = socket.local_addr()?.port();
+) -> Result<(Child, SocketAddr), AnyError> {
+    let socket = TcpListener::bind((bind_host, 0))?;
+    let addr = socket.local_addr()?;
+    let readiness_addr = match addr.ip() {
+        IpAddr::V4(ip) if ip.is_unspecified() => {
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), addr.port())
+        }
+        IpAddr::V6(ip) if ip.is_unspecified() => {
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), addr.port())
+        }
+        _ => addr,
+    };
     drop(socket);
 
-    info!(port, db_url = %db_url, "launching server");
-    let mut child = build_server_command(manifest_path, port, db_url).spawn()?;
+    info!(port = addr.port(), db_url = %db_url, "launching server");
+    let mut child = build_server_command(manifest_path, addr, db_url).spawn()?;
     debug!("spawned server process, waiting for readiness");
-    if let Err(e) = wait_for_server(&mut child) {
+    if let Err(e) = wait_for_server(&mut child, readiness_addr) {
         warn!(error = %e, "wait_for_server failed");
         let _ = child.kill();
         let _ = child.wait();
         return Err(e);
     }
-    info!(port, "server ready");
-    Ok((child, port))
+    info!(port = addr.port(), "server ready");
+    Ok((child, addr))
 }
 
 /// Integration test server wrapper that spawns the `mxd` process with the
@@ -409,6 +236,7 @@ fn launch_server_process(
 pub struct TestServer {
     child: Child,
     port: u16,
+    bind_addr: SocketAddr,
     db_url: DbUrl,
     #[cfg(feature = "postgres")]
     db: PostgresTestDb,
@@ -417,23 +245,23 @@ pub struct TestServer {
 
 impl TestServer {
     /// Launches a server with the default (empty) setup, returning an error if
-    /// the database or server cannot be initialised or readiness times out (ten
+    /// the database or server cannot be initialized or readiness times out (ten
     /// seconds).
     ///
     /// # Errors
     ///
-    /// Returns an error if database or server initialisation fails.
+    /// Returns an error if database or server initialization fails.
     pub fn start(manifest_path: impl Into<ManifestPath>) -> Result<Self, AnyError> {
         Self::start_with_setup(manifest_path, |_| Ok(()))
     }
 
     /// Launches a server and runs the setup callback with the database URL
     /// before starting, useful for seeding data or running migrations; returns
-    /// an error if setup, database initialisation, or launch fails.
+    /// an error if setup, database initialization, or launch fails.
     ///
     /// # Errors
     ///
-    /// Returns an error if setup, database initialisation, or launch fails.
+    /// Returns an error if setup, database initialization, or launch fails.
     #[expect(clippy::shadow_reuse, reason = "standard Into pattern")]
     pub fn start_with_setup<F>(
         manifest_path: impl Into<ManifestPath>,
@@ -443,12 +271,13 @@ impl TestServer {
         F: FnOnce(&DbUrl) -> Result<(), AnyError>,
     {
         let manifest_path = manifest_path.into();
+        let bind_host = resolve_bind_host()?;
         ensure_single_backend();
         #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
         {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
-            Self::launch(&manifest_path, db_url, Some(temp))
+            Self::launch_sqlite(&manifest_path, &bind_host, db_url, Some(temp))
         }
 
         #[cfg(feature = "postgres")]
@@ -456,39 +285,64 @@ impl TestServer {
             let db = crate::postgres::PostgresTestDb::new()?;
             let db_url = DbUrl::from(db.url.as_ref());
             setup(&db_url)?;
-            Self::launch(&manifest_path, db, db_url)
+            Self::launch_postgres(&manifest_path, &bind_host, db, db_url)
         }
     }
 
-    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-    fn launch(
+    fn launch_with<F>(
         manifest_path: &ManifestPath,
+        bind_host: &str,
+        db_url: DbUrl,
+        build_self: F,
+    ) -> Result<Self, AnyError>
+    where
+        F: FnOnce(Child, SocketAddr, DbUrl) -> Self,
+    {
+        let (child, bind_addr) = launch_server_process(manifest_path, bind_host, &db_url)?;
+        Ok(build_self(child, bind_addr, db_url))
+    }
+
+    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+    fn launch_sqlite(
+        manifest_path: &ManifestPath,
+        bind_host: &str,
         db_url: DbUrl,
         temp_dir: Option<TempDir>,
     ) -> Result<Self, AnyError> {
-        let (child, port) = launch_server_process(manifest_path, &db_url)?;
-        Ok(Self {
-            child,
-            port,
+        Self::launch_with(
+            manifest_path,
+            bind_host,
             db_url,
-            temp_dir,
-        })
+            move |child, bind_addr, db_url_value| Self {
+                child,
+                port: bind_addr.port(),
+                bind_addr,
+                db_url: db_url_value,
+                temp_dir,
+            },
+        )
     }
 
     #[cfg(feature = "postgres")]
-    fn launch(
+    fn launch_postgres(
         manifest_path: &ManifestPath,
+        bind_host: &str,
         db: PostgresTestDb,
         db_url: DbUrl,
     ) -> Result<Self, AnyError> {
-        let (child, port) = launch_server_process(manifest_path, &db_url)?;
-        Ok(Self {
-            child,
-            port,
+        Self::launch_with(
+            manifest_path,
+            bind_host,
             db_url,
-            db,
-            temp_dir: None,
-        })
+            move |child, bind_addr, db_url_value| Self {
+                child,
+                port: bind_addr.port(),
+                bind_addr,
+                db_url: db_url_value,
+                db,
+                temp_dir: None,
+            },
+        )
     }
 
     /// Returns the ephemeral port on which the server is listening.
@@ -499,14 +353,18 @@ impl TestServer {
     #[must_use]
     pub const fn db_url(&self) -> &DbUrl { &self.db_url }
 
+    /// Returns the bind address used by the server.
+    #[must_use]
+    pub const fn bind_addr(&self) -> SocketAddr { self.bind_addr }
+
     /// Returns the temporary directory holding the `SQLite` database, if
     /// applicable. Returns `None` when using `PostgreSQL`.
     #[must_use]
     pub const fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
 
-    #[cfg(feature = "postgres")]
     /// Returns `true` when the server is using an embedded `PostgreSQL` instance
     /// rather than an external server.
+    #[cfg(feature = "postgres")]
     #[must_use]
     pub const fn uses_embedded_postgres(&self) -> bool { self.db.uses_embedded() }
 }
