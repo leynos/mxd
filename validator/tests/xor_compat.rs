@@ -1,7 +1,7 @@
 //! Integration test for XOR-encoded text fields via the hx client.
 //!
-//! Confirms that login, messaging, and news posting work with XOR encoding
-//! enabled in the client.
+//! Confirms that login and news posting work with XOR encoding enabled in the
+//! client.
 
 use std::{
     io::Read,
@@ -118,6 +118,7 @@ fn hx_is_helix() -> bool {
 }
 
 fn terminate_child(child: &mut Child) {
+    // Best-effort cleanup in tests; ignore errors if the process already exited.
     let _kill_result = child.kill();
     let _wait_result = child.wait();
 }
@@ -125,6 +126,7 @@ fn terminate_child(child: &mut Child) {
 fn read_stream<T: Read>(maybe_stream: Option<T>) -> String {
     let mut buffer = Vec::new();
     if let Some(mut stream) = maybe_stream {
+        // Best-effort diagnostics: ignore read failures when collecting output.
         let _read_result = stream.read_to_end(&mut buffer);
     }
     String::from_utf8_lossy(&buffer).to_string()
@@ -139,19 +141,16 @@ fn expect_or_skip(session: &mut Session, regex: Regex<&'static str>, reason: &st
 }
 
 fn assert_news_body(server: &TestServer, expected: &str) -> Result<(), AnyError> {
-    let expected_text = expected.to_owned();
-    let expected_query = expected_text.clone();
+    let expected_query = expected.to_owned();
     let url = DatabaseUrl::new(server.db_url().as_ref());
     let count = with_db(url, move |conn| {
-        let expected_query_local = expected_query.clone();
         Box::pin(async move {
             use diesel::{dsl::count_star, prelude::*};
             use diesel_async::RunQueryDsl;
             use mxd::schema::news_articles::dsl as a;
 
-            let expected_ref = expected_query_local.as_str();
             let count: i64 = a::news_articles
-                .filter(a::title.eq(expected_ref).or(a::data.eq(Some(expected_ref))))
+                .filter(a::data.eq(Some(expected_query.as_str())))
                 .select(count_star())
                 .first(conn)
                 .await?;
@@ -160,7 +159,7 @@ fn assert_news_body(server: &TestServer, expected: &str) -> Result<(), AnyError>
     })?;
     if count == 0 {
         return Err(AnyError::msg(format!(
-            "expected news article containing '{expected_text}'"
+            "expected news article containing '{expected}'"
         )));
     }
     Ok(())
