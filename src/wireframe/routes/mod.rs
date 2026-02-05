@@ -161,9 +161,9 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
     }
 }
 
-/// Decode payload bytes for transactions that carry payloads.
+/// Decode transaction payload bytes when the transaction type carries payload.
 ///
-/// Transactions without payloads are returned unchanged.
+/// Transactions without payload are passed through unchanged.
 fn decode_payload_for_transaction(
     peer: SocketAddr,
     tx_type: TransactionType,
@@ -183,6 +183,7 @@ fn decode_payload_for_transaction(
     })
 }
 
+/// Record login version metadata for compatibility policy when handling login.
 fn record_login_version_if_needed(
     tx_type: TransactionType,
     client_compat: &ClientCompatibility,

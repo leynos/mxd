@@ -189,7 +189,7 @@ impl LoginCompatWorld {
 #[fixture]
 fn world() -> LoginCompatWorld {
     let world = LoginCompatWorld::new();
-    world.reply.replace(None);
+    debug_assert!(!world.is_skipped());
     world
 }
 

@@ -118,7 +118,7 @@ Non-goals:
 
 - How HOPE extensions are negotiated during handshake or login.
 - The error mapping for SynHX hashed authentication failures.
-- Which compatibility signals determine strategy selection.
+- Which compatibility signals determine strategy selection?
 
 ## Architectural rationale
 
