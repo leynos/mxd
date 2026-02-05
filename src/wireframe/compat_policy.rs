@@ -5,8 +5,6 @@
 //! 160). The adapter uses this policy to decide which login reply fields to
 //! include without leaking quirks into the domain layer.
 
-#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-
 use std::sync::atomic::{AtomicU16, Ordering};
 
 use crate::{
@@ -128,7 +126,9 @@ impl ClientCompatibility {
         let has_server_name = params.iter().any(|(id, _)| *id == FieldId::ServerName);
 
         if !has_banner_id {
-            params.push((FieldId::BannerId, DEFAULT_BANNER_ID.to_be_bytes().to_vec()));
+            #[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+            let banner_id_bytes = DEFAULT_BANNER_ID.to_be_bytes();
+            params.push((FieldId::BannerId, banner_id_bytes.to_vec()));
         }
         if !has_server_name {
             params.push((FieldId::ServerName, DEFAULT_SERVER_NAME.as_bytes().to_vec()));
@@ -167,6 +167,11 @@ fn parse_login_version(data: &[u8]) -> Option<u16> {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::big_endian_bytes,
+        reason = "test vectors validate network-endian encoding"
+    )]
+
     use rstest::rstest;
 
     use super::*;

@@ -7,6 +7,7 @@
 //! # Module Structure
 //!
 //! - [`codec`]: Transaction framing codec (`HotlineTransaction`, `HotlineCodec`)
+//! - [`compat_policy`]: Client compatibility policy for login reply gating
 //! - [`connection`]: Handshake metadata storage
 //! - [`context`]: Per-connection state management
 //! - [`handshake`]: Preamble success/failure hooks

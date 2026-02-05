@@ -1,8 +1,8 @@
 # Developers' guide
 
-This guide captures the local developer workflow for MXD, with a focus on the
-commands required to format, lint, and test the codebase, plus the PostgreSQL
-helper needed for integration coverage.
+This guide captures the local developer workflow for the mxd Hotline server
+project, with a focus on the commands required to format, lint, and test the
+codebase, plus the PostgreSQL helper needed for integration coverage.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Install the helper once:
 cargo install pg-embed-setup-unpriv
 ```
 
-Run the helper before `make test` whenever you want PostgreSQL coverage. The
+Run the helper before `make test` whenever PostgreSQL coverage is required. The
 helper runs unprivileged; root access is not required.
 
 ```sh

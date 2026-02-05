@@ -161,6 +161,9 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
     }
 }
 
+/// Decode payload bytes for transactions that carry payloads.
+///
+/// Transactions without payloads are returned unchanged.
 fn decode_payload_for_transaction(
     peer: SocketAddr,
     tx_type: TransactionType,
@@ -192,6 +195,7 @@ fn record_login_version_if_needed(
     }
 }
 
+/// Finalize a successful command reply and apply client compatibility extras.
 fn finalize_reply(
     peer: SocketAddr,
     header: &FrameHeader,

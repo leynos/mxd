@@ -14,9 +14,9 @@ The login flow must support client-specific authentication and reply shaping.
 Hotline clients expect banner fields, SynHX requires hashed authentication, and
 future HOPE extensions will add more reply elements. The current implementation
 keeps compatibility logic in the wireframe adapter, but the login handler still
-combines authentication and reply concerns. We need a structure that separates
-request validation from reply decoration, and that can be wired into the
-compatibility guardrails described in ADR-002.
+combines authentication and reply concerns. A structure is required that
+separates request validation from reply decoration, and that can be wired into
+the compatibility guardrails described in ADR-002.
 
 ## Decision drivers
 
@@ -125,4 +125,4 @@ Non-goals:
 Splitting authentication strategies from reply augmentation keeps the login
 path easy to extend while preserving a clear wireframe boundary for client
 quirks. Coupled with the guardrail entrypoint in ADR-002, it reduces the risk
-of accidental bypasses and keeps protocol evolution localised and testable.
+of accidental bypasses and keeps protocol evolution localized and testable.

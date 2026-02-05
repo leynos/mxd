@@ -20,7 +20,7 @@ transaction parsing, which risks blending request authentication concerns with
 reply decoration and makes the flow harder to evolve as new clients and
 extensions arrive.
 
-We need a structure that keeps request authentication and reply shaping
+A structure is required that keeps request authentication and reply shaping
 separable, maintains the wireframe boundary for protocol quirks, and provides
 clear hooks for extension-specific logic.
 
@@ -57,7 +57,7 @@ clear hooks for extension-specific logic.
 ### Option A: Keep login logic monolithic
 
 Continue to evolve the existing login handler to cover authentication and reply
-formatting. This minimises new abstractions but makes the login path harder to
+formatting. This minimizes new abstractions but makes the login path harder to
 reason about as more client-specific logic lands.
 
 ### Option B: Add ad-hoc hooks in routing

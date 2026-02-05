@@ -15,14 +15,14 @@ Compatibility behaviour now depends on handshake metadata and login versions.
 for future routes to bypass compatibility hooks accidentally. Upcoming work
 adds HOPE extensions and SynHX hashed authentication, which increases the
 number of client-specific behaviours and the risk of duplicate or inconsistent
-logic. We need a structure that enforces a single path for compatibility hooks
-and keeps augmentation (such as `LoginReplyAugmenter`) and authentication
+logic. A structure is required that enforces a single path for compatibility
+hooks and keeps augmentation (such as `LoginReplyAugmenter`) and authentication
 strategies wired in the correct order.
 
 ## Decision drivers
 
 - Prevent compatibility hooks from being skipped in new routes.
-- Centralise client-specific behaviour behind a consistent interface.
+- Centralize client-specific behaviour behind a consistent interface.
 - Support reply augmentation and authentication strategies without leaking
   quirks into the domain layer.
 - Provide tests that detect missing hooks early.
@@ -53,7 +53,7 @@ code review to prevent bypasses.
 ### Option B: Add a compatibility layer without a routing entrypoint
 
 Introduce a `CompatibilityLayer` with `on_request` and `on_reply` methods, but
-leave routing entrypoints public. This improves centralisation but still allows
+leave routing entrypoints public. This improves centralization but still allows
 routes to skip the layer.
 
 ### Option C: Introduce a single routing entrypoint with compatibility guards
@@ -65,7 +65,7 @@ Make a `WireframeRouter` the only public entrypoint, embed a
 | Topic                         | Option A | Option B | Option C      |
 | ----------------------------- | -------- | -------- | ------------- |
 | Bypass risk                   | High     | Medium   | Low           |
-| Centralised compatibility     | Weak     | Strong   | Strong        |
+| Centralized compatibility     | Weak     | Strong   | Strong        |
 | Hook order enforcement        | None     | Partial  | Test-enforced |
 | Effort to implement           | Low      | Medium   | Medium        |
 | Supports reply augmentation   | Manual   | Built-in | Built-in      |
@@ -110,7 +110,7 @@ Non-goals:
 
 ## Known risks and limitations
 
-- Centralising hooks may require refactoring existing tests that call routing
+- Centralizing hooks may require refactoring existing tests that call routing
   helpers directly.
 - A router entrypoint can increase indirection if not named clearly.
 - Hook ordering tests need careful design to avoid false positives.

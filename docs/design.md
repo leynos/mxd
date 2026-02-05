@@ -205,7 +205,7 @@ identification (`sub_version == 2`), while the login request's version field
 (field 160) distinguishes Hotline 1.8.5 from 1.9 clients (`< 190` vs `>= 190`).
 Login replies always report server version 151, include banner fields 161/162
 for Hotline 1.8.5 and 1.9 clients, and omit those fields for SynHX. Future
-quirks must consult this policy so adapter-layer gating remains centralised.
+quirks must consult this policy so adapter-layer gating remains centralized.
 ADR-002 and ADR-003 track follow-on guardrails that make routing entrypoints
 compatibility-aware by default and split login authentication strategies from
 reply augmentation to support HOPE extensions and SynHX hashed authentication.

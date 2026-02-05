@@ -52,7 +52,7 @@ accordingly.
 
 - Risk: handshake sub-version mapping is incomplete. Severity: medium.
   Likelihood: medium. Mitigation: treat `sub_version == 2` as SynHX and keep
-  policy centralised so follow-on tasks can adjust in one place.
+  policy centralized so follow-on tasks can adjust in one place.
 - Risk: Hotline 1.8.5/1.9 clients are not available for live testing.
   Severity: medium. Likelihood: high. Mitigation: rely on unit/BDD tests and
   document the need to validate with real clients later.
@@ -88,7 +88,7 @@ accordingly.
 ## Decision log
 
 - Decision: introduce `ClientCompatibility` in `src/wireframe/compat_policy.rs`
-  to centralise handshake/login quirks. Rationale: keeps wireframe-specific
+  to centralize handshake/login quirks. Rationale: keeps wireframe-specific
   policy at the adapter boundary and prevents domain leakage. Date/Author:
   2026-02-05 / Codex.
 - Decision: gate banner fields 161/162 on handshake sub-version `2` (SynHX) and
@@ -177,12 +177,14 @@ prepare local Postgres testing.
 
    - Run:
 
+     ```sh
      PG_VERSION_REQ="=16.4.0" \
      PG_RUNTIME_DIR="/var/tmp/pg-embedded-setup-unpriv/install" \
      PG_DATA_DIR="/var/tmp/pg-embedded-setup-unpriv/data" \
      PG_SUPERUSER="postgres" \
      PG_PASSWORD="postgres_pass" \
      cargo run --release --bin pg_embedded_setup_unpriv
+     ```
 
 7. Run quality gates from the repo root:
 

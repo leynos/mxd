@@ -158,6 +158,17 @@ impl LoginCompatWorld {
             return;
         }
         self.with_reply(|tx| {
+            assert_eq!(
+                tx.header.error, 0,
+                "expected successful reply (error = 0), got {}",
+                tx.header.error
+            );
+            let tx_type = TransactionType::from(tx.header.ty);
+            assert_eq!(
+                tx_type,
+                TransactionType::Login,
+                "expected Login reply, got {tx_type:?}"
+            );
             let params = decode_params(&tx.payload).expect("decode reply params");
             let banner_field = params.iter().find(|(id, _)| *id == FieldId::BannerId);
             let server_field = params.iter().find(|(id, _)| *id == FieldId::ServerName);
@@ -178,7 +189,7 @@ impl LoginCompatWorld {
 #[fixture]
 fn world() -> LoginCompatWorld {
     let world = LoginCompatWorld::new();
-    let _ = world.is_skipped();
+    world.reply.replace(None);
     world
 }
 
