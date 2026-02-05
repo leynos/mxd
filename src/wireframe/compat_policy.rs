@@ -242,12 +242,15 @@ mod tests {
         assert_eq!(compat.login_version(), Some(190));
     }
 
-    #[rstest]
-    fn augments_login_reply_when_required() {
-        let compat = ClientCompatibility::from_handshake(&handshake(0));
-        compat.record_login_version(151);
-        let payload =
-            encode_params(&[(FieldId::Version, 151u16.to_be_bytes())]).expect("payload encodes");
+    fn assert_login_reply_augmentation(
+        sub_version: u16,
+        login_version: u16,
+        expected_updated: bool,
+    ) {
+        let compat = ClientCompatibility::from_handshake(&handshake(sub_version));
+        compat.record_login_version(login_version);
+        let payload = encode_params(&[(FieldId::Version, login_version.to_be_bytes())])
+            .expect("payload encodes");
         let header = reply_header(payload.len());
         let mut reply = Transaction { header, payload };
 
@@ -255,28 +258,19 @@ mod tests {
             .augment_login_reply(&mut reply)
             .expect("augment reply");
 
-        assert!(updated);
+        assert_eq!(updated, expected_updated);
         let params = decode_params(&reply.payload).expect("decode reply params");
-        assert!(params.iter().any(|(id, _)| *id == FieldId::BannerId));
-        assert!(params.iter().any(|(id, _)| *id == FieldId::ServerName));
+        let has_banner_id = params.iter().any(|(id, _)| *id == FieldId::BannerId);
+        let has_server_name = params.iter().any(|(id, _)| *id == FieldId::ServerName);
+        assert_eq!(has_banner_id, expected_updated);
+        assert_eq!(has_server_name, expected_updated);
     }
 
     #[rstest]
+    fn augments_login_reply_when_required() { assert_login_reply_augmentation(0, 151, true); }
+
+    #[rstest]
     fn does_not_augment_login_reply_for_synhx() {
-        let compat = ClientCompatibility::from_handshake(&handshake(SYNHX_SUB_VERSION));
-        compat.record_login_version(190);
-        let payload =
-            encode_params(&[(FieldId::Version, 151u16.to_be_bytes())]).expect("payload encodes");
-        let header = reply_header(payload.len());
-        let mut reply = Transaction { header, payload };
-
-        let updated = compat
-            .augment_login_reply(&mut reply)
-            .expect("augment reply");
-
-        assert!(!updated);
-        let params = decode_params(&reply.payload).expect("decode reply params");
-        assert!(!params.iter().any(|(id, _)| *id == FieldId::BannerId));
-        assert!(!params.iter().any(|(id, _)| *id == FieldId::ServerName));
+        assert_login_reply_augmentation(SYNHX_SUB_VERSION, 190, false);
     }
 }
