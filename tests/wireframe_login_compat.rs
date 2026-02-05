@@ -1,4 +1,7 @@
-//! Behavioural tests for XOR compatibility in wireframe routing.
+#![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+
+//! Behavioural tests for login compatibility gating.
 
 use std::{
     cell::{Cell, RefCell},
@@ -10,24 +13,22 @@ use mxd::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
-    privileges::Privileges,
     server::outbound::NoopOutboundMessaging,
-    transaction::{Transaction, parse_transaction},
+    transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{
         compat::XorCompatibility,
         compat_policy::ClientCompatibility,
         connection::HandshakeMetadata,
         routes::{RouteContext, process_transaction_bytes},
-        test_helpers::xor_bytes,
     },
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
-use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_files_db, setup_news_db};
+use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_files_db};
 use tokio::runtime::Runtime;
 
-struct XorWorld {
+struct LoginCompatWorld {
     rt: Runtime,
     peer: SocketAddr,
     pool: RefCell<DbPool>,
@@ -35,15 +36,15 @@ struct XorWorld {
     session: RefCell<Session>,
     reply: RefCell<Option<Result<Transaction, String>>>,
     compat: Arc<XorCompatibility>,
-    client_compat: Arc<ClientCompatibility>,
+    client_compat: RefCell<Arc<ClientCompatibility>>,
     skipped: Cell<bool>,
 }
 
-#[expect(clippy::expect_used, reason = "test assertions")]
-impl XorWorld {
+impl LoginCompatWorld {
     fn new() -> Self {
         let rt = Runtime::new().expect("runtime");
         let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
+        let handshake = HandshakeMetadata::default();
         Self {
             rt,
             peer,
@@ -52,9 +53,7 @@ impl XorWorld {
             session: RefCell::new(Session::default()),
             reply: RefCell::new(None),
             compat: Arc::new(XorCompatibility::disabled()),
-            client_compat: Arc::new(ClientCompatibility::from_handshake(
-                &HandshakeMetadata::default(),
-            )),
+            client_compat: RefCell::new(Arc::new(ClientCompatibility::from_handshake(&handshake))),
             skipped: Cell::new(false),
         }
     }
@@ -78,20 +77,32 @@ impl XorWorld {
         self.session.replace(Session::default());
     }
 
-    fn authenticate(&self) {
+    fn set_handshake_sub_version(&self, sub_version: u16) {
         if self.is_skipped() {
             return;
         }
-        let mut session = self.session.borrow_mut();
-        session.user_id = Some(1);
-        session.privileges = Privileges::default_user();
+        let handshake = HandshakeMetadata {
+            sub_version,
+            ..HandshakeMetadata::default()
+        };
+        self.client_compat
+            .replace(Arc::new(ClientCompatibility::from_handshake(&handshake)));
     }
 
-    fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
+    fn send_login(&self, version: u16) {
         if self.is_skipped() {
             return;
         }
-        let frame = match build_frame(ty, id, params) {
+        let version_bytes = version.to_be_bytes();
+        let frame = match build_frame(
+            TransactionType::Login,
+            1,
+            &[
+                (FieldId::Login, b"alice"),
+                (FieldId::Password, b"secret"),
+                (FieldId::Version, version_bytes.as_slice()),
+            ],
+        ) {
             Ok(frame) => frame,
             Err(err) => {
                 self.reply.borrow_mut().replace(Err(err.to_string()));
@@ -110,6 +121,7 @@ impl XorWorld {
         let mut session = self.session.replace(Session::default());
         let messaging = NoopOutboundMessaging;
         let compat = Arc::clone(&self.compat);
+        let client_compat = Arc::clone(&self.client_compat.borrow());
         let reply = self.rt.block_on(async {
             process_transaction_bytes(
                 frame,
@@ -119,7 +131,7 @@ impl XorWorld {
                     session: &mut session,
                     messaging: &messaging,
                     compat: compat.as_ref(),
-                    client_compat: self.client_compat.as_ref(),
+                    client_compat: client_compat.as_ref(),
                 },
             )
             .await
@@ -140,96 +152,58 @@ impl XorWorld {
         };
         f(tx)
     }
+
+    fn assert_banner_fields(&self, should_include: bool) {
+        if self.is_skipped() {
+            return;
+        }
+        self.with_reply(|tx| {
+            let params = decode_params(&tx.payload).expect("decode reply params");
+            let banner_field = params.iter().find(|(id, _)| *id == FieldId::BannerId);
+            let server_field = params.iter().find(|(id, _)| *id == FieldId::ServerName);
+
+            if should_include {
+                let banner = banner_field.expect("missing banner id");
+                let server = server_field.expect("missing server name");
+                assert_eq!(banner.1, 0i32.to_be_bytes());
+                assert_eq!(server.1, b"mxd");
+            } else {
+                assert!(banner_field.is_none());
+                assert!(server_field.is_none());
+            }
+        });
+    }
 }
 
 #[fixture]
-fn world() -> XorWorld {
-    let world = XorWorld::new();
+fn world() -> LoginCompatWorld {
+    let world = LoginCompatWorld::new();
     let _ = world.is_skipped();
     world
 }
 
 #[given("a routing context with user accounts")]
-fn given_users(world: &XorWorld) { world.setup_db(setup_files_db); }
+fn given_users(world: &LoginCompatWorld) { world.setup_db(setup_files_db); }
 
-#[given("a routing context with news articles")]
-fn given_news(world: &XorWorld) {
-    world.setup_db(setup_news_db);
-    world.authenticate();
+#[given("a handshake sub-version {sub_version}")]
+fn given_sub_version(world: &LoginCompatWorld, sub_version: u16) {
+    world.set_handshake_sub_version(sub_version);
 }
 
-#[when("I send a login with XOR-encoded credentials")]
-fn when_login_xor(world: &XorWorld) {
-    let encoded_login = xor_bytes(b"alice");
-    let encoded_password = xor_bytes(b"secret");
-    world.send(
-        TransactionType::Login,
-        1,
-        &[
-            (FieldId::Login, encoded_login.as_slice()),
-            (FieldId::Password, encoded_password.as_slice()),
-        ],
-    );
-}
+#[when("I send a login request with client version {version}")]
+fn when_login(world: &LoginCompatWorld, version: u16) { world.send_login(version); }
 
-#[when("I send an unknown transaction with XOR-encoded message \"{message}\"")]
-fn when_message_xor(world: &XorWorld, message: String) {
-    let encoded_message = xor_bytes(message.as_bytes());
-    world.send(
-        TransactionType::Other(900),
-        2,
-        &[(FieldId::Data, encoded_message.as_slice())],
-    );
-}
+#[then("the login reply includes banner fields")]
+fn then_includes_banner_fields(world: &LoginCompatWorld) { world.assert_banner_fields(true); }
 
-#[expect(
-    clippy::big_endian_bytes,
-    reason = "wire protocol uses big-endian bytes"
-)]
-#[when("I post a news article with XOR-encoded fields")]
-fn when_post_news_xor(world: &XorWorld) {
-    let encoded_path = xor_bytes(b"General");
-    let encoded_title = xor_bytes(b"XorTitle");
-    let encoded_flavor = xor_bytes(b"text/plain");
-    let encoded_body = xor_bytes(b"xor body");
-    let flags = 0i32.to_be_bytes();
+#[then("the login reply omits banner fields")]
+fn then_omits_banner_fields(world: &LoginCompatWorld) { world.assert_banner_fields(false); }
 
-    world.send(
-        TransactionType::PostNewsArticle,
-        3,
-        &[
-            (FieldId::NewsPath, encoded_path.as_slice()),
-            (FieldId::NewsTitle, encoded_title.as_slice()),
-            (FieldId::NewsArticleFlags, flags.as_ref()),
-            (FieldId::NewsDataFlavor, encoded_flavor.as_slice()),
-            (FieldId::NewsArticleData, encoded_body.as_slice()),
-        ],
-    );
-}
+#[scenario(path = "tests/features/wireframe_login_compat.feature", index = 0)]
+fn hotline_85_login(world: LoginCompatWorld) { let _ = world; }
 
-#[then("the reply error code is {code}")]
-fn then_error_code(world: &XorWorld, code: u32) {
-    if world.is_skipped() {
-        return;
-    }
-    world.with_reply(|tx| {
-        assert_eq!(tx.header.error, code, "unexpected reply error");
-    });
-}
+#[scenario(path = "tests/features/wireframe_login_compat.feature", index = 1)]
+fn hotline_19_login(world: LoginCompatWorld) { let _ = world; }
 
-#[then("XOR compatibility is enabled")]
-fn then_xor_enabled(world: &XorWorld) {
-    if world.is_skipped() {
-        return;
-    }
-    assert!(world.compat.is_enabled());
-}
-
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 0)]
-fn xor_login(world: XorWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 1)]
-fn xor_message(world: XorWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 2)]
-fn xor_news(world: XorWorld) { let _ = world; }
+#[scenario(path = "tests/features/wireframe_login_compat.feature", index = 2)]
+fn synhx_login(world: LoginCompatWorld) { let _ = world; }

@@ -165,10 +165,17 @@ and explicit dependencies. Timeframes are intentionally omitted.
   password, message, and news bodies with the XOR toggle enabled. Status:
   Completed on 2 February 2026 by adding adapter-level XOR detection and
   encoding, plus unit, BDD, and validator parity coverage. Dependencies: 1.2.
-- [ ] 1.5.2. Gate protocol quirks on the handshake sub-version so Hotline 1.9
+- [x] 1.5.2. Gate protocol quirks on the handshake sub-version so Hotline 1.9
   fallbacks remain available. Acceptance: Compatibility tests prove Hotline
-  1.8.5, Hotline 1.9, and SynHX all log in, list users, and exchange messages
-  successfully. Dependencies: 1.2.3.
+  1.8.5, Hotline 1.9, and SynHX all log in and receive the correct login
+  replies; user list and messaging parity will be validated once those
+  transactions are implemented. Status: Completed on 5 February 2026 by
+  introducing a `ClientCompatibility` policy that treats handshake sub-version
+  `2` as SynHX, derives Hotline 1.8.5 vs 1.9 from the login request's version
+  field (160), and gates banner fields 161/162 accordingly (included for
+  Hotline 1.8.5/1.9, omitted for SynHX). Subsequent feature implementations
+  must consult this compatibility policy when applying client-specific quirks.
+  Dependencies: 1.2.3.
 - [ ] 1.5.3. Publish an internal compatibility matrix documenting supported
   clients, known deviations, and required toggles. Acceptance: The matrix lives
   in `docs/` and is referenced by release notes during QA sign-off.

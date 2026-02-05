@@ -51,7 +51,8 @@ use crate::{
     wireframe::{
         codec::HotlineFrameCodec,
         compat::XorCompatibility,
-        connection::take_current_context,
+        compat_policy::ClientCompatibility,
+        connection::{HandshakeMetadata, take_current_context},
         handshake,
         outbound::{
             WireframeOutboundConnection,
@@ -202,12 +203,14 @@ fn build_app_context<'a>(
     let (handshake, peer) = context.into_parts();
     let peer = peer.ok_or_else(|| anyhow!("peer address missing in app factory"))?;
     let compat = Arc::new(XorCompatibility::from_handshake(&handshake));
+    let client_compat = Arc::new(ClientCompatibility::from_handshake(&handshake));
     Ok(AppBuildContext {
         pool,
         argon2,
         outbound_registry,
         peer,
         compat,
+        client_compat,
     })
 }
 
@@ -217,6 +220,7 @@ struct AppBuildContext<'a> {
     outbound_registry: &'a Arc<WireframeOutboundRegistry>,
     peer: SocketAddr,
     compat: Arc<XorCompatibility>,
+    client_compat: Arc<ClientCompatibility>,
 }
 
 fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp> {
@@ -226,6 +230,7 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
         outbound_registry,
         peer,
         compat,
+        client_compat,
     } = context;
     let session = Arc::new(TokioMutex::new(Session::default()));
     let outbound_id = outbound_registry.allocate_id();
@@ -250,6 +255,7 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
             peer,
             messaging: Arc::new(outbound_messaging),
             compat,
+            client_compat,
         }))?;
 
     let handler = routing_placeholder_handler();
@@ -271,6 +277,9 @@ fn validate_app_factory(
         outbound_registry,
         peer,
         compat: Arc::new(XorCompatibility::disabled()),
+        client_compat: Arc::new(ClientCompatibility::from_handshake(
+            &HandshakeMetadata::default(),
+        )),
     };
     build_app(build_context).context("failed to register routes or middleware")?;
     Ok(())

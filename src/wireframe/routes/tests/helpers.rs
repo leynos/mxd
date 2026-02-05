@@ -16,6 +16,7 @@ use crate::{
     transaction_type::TransactionType,
     wireframe::{
         compat::XorCompatibility,
+        compat_policy::ClientCompatibility,
         routes::{RouteContext, process_transaction_bytes},
     },
 };
@@ -30,6 +31,8 @@ pub(super) struct RouteTestContext {
     peer: SocketAddr,
     /// XOR compatibility state shared across test calls.
     compat: Arc<XorCompatibility>,
+    /// Client compatibility policy shared across test calls.
+    client_compat: Arc<ClientCompatibility>,
 }
 
 impl RouteTestContext {
@@ -49,6 +52,9 @@ impl RouteTestContext {
             session: Session::default(),
             peer,
             compat: Arc::new(XorCompatibility::disabled()),
+            client_compat: Arc::new(ClientCompatibility::from_handshake(
+                &crate::wireframe::connection::HandshakeMetadata::default(),
+            )),
         })
     }
 
@@ -99,6 +105,7 @@ impl RouteTestContext {
                 session: &mut self.session,
                 messaging: &messaging,
                 compat: compat.as_ref(),
+                client_compat: self.client_compat.as_ref(),
             },
         )
         .await;

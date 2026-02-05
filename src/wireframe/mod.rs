@@ -18,6 +18,7 @@
 
 pub mod codec;
 pub mod compat;
+pub mod compat_policy;
 pub mod connection;
 pub mod context;
 pub mod handshake;

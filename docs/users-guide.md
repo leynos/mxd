@@ -45,6 +45,11 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   fields (for example, SynHX with the `encode` toggle enabled). Once detected,
   inbound payloads are decoded and outbound replies are encoded to match the
   client, without any additional configuration.
+- Login reply compatibility now depends on client metadata. SynHX is detected
+  via handshake sub-version `2` and receives only the server version field
+  (160). Hotline 1.8.5 and 1.9 clients are identified by the login request's
+  version field (160) and receive the banner fields 161/162 in addition to the
+  server version.
 
 ## Selecting a runtime
 
