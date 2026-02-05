@@ -27,8 +27,8 @@ export PG_RUNTIME_DIR="/var/tmp/pg-embedded-setup-unpriv/install"
 export PG_DATA_DIR="/var/tmp/pg-embedded-setup-unpriv/data"
 export PG_SUPERUSER="postgres"
 export PG_PASSWORD="postgres_pass"
-
-```pg_embedded_setup_unpriv
+pg_embedded_setup_unpriv
+```
 
 See `docs/pg-embed-setup-unpriv-users-guide.md` for the full reference and
 troubleshooting tips.

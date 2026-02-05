@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed.
+Superseded on 2026-02-05 by ADR-003 (Split login authentication and reply
+augmentation).
 
 ## Date
 

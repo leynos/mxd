@@ -183,6 +183,18 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 1.5.4. Verify XOR and sub-version compatibility logic with Kani.
   Acceptance: Kani harnesses show XOR encode/decode round-trips and version
   gating for bounded inputs without panics. Dependencies: 1.5.2.
+- [ ] 1.5.5. Add wireframe compatibility guardrails and a routing entrypoint.
+  Acceptance: A `WireframeRouter` provides the only public routing entrypoint,
+  a `CompatibilityLayer` runs request and reply hooks, and a spy-based test
+  asserts login hook ordering. See
+  `docs/adr-002-compatibility-guardrails-and-augmentation.md`. Dependencies:
+  1.5.2.
+- [ ] 1.5.6. Split login authentication strategies from reply augmentation.
+  Acceptance: `AuthStrategy` and `LoginReplyAugmenter` are wired into the
+  guardrail routing entrypoint, and default behaviour for Hotline and SynHX
+  remains unchanged. See
+  `docs/adr-003-login-authentication-and-reply-augmentation.md`. Dependencies:
+  1.5.5.
 
 ### 1.6. Regression and platform verification
 

@@ -202,7 +202,12 @@ fn finalize_reply(
         || handle_missing_reply(peer, header),
         |mut reply| {
             if let Err(error) = client_compat.augment_login_reply(&mut reply) {
-                tracing::warn!(%error, "failed to apply login compatibility extras");
+                tracing::warn!(
+                    %error,
+                    client_kind = ?client_compat.kind(),
+                    login_version = ?client_compat.login_version(),
+                    "failed to apply login compatibility extras"
+                );
             }
             reply.to_bytes()
         },
