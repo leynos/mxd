@@ -2,10 +2,11 @@
 //!
 //! The handshake sub-version identifies `SynHX` clients (sub-version 2). Hotline
 //! 1.8.5 versus 1.9 is determined by the login request's version field (field
-//! 160). The adapter uses this policy to decide which login reply fields to
-//! include without leaking quirks into the domain layer.
+//! 160): `151..=189` maps to Hotline 1.8.5 and `>=190` maps to Hotline 1.9.
+//! The adapter uses this policy to decide which login reply fields to include
+//! without leaking quirks into the domain layer.
 
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::{
     field_id::FieldId,
@@ -21,8 +22,9 @@ use crate::{
     wireframe::connection::HandshakeMetadata,
 };
 
-const UNKNOWN_LOGIN_VERSION: u16 = u16::MAX;
+const UNKNOWN_LOGIN_VERSION: u32 = u32::MAX;
 const SYNHX_SUB_VERSION: u16 = 2;
+const HOTLINE_85_MIN_VERSION: u16 = 151;
 const HOTLINE_19_MIN_VERSION: u16 = 190;
 const DEFAULT_BANNER_ID: i32 = 0;
 const DEFAULT_SERVER_NAME: &str = "mxd";
@@ -32,7 +34,7 @@ const DEFAULT_SERVER_NAME: &str = "mxd";
 pub enum ClientKind {
     /// `SynHX` client identified by handshake sub-version 2.
     SynHx,
-    /// Hotline 1.8.5 client (login version < 190).
+    /// Hotline 1.8.5 client (login version 151..=189).
     Hotline85,
     /// Hotline 1.9 client (login version >= 190).
     Hotline19,
@@ -44,7 +46,7 @@ pub enum ClientKind {
 #[derive(Debug)]
 pub struct ClientCompatibility {
     handshake_sub_version: u16,
-    login_version: AtomicU16,
+    login_version: AtomicU32,
 }
 
 impl ClientCompatibility {
@@ -53,24 +55,23 @@ impl ClientCompatibility {
     pub const fn from_handshake(handshake: &HandshakeMetadata) -> Self {
         Self {
             handshake_sub_version: handshake.sub_version,
-            login_version: AtomicU16::new(UNKNOWN_LOGIN_VERSION),
+            login_version: AtomicU32::new(UNKNOWN_LOGIN_VERSION),
         }
     }
 
     /// Record the client version observed in the login request.
     pub fn record_login_version(&self, version: u16) {
-        self.login_version.store(version, Ordering::Relaxed);
+        self.login_version
+            .store(u32::from(version), Ordering::Relaxed);
     }
 
     /// Return the recorded login version, if available.
     #[must_use]
     pub fn login_version(&self) -> Option<u16> {
         let version = self.login_version.load(Ordering::Relaxed);
-        if version == UNKNOWN_LOGIN_VERSION {
-            None
-        } else {
-            Some(version)
-        }
+        (version != UNKNOWN_LOGIN_VERSION)
+            .then_some(version)
+            .and_then(|raw| u16::try_from(raw).ok())
     }
 
     /// Classify the connection by known handshake and login metadata.
@@ -81,8 +82,8 @@ impl ClientCompatibility {
         }
         match self.login_version() {
             Some(version) if version >= HOTLINE_19_MIN_VERSION => ClientKind::Hotline19,
-            Some(_) => ClientKind::Hotline85,
-            None => ClientKind::Unknown,
+            Some(version) if version >= HOTLINE_85_MIN_VERSION => ClientKind::Hotline85,
+            Some(_) | None => ClientKind::Unknown,
         }
     }
 
@@ -167,11 +168,6 @@ fn parse_login_version(data: &[u8]) -> Option<u16> {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::big_endian_bytes,
-        reason = "test vectors validate network-endian encoding"
-    )]
-
     use rstest::rstest;
 
     use super::*;
@@ -224,8 +220,7 @@ mod tests {
     #[rstest]
     fn records_login_version_from_u16_payload() {
         let compat = ClientCompatibility::from_handshake(&handshake(0));
-        let payload =
-            encode_params(&[(FieldId::Version, 151u16.to_be_bytes())]).expect("payload encodes");
+        let payload = encode_params(&[(FieldId::Version, [0u8, 151u8])]).expect("payload encodes");
 
         compat
             .record_login_payload(&payload)
@@ -238,7 +233,7 @@ mod tests {
     fn records_login_version_from_u32_payload() {
         let compat = ClientCompatibility::from_handshake(&handshake(0));
         let payload =
-            encode_params(&[(FieldId::Version, 190u32.to_be_bytes())]).expect("payload encodes");
+            encode_params(&[(FieldId::Version, [0u8, 0u8, 0u8, 190u8])]).expect("payload encodes");
 
         compat
             .record_login_payload(&payload)
@@ -254,8 +249,8 @@ mod tests {
     ) {
         let compat = ClientCompatibility::from_handshake(&handshake(sub_version));
         compat.record_login_version(login_version);
-        let payload = encode_params(&[(FieldId::Version, login_version.to_be_bytes())])
-            .expect("payload encodes");
+        let version_bytes = [(login_version >> 8) as u8, (login_version & 0x00ff) as u8];
+        let payload = encode_params(&[(FieldId::Version, version_bytes)]).expect("payload encodes");
         let header = reply_header(payload.len());
         let mut reply = Transaction { header, payload };
 
@@ -277,5 +272,19 @@ mod tests {
     #[rstest]
     fn does_not_augment_login_reply_for_synhx() {
         assert_login_reply_augmentation(SYNHX_SUB_VERSION, 190, false);
+    }
+
+    #[rstest]
+    fn classifies_unknown_for_older_login_versions() {
+        let compat = ClientCompatibility::from_handshake(&handshake(0));
+        compat.record_login_version(100);
+        assert_eq!(compat.kind(), ClientKind::Unknown);
+    }
+
+    #[rstest]
+    fn records_u16_max_version_without_sentinel_collision() {
+        let compat = ClientCompatibility::from_handshake(&handshake(0));
+        compat.record_login_version(u16::MAX);
+        assert_eq!(compat.login_version(), Some(u16::MAX));
     }
 }

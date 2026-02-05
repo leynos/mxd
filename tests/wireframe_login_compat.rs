@@ -1,5 +1,4 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
 //! Behavioural tests for login compatibility gating.
 
@@ -93,7 +92,7 @@ impl LoginCompatWorld {
         if self.is_skipped() {
             return;
         }
-        let version_bytes = version.to_be_bytes();
+        let version_bytes = [(version >> 8) as u8, (version & 0x00ff) as u8];
         let frame = match build_frame(
             TransactionType::Login,
             1,
@@ -176,7 +175,7 @@ impl LoginCompatWorld {
             if should_include {
                 let banner = banner_field.expect("missing banner id");
                 let server = server_field.expect("missing server name");
-                assert_eq!(banner.1, 0i32.to_be_bytes());
+                assert_eq!(banner.1, [0u8, 0u8, 0u8, 0u8]);
                 assert_eq!(server.1, b"mxd");
             } else {
                 assert!(banner_field.is_none());
