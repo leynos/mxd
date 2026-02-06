@@ -199,6 +199,18 @@ preamble. Entries are cleared on connection teardown to prevent leakage between
 sessions while keeping the data available for the full lifetime of each
 connection.
 
+Handshake metadata and login payloads now feed a `ClientCompatibility` policy
+in the wireframe adapter. The handshake sub-version is reserved for SynHX
+identification (`sub_version == 2`), while the login request's version field
+(field 160) distinguishes Hotline 1.8.5 from 1.9 clients (`151..=189` vs
+`>= 190`). Login replies always report server version 151, include banner
+fields 161/162 for Hotline 1.8.5 and 1.9 clients, and omit those fields for
+SynHX. Future quirks must consult this policy so adapter-layer gating remains
+centralized. ADR-002 and ADR-003 track follow-on guardrails that make routing
+entrypoints compatibility-aware by default and split login authentication
+strategies from reply augmentation to support HOPE extensions and SynHX hashed
+authentication.
+
 ### Exclusive OR (XOR) text-field compatibility
 
 Some Hotline clients (including SynHX) obfuscate text parameters by exclusive
@@ -961,7 +973,7 @@ implementation differences. For instance:
   `BOOLEAN` is fine in Postgres and in SQLite it ends up as 0/1 integer
   (Diesel’s bool mapping covers
   it)([7](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L65-L68));
-   `INTEGER` for integer types, etc. Some types don’t line up – e.g. `BYTEA` vs
+  `INTEGER` for integer types, etc. Some types don’t line up – e.g. `BYTEA` vs
   `BLOB` for binary data – but we avoid unsupported types or handle them
   conditionally. The doc notes that JSONB or timezone-aware timestamps aren’t
   portable, so we either avoid them or supply separate SQL. For example, we

@@ -18,6 +18,8 @@ use mxd::{
     transaction_type::TransactionType,
     wireframe::{
         compat::XorCompatibility,
+        compat_policy::ClientCompatibility,
+        connection::HandshakeMetadata,
         routes::{RouteContext, process_transaction_bytes},
         test_helpers::dummy_pool,
     },
@@ -45,6 +47,7 @@ struct RoutingWorld {
     session: RefCell<Session>,
     reply: RefCell<Option<Result<Transaction, String>>>,
     compat: Arc<XorCompatibility>,
+    client_compat: Arc<ClientCompatibility>,
     skipped: Cell<bool>,
 }
 
@@ -60,6 +63,9 @@ impl RoutingWorld {
             session: RefCell::new(Session::default()),
             reply: RefCell::new(None),
             compat: Arc::new(XorCompatibility::disabled()),
+            client_compat: Arc::new(ClientCompatibility::from_handshake(
+                &HandshakeMetadata::default(),
+            )),
             skipped: Cell::new(false),
         }
     }
@@ -127,6 +133,7 @@ impl RoutingWorld {
                     session: &mut session,
                     messaging: &messaging,
                     compat: compat.as_ref(),
+                    client_compat: self.client_compat.as_ref(),
                 },
             )
             .await

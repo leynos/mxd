@@ -45,6 +45,34 @@ fn process_transaction_bytes_login_success() -> Result<(), AnyError> {
     Ok(())
 }
 
+#[expect(clippy::big_endian_bytes, reason = "network protocol")]
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
+fn process_transaction_bytes_login_hotline_19_includes_banner_fields() -> Result<(), AnyError> {
+    let rt = runtime()?;
+    let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
+        return Ok(());
+    };
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
+    let version = 190u16.to_be_bytes();
+
+    let reply = rt.block_on(ctx.send(
+        TransactionType::Login,
+        2,
+        &[
+            (FieldId::Login, b"alice"),
+            (FieldId::Password, b"secret"),
+            (FieldId::Version, version.as_ref()),
+        ],
+    ))?;
+
+    assert_eq!(reply.header.error, 0);
+    let params = decode_reply_params(&reply)?;
+    assert_eq!(find_i32(&params, FieldId::BannerId)?, 0);
+    assert_eq!(find_string(&params, FieldId::ServerName)?, "mxd");
+    Ok(())
+}
+
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 fn process_transaction_bytes_login_success_with_xor_password() -> Result<(), AnyError> {

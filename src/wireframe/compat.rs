@@ -150,6 +150,7 @@ const fn is_text_field(field: FieldId) -> bool {
         field,
         FieldId::Login
             | FieldId::Password
+            | FieldId::ServerName
             | FieldId::Data
             | FieldId::NewsCategory
             | FieldId::NewsArticle

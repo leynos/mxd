@@ -36,6 +36,8 @@ use crate::{
     transaction_type::TransactionType,
     wireframe::{
         compat::XorCompatibility,
+        compat_policy::ClientCompatibility,
+        connection::HandshakeMetadata,
         test_helpers::{dummy_pool, transaction_bytes},
     },
 };
@@ -192,6 +194,7 @@ async fn process_transaction_bytes_truncated_input() {
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
     let compat = XorCompatibility::disabled();
+    let client_compat = ClientCompatibility::from_handshake(&HandshakeMetadata::default());
 
     // Send only 10 bytes (less than HEADER_LEN = 20).
     let truncated = vec![0u8; 10];
@@ -203,6 +206,7 @@ async fn process_transaction_bytes_truncated_input() {
             session: &mut session,
             messaging: &messaging,
             compat: &compat,
+            client_compat: &client_compat,
         },
     )
     .await;
@@ -223,6 +227,7 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
     let compat = XorCompatibility::disabled();
+    let client_compat = ClientCompatibility::from_handshake(&HandshakeMetadata::default());
 
     let frame = transaction_bytes(&header, payload);
 
@@ -234,6 +239,7 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
             session: &mut session,
             messaging: &messaging,
             compat: &compat,
+            client_compat: &client_compat,
         },
     )
     .await;
@@ -298,12 +304,16 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     let peer = "127.0.0.1:12345".parse().expect("peer addr");
     let messaging = Arc::new(NoopOutboundMessaging);
     let compat = Arc::new(XorCompatibility::disabled());
+    let client_compat = Arc::new(ClientCompatibility::from_handshake(
+        &HandshakeMetadata::default(),
+    ));
     let middleware = TransactionMiddleware::new(TransactionMiddlewareConfig {
         pool,
         session: Arc::clone(&session),
         peer,
         messaging,
         compat,
+        client_compat,
     });
 
     let calls = Arc::new(AtomicUsize::new(0));

@@ -15,6 +15,10 @@ pub enum FieldId {
     Password,
     /// Client version information.
     Version,
+    /// Banner identifier used for HTTP banner retrieval.
+    BannerId,
+    /// Server name string returned during login.
+    ServerName,
     /// Generic data payload (often message text).
     Data,
     /// News category list entry returned by the server.
@@ -63,6 +67,8 @@ impl From<u16> for FieldId {
             105 => Self::Login,
             106 => Self::Password,
             160 => Self::Version,
+            161 => Self::BannerId,
+            162 => Self::ServerName,
             323 => Self::NewsCategory,
             321 => Self::NewsArticle,
             326 => Self::NewsArticleId,
@@ -89,6 +95,8 @@ impl From<FieldId> for u16 {
             FieldId::Login => 105,
             FieldId::Password => 106,
             FieldId::Version => 160,
+            FieldId::BannerId => 161,
+            FieldId::ServerName => 162,
             FieldId::Data => 101,
             FieldId::NewsCategory => 323,
             FieldId::NewsArticle => 321,
@@ -116,6 +124,8 @@ impl std::fmt::Display for FieldId {
             Self::Login => f.write_str("Login"),
             Self::Password => f.write_str("Password"),
             Self::Version => f.write_str("Version"),
+            Self::BannerId => f.write_str("BannerId"),
+            Self::ServerName => f.write_str("ServerName"),
             Self::Data => f.write_str("Data"),
             Self::NewsCategory => f.write_str("NewsCategory"),
             Self::NewsArticle => f.write_str("NewsArticle"),

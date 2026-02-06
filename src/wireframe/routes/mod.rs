@@ -40,7 +40,7 @@ use crate::{
     server::outbound::{OutboundMessaging, ReplyBuffer},
     transaction::{FrameHeader, Transaction, parse_transaction},
     transaction_type::TransactionType,
-    wireframe::compat::XorCompatibility,
+    wireframe::{compat::XorCompatibility, compat_policy::ClientCompatibility},
 };
 
 mod reply_builder;
@@ -62,6 +62,8 @@ pub struct RouteContext<'a> {
     pub messaging: &'a dyn OutboundMessaging,
     /// XOR compatibility state for this connection.
     pub compat: &'a XorCompatibility,
+    /// Client compatibility policy for handshake and login quirks.
+    pub client_compat: &'a ClientCompatibility,
 }
 
 #[cfg(test)]
@@ -123,28 +125,20 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
         session,
         messaging,
         compat,
+        client_compat,
     } = context;
-    // Parse the frame as a domain Transaction
     let transaction = match parse_transaction(frame) {
         Ok(tx) => tx,
         Err(e) => return handle_parse_error(peer, frame, e),
     };
-
     let header = transaction.header.clone();
-    let decoded_payload = if TransactionType::from(header.ty).allows_payload() {
-        match compat.decode_payload(&transaction.payload) {
-            Ok(payload) => payload,
-            Err(e) => return handle_command_parse_error(peer, &header, e),
-        }
-    } else {
-        transaction.payload.clone()
+    let tx_type = TransactionType::from(header.ty);
+    let tx = match decode_payload_for_transaction(peer, tx_type, transaction, compat) {
+        Ok(tx) => tx,
+        Err(reply) => return reply,
     };
-    let tx = Transaction {
-        payload: decoded_payload,
-        ..transaction
-    };
+    record_login_version_if_needed(tx_type, client_compat, &tx.payload);
 
-    // Parse into Command and process
     let cmd = match Command::from_transaction(tx) {
         Ok(cmd) => cmd,
         Err(e) => return handle_command_parse_error(peer, &header, e),
@@ -162,12 +156,67 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
         messaging,
     };
     match cmd.process_with_outbound(command_context).await {
-        Ok(()) => transport.take_reply().map_or_else(
-            || handle_missing_reply(peer, &header),
-            |reply| reply.to_bytes(),
-        ),
+        Ok(()) => finalize_reply(peer, &header, transport, client_compat),
         Err(e) => handle_process_error(peer, &header, e),
     }
+}
+
+/// Decode transaction payload bytes when the transaction type carries payload.
+///
+/// Transactions without payload are passed through unchanged.
+fn decode_payload_for_transaction(
+    peer: SocketAddr,
+    tx_type: TransactionType,
+    transaction: Transaction,
+    compat: &XorCompatibility,
+) -> Result<Transaction, Vec<u8>> {
+    if !tx_type.allows_payload() {
+        return Ok(transaction);
+    }
+    let decoded_payload = match compat.decode_payload(&transaction.payload) {
+        Ok(payload) => payload,
+        Err(e) => return Err(handle_command_parse_error(peer, &transaction.header, e)),
+    };
+    Ok(Transaction {
+        payload: decoded_payload,
+        ..transaction
+    })
+}
+
+/// Record login version metadata for compatibility policy when handling login.
+fn record_login_version_if_needed(
+    tx_type: TransactionType,
+    client_compat: &ClientCompatibility,
+    payload: &[u8],
+) {
+    if tx_type == TransactionType::Login
+        && let Err(error) = client_compat.record_login_payload(payload)
+    {
+        tracing::warn!(%error, "failed to record login version from payload");
+    }
+}
+
+/// Finalize a successful command reply and apply client compatibility extras.
+fn finalize_reply(
+    peer: SocketAddr,
+    header: &FrameHeader,
+    mut transport: ReplyBuffer,
+    client_compat: &ClientCompatibility,
+) -> Vec<u8> {
+    transport.take_reply().map_or_else(
+        || handle_missing_reply(peer, header),
+        |mut reply| {
+            if let Err(error) = client_compat.augment_login_reply(&mut reply) {
+                tracing::warn!(
+                    %error,
+                    client_kind = ?client_compat.kind(),
+                    login_version = ?client_compat.login_version(),
+                    "failed to apply login compatibility extras"
+                );
+            }
+            reply.to_bytes()
+        },
+    )
 }
 
 /// Convert a transaction to raw bytes.
@@ -249,6 +298,7 @@ pub struct TransactionMiddleware {
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
     compat: Arc<XorCompatibility>,
+    client_compat: Arc<ClientCompatibility>,
 }
 
 /// Construction parameters for [`TransactionMiddleware`].
@@ -263,6 +313,8 @@ pub struct TransactionMiddlewareConfig {
     pub(crate) messaging: Arc<dyn OutboundMessaging>,
     /// XOR compatibility state for the connection.
     pub(crate) compat: Arc<XorCompatibility>,
+    /// Client compatibility policy for handshake and login quirks.
+    pub(crate) client_compat: Arc<ClientCompatibility>,
 }
 
 impl TransactionMiddleware {
@@ -275,6 +327,7 @@ impl TransactionMiddleware {
             peer: config.peer,
             messaging: config.messaging,
             compat: config.compat,
+            client_compat: config.client_compat,
         }
     }
 }
@@ -287,6 +340,7 @@ struct TransactionHandler {
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
     compat: Arc<XorCompatibility>,
+    client_compat: Arc<ClientCompatibility>,
 }
 
 #[async_trait]
@@ -304,6 +358,7 @@ impl Service for TransactionHandler {
                     session: &mut session_guard,
                     messaging: self.messaging.as_ref(),
                     compat: &self.compat,
+                    client_compat: &self.client_compat,
                 },
             )
             .await
@@ -330,6 +385,7 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
             peer: self.peer,
             messaging: Arc::clone(&self.messaging),
             compat: Arc::clone(&self.compat),
+            client_compat: Arc::clone(&self.client_compat),
         };
         HandlerService::from_service(id, wrapped)
     }

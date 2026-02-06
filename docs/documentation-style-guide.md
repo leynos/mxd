@@ -1,7 +1,7 @@
 # Documentation style guide
 
-This guide outlines conventions for authoring documentation for Lille. Apply
-these rules to keep the documentation clear and consistent for developers.
+This guide outlines conventions for authoring documentation for Velocetty.
+Apply these rules to keep the documentation clear and consistent for developers.
 
 ## Spelling
 
@@ -37,7 +37,7 @@ these rules to keep the documentation clear and consistent for developers.
 ## Markdown rules
 
 - Follow [markdownlint](https://github.com/DavidAnson/markdownlint)
-  recommendations[^markdownlint].
+  recommendations[^1].
 - Provide code blocks and lists using standard Markdown syntax.
 - Always provide a language identifier for fenced code blocks; use `plaintext`
   for non-code text.
@@ -229,7 +229,7 @@ Include these sections as appropriate to the decision's complexity:
 - **Options Considered:** Describe the alternatives evaluated. Use a comparison
   table when contrasting multiple options across several dimensions.
 - **Decision Outcome / Proposed Direction:** State the chosen approach and
-  summarise the rationale. For `Proposed` ADRs, describe the recommended
+  summarize the rationale. For `Proposed` ADRs, describe the recommended
   direction.
 - **Goals and Non-Goals:** Clarify what the decision aims to achieve and what
   is explicitly out of scope.
@@ -267,16 +267,16 @@ Proposed.
 
 YYYY-MM-DD.
 
-## Context and Problem Statement
+## Context and problem statement
 
 <Describe the situation, constraints, and the question being addressed.>
 
-## Decision Drivers
+## Decision drivers
 
 - <Driver 1>
 - <Driver 2>
 
-## Options Considered
+## Options considered
 
 ### Option A: <Name>
 
@@ -292,16 +292,16 @@ YYYY-MM-DD.
 
 _Table 1: Comparison of options._
 
-## Decision Outcome / Proposed Direction
+## Decision outcome / proposed direction
 
-<State the chosen or recommended approach and summarise the rationale.>
+<State the chosen or recommended approach and summarize the rationale.>
 
-## Known Risks and Limitations
+## Known risks and limitations
 
 - <Risk or limitation 1>
 - <Risk or limitation 2>
 
-## Outstanding Decisions
+## Outstanding decisions
 
 - <Open question 1>
 - <Open question 2>
@@ -309,4 +309,4 @@ _Table 1: Comparison of options._
 
 ______________________________________________________________________
 
-[^markdownlint]: A linter that enforces consistent Markdown formatting.
+[^1]: A linter that enforces consistent Markdown formatting.

@@ -20,6 +20,7 @@ pub use fixtures::{
     DatabaseUrl,
     ensure_test_user,
     setup_files_db,
+    setup_login_db,
     setup_news_categories_nested_db,
     setup_news_categories_root_db,
     setup_news_categories_with_structure,
