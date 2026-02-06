@@ -21,13 +21,13 @@ use mxd::{
     },
 };
 use rstest::fixture;
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_login_db};
 use tokio::runtime::Runtime;
 
 /// Shared BDD world state for login compatibility scenarios.
 struct LoginCompatWorld {
-    rt: Runtime,
+    runtime: Runtime,
     peer: SocketAddr,
     pool: RefCell<DbPool>,
     db_guard: RefCell<Option<TestDb>>,
@@ -40,13 +40,14 @@ struct LoginCompatWorld {
 
 impl LoginCompatWorld {
     fn new() -> Self {
-        #[expect(clippy::expect_used, reason = "runtime setup in test harness")]
-        let rt = Runtime::new().expect("runtime");
-        #[expect(clippy::expect_used, reason = "fixed test fixture address parses")]
-        let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
+        let peer = "127.0.0.1:12345"
+            .parse()
+            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
         let handshake = HandshakeMetadata::default();
+        let runtime =
+            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
         Self {
-            rt,
+            runtime,
             peer,
             pool: RefCell::new(mxd::wireframe::test_helpers::dummy_pool()),
             db_guard: RefCell::new(None),
@@ -64,7 +65,7 @@ impl LoginCompatWorld {
         if self.is_skipped() {
             return;
         }
-        let db = match build_test_db(&self.rt, setup) {
+        let db = match build_test_db(&self.runtime, setup) {
             Ok(Some(db)) => db,
             Ok(None) => {
                 self.skipped.set(true);
@@ -128,20 +129,17 @@ impl LoginCompatWorld {
         let messaging = NoopOutboundMessaging;
         let compat = Arc::clone(&self.compat);
         let client_compat = Arc::clone(&self.client_compat.borrow());
-        let reply = self.rt.block_on(async {
-            process_transaction_bytes(
-                frame,
-                RouteContext {
-                    peer,
-                    pool,
-                    session: &mut session,
-                    messaging: &messaging,
-                    compat: compat.as_ref(),
-                    client_compat: client_compat.as_ref(),
-                },
-            )
-            .await
-        });
+        let reply = self.runtime.block_on(process_transaction_bytes(
+            frame,
+            RouteContext {
+                peer,
+                pool,
+                session: &mut session,
+                messaging: &messaging,
+                compat: compat.as_ref(),
+                client_compat: client_compat.as_ref(),
+            },
+        ));
         self.session.replace(session);
         let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
         self.reply.borrow_mut().replace(outcome);
@@ -175,19 +173,17 @@ impl LoginCompatWorld {
                 TransactionType::Login,
                 "expected Login reply, got {tx_type:?}"
             );
-            #[expect(
-                clippy::expect_used,
-                reason = "behavioural test asserts decodable reply"
-            )]
-            let params = decode_params(&tx.payload).expect("decode reply params");
+            let params = decode_params(&tx.payload)
+                .unwrap_or_else(|err| panic!("failed to decode reply params: {err}"));
             let banner_field = params.iter().find(|(id, _)| *id == FieldId::BannerId);
             let server_field = params.iter().find(|(id, _)| *id == FieldId::ServerName);
 
             if should_include {
-                #[expect(clippy::expect_used, reason = "behavioural test asserts banner field")]
-                let banner = banner_field.expect("missing banner id");
-                #[expect(clippy::expect_used, reason = "behavioural test asserts server field")]
-                let server = server_field.expect("missing server name");
+                let (banner, server) = match (banner_field, server_field) {
+                    (Some(banner), Some(server)) => (banner, server),
+                    (None, _) => panic!("missing banner id"),
+                    (_, None) => panic!("missing server name"),
+                };
                 assert_eq!(banner.1, [0u8, 0u8, 0u8, 0u8]);
                 assert_eq!(server.1, b"mxd");
             } else {
@@ -228,11 +224,7 @@ fn then_includes_banner_fields(world: &LoginCompatWorld) { world.assert_banner_f
 #[then("the login reply omits banner fields")]
 fn then_omits_banner_fields(world: &LoginCompatWorld) { world.assert_banner_fields(false); }
 
-#[scenario(path = "tests/features/wireframe_login_compat.feature", index = 0)]
-fn hotline_85_login(world: LoginCompatWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_login_compat.feature", index = 1)]
-fn hotline_19_login(world: LoginCompatWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_login_compat.feature", index = 2)]
-fn synhx_login(world: LoginCompatWorld) { let _ = world; }
+scenarios!(
+    "tests/features/wireframe_login_compat.feature",
+    fixtures = [world: LoginCompatWorld]
+);

@@ -17,7 +17,7 @@ use mxd::{
 use proptest::prelude::*;
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 
 /// Return the bincode configuration for Hotline transaction decoding.
 ///
@@ -181,33 +181,10 @@ fn then_failure(world: &TransactionWorld, message: String) {
     });
 }
 
-// Scenario bindings
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 0)]
-fn single_frame_with_payload(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 1)]
-fn empty_transaction(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 2)]
-fn multi_fragment_request(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 3)]
-fn rejects_data_exceeds_total(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 4)]
-fn rejects_empty_data_nonzero_total(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 5)]
-fn rejects_invalid_flags(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 6)]
-fn rejects_oversized_total(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 7)]
-fn rejects_oversized_data(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 8)]
-fn rejects_mismatched_continuation(world: TransactionWorld) { let _ = world; }
+scenarios!(
+    "tests/features/wireframe_transaction.feature",
+    fixtures = [world: TransactionWorld]
+);
 
 // -----------------------------------------------------------------------------
 // Property Tests

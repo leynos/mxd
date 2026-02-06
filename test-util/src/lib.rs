@@ -15,7 +15,7 @@ mod fixtures;
 mod protocol;
 mod server;
 
-pub use bdd_helpers::{SetupFn, TestDb, build_test_db};
+pub use bdd_helpers::{SetupFn, TestDb, build_test_db, build_test_db_async};
 pub use fixtures::{
     DatabaseUrl,
     ensure_test_user,

@@ -6,7 +6,7 @@ use std::cell::RefCell;
 
 use mxd_verification::session_model::SessionModel;
 use rstest::fixture;
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 use stateright::Model;
 use verification_harness::{MIN_STATE_COUNT, verify_session_model};
 
@@ -41,6 +41,8 @@ struct VerificationWorld {
     result: RefCell<Option<VerificationResult>>,
 }
 
+type WorldResult = Result<VerificationWorld, Box<dyn std::error::Error>>;
+
 impl VerificationWorld {
     fn new() -> Self {
         Self {
@@ -70,7 +72,7 @@ impl VerificationWorld {
 }
 
 #[fixture]
-fn world() -> Result<VerificationWorld, Box<dyn std::error::Error>> {
+fn world() -> WorldResult {
     let world = VerificationWorld::new();
     if world.result.borrow().is_some() {
         return Err(Box::new(VerificationError::AlreadyExecuted));
@@ -78,15 +80,11 @@ fn world() -> Result<VerificationWorld, Box<dyn std::error::Error>> {
     Ok(world)
 }
 
-fn resolve_world(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<&VerificationWorld, Box<dyn std::error::Error>> {
+fn resolve_world(world: &WorldResult) -> Result<&VerificationWorld, Box<dyn std::error::Error>> {
     world.as_ref().map_err(|error| error.to_string().into())
 }
 
-fn ensure_unverified(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_unverified(world: &WorldResult) -> Result<(), Box<dyn std::error::Error>> {
     if resolve_world(world)?.result.borrow().is_some() {
         return Err(Box::new(VerificationError::AlreadyExecuted));
     }
@@ -94,9 +92,7 @@ fn ensure_unverified(
 }
 
 #[given("the session gating model uses default bounds")]
-fn given_default_model(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn given_default_model(world: &WorldResult) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
     let resolved_world = resolve_world(world)?;
     resolved_world.set_model(SessionModel::default());
@@ -104,9 +100,7 @@ fn given_default_model(
 }
 
 #[when("I verify the session gating model")]
-fn when_verify_model(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn when_verify_model(world: &WorldResult) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
     let resolved_world = resolve_world(world)?;
     resolved_world.verify();
@@ -114,18 +108,14 @@ fn when_verify_model(
 }
 
 #[then("the verification completes")]
-fn then_verification_completes(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn then_verification_completes(world: &WorldResult) -> Result<(), Box<dyn std::error::Error>> {
     let resolved_world = resolve_world(world)?;
     assert!(resolved_world.result()?.ran);
     Ok(())
 }
 
 #[then("the properties are satisfied")]
-fn then_properties_satisfied(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn then_properties_satisfied(world: &WorldResult) -> Result<(), Box<dyn std::error::Error>> {
     let resolved_world = resolve_world(world)?;
     let result = resolved_world.result()?;
     assert!(
@@ -138,7 +128,7 @@ fn then_properties_satisfied(
 
 #[then("the model explores at least {count} states")]
 fn then_state_space_size(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+    world: &WorldResult,
     count: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     assert!(
@@ -156,9 +146,7 @@ fn then_state_space_size(
 }
 
 #[then("the model includes the out-of-order delivery property")]
-fn then_out_of_order_property(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn then_out_of_order_property(world: &WorldResult) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
     let resolved_world = resolve_world(world)?;
     let properties = resolved_world.model.borrow().properties();
@@ -170,38 +158,7 @@ fn then_out_of_order_property(
     Ok(())
 }
 
-#[scenario(
-    path = "../../tests/features/session_gating_verification.feature",
-    index = 0
-)]
-fn session_model_verifies_default_bounds(
-    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
-) {
-    if let Err(error) = world {
-        panic!("world fixture failed: {error}");
-    }
-}
-
-#[scenario(
-    path = "../../tests/features/session_gating_verification.feature",
-    index = 1
-)]
-fn session_model_explores_state_space(
-    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
-) {
-    if let Err(error) = world {
-        panic!("world fixture failed: {error}");
-    }
-}
-
-#[scenario(
-    path = "../../tests/features/session_gating_verification.feature",
-    index = 2
-)]
-fn session_model_registers_out_of_order_property(
-    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
-) {
-    if let Err(error) = world {
-        panic!("world fixture failed: {error}");
-    }
-}
+scenarios!(
+    "../../tests/features/session_gating_verification.feature",
+    fixtures = [world: WorldResult]
+);

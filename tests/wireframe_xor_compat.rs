@@ -23,12 +23,12 @@ use mxd::{
     },
 };
 use rstest::fixture;
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_files_db, setup_news_db};
 use tokio::runtime::Runtime;
 
 struct XorWorld {
-    rt: Runtime,
+    runtime: Runtime,
     peer: SocketAddr,
     pool: RefCell<DbPool>,
     db_guard: RefCell<Option<TestDb>>,
@@ -39,13 +39,15 @@ struct XorWorld {
     skipped: Cell<bool>,
 }
 
-#[expect(clippy::expect_used, reason = "test assertions")]
 impl XorWorld {
     fn new() -> Self {
-        let rt = Runtime::new().expect("runtime");
-        let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
+        let peer = "127.0.0.1:12345"
+            .parse()
+            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
+        let runtime =
+            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
         Self {
-            rt,
+            runtime,
             peer,
             pool: RefCell::new(mxd::wireframe::test_helpers::dummy_pool()),
             db_guard: RefCell::new(None),
@@ -65,7 +67,7 @@ impl XorWorld {
         if self.is_skipped() {
             return;
         }
-        let db = match build_test_db(&self.rt, setup) {
+        let db = match build_test_db(&self.runtime, setup) {
             Ok(Some(db)) => db,
             Ok(None) => {
                 self.skipped.set(true);
@@ -110,20 +112,17 @@ impl XorWorld {
         let mut session = self.session.replace(Session::default());
         let messaging = NoopOutboundMessaging;
         let compat = Arc::clone(&self.compat);
-        let reply = self.rt.block_on(async {
-            process_transaction_bytes(
-                frame,
-                RouteContext {
-                    peer,
-                    pool,
-                    session: &mut session,
-                    messaging: &messaging,
-                    compat: compat.as_ref(),
-                    client_compat: self.client_compat.as_ref(),
-                },
-            )
-            .await
-        });
+        let reply = self.runtime.block_on(process_transaction_bytes(
+            frame,
+            RouteContext {
+                peer,
+                pool,
+                session: &mut session,
+                messaging: &messaging,
+                compat: compat.as_ref(),
+                client_compat: self.client_compat.as_ref(),
+            },
+        ));
         self.session.replace(session);
         let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
         self.reply.borrow_mut().replace(outcome);
@@ -145,7 +144,7 @@ impl XorWorld {
 #[fixture]
 fn world() -> XorWorld {
     let world = XorWorld::new();
-    let _ = world.is_skipped();
+    debug_assert!(!world.is_skipped(), "world starts active");
     world
 }
 
@@ -225,11 +224,7 @@ fn then_xor_enabled(world: &XorWorld) {
     assert!(world.compat.is_enabled());
 }
 
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 0)]
-fn xor_login(world: XorWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 1)]
-fn xor_message(world: XorWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 2)]
-fn xor_news(world: XorWorld) { let _ = world; }
+scenarios!(
+    "tests/features/wireframe_xor_compat.feature",
+    fixtures = [world: XorWorld]
+);

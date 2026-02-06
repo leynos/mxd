@@ -1,5 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 //! Behavioural tests for wireframe transaction encoding parity.
 
 use std::cell::RefCell;
@@ -12,8 +10,8 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
-use rstest_bdd_macros::{given, scenario, then, when};
-use tokio::{io::AsyncReadExt, runtime::Runtime};
+use rstest_bdd_macros::{given, scenarios, then, when};
+use tokio::io::AsyncReadExt;
 
 fn hotline_config() -> impl bincode::config::Config {
     config::standard()
@@ -26,7 +24,6 @@ struct EncodingWorld {
     transaction: RefCell<Option<Transaction>>,
     setup_error: RefCell<Option<String>>,
     outcome: RefCell<Option<Result<EncodingResult, String>>>,
-    rt: Runtime,
 }
 
 struct EncodingResult {
@@ -35,14 +32,12 @@ struct EncodingResult {
 }
 
 impl EncodingWorld {
-    fn new() -> Self {
-        let rt = Runtime::new().expect("runtime");
+    const fn new() -> Self {
         Self {
             params: RefCell::new(Vec::new()),
             transaction: RefCell::new(None),
             setup_error: RefCell::new(None),
             outcome: RefCell::new(None),
-            rt,
         }
     }
 
@@ -80,38 +75,38 @@ impl EncodingWorld {
         }
     }
 
-    fn encode(&self) {
+    async fn encode(&self) {
         if let Some(err) = self.setup_error.borrow().clone() {
             self.outcome.borrow_mut().replace(Err(err));
             return;
         }
         let params = self.params.borrow().clone();
         let maybe_tx = self.transaction.borrow().clone();
-        let result: Result<EncodingResult, String> = maybe_tx.map_or_else(
-            || {
+        let result: Result<EncodingResult, String> = async {
+            if let Some(tx) = maybe_tx {
+                let legacy_tx = tx.clone();
+                let hotline = HotlineTransaction::try_from(tx).map_err(|e| e.to_string())?;
+                let wireframe_bytes =
+                    encode_to_vec(&hotline, hotline_config()).map_err(|e| e.to_string())?;
+                let legacy_bytes = legacy_encode(&legacy_tx).await?;
+                Ok(EncodingResult {
+                    wireframe_bytes,
+                    legacy_bytes,
+                })
+            } else {
                 let hotline = HotlineTransaction::request_from_params(107, 1, &params)
                     .map_err(|e| e.to_string())?;
                 let wireframe_bytes =
                     encode_to_vec(&hotline, hotline_config()).map_err(|e| e.to_string())?;
                 let legacy_tx = legacy_transaction_from_params(107, 1, &params)?;
-                let legacy_bytes = self.rt.block_on(legacy_encode(&legacy_tx))?;
+                let legacy_bytes = legacy_encode(&legacy_tx).await?;
                 Ok(EncodingResult {
                     wireframe_bytes,
                     legacy_bytes,
                 })
-            },
-            |tx| {
-                let legacy_tx = tx.clone();
-                let hotline = HotlineTransaction::try_from(tx).map_err(|e| e.to_string())?;
-                let wireframe_bytes =
-                    encode_to_vec(&hotline, hotline_config()).map_err(|e| e.to_string())?;
-                let legacy_bytes = self.rt.block_on(legacy_encode(&legacy_tx))?;
-                Ok(EncodingResult {
-                    wireframe_bytes,
-                    legacy_bytes,
-                })
-            },
-        );
+            }
+        }
+        .await;
         self.outcome.borrow_mut().replace(result);
     }
 
@@ -317,7 +312,7 @@ fn given_oversized_parameter_transaction(world: &EncodingWorld) {
 }
 
 #[when("I encode the transaction")]
-fn when_encode(world: &EncodingWorld) { world.encode(); }
+async fn when_encode(world: &EncodingWorld) { world.encode().await; }
 
 #[then("encoding succeeds")]
 fn then_succeeds(world: &EncodingWorld) {
@@ -338,7 +333,8 @@ fn then_bytes_match(world: &EncodingWorld) {
 fn then_fragmented(world: &EncodingWorld, frames: usize) {
     world.with_outcome(|outcome| {
         let result = assert_step_ok!(outcome.as_ref().map_err(ToString::to_string));
-        let count = count_frames(&result.wireframe_bytes).expect("frame count");
+        let count = count_frames(&result.wireframe_bytes)
+            .unwrap_or_else(|err| panic!("frame count should parse: {err}"));
         assert_eq!(count, frames);
     });
 }
@@ -354,62 +350,8 @@ fn then_fails(world: &EncodingWorld, message: String) {
     });
 }
 
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 0
-)]
-fn single_frame_param_transaction(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 1
-)]
-fn empty_param_transaction(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 2
-)]
-fn fragmented_param_transaction(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 3
-)]
-fn three_frame_param_transaction(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 4
-)]
-fn try_from_transaction_succeeds(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 5
-)]
-fn rejects_invalid_flags(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 6
-)]
-fn rejects_oversized_payload(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 7
-)]
-fn rejects_invalid_payload_structure(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 8
-)]
-fn rejects_oversized_params(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 9
-)]
-fn rejects_size_mismatch(world: EncodingWorld) { let _ = world; }
+scenarios!(
+    "tests/features/wireframe_transaction_encoding.feature",
+    runtime = "tokio-current-thread",
+    fixtures = [world: EncodingWorld]
+);
