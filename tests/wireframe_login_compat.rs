@@ -1,5 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 //! Behavioural tests for login compatibility gating.
 
 use std::{
@@ -41,7 +39,9 @@ struct LoginCompatWorld {
 
 impl LoginCompatWorld {
     fn new() -> Self {
+        #[expect(clippy::expect_used, reason = "runtime setup in test harness")]
         let rt = Runtime::new().expect("runtime");
+        #[expect(clippy::expect_used, reason = "fixed test fixture address parses")]
         let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
         let handshake = HandshakeMetadata::default();
         Self {
@@ -168,12 +168,18 @@ impl LoginCompatWorld {
                 TransactionType::Login,
                 "expected Login reply, got {tx_type:?}"
             );
+            #[expect(
+                clippy::expect_used,
+                reason = "behavioural test asserts decodable reply"
+            )]
             let params = decode_params(&tx.payload).expect("decode reply params");
             let banner_field = params.iter().find(|(id, _)| *id == FieldId::BannerId);
             let server_field = params.iter().find(|(id, _)| *id == FieldId::ServerName);
 
             if should_include {
+                #[expect(clippy::expect_used, reason = "behavioural test asserts banner field")]
                 let banner = banner_field.expect("missing banner id");
+                #[expect(clippy::expect_used, reason = "behavioural test asserts server field")]
                 let server = server_field.expect("missing server name");
                 assert_eq!(banner.1, [0u8, 0u8, 0u8, 0u8]);
                 assert_eq!(server.1, b"mxd");
