@@ -92,7 +92,11 @@ impl LoginCompatWorld {
         if self.is_skipped() {
             return;
         }
-        let version_bytes = [(version >> 8) as u8, (version & 0x00ff) as u8];
+        #[expect(
+            clippy::big_endian_bytes,
+            reason = "test fixture uses explicit network byte order payload"
+        )]
+        let version_bytes = version.to_be_bytes();
         let frame = match build_frame(
             TransactionType::Login,
             1,
@@ -194,7 +198,7 @@ impl LoginCompatWorld {
 #[fixture]
 fn world() -> LoginCompatWorld {
     let world = LoginCompatWorld::new();
-    debug_assert!(!world.is_skipped());
+    assert!(!world.is_skipped());
     world
 }
 
