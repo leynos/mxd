@@ -22,9 +22,10 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
-use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_files_db};
+use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_login_db};
 use tokio::runtime::Runtime;
 
+/// Shared BDD world state for login compatibility scenarios.
 struct LoginCompatWorld {
     rt: Runtime,
     peer: SocketAddr,
@@ -121,6 +122,8 @@ impl LoginCompatWorld {
         }
         let pool = self.pool.borrow().clone();
         let peer = self.peer;
+        // Move session state out to avoid holding a RefCell borrow across
+        // block_on while still passing a mutable session into routing.
         let mut session = self.session.replace(Session::default());
         let messaging = NoopOutboundMessaging;
         let compat = Arc::clone(&self.compat);
@@ -203,7 +206,7 @@ fn world() -> LoginCompatWorld {
 }
 
 #[given("a routing context with user accounts")]
-fn given_users(world: &LoginCompatWorld) { world.setup_db(setup_files_db); }
+fn given_users(world: &LoginCompatWorld) { world.setup_db(setup_login_db); }
 
 #[given("a handshake sub-version {sub_version}")]
 fn given_sub_version(world: &LoginCompatWorld, sub_version: u16) {

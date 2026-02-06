@@ -121,6 +121,20 @@ where
     })
 }
 
+/// Create a test database that contains only the default login user.
+///
+/// # Errors
+///
+/// Returns an error if database setup fails.
+pub fn setup_login_db(db: DatabaseUrl) -> Result<(), AnyError> {
+    with_db(db, |conn| {
+        Box::pin(async move {
+            ensure_test_user(conn).await?;
+            Ok(())
+        })
+    })
+}
+
 /// Create a test database with users and files for ACL testing.
 ///
 /// # Errors
