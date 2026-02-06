@@ -191,8 +191,14 @@ impl LoginCompatWorld {
                 assert_eq!(banner.1, [0u8, 0u8, 0u8, 0u8]);
                 assert_eq!(server.1, b"mxd");
             } else {
-                assert!(banner_field.is_none());
-                assert!(server_field.is_none());
+                assert!(
+                    banner_field.is_none(),
+                    "expected no banner_field for this client when should_include is false"
+                );
+                assert!(
+                    server_field.is_none(),
+                    "expected no server_field for this client when should_include is false"
+                );
             }
         });
     }
