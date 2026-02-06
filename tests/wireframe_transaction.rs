@@ -88,33 +88,29 @@ fn build_valid_payload(size: usize) -> Vec<u8> {
     payload
 }
 
-#[given("a transaction with total size {total} and data size {data}")]
-fn given_transaction_sizes(world: &TransactionWorld, total: u32, data: u32) {
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 107,
-        id: 1,
-        error: 0,
-        total_size: total,
-        data_size: data,
-    };
-    let payload = build_valid_payload(data as usize);
-    world.set_bytes(&transaction_bytes(&header, &payload));
-}
-
-#[given("a transaction with flags {flags}")]
-fn given_transaction_flags(world: &TransactionWorld, flags: u8) {
+/// Build a fixture transaction for BDD steps using shared default header values.
+fn build_transaction(world: &TransactionWorld, flags: u8, total_size: u32, data_size: u32) {
     let header = FrameHeader {
         flags,
         is_reply: 0,
         ty: 107,
         id: 1,
         error: 0,
-        total_size: 0,
-        data_size: 0,
+        total_size,
+        data_size,
     };
-    world.set_bytes(&transaction_bytes(&header, &[]));
+    let payload = build_valid_payload(data_size as usize);
+    world.set_bytes(&transaction_bytes(&header, &payload));
+}
+
+#[given("a transaction with total size {total} and data size {data}")]
+fn given_transaction_sizes(world: &TransactionWorld, total: u32, data: u32) {
+    build_transaction(world, 0, total, data);
+}
+
+#[given("a transaction with flags {flags}")]
+fn given_transaction_flags(world: &TransactionWorld, flags: u8) {
+    build_transaction(world, flags, 0, 0);
 }
 
 #[given("a fragmented transaction with total size {total} across {count} fragments")]
