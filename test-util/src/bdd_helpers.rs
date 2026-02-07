@@ -55,17 +55,6 @@ const fn sqlite_test_db(pool: DbPool, temp_dir: TempDir) -> TestDb {
 }
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-fn postgres_fixture_and_url() -> Result<Option<(PostgresTestDb, DatabaseUrl)>, AnyError> {
-    let db = match PostgresTestDb::new() {
-        Ok(db) => db,
-        Err(err) if err.is_unavailable() => return Ok(None),
-        Err(err) => return Err(err.into()),
-    };
-    let db_url = DatabaseUrl::from(db.url.as_ref());
-    Ok(Some((db, db_url)))
-}
-
-#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 const fn postgres_test_db(pool: DbPool, db: PostgresTestDb) -> TestDb {
     TestDb {
         pool,
@@ -129,21 +118,14 @@ async fn build_sqlite_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, An
     Ok(Some(sqlite_test_db(pool, temp_dir)))
 }
 
-#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-fn build_sqlite_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
-    setup(db_url.clone()).context("failed to run SQLite test database setup")?;
-    let pool = rt
-        .block_on(establish_pool(db_url.as_str()))
-        .context("failed to establish SQLite connection pool")?;
-    Ok(Some(sqlite_test_db(pool, temp_dir)))
-}
-
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 async fn build_postgres_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    let Some((db, db_url)) = postgres_fixture_and_url()? else {
-        return Ok(None);
+    let db = match PostgresTestDb::new_async().await {
+        Ok(db) => db,
+        Err(err) if err.is_unavailable() => return Ok(None),
+        Err(err) => return Err(err.into()),
     };
+    let db_url = DatabaseUrl::from(db.url.as_ref());
     run_setup_fn(
         setup,
         db_url.clone(),
@@ -153,18 +135,6 @@ async fn build_postgres_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, 
     .await?;
     let pool = establish_pool(db_url.as_str())
         .await
-        .context("failed to establish Postgres connection pool")?;
-    Ok(Some(postgres_test_db(pool, db)))
-}
-
-#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-fn build_postgres_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    let Some((db, db_url)) = postgres_fixture_and_url()? else {
-        return Ok(None);
-    };
-    setup(db_url.clone()).context("failed to run Postgres test database setup")?;
-    let pool = rt
-        .block_on(establish_pool(db_url.as_str()))
         .context("failed to establish Postgres connection pool")?;
     Ok(Some(postgres_test_db(pool, db)))
 }
@@ -208,12 +178,5 @@ pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyEr
 ///
 /// Returns any error raised while creating the database or connection pool.
 pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    dispatch_by_backend!(
-        build_sqlite_test_db(rt, setup),
-        build_postgres_test_db(rt, setup),
-        {
-            let _ = (rt, setup);
-            Ok(None)
-        }
-    )
+    rt.block_on(build_test_db_async(setup))
 }
