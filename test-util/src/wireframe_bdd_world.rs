@@ -105,6 +105,11 @@ impl WireframeBddWorld {
         }
         let pool = self.pool.borrow().clone();
         let peer = self.peer;
+        // In `send_raw`, we intentionally use `session.replace(Session::default())`
+        // to swap out state before `runtime.block_on(process_transaction_bytes(...))`
+        // and restore it afterwards. If `process_transaction_bytes` panics, the
+        // original session is dropped; that fragility is acceptable in test code,
+        // but production paths should avoid this or use a safer take/restore pattern.
         let mut session = self.session.replace(Session::default());
         let messaging = NoopOutboundMessaging;
         let compat = Arc::clone(&self.compat);
