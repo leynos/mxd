@@ -65,11 +65,13 @@ fn world() -> OutboundWorld {
 
 #[given("a wireframe outbound messenger with a registered connection")]
 fn given_registered(world: &OutboundWorld) {
-    let (queues, handle) = PushQueues::<Vec<u8>>::builder()
+    let Ok((queues, handle)) = PushQueues::<Vec<u8>>::builder()
         .high_capacity(1)
         .low_capacity(1)
         .build()
-        .unwrap_or_else(|err| panic!("push queues: {err}"));
+    else {
+        panic!("push queues");
+    };
     world.connection.register_handle(&handle);
     world.queues.replace(Some(queues));
 }
@@ -115,9 +117,10 @@ fn then_push_fails(world: &OutboundWorld, message: String) {
 async fn then_queue_receives(world: &OutboundWorld) {
     let mut queues = {
         let mut queues_slot = world.queues.borrow_mut();
-        queues_slot
-            .take()
-            .unwrap_or_else(|| panic!("queues not initialized"))
+        let Some(queues) = queues_slot.take() else {
+            panic!("queues not initialized");
+        };
+        queues
     };
     let queued = queues.recv().await;
     world.queues.borrow_mut().replace(queues);
