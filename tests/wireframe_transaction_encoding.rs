@@ -208,9 +208,17 @@ fn count_frames(bytes: &[u8]) -> Result<usize, String> {
 
 #[fixture]
 fn world() -> EncodingWorld {
-    // Keep fixture setup non-const so each scenario instantiates fresh state.
-    std::hint::black_box(());
-    EncodingWorld::new()
+    #[expect(
+        clippy::allow_attributes,
+        reason = "fixture macro expansion requires a scoped allow for unused braces"
+    )]
+    #[allow(
+        unused_braces,
+        reason = "fixture body expression trips unused_braces lint"
+    )]
+    {
+        EncodingWorld::new()
+    }
 }
 
 /// Test helper struct for setting up transaction headers.

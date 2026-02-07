@@ -128,7 +128,7 @@ Primary files changed:
 
 ## Plan of work
 
-Stage A upgraded dependencies and checked targeted behavioural suites.
+Stage A focused on dependency upgrades and targeted behavioural suite checks.
 
 Stage B replaced repeated scenario function stubs with `scenarios!` bindings
 and fixture injection.

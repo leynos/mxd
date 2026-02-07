@@ -23,7 +23,9 @@ impl XorWorld {
 
     const fn is_skipped(&self) -> bool { self.base.is_skipped() }
 
-    fn setup_db(&self, setup: SetupFn) { self.base.setup_db(setup); }
+    fn setup_db(&self, setup: SetupFn) -> Result<(), Box<dyn std::error::Error>> {
+        self.base.setup_db(setup).map_err(Into::into)
+    }
 
     fn authenticate(&self) {
         if self.is_skipped() {
@@ -59,12 +61,15 @@ fn world() -> XorWorld {
 }
 
 #[given("a routing context with user accounts")]
-fn given_users(world: &XorWorld) { world.setup_db(setup_files_db); }
+fn given_users(world: &XorWorld) -> Result<(), Box<dyn std::error::Error>> {
+    world.setup_db(setup_files_db)
+}
 
 #[given("a routing context with news articles")]
-fn given_news(world: &XorWorld) {
-    world.setup_db(setup_news_db);
+fn given_news(world: &XorWorld) -> Result<(), Box<dyn std::error::Error>> {
+    world.setup_db(setup_news_db)?;
     world.authenticate();
+    Ok(())
 }
 
 #[when("I send a login with XOR-encoded credentials")]

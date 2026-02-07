@@ -1,5 +1,7 @@
 //! Helpers for wireframe routing BDD integration tests.
 
+use std::any::Any;
+
 // The lint feature enables combined sqlite/postgres builds for full static
 // analysis coverage, so only enforce exclusivity outside lint runs.
 #[cfg(all(feature = "sqlite", feature = "postgres", not(feature = "lint")))]
@@ -71,6 +73,16 @@ const fn postgres_test_db(pool: DbPool, db: PostgresTestDb) -> TestDb {
     }
 }
 
+fn panic_payload_to_string(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        return (*message).to_owned();
+    }
+    "non-string panic payload".to_owned()
+}
+
 async fn run_setup_fn(
     setup: SetupFn,
     db_url: DatabaseUrl,
@@ -80,7 +92,16 @@ async fn run_setup_fn(
     if tokio::runtime::Handle::try_current().is_ok() {
         let (result_tx, result_rx) = tokio::sync::oneshot::channel::<Result<(), AnyError>>();
         std::thread::spawn(move || {
-            let _send_result = result_tx.send(setup(db_url));
+            let setup_result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| setup(db_url)))
+                    .map_err(|payload| {
+                        anyhow::anyhow!(
+                            "setup function panicked: {}",
+                            panic_payload_to_string(payload.as_ref())
+                        )
+                    })
+                    .and_then(|result| result);
+            let _send_result = result_tx.send(setup_result);
         });
         result_rx
             .await
@@ -92,51 +113,93 @@ async fn run_setup_fn(
     Ok(())
 }
 
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+async fn build_sqlite_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
+    let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
+    run_setup_fn(
+        setup,
+        db_url.clone(),
+        "failed to run SQLite test database setup",
+        "failed to receive SQLite setup result",
+    )
+    .await?;
+    let pool = establish_pool(db_url.as_str())
+        .await
+        .context("failed to establish SQLite connection pool")?;
+    Ok(Some(sqlite_test_db(pool, temp_dir)))
+}
+
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+fn build_sqlite_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
+    let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
+    setup(db_url.clone()).context("failed to run SQLite test database setup")?;
+    let pool = rt
+        .block_on(establish_pool(db_url.as_str()))
+        .context("failed to establish SQLite connection pool")?;
+    Ok(Some(sqlite_test_db(pool, temp_dir)))
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+async fn build_postgres_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
+    let Some((db, db_url)) = postgres_fixture_and_url()? else {
+        return Ok(None);
+    };
+    run_setup_fn(
+        setup,
+        db_url.clone(),
+        "failed to run Postgres test database setup",
+        "failed to receive Postgres setup result",
+    )
+    .await?;
+    let pool = establish_pool(db_url.as_str())
+        .await
+        .context("failed to establish Postgres connection pool")?;
+    Ok(Some(postgres_test_db(pool, db)))
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+fn build_postgres_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
+    let Some((db, db_url)) = postgres_fixture_and_url()? else {
+        return Ok(None);
+    };
+    setup(db_url.clone()).context("failed to run Postgres test database setup")?;
+    let pool = rt
+        .block_on(establish_pool(db_url.as_str()))
+        .context("failed to establish Postgres connection pool")?;
+    Ok(Some(postgres_test_db(pool, db)))
+}
+
+macro_rules! dispatch_by_backend {
+    ($sqlite_expr:expr, $postgres_expr:expr, $fallback:block) => {{
+        #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+        {
+            return $sqlite_expr;
+        }
+
+        #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+        {
+            return $postgres_expr;
+        }
+
+        #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
+        $fallback
+    }};
+}
+
 /// Build a test database, returning `None` when the backend is unavailable.
 ///
 /// # Errors
 ///
 /// Returns any error raised while creating the database or connection pool.
 pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-    {
-        let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
-        run_setup_fn(
-            setup,
-            db_url.clone(),
-            "failed to run SQLite test database setup",
-            "failed to receive SQLite setup result",
-        )
-        .await?;
-        let pool = establish_pool(db_url.as_str())
-            .await
-            .context("failed to establish SQLite connection pool")?;
-        Ok(Some(sqlite_test_db(pool, temp_dir)))
-    }
-
-    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-    {
-        let Some((db, db_url)) = postgres_fixture_and_url()? else {
-            return Ok(None);
-        };
-        run_setup_fn(
-            setup,
-            db_url.clone(),
-            "failed to run Postgres test database setup",
-            "failed to receive Postgres setup result",
-        )
-        .await?;
-        let pool = establish_pool(db_url.as_str())
-            .await
-            .context("failed to establish Postgres connection pool")?;
-        Ok(Some(postgres_test_db(pool, db)))
-    }
-
-    #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
-    {
-        let _ = setup;
-        Ok(None)
-    }
+    dispatch_by_backend!(
+        build_sqlite_test_db_async(setup).await,
+        build_postgres_test_db_async(setup).await,
+        {
+            let _ = setup;
+            Ok(None)
+        }
+    )
 }
 
 /// Build a test database, returning `None` when the backend is unavailable.
@@ -145,31 +208,12 @@ pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyEr
 ///
 /// Returns any error raised while creating the database or connection pool.
 pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-    {
-        let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
-        setup(db_url.clone()).context("failed to run SQLite test database setup")?;
-        let pool = rt
-            .block_on(establish_pool(db_url.as_str()))
-            .context("failed to establish SQLite connection pool")?;
-        Ok(Some(sqlite_test_db(pool, temp_dir)))
-    }
-
-    #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
-    {
-        let Some((db, db_url)) = postgres_fixture_and_url()? else {
-            return Ok(None);
-        };
-        setup(db_url.clone()).context("failed to run Postgres test database setup")?;
-        let pool = rt
-            .block_on(establish_pool(db_url.as_str()))
-            .context("failed to establish Postgres connection pool")?;
-        Ok(Some(postgres_test_db(pool, db)))
-    }
-
-    #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
-    {
-        let _ = (rt, setup);
-        Ok(None)
-    }
+    dispatch_by_backend!(
+        build_sqlite_test_db(rt, setup),
+        build_postgres_test_db(rt, setup),
+        {
+            let _ = (rt, setup);
+            Ok(None)
+        }
+    )
 }

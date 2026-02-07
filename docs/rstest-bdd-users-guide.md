@@ -37,7 +37,7 @@ Step definitions may be synchronous functions (`fn`) or asynchronous functions
 express async methods in traits. Projects that previously relied on
 `#[async_trait]` in helper traits should replace those methods with ordinary
 functions, and use async steps or async fixtures where appropriate. Step
-wrappers normalise results into `StepExecution`.
+wrappers normalize results into `StepExecution`.
 
 ## The three amigos
 

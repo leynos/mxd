@@ -101,6 +101,10 @@ fn given_transaction_sizes(world: &StreamingWorld, total: u32, data: u32) {
 }
 
 #[given("a fragmented transaction with total size {total} across {count} fragments")]
+#[expect(
+    clippy::expect_used,
+    reason = "fixture construction should fail immediately with explicit context"
+)]
 fn given_fragmented_transaction(world: &StreamingWorld, total: usize, count: usize) {
     assert!(count > 0, "fragment count must be positive");
     let payload = build_payload(total);
@@ -111,21 +115,22 @@ fn given_fragmented_transaction(world: &StreamingWorld, total: usize, count: usi
         ty: 410,
         id: 7,
         error: 0,
-        total_size: u32::try_from(total)
-            .unwrap_or_else(|_| panic!("total size must fit u32 for fixture")),
-        data_size: u32::try_from(total)
-            .unwrap_or_else(|_| panic!("total size must fit u32 for fixture")),
+        total_size: u32::try_from(total).expect("total size must fit u32 for fixture"),
+        data_size: u32::try_from(total).expect("total size must fit u32 for fixture"),
     };
     let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size)
-        .unwrap_or_else(|err| panic!("failed to fragment fixture transaction: {err:?}"));
+        .expect("failed to fragment fixture transaction");
     let bytes: Vec<u8> = fragments.into_iter().flatten().collect();
     world.set_bytes(bytes);
 }
 
 #[given("a fragmented transaction with mismatched continuation headers")]
+#[expect(
+    clippy::expect_used,
+    reason = "fixture construction should fail immediately with explicit context"
+)]
 fn given_mismatched_continuation(world: &StreamingWorld) {
-    let bytes = mismatched_continuation_bytes()
-        .unwrap_or_else(|err| panic!("failed to build mismatched fixture bytes: {err:?}"));
+    let bytes = mismatched_continuation_bytes().expect("failed to build mismatched fixture bytes");
     world.set_bytes(bytes);
 }
 

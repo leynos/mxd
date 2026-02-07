@@ -24,7 +24,9 @@ impl LoginCompatWorld {
 
     const fn is_skipped(&self) -> bool { self.base.is_skipped() }
 
-    fn setup_db(&self, setup: SetupFn) { self.base.setup_db(setup); }
+    fn setup_db(&self, setup: SetupFn) -> Result<(), Box<dyn std::error::Error>> {
+        self.base.setup_db(setup).map_err(Into::into)
+    }
 
     fn set_handshake_sub_version(&self, sub_version: u16) {
         if self.is_skipped() {
@@ -102,12 +104,12 @@ impl LoginCompatWorld {
     ) -> Result<(), Box<dyn std::error::Error>> {
         if params.iter().any(|(id, _)| *id == FieldId::BannerId) {
             return Err(Self::assertion_error(
-                "expected no banner_field for this client when should_include is false",
+                "expected login reply without BannerId field",
             ));
         }
         if params.iter().any(|(id, _)| *id == FieldId::ServerName) {
             return Err(Self::assertion_error(
-                "expected no server_field for this client when should_include is false",
+                "expected login reply without ServerName field",
             ));
         }
         Ok(())
@@ -150,7 +152,9 @@ fn world() -> LoginCompatWorld {
 }
 
 #[given("a routing context with user accounts")]
-fn given_users(world: &LoginCompatWorld) { world.setup_db(setup_login_db); }
+fn given_users(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error>> {
+    world.setup_db(setup_login_db)
+}
 
 #[given("a handshake sub-version {sub_version}")]
 fn given_sub_version(world: &LoginCompatWorld, sub_version: u16) {

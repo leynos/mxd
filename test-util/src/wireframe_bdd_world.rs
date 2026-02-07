@@ -2,10 +2,11 @@
 
 use std::{
     cell::{Cell, RefCell},
-    net::SocketAddr,
+    net::{Ipv4Addr, SocketAddr},
     sync::Arc,
 };
 
+use anyhow::Context as _;
 use mxd::{
     db::DbPool,
     handler::Session,
@@ -22,7 +23,7 @@ use mxd::{
 };
 use tokio::runtime::Runtime;
 
-use crate::{SetupFn, TestDb, bdd_helpers::build_test_db};
+use crate::{AnyError, SetupFn, TestDb, bdd_helpers::build_test_db};
 
 /// Shared BDD world backing for wireframe routing-focused scenarios.
 pub struct WireframeBddWorld {
@@ -42,13 +43,10 @@ impl WireframeBddWorld {
     ///
     /// # Panics
     ///
-    /// Panics if the fixed fixture peer address cannot be parsed, or if the
-    /// Tokio runtime cannot be created for the scenario world.
+    /// Panics if the Tokio runtime cannot be created for the scenario world.
     #[must_use]
     pub fn new() -> Self {
-        let peer = "127.0.0.1:12345"
-            .parse()
-            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
+        let peer = SocketAddr::from((Ipv4Addr::LOCALHOST, 12_345));
         let runtime =
             Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
         Self {
@@ -72,24 +70,25 @@ impl WireframeBddWorld {
 
     /// Build and install a fixture database for this scenario.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics when fixture database construction fails.
-    pub fn setup_db(&self, setup: SetupFn) {
+    /// Returns an error when fixture database construction fails.
+    pub fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> {
         if self.is_skipped() {
-            return;
+            return Ok(());
         }
         let db = match build_test_db(&self.runtime, setup) {
             Ok(Some(db)) => db,
             Ok(None) => {
                 self.skipped.set(true);
-                return;
+                return Ok(());
             }
-            Err(err) => panic!("failed to set up database: {err}"),
+            Err(err) => return Err(err).context("failed to set up database"),
         };
         self.pool.replace(db.pool());
         self.db_guard.replace(Some(db));
         self.session.replace(Session::default());
+        Ok(())
     }
 
     /// Update client compatibility policy from handshake metadata.

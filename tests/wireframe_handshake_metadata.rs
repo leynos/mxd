@@ -113,7 +113,7 @@ impl MetadataWorld {
 
     #[expect(
         clippy::excessive_nesting,
-        reason = "test harness polling loop requires nested async block"
+        reason = "polling loop and branch-specific assertions require nested conditionals"
     )]
     async fn connect_and_send(&self, bytes: &[u8], expect_recorded: bool) {
         let Some(addr) = *self.addr.borrow() else {
@@ -169,7 +169,10 @@ fn world() -> MetadataWorld {
 }
 
 #[given("a wireframe server that records handshake metadata")]
-async fn given_server(world: &MetadataWorld) { world.start_server(); }
+async fn given_server(world: &MetadataWorld) {
+    // The async step signature matches scenario runtime requirements; setup is synchronous.
+    world.start_server();
+}
 
 #[when("I complete a Hotline handshake with sub-protocol \"{tag}\" and sub-version {sub_version}")]
 async fn when_valid_handshake(world: &MetadataWorld, tag: String, sub_version: u16) {
