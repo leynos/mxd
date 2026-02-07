@@ -1814,7 +1814,7 @@ of locations to choose from.
 - Patterns with placeholders (e.g., `"I have {count:u32} items"`) match feature
   steps using the same regex semantics as the runtime.
 
-#### Go to Implementation (Feature → Rust)
+#### Go to implementation (feature → Rust)
 
 The inverse navigation—from feature steps to Rust implementations—is provided
 via the `textDocument/implementation` handler. This enables developers to jump

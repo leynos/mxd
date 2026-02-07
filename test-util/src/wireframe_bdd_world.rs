@@ -136,7 +136,10 @@ impl WireframeBddWorld {
     ///
     /// # Panics
     ///
-    /// Panics if no reply has been recorded, or if parsing the reply failed.
+    /// Panics with `"no reply received"` when no reply has been recorded.
+    ///
+    /// Panics with `"reply parse failed: {error}"` when the stored reply is an
+    /// `Err` parse failure.
     pub fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T {
         let reply_ref = self.reply.borrow();
         let Some(reply) = reply_ref.as_ref() else {

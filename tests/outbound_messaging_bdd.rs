@@ -65,12 +65,18 @@ fn world() -> OutboundWorld {
 
 #[given("a wireframe outbound messenger with a registered connection")]
 fn given_registered(world: &OutboundWorld) {
-    let Ok((queues, handle)) = PushQueues::<Vec<u8>>::builder()
+    let build_result = PushQueues::<Vec<u8>>::builder()
         .high_capacity(1)
         .low_capacity(1)
-        .build()
-    else {
-        panic!("push queues");
+        .build();
+    let (queues, handle) = match build_result {
+        Ok(pair) => pair,
+        Err(err) => {
+            panic!(
+                "expected PushQueues builder to succeed for fixture capacities high=1 and low=1, \
+                 got configuration error: {err:?}"
+            );
+        }
     };
     world.connection.register_handle(&handle);
     world.queues.replace(Some(queues));
