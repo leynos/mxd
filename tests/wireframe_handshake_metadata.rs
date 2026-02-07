@@ -29,6 +29,10 @@ use wireframe::{app::WireframeApp, server::WireframeServer};
 const MAX_ATTEMPTS: usize = 50;
 const POLL_INTERVAL_MS: u64 = 10;
 
+/// Test world for handshake-metadata scenarios.
+///
+/// Uses `RefCell` for non-shared fields; safe only under a single-threaded
+/// Tokio runtime (`tokio-current-thread`).
 struct MetadataWorld {
     addr: RefCell<Option<SocketAddr>>,
     shutdown: RefCell<Option<oneshot::Sender<()>>>,
