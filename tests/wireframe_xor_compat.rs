@@ -54,7 +54,7 @@ impl XorWorld {
 #[fixture]
 fn world() -> XorWorld {
     let world = XorWorld::new();
-    debug_assert!(!world.is_skipped(), "world starts active");
+    assert!(!world.is_skipped(), "world starts active");
     world
 }
 

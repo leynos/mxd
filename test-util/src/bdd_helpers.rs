@@ -33,6 +33,44 @@ impl TestDb {
     pub fn pool(&self) -> DbPool { self.pool.clone() }
 }
 
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+fn sqlite_temp_dir_and_url() -> Result<(TempDir, DatabaseUrl), AnyError> {
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("mxd.db");
+    let db_url_str = path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("database path is not valid UTF-8"))?;
+    let db_url = DatabaseUrl::from(db_url_str);
+    Ok((temp_dir, db_url))
+}
+
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+const fn sqlite_test_db(pool: DbPool, temp_dir: TempDir) -> TestDb {
+    TestDb {
+        pool,
+        _temp_dir: temp_dir,
+    }
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+fn postgres_fixture_and_url() -> Result<Option<(PostgresTestDb, DatabaseUrl)>, AnyError> {
+    let db = match PostgresTestDb::new() {
+        Ok(db) => db,
+        Err(err) if err.is_unavailable() => return Ok(None),
+        Err(err) => return Err(err.into()),
+    };
+    let db_url = DatabaseUrl::from(db.url.as_ref());
+    Ok(Some((db, db_url)))
+}
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+const fn postgres_test_db(pool: DbPool, db: PostgresTestDb) -> TestDb {
+    TestDb {
+        pool,
+        _postgres: db,
+    }
+}
+
 async fn run_setup_fn(
     setup: SetupFn,
     db_url: DatabaseUrl,
@@ -62,12 +100,7 @@ async fn run_setup_fn(
 pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
     #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
     {
-        let temp_dir = TempDir::new()?;
-        let path = temp_dir.path().join("mxd.db");
-        let db_url_str = path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("database path is not valid UTF-8"))?;
-        let db_url = DatabaseUrl::from(db_url_str);
+        let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
         run_setup_fn(
             setup,
             db_url.clone(),
@@ -78,20 +111,14 @@ pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyEr
         let pool = establish_pool(db_url.as_str())
             .await
             .context("failed to establish SQLite connection pool")?;
-        Ok(Some(TestDb {
-            pool,
-            _temp_dir: temp_dir,
-        }))
+        Ok(Some(sqlite_test_db(pool, temp_dir)))
     }
 
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
-        let db = match PostgresTestDb::new() {
-            Ok(db) => db,
-            Err(err) if err.is_unavailable() => return Ok(None),
-            Err(err) => return Err(err.into()),
+        let Some((db, db_url)) = postgres_fixture_and_url()? else {
+            return Ok(None);
         };
-        let db_url = DatabaseUrl::from(db.url.as_ref());
         run_setup_fn(
             setup,
             db_url.clone(),
@@ -102,10 +129,7 @@ pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyEr
         let pool = establish_pool(db_url.as_str())
             .await
             .context("failed to establish Postgres connection pool")?;
-        Ok(Some(TestDb {
-            pool,
-            _postgres: db,
-        }))
+        Ok(Some(postgres_test_db(pool, db)))
     }
 
     #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
@@ -123,38 +147,24 @@ pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyEr
 pub fn build_test_db(rt: &Runtime, setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
     #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
     {
-        let temp_dir = TempDir::new()?;
-        let path = temp_dir.path().join("mxd.db");
-        let db_url_str = path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("database path is not valid UTF-8"))?;
-        let db_url = DatabaseUrl::from(db_url_str);
+        let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
         setup(db_url.clone()).context("failed to run SQLite test database setup")?;
         let pool = rt
             .block_on(establish_pool(db_url.as_str()))
             .context("failed to establish SQLite connection pool")?;
-        Ok(Some(TestDb {
-            pool,
-            _temp_dir: temp_dir,
-        }))
+        Ok(Some(sqlite_test_db(pool, temp_dir)))
     }
 
     #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
     {
-        let db = match PostgresTestDb::new() {
-            Ok(db) => db,
-            Err(err) if err.is_unavailable() => return Ok(None),
-            Err(err) => return Err(err.into()),
+        let Some((db, db_url)) = postgres_fixture_and_url()? else {
+            return Ok(None);
         };
-        let db_url = DatabaseUrl::from(db.url.as_ref());
         setup(db_url.clone()).context("failed to run Postgres test database setup")?;
         let pool = rt
             .block_on(establish_pool(db_url.as_str()))
             .context("failed to establish Postgres connection pool")?;
-        Ok(Some(TestDb {
-            pool,
-            _postgres: db,
-        }))
+        Ok(Some(postgres_test_db(pool, db)))
     }
 
     #[cfg(not(any(feature = "sqlite", feature = "postgres")))]

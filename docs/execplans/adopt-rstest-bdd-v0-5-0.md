@@ -26,7 +26,8 @@ behavioural suites still assert the same outcomes, while `make check-fmt`,
 
 ## Tolerances (exception triggers)
 
-- Scope: stop if migration requires more than 30 files or 1500 net LOC.
+- Scope: stop if migration requires more than 30 files or 1500 net lines of
+  code (LOC).
 - Interface: stop if non-test public APIs must change.
 - Dependency: stop if additional third-party crates are required.
 - Validation: stop if repeated gate failures provide no new diagnostics.
@@ -58,7 +59,8 @@ behavioural suites still assert the same outcomes, while `make check-fmt`,
   glue with fixture-owned runtimes to avoid nested runtime panics.
 - [x] (2026-02-06) Added async-safe database setup path in
   `test-util/src/bdd_helpers.rs`.
-- [x] (2026-02-06) Removed file-wide lint suppressions in BDD scenario files.
+- [x] (2026-02-06) Removed file-wide lint suppressions in
+  Behaviour-Driven Development (BDD) scenario files.
 - [x] (2026-02-06) Updated `docs/developers-guide.md` with current behavioural
   testing strategy.
 - [x] (2026-02-06) Ran `make check-fmt`, `make lint`, and `make test` to green.
@@ -136,7 +138,7 @@ per-world runtime fields.
 
 Stage D updated documentation to reflect the implemented strategy.
 
-Stage E runs full quality gates and finalises commits.
+Stage E runs full quality gates and finalizes commits.
 
 ## Concrete steps
 
@@ -169,7 +171,8 @@ Acceptance criteria:
 - Embedded-Postgres behavioural suites use synchronous step glue to keep setup
   out of nested runtime contexts.
 - Repeated scenario stubs are replaced by `scenarios!` in migrated suites.
-- BDD scenario files avoid file-wide lint suppressions.
+- Behaviour-Driven Development (BDD) scenario files avoid file-wide lint
+  suppressions.
 - `make check-fmt`, `make lint`, and `make test` pass.
 
 ## Idempotence and recovery
@@ -182,23 +185,31 @@ reapply the migration incrementally.
 
 Observed nested-runtime failure during migration:
 
-    Cannot start a runtime from within a runtime
+```plaintext
+Cannot start a runtime from within a runtime
+```
 
 Observed fixture-name mismatch when using underscore-prefixed fixture parameter
 without remapping:
 
-    requires fixtures _world … Available fixtures … world
+```plaintext
+requires fixtures _world … Available fixtures … world
+```
 
 ## Interfaces and dependencies
 
 Updated dependency interfaces:
 
-    rstest-bdd = "0.5.0"
-    rstest-bdd-macros = { version = "0.5.0", features = ["compile-time-validation"] }
+```toml
+rstest-bdd = "0.5.0"
+rstest-bdd-macros = { version = "0.5.0", features = ["compile-time-validation"] }
+```
 
 New helper in `test-util`:
 
-    pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError>
+```rust
+pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError>
+```
 
 ## Revision note
 

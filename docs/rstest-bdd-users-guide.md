@@ -37,7 +37,7 @@ Step definitions may be synchronous functions (`fn`) or asynchronous functions
 express async methods in traits. Projects that previously relied on
 `#[async_trait]` in helper traits should replace those methods with ordinary
 functions, and use async steps or async fixtures where appropriate. Step
-wrappers normalize results into `StepExecution`.
+wrappers normalise results into `StepExecution`.
 
 ## The three amigos
 
@@ -942,7 +942,7 @@ fn counter() -> Counter {
     Counter::default()
 }
 
-#[given("a counter initialised to 0")]
+#[given("a counter initialized to 0")]
 fn init(counter: &mut Counter) {
     counter.value = 0;
 }
@@ -1033,8 +1033,9 @@ scenarios!(
 - **Use a per-step runtime only in synchronous scenarios:** When an async-only
   step runs under a synchronous scenario, `rstest-bdd` falls back to a per-step
   Tokio runtime and blocks on the step. Avoid building additional runtimes
-  inside an async scenario because nested runtimes can fail. For async
-  scenarios, prefer async steps, async fixtures, or the async test body.
+  inside an async scenario because Tokio panics with
+  `Cannot start a runtime from within a runtime`. For async scenarios, prefer
+  async steps, async fixtures, or the async test body.
 
 ```rust,no_run
 use rstest_bdd_macros::when;

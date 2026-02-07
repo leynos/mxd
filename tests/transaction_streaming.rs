@@ -34,15 +34,19 @@ impl StreamingWorld {
         let bytes = self.bytes.borrow().clone();
         let mut reader =
             TransactionStreamReader::new(BufReader::new(Cursor::new(bytes))).with_max_total(limit);
-        let result = async move {
-            let mut stream = reader.start_transaction().await?;
-            let mut fragments = Vec::new();
-            while let Some(fragment) = stream.next_fragment().await? {
-                fragments.push(fragment);
+        let result = match reader.start_transaction().await {
+            Ok(mut stream) => {
+                let mut fragments = Vec::new();
+                loop {
+                    match stream.next_fragment().await {
+                        Ok(Some(fragment)) => fragments.push(fragment),
+                        Ok(None) => break Ok(fragments),
+                        Err(err) => break Err(err),
+                    }
+                }
             }
-            Ok::<_, mxd::transaction::TransactionError>(fragments)
-        }
-        .await;
+            Err(err) => Err(err),
+        };
         self.outcome
             .borrow_mut()
             .replace(result.map_err(|e| e.to_string()));

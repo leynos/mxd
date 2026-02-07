@@ -334,8 +334,7 @@ fn then_bytes_match(world: &EncodingWorld) {
 fn then_fragmented(world: &EncodingWorld, frames: usize) {
     world.with_outcome(|outcome| {
         let result = assert_step_ok!(outcome.as_ref().map_err(ToString::to_string));
-        let count = count_frames(&result.wireframe_bytes)
-            .unwrap_or_else(|err| panic!("frame count should parse: {err}"));
+        let count = assert_step_ok!(count_frames(&result.wireframe_bytes));
         assert_eq!(count, frames);
     });
 }

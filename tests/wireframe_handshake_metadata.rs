@@ -115,7 +115,7 @@ impl MetadataWorld {
         let Some(addr) = *self.addr.borrow() else {
             panic!("server not started");
         };
-        // Capture the current recorded value to detect changes
+        // Capture the current recorded value to detect changes.
         let previous = self.recorded();
         let mut stream = TcpStream::connect(addr)
             .await
@@ -128,24 +128,23 @@ impl MetadataWorld {
         drop(stream.read_exact(&mut buf).await);
         drop(stream);
 
-        for _ in 0..MAX_ATTEMPTS {
+        for attempt in 0..MAX_ATTEMPTS {
             let current = self.recorded();
-            // For expected recordings, wait for a DIFFERENT value (handles sequential calls)
-            // For unexpected recordings, just check it's still None
             if expect_recorded {
-                if current.is_some() && current != previous {
+                // Wait for a different value so repeated calls do not pass on
+                // stale state.
+                if current != previous {
                     return;
                 }
-            } else if current.is_none() {
+            } else if current != previous {
+                panic!("handshake metadata was recorded unexpectedly");
+            } else if attempt + 1 == MAX_ATTEMPTS {
                 return;
             }
             sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
         }
 
-        assert!(
-            !expect_recorded,
-            "handshake metadata was not recorded within the expected time"
-        );
+        panic!("handshake metadata was not recorded within the expected time");
     }
 
     fn stop(&self) {
