@@ -16,10 +16,10 @@ struct LoginCompatWorld {
 }
 
 impl LoginCompatWorld {
-    fn new() -> Self {
-        Self {
-            base: WireframeBddWorld::new(),
-        }
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            base: WireframeBddWorld::new()?,
+        })
     }
 
     const fn is_skipped(&self) -> bool { self.base.is_skipped() }
@@ -146,7 +146,12 @@ impl LoginCompatWorld {
 
 #[fixture]
 fn world() -> LoginCompatWorld {
-    let world = LoginCompatWorld::new();
+    let world = match LoginCompatWorld::new() {
+        Ok(world) => world,
+        Err(error) => {
+            panic!("failed to construct login compatibility fixture world runtime: {error}")
+        }
+    };
     assert!(!world.is_skipped());
     world
 }

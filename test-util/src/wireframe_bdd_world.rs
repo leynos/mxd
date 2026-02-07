@@ -41,15 +41,14 @@ pub struct WireframeBddWorld {
 impl WireframeBddWorld {
     /// Create a fresh wireframe BDD world with default compatibility settings.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the Tokio runtime cannot be created for the scenario world.
-    #[must_use]
-    pub fn new() -> Self {
+    /// Returns an error when the Tokio runtime for this scenario world cannot
+    /// be created.
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let peer = SocketAddr::from((Ipv4Addr::LOCALHOST, 12_345));
-        let runtime =
-            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
-        Self {
+        let runtime = Runtime::new()?;
+        Ok(Self {
             runtime,
             peer,
             pool: RefCell::new(dummy_pool()),
@@ -61,7 +60,7 @@ impl WireframeBddWorld {
                 &HandshakeMetadata::default(),
             ))),
             skipped: Cell::new(false),
-        }
+        })
     }
 
     /// Return true when backend availability caused this scenario to be skipped.
@@ -165,8 +164,4 @@ impl WireframeBddWorld {
     /// Return true when XOR compatibility has been enabled by observed traffic.
     #[must_use]
     pub fn is_xor_enabled(&self) -> bool { self.compat.is_enabled() }
-}
-
-impl Default for WireframeBddWorld {
-    fn default() -> Self { Self::new() }
 }

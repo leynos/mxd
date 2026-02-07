@@ -15,10 +15,10 @@ struct XorWorld {
 }
 
 impl XorWorld {
-    fn new() -> Self {
-        Self {
-            base: WireframeBddWorld::new(),
-        }
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            base: WireframeBddWorld::new()?,
+        })
     }
 
     const fn is_skipped(&self) -> bool { self.base.is_skipped() }
@@ -55,7 +55,10 @@ impl XorWorld {
 
 #[fixture]
 fn world() -> XorWorld {
-    let world = XorWorld::new();
+    let world = match XorWorld::new() {
+        Ok(world) => world,
+        Err(error) => panic!("failed to construct XOR compatibility fixture runtime: {error}"),
+    };
     assert!(!world.is_skipped(), "world starts active");
     world
 }
