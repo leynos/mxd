@@ -66,46 +66,79 @@ impl LoginCompatWorld {
 
     fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T { self.base.with_reply(f) }
 
-    fn assert_banner_fields(&self, should_include: bool) {
+    fn assertion_error(message: impl Into<String>) -> Box<dyn std::error::Error> {
+        std::io::Error::other(message.into()).into()
+    }
+
+    fn assert_includes_banner_fields(
+        params: &[(FieldId, Vec<u8>)],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let banner = params
+            .iter()
+            .find(|(id, _)| *id == FieldId::BannerId)
+            .ok_or_else(|| Self::assertion_error("missing banner id"))?;
+        let server = params
+            .iter()
+            .find(|(id, _)| *id == FieldId::ServerName)
+            .ok_or_else(|| Self::assertion_error("missing server name"))?;
+
+        if banner.1 != [0u8, 0u8, 0u8, 0u8] {
+            return Err(Self::assertion_error(format!(
+                "expected banner id bytes [0, 0, 0, 0], got {:?}",
+                banner.1
+            )));
+        }
+        if server.1 != b"mxd" {
+            return Err(Self::assertion_error(format!(
+                "expected server name bytes b\"mxd\", got {:?}",
+                server.1
+            )));
+        }
+        Ok(())
+    }
+
+    fn assert_omits_banner_fields(
+        params: &[(FieldId, Vec<u8>)],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if params.iter().any(|(id, _)| *id == FieldId::BannerId) {
+            return Err(Self::assertion_error(
+                "expected no banner_field for this client when should_include is false",
+            ));
+        }
+        if params.iter().any(|(id, _)| *id == FieldId::ServerName) {
+            return Err(Self::assertion_error(
+                "expected no server_field for this client when should_include is false",
+            ));
+        }
+        Ok(())
+    }
+
+    fn assert_banner_fields(&self, should_include: bool) -> Result<(), Box<dyn std::error::Error>> {
         if self.is_skipped() {
-            return;
+            return Ok(());
         }
         self.with_reply(|tx| {
-            assert_eq!(
-                tx.header.error, 0,
-                "expected successful reply (error = 0), got {}",
-                tx.header.error
-            );
-            let tx_type = TransactionType::from(tx.header.ty);
-            assert_eq!(
-                tx_type,
-                TransactionType::Login,
-                "expected Login reply, got {tx_type:?}"
-            );
-            let params = decode_params(&tx.payload)
-                .unwrap_or_else(|err| panic!("failed to decode reply params: {err}"));
-            let banner_field = params.iter().find(|(id, _)| *id == FieldId::BannerId);
-            let server_field = params.iter().find(|(id, _)| *id == FieldId::ServerName);
-
-            if should_include {
-                let (banner, server) = match (banner_field, server_field) {
-                    (Some(banner), Some(server)) => (banner, server),
-                    (None, _) => panic!("missing banner id"),
-                    (_, None) => panic!("missing server name"),
-                };
-                assert_eq!(banner.1, [0u8, 0u8, 0u8, 0u8]);
-                assert_eq!(server.1, b"mxd");
-            } else {
-                assert!(
-                    banner_field.is_none(),
-                    "expected no banner_field for this client when should_include is false"
-                );
-                assert!(
-                    server_field.is_none(),
-                    "expected no server_field for this client when should_include is false"
-                );
+            if tx.header.error != 0 {
+                return Err(Self::assertion_error(format!(
+                    "expected successful reply (error = 0), got {}",
+                    tx.header.error
+                )));
             }
-        });
+            let tx_type = TransactionType::from(tx.header.ty);
+            if tx_type != TransactionType::Login {
+                return Err(Self::assertion_error(format!(
+                    "expected Login reply, got {tx_type:?}"
+                )));
+            }
+            let params = decode_params(&tx.payload)?;
+            if should_include {
+                Self::assert_includes_banner_fields(&params)?;
+            } else {
+                Self::assert_omits_banner_fields(&params)?;
+            }
+            Ok::<(), Box<dyn std::error::Error>>(())
+        })?;
+        Ok(())
     }
 }
 
@@ -128,10 +161,14 @@ fn given_sub_version(world: &LoginCompatWorld, sub_version: u16) {
 fn when_login(world: &LoginCompatWorld, version: u16) { world.send_login(version); }
 
 #[then("the login reply includes banner fields")]
-fn then_includes_banner_fields(world: &LoginCompatWorld) { world.assert_banner_fields(true); }
+fn then_includes_banner_fields(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error>> {
+    world.assert_banner_fields(true)
+}
 
 #[then("the login reply omits banner fields")]
-fn then_omits_banner_fields(world: &LoginCompatWorld) { world.assert_banner_fields(false); }
+fn then_omits_banner_fields(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error>> {
+    world.assert_banner_fields(false)
+}
 
 scenarios!(
     "tests/features/wireframe_login_compat.feature",
