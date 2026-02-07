@@ -122,7 +122,7 @@ async fn then_queue_receives(world: &OutboundWorld) {
     let queued = queues.recv().await;
     world.queues.borrow_mut().replace(queues);
     let Some((priority, frame)) = queued else {
-        panic!("frame queued");
+        panic!("expected a queued frame but queue was empty");
     };
     assert_eq!(priority, PushPriority::Low);
     let parsed = parse_transaction(&frame).unwrap_or_else(|err| {
