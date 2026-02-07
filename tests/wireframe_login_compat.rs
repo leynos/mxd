@@ -1,82 +1,30 @@
 //! Behavioural tests for login compatibility gating.
 
-use std::{
-    cell::{Cell, RefCell},
-    net::SocketAddr,
-    sync::Arc,
-};
-
 use mxd::{
-    db::DbPool,
     field_id::FieldId,
-    handler::Session,
-    server::outbound::NoopOutboundMessaging,
-    transaction::{Transaction, decode_params, parse_transaction},
+    transaction::{Transaction, decode_params},
     transaction_type::TransactionType,
-    wireframe::{
-        compat::XorCompatibility,
-        compat_policy::ClientCompatibility,
-        connection::HandshakeMetadata,
-        routes::{RouteContext, process_transaction_bytes},
-    },
+    wireframe::connection::HandshakeMetadata,
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenarios, then, when};
-use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_login_db};
-use tokio::runtime::Runtime;
+use test_util::{SetupFn, WireframeBddWorld, build_frame, setup_login_db};
 
 /// Shared BDD world state for login compatibility scenarios.
 struct LoginCompatWorld {
-    runtime: Runtime,
-    peer: SocketAddr,
-    pool: RefCell<DbPool>,
-    db_guard: RefCell<Option<TestDb>>,
-    session: RefCell<Session>,
-    reply: RefCell<Option<Result<Transaction, String>>>,
-    compat: Arc<XorCompatibility>,
-    client_compat: RefCell<Arc<ClientCompatibility>>,
-    skipped: Cell<bool>,
+    base: WireframeBddWorld,
 }
 
 impl LoginCompatWorld {
     fn new() -> Self {
-        let peer = "127.0.0.1:12345"
-            .parse()
-            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
-        let handshake = HandshakeMetadata::default();
-        let runtime =
-            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
         Self {
-            runtime,
-            peer,
-            pool: RefCell::new(mxd::wireframe::test_helpers::dummy_pool()),
-            db_guard: RefCell::new(None),
-            session: RefCell::new(Session::default()),
-            reply: RefCell::new(None),
-            compat: Arc::new(XorCompatibility::disabled()),
-            client_compat: RefCell::new(Arc::new(ClientCompatibility::from_handshake(&handshake))),
-            skipped: Cell::new(false),
+            base: WireframeBddWorld::new(),
         }
     }
 
-    const fn is_skipped(&self) -> bool { self.skipped.get() }
+    const fn is_skipped(&self) -> bool { self.base.is_skipped() }
 
-    fn setup_db(&self, setup: SetupFn) {
-        if self.is_skipped() {
-            return;
-        }
-        let db = match build_test_db(&self.runtime, setup) {
-            Ok(Some(db)) => db,
-            Ok(None) => {
-                self.skipped.set(true);
-                return;
-            }
-            Err(err) => panic!("failed to set up database: {err}"),
-        };
-        self.pool.replace(db.pool());
-        self.db_guard.replace(Some(db));
-        self.session.replace(Session::default());
-    }
+    fn setup_db(&self, setup: SetupFn) { self.base.setup_db(setup); }
 
     fn set_handshake_sub_version(&self, sub_version: u16) {
         if self.is_skipped() {
@@ -86,8 +34,7 @@ impl LoginCompatWorld {
             sub_version,
             ..HandshakeMetadata::default()
         };
-        self.client_compat
-            .replace(Arc::new(ClientCompatibility::from_handshake(&handshake)));
+        self.base.set_client_compat_from_handshake(&handshake);
     }
 
     fn send_login(&self, version: u16) {
@@ -110,52 +57,14 @@ impl LoginCompatWorld {
         ) {
             Ok(frame) => frame,
             Err(err) => {
-                self.reply.borrow_mut().replace(Err(err.to_string()));
+                self.base.set_reply_error(err.to_string());
                 return;
             }
         };
-        self.send_raw(&frame);
+        self.base.send_raw(&frame);
     }
 
-    fn send_raw(&self, frame: &[u8]) {
-        if self.is_skipped() {
-            return;
-        }
-        let pool = self.pool.borrow().clone();
-        let peer = self.peer;
-        // Move session state out to avoid holding a RefCell borrow across
-        // block_on while still passing a mutable session into routing.
-        let mut session = self.session.replace(Session::default());
-        let messaging = NoopOutboundMessaging;
-        let compat = Arc::clone(&self.compat);
-        let client_compat = Arc::clone(&self.client_compat.borrow());
-        let reply = self.runtime.block_on(process_transaction_bytes(
-            frame,
-            RouteContext {
-                peer,
-                pool,
-                session: &mut session,
-                messaging: &messaging,
-                compat: compat.as_ref(),
-                client_compat: client_compat.as_ref(),
-            },
-        ));
-        self.session.replace(session);
-        let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
-        self.reply.borrow_mut().replace(outcome);
-    }
-
-    fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T {
-        let reply_ref = self.reply.borrow();
-        let Some(reply) = reply_ref.as_ref() else {
-            panic!("no reply received");
-        };
-        let tx = match reply.as_ref() {
-            Ok(tx) => tx,
-            Err(error) => panic!("reply parse failed: {error}"),
-        };
-        f(tx)
-    }
+    fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T { self.base.with_reply(f) }
 
     fn assert_banner_fields(&self, should_include: bool) {
         if self.is_skipped() {

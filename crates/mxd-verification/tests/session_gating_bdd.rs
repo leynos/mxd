@@ -145,6 +145,10 @@ fn then_state_space_size(
     Ok(())
 }
 
+/// Assert a structural model property rather than a verification result.
+///
+/// The `ensure_unverified` guard ensures this step is only run while the
+/// world still represents the model definition phase.
 #[then("the model includes the out-of-order delivery property")]
 fn then_out_of_order_property(world: &WorldResult) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;

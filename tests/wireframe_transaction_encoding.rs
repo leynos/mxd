@@ -135,7 +135,7 @@ fn legacy_transaction_from_params(
     };
     let payload_len = payload.len();
     let payload_len_u32 =
-        u32::try_from(payload_len).map_err(|_| "payload length fits u32".to_owned())?;
+        u32::try_from(payload_len).map_err(|_| "payload length overflows u32".to_owned())?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -156,7 +156,7 @@ fn oversized_params() -> Result<Vec<(FieldId, Vec<u8>)>, String> {
     let params_needed = (target - header_overhead).div_ceil(per_param_total);
     (0..params_needed)
         .map(|idx| {
-            let raw = u16::try_from(9000 + idx).map_err(|_| "field id fits u16".to_owned())?;
+            let raw = u16::try_from(9000 + idx).map_err(|_| "field id overflows u16".to_owned())?;
             Ok((FieldId::Other(raw), vec![0u8; per_param_len]))
         })
         .collect::<Result<Vec<_>, String>>()
@@ -208,6 +208,7 @@ fn count_frames(bytes: &[u8]) -> Result<usize, String> {
 
 #[fixture]
 fn world() -> EncodingWorld {
+    // Keep fixture setup non-const so each scenario instantiates fresh state.
     std::hint::black_box(());
     EncodingWorld::new()
 }

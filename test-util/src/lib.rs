@@ -14,6 +14,7 @@ mod bdd_helpers;
 mod fixtures;
 mod protocol;
 mod server;
+mod wireframe_bdd_world;
 
 pub use bdd_helpers::{SetupFn, TestDb, build_test_db, build_test_db_async};
 pub use fixtures::{
@@ -33,3 +34,4 @@ pub use mxd::wireframe::test_helpers::{build_frame, collect_strings};
 pub use postgres::{PostgresTestDb, postgres_db};
 pub use protocol::{handshake, login};
 pub use server::{TestServer, ensure_server_binary_env, with_env_var};
+pub use wireframe_bdd_world::WireframeBddWorld;

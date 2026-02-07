@@ -117,7 +117,7 @@ async fn then_queue_receives(world: &OutboundWorld) {
         let mut queues_slot = world.queues.borrow_mut();
         queues_slot
             .take()
-            .unwrap_or_else(|| panic!("queues not initialised"))
+            .unwrap_or_else(|| panic!("queues not initialized"))
     };
     let queued = queues.recv().await;
     world.queues.borrow_mut().replace(queues);
