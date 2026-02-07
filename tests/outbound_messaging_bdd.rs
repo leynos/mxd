@@ -56,7 +56,7 @@ impl OutboundWorld {
 #[fixture]
 fn world() -> OutboundWorld {
     let world = OutboundWorld::new();
-    debug_assert!(
+    assert!(
         world.queues.borrow().is_none(),
         "world starts without queues"
     );
