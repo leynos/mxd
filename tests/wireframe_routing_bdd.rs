@@ -1,5 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 //! Behavioural tests for wireframe transaction routing.
 
 use std::{
@@ -26,7 +24,7 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd::assert_step_ok;
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 use test_util::{
     SetupFn,
     TestDb,
@@ -40,7 +38,7 @@ use test_util::{
 use tokio::runtime::Runtime;
 
 struct RoutingWorld {
-    rt: Runtime,
+    runtime: Runtime,
     peer: SocketAddr,
     pool: RefCell<DbPool>,
     db_guard: RefCell<Option<TestDb>>,
@@ -53,10 +51,13 @@ struct RoutingWorld {
 
 impl RoutingWorld {
     fn new() -> Self {
-        let rt = Runtime::new().expect("runtime");
-        let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
+        let peer = "127.0.0.1:12345"
+            .parse()
+            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
+        let runtime =
+            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
         Self {
-            rt,
+            runtime,
             peer,
             pool: RefCell::new(dummy_pool()),
             db_guard: RefCell::new(None),
@@ -76,7 +77,7 @@ impl RoutingWorld {
         if self.is_skipped() {
             return;
         }
-        let db = match build_test_db(&self.rt, setup) {
+        let db = match build_test_db(&self.runtime, setup) {
             Ok(Some(db)) => db,
             Ok(None) => {
                 self.skipped.set(true);
@@ -124,20 +125,17 @@ impl RoutingWorld {
         let mut session = self.session.replace(Session::default());
         let messaging = NoopOutboundMessaging;
         let compat = Arc::clone(&self.compat);
-        let reply = self.rt.block_on(async {
-            process_transaction_bytes(
-                frame,
-                RouteContext {
-                    peer,
-                    pool,
-                    session: &mut session,
-                    messaging: &messaging,
-                    compat: compat.as_ref(),
-                    client_compat: self.client_compat.as_ref(),
-                },
-            )
-            .await
-        });
+        let reply = self.runtime.block_on(process_transaction_bytes(
+            frame,
+            RouteContext {
+                peer,
+                pool,
+                session: &mut session,
+                messaging: &messaging,
+                compat: compat.as_ref(),
+                client_compat: self.client_compat.as_ref(),
+            },
+        ));
         self.session.replace(session);
         let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
         self.reply.borrow_mut().replace(outcome);
@@ -177,9 +175,7 @@ fn world() -> RoutingWorld {
 
 #[given("a wireframe server handling transactions")]
 fn given_server(world: &RoutingWorld) {
-    if world.is_skipped() {
-        return;
-    }
+    debug_assert!(!world.is_skipped(), "world starts active");
 }
 
 #[given("a routing context with user accounts")]
@@ -342,27 +338,7 @@ fn then_articles(world: &RoutingWorld, first: String, second: String) {
     world.assert_reply_contains_two_strings(FieldId::NewsArticle, &first, &second);
 }
 
-#[scenario(path = "tests/features/wireframe_routing.feature", index = 0)]
-// Unknown-type routing returns ERR_INTERNAL (3) per spec.
-fn routes_unknown_type(world: RoutingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_routing.feature", index = 1)]
-fn routes_truncated_frame(world: RoutingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_routing.feature", index = 2)]
-fn preserves_transaction_id(world: RoutingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_routing.feature", index = 3)]
-fn preserves_transaction_type(world: RoutingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_routing.feature", index = 4)]
-fn login_succeeds(world: RoutingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_routing.feature", index = 5)]
-fn file_list_returns_entries(world: RoutingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_routing.feature", index = 6)]
-fn news_categories_listed(world: RoutingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_routing.feature", index = 7)]
-fn news_articles_listed(world: RoutingWorld) { let _ = world; }
+scenarios!(
+    "tests/features/wireframe_routing.feature",
+    fixtures = [world: RoutingWorld]
+);

@@ -4,8 +4,6 @@
 //! `runtime_selection.feature` scenarios for both legacy-enabled and
 //! legacy-disabled builds.
 
-#![expect(clippy::missing_const_for_fn, reason = "test fixture functions")]
-
 use std::cell::RefCell;
 
 use mxd::server::{NetworkRuntime, active_runtime};
@@ -17,7 +15,7 @@ struct RuntimeWorld {
 }
 
 impl RuntimeWorld {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             runtime: RefCell::new(None),
         }
@@ -46,9 +44,9 @@ fn then_runtime(world: &RuntimeWorld, runtime: NetworkRuntime) {
 #[cfg(feature = "legacy-networking")]
 #[tokio::test(flavor = "current_thread")]
 #[scenario(path = "tests/features/runtime_selection.feature", index = 0)]
-async fn legacy_runtime_enabled(world: RuntimeWorld) { let _ = world; }
+async fn legacy_runtime_enabled(#[from(world)] _world: RuntimeWorld) {}
 
 #[cfg(not(feature = "legacy-networking"))]
 #[tokio::test(flavor = "current_thread")]
 #[scenario(path = "tests/features/runtime_selection.feature", index = 1)]
-async fn legacy_runtime_disabled(world: RuntimeWorld) { let _ = world; }
+async fn legacy_runtime_disabled(#[from(world)] _world: RuntimeWorld) {}

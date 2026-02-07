@@ -32,11 +32,12 @@ edition.
 development via `rust-toolchain.toml` so contributors get consistent `rustfmt`
 and `clippy` behaviour.
 
-Step definitions and writers remain synchronous functions; the framework no
-longer depends on the `async-trait` crate to express async methods in traits.
-Projects that previously relied on `#[async_trait]` in helper traits should
-replace those methods with ordinary functions—`StepFn` continues to execute
-synchronously and exposes results via `StepExecution`.
+Step definitions may be synchronous functions (`fn`) or asynchronous functions
+(`async fn`). The framework no longer depends on the `async-trait` crate to
+express async methods in traits. Projects that previously relied on
+`#[async_trait]` in helper traits should replace those methods with ordinary
+functions, and use async steps or async fixtures where appropriate. Step
+wrappers normalize results into `StepExecution`.
 
 ## The three amigos
 
@@ -129,6 +130,9 @@ regular expressions. If the step text does not supply a capture for a declared
 argument, the wrapper panics with
 `pattern '<pattern>' missing capture for argument '<name>'`, making the
 mismatch explicit.
+
+For cucumber-rs migration compatibility notes, see
+[Migration and async patterns](cucumber-rs-migration-and-async-patterns.md).
 
 The procedural macro implementation expands the annotated function into two
 parts: the original function and a wrapper function that registers the step in
@@ -233,7 +237,7 @@ fn check(cart_state: &CartState, expected: i32) {
 }
 
 #[scenario(path = "tests/features/scenario_state.feature", name = "Recording a single value")]
-fn keeps_value(cart_state: CartState) { let _ = cart_state; }
+fn keeps_value(_cart_state: CartState) {}
 ```
 
 #### Mixed approach
@@ -479,9 +483,7 @@ fn reset_state(cli_state: &CliState) {
 }
 
 #[scenario(path = "tests/features/cli.feature")]
-fn cli_behaviour(cli_state: CliState) {
-    let _ = cli_state;
-}
+fn cli_behaviour(_cli_state: CliState) {}
 ```
 
 Slots are independent, so scenarios can freely mix eager `set` calls with lazy
@@ -524,6 +526,179 @@ registers an empty pattern instead of inferring one.
 > - Leading and trailing underscores become leading or trailing spaces.
 > - Consecutive underscores become multiple spaces.
 > - Letter case is preserved.
+
+## State management across scenarios
+
+Teams coming from cucumber-rs often ask where the shared `World` lives in
+`rstest-bdd`. The short answer is: **fixtures are the world**, and scenario
+isolation is the default.
+
+Each `#[scenario]` expansion produces an ordinary Rust test. `rstest` builds
+fresh fixture values for each test invocation, unless a different lifetime is
+opted into, such as `#[once]`. `StepContext` is also created per scenario run,
+so state mutated in one scenario is not automatically visible in another.
+
+This design keeps scenarios independent, allows parallel execution, and avoids
+order-dependent failures.
+
+### Isolation defaults and what can be shared
+
+- **Default behaviour:** every scenario receives fresh fixture instances.
+- **Within one scenario:** use `&mut Fixture` or `Slot<T>` to share mutable
+  state across steps.
+- **Across scenarios:** share infrastructure (for example a database pool) and
+  recreate scenario data from that infrastructure in each scenario.
+- **Opt-in global sharing:** use `#[once]` fixtures only for expensive,
+  effectively read-only resources; mutable process-global state introduces
+  coupling and ordering hazards.
+
+### Worked example: user management with a shared pool
+
+The feature below reflects a common migration request. The second scenario does
+not rely on step side effects from the first scenario; it states its own setup.
+
+```gherkin
+Feature: User management
+
+  Scenario: Create user
+    Given a database connection
+    When user "alice" is created
+    Then user "alice" exists
+
+  Scenario: Update user
+    Given a database connection
+    And user "alice" exists
+    When user "alice" is updated
+    Then the update succeeds
+```
+
+```rust,no_run
+use rstest::fixture;
+use rstest_bdd_macros::{given, scenario, then, when};
+use std::sync::OnceLock;
+
+struct DbPool;
+struct ScenarioDb;
+
+impl DbPool {
+    fn connect() -> Self { Self }
+    fn begin_scenario(&'static self) -> ScenarioDb { ScenarioDb }
+}
+
+impl ScenarioDb {
+    fn create_user(&mut self, _name: &str) {}
+    fn ensure_user(&mut self, _name: &str) {}
+    fn update_user(&mut self, _name: &str) {}
+    fn has_user(&self, _name: &str) -> bool { true }
+    fn last_update_succeeded(&self) -> bool { true }
+}
+
+#[fixture]
+#[once]
+fn db_pool() -> &'static DbPool {
+    static POOL: OnceLock<DbPool> = OnceLock::new();
+    POOL.get_or_init(DbPool::connect)
+}
+
+#[fixture]
+fn scenario_db(db_pool: &'static DbPool) -> ScenarioDb {
+    db_pool.begin_scenario()
+}
+
+#[given("a database connection")]
+fn database_connection(_scenario_db: &ScenarioDb) {}
+
+#[given("user {name} exists")]
+fn user_exists(scenario_db: &mut ScenarioDb, name: String) {
+    scenario_db.ensure_user(&name);
+}
+
+#[when("user {name} is created")]
+fn create_user(scenario_db: &mut ScenarioDb, name: String) {
+    scenario_db.create_user(&name);
+}
+
+#[when("user {name} is updated")]
+fn update_user(scenario_db: &mut ScenarioDb, name: String) {
+    scenario_db.update_user(&name);
+}
+
+#[then("user {name} exists")]
+fn assert_user_exists(scenario_db: &ScenarioDb, name: String) {
+    assert!(scenario_db.has_user(&name));
+}
+
+#[then("the update succeeds")]
+fn assert_update_succeeds(scenario_db: &ScenarioDb) {
+    assert!(scenario_db.last_update_succeeded());
+}
+
+#[scenario(path = "tests/features/user_management.feature", name = "Create user")]
+fn create_user_scenario(scenario_db: ScenarioDb) {
+    let _ = scenario_db;
+}
+
+#[scenario(path = "tests/features/user_management.feature", name = "Update user")]
+fn update_user_scenario(scenario_db: ScenarioDb) {
+    let _ = scenario_db;
+}
+```
+
+In this pattern:
+
+- `db_pool` is shared across scenarios (`#[once]`).
+- `scenario_db` is recreated per scenario (isolation boundary).
+- `Given a database connection` binds the scenario-scoped `scenario_db`
+  fixture; the shared `db_pool` remains an infrastructure dependency.
+- The update scenario declares its own precondition (`user {name} exists`)
+  rather than depending on `Create user` running first.
+
+### `StepContext::insert_owned` and manual mutable sharing
+
+Most suites should not call `StepContext::insert_owned` directly. The generated
+`#[scenario]` glue already inserts fixtures for the scenario function and
+supports `&mut Fixture` step parameters.
+
+`StepContext::owned_cell` creates the type-erased mutable storage required by
+`insert_owned`.
+
+Use `insert_owned` only when building custom step-execution plumbing outside
+the usual macros and registering a mutable fixture manually:
+
+```rust,no_run
+use rstest_bdd::StepContext;
+
+#[derive(Default)]
+struct World {
+    count: usize,
+}
+
+let mut ctx = StepContext::default();
+let world = StepContext::owned_cell(World::default());
+ctx.insert_owned::<World>("world", &world);
+```
+
+### Migration notes for cucumber-rs users
+
+For migrations from a cucumber `World`, map the concepts as follows:
+
+- **`World` struct:** use one or more `rstest` fixtures.
+- **Mutable world during a scenario:** use `&mut FixtureType` in step
+  signatures.
+- **Optional/intermediate values:** use `Slot<T>` fields in a
+  `#[derive(ScenarioState)]` fixture.
+- **Global expensive setup:** use a narrowly scoped `#[once]` fixture returning
+  shared infrastructure, then derive scenario-local state from it.
+
+### Antipatterns to avoid
+
+- Depending on scenario execution order (for example "Scenario B uses data from
+  Scenario A") because test ordering is not guaranteed.
+- Putting all mutable test data in a process-global static and mutating it from
+  multiple scenarios.
+- Using `#[once]` for resources that require deterministic teardown in `Drop`.
+- Reusing one giant fixture for unrelated concerns instead of composing smaller
+  fixtures.
 
 ## Binding tests to scenarios
 
@@ -580,6 +755,11 @@ the following steps:
 4. After executing all steps, run the original test body. This block can
    include extra assertions or cleanup logic beyond the behaviour described in
    the feature.
+
+Scenario bodies may return `Result<(), E>` or `StepResult<(), E>` when they
+need to use `?` or propagate errors. On `Err`, the generated test stops and the
+error is surfaced to the test harness. Skipped scenarios still short‑circuit
+before the body and return `Ok(())` for fallible signatures.
 
 Because the generated code uses `#[rstest::rstest]`, it integrates seamlessly
 with `rstest` features such as parameterized tests and asynchronous fixtures.
@@ -806,10 +986,13 @@ When `runtime = "tokio-current-thread"` is specified:
 - Each test is annotated with `#[tokio::test(flavor = "current_thread")]`.
 - Steps execute sequentially within the single-threaded Tokio runtime.
 
-### Recommended async pattern for steps
+### Recommended patterns for async work in steps
 
-Step functions are synchronous, even when a scenario runs in an async runtime.
-Use one of the following patterns to keep async work safe and predictable:
+Async scenarios run on Tokio's current-thread runtime. Step functions may be
+`async fn` and are awaited sequentially, keeping fixture borrows valid across
+`.await` points. Use one of the following patterns to keep async work safe and
+predictable. This section summarizes the canonical guidance in
+[Migration and async patterns](cucumber-rs-migration-and-async-patterns.md).
 
 - **Prefer async fixtures:** If a step needs async data, move the async call
   into a fixture and inject the resolved value into the step. The scenario
@@ -847,12 +1030,12 @@ scenarios!(
 );
 ```
 
-- **Use a per-step runtime only in synchronous scenarios:** If a step must call
-  async code and the scenario is not running under Tokio, build a runtime in
-  the step and block on the async work. Avoid this inside an async scenario
-  because nested runtimes can fail. For async scenarios, prefer fixtures or the
-  async test body instead. See [ADR-005](adr-005-async-step-functions.md) for
-  the current strategy.
+- **Use a per-step runtime only in synchronous scenarios:** When an async-only
+  step runs under a synchronous scenario, `rstest-bdd` falls back to a per-step
+  Tokio runtime and blocks on the step. Avoid building additional runtimes
+  inside an async scenario because Tokio panics with
+  `Cannot start a runtime from within a runtime`. For async scenarios, prefer
+  async steps, async fixtures, or the async test body.
 
 ```rust,no_run
 use rstest_bdd_macros::when;
@@ -869,31 +1052,129 @@ fn end_stream() {
 }
 ```
 
+The sequence below shows how synchronous scenarios execute async-only steps
+through the Tokio fallback runtime.
+
+```mermaid
+sequenceDiagram
+    actor Tester
+    participant TestRunner
+    participant ScenarioSync
+    participant StepAsync
+    participant TokioFallbackRuntime
+
+    Tester->>TestRunner: run_tests()
+    TestRunner->>ScenarioSync: invoke_scenario()
+
+    ScenarioSync->>ScenarioSync: execute_sync_steps()
+    ScenarioSync->>ScenarioSync: encounter_async_only_step()
+    ScenarioSync->>TokioFallbackRuntime: create_runtime_if_needed()
+
+    TokioFallbackRuntime->>StepAsync: run_step_async()
+    StepAsync-->>TokioFallbackRuntime: await_completion()
+    TokioFallbackRuntime-->>ScenarioSync: step_result()
+
+    ScenarioSync->>TokioFallbackRuntime: drop_runtime()
+    ScenarioSync-->>TestRunner: scenario_result()
+    TestRunner-->>Tester: report_result()
+
+    Note over ScenarioSync,TokioFallbackRuntime: Nested runtimes in async scenarios are guarded and will fail
+```
+
+*Figure: Per-step Tokio fallback flow when a synchronous scenario reaches an
+async-only step.*
+
+### Manual async wrapper pattern
+
+Most step code does not need to name the fixture lifetime directly. When an
+explicit async wrapper is written around a synchronous `StepFn`, prefer
+`rstest_bdd::async_step::sync_to_async` and keep the context argument as
+`StepContext<'_>`:
+
+This pattern is useful when a codebase already has synchronous handlers that
+must run in an async-only path, such as custom registries, reusable step helper
+layers, or adapter crates that expose async execution.
+
+The resulting wrapper can be wired into normal step execution points, including
+`run_async` in custom `Step` registrations or explicit step-macro functions
+that delegate to shared handlers. Existing `StepFn` implementations remain
+reusable without rewriting their business logic.
+
+```rust,no_run
+use rstest_bdd::async_step::sync_to_async;
+use rstest_bdd::{StepContext, StepError, StepExecution, StepFuture};
+
+fn sync_step(
+    _ctx: &mut StepContext<'_>,
+    _text: &str,
+    _docstring: Option<&str>,
+    _table: Option<&[&[&str]]>,
+) -> Result<StepExecution, StepError> {
+    Ok(StepExecution::from_value(None))
+}
+
+fn async_wrapper<'ctx>(
+    ctx: &'ctx mut StepContext<'_>,
+    text: &'ctx str,
+    docstring: Option<&'ctx str>,
+    table: Option<&'ctx [&'ctx [&'ctx str]]>,
+) -> StepFuture<'ctx> {
+    sync_to_async(sync_step)(ctx, text, docstring, table)
+}
+```
+
+For shorter signatures, use the exported aliases: `StepCtx<'ctx, '_>`,
+`StepTextRef<'ctx>`, `StepDoc<'ctx>`, and `StepTable<'ctx>`.
+
+```rust,no_run
+use rstest_bdd::async_step::sync_to_async;
+use rstest_bdd::{
+    StepContext, StepCtx, StepDoc, StepError, StepExecution, StepFuture,
+    StepTable, StepTextRef,
+};
+
+fn sync_step(
+    _ctx: &mut StepContext<'_>,
+    _text: &str,
+    _docstring: Option<&str>,
+    _table: Option<&[&[&str]]>,
+) -> Result<StepExecution, StepError> {
+    Ok(StepExecution::from_value(None))
+}
+
+fn async_wrapper_with_aliases<'ctx>(
+    ctx: StepCtx<'ctx, '_>,
+    text: StepTextRef<'ctx>,
+    docstring: StepDoc<'ctx>,
+    table: StepTable<'ctx>,
+) -> StepFuture<'ctx> {
+    sync_to_async(sync_step)(ctx, text, docstring, table)
+}
+```
+
 ### Current limitations
 
-- **Sync step definitions only:** The async executor currently calls the sync
-  `run` handler directly rather than `run_async`. This avoids higher-ranked
-  trait bound (HRTB) lifetime issues but means steps cannot `.await`
-  internally. See [ADR-005](adr-005-async-step-functions.md) for the current
-  pattern, and [ADR-001](adr-001-async-fixtures-and-test.md) for the design
+- **Tokio current-thread mode only:** Multi-threaded Tokio mode would require
+  `Send` futures, which conflicts with the `RefCell`-backed fixture storage.
+  See [ADR-001](adr-001-async-fixtures-and-test.md) for the full design
   rationale.
-- **Current-thread mode only:** Multi-threaded Tokio mode would require `Send`
-  futures, which conflicts with the `RefCell`-backed fixture storage. See
-  [ADR-001](adr-001-async-fixtures-and-test.md) for the full design rationale.
+- **Nested runtime safeguards:** Async-only steps running in synchronous
+  scenarios use a per-step runtime fallback, which refuses to run when a Tokio
+  runtime is already active on the current thread.
 - **No `async_std` runtime:** Only Tokio is supported at present.
 
 ## Running and maintaining tests
 
 Once feature files and step definitions are in place, scenarios run via the
 usual `cargo test` command. Test functions created by the `#[scenario]` macro
-behave like other `rstest` tests; they honour `#[tokio::test]` or
-`#[async_std::test]` attributes if applied to the original function. Each
-scenario runs its steps sequentially in the order defined in the feature file.
-By default, missing steps emit a compile‑time warning and are checked again at
-runtime, so steps can live in other crates. Enabling the
-`compile-time-validation` feature on `rstest-bdd-macros` registers steps and
-performs compile‑time validation, emitting warnings for any that are missing.
-The `strict-compile-time-validation` feature builds on this and turns those
+behave like other `rstest` tests; they honour `#[tokio::test]` attributes if
+applied to the original function. Each scenario runs its steps sequentially in
+the order defined in the feature file. By default, missing steps emit a
+compile‑time warning and are checked again at runtime, so steps can live in
+other crates. Enabling the `compile-time-validation` feature on
+`rstest-bdd-macros` registers steps and performs compile‑time validation,
+emitting warnings for any that are missing. The
+`strict-compile-time-validation` feature builds on this and turns those
 warnings into `compile_error!`s when all step definitions are local. This
 prevents behaviour specifications from silently drifting from the code while
 still permitting cross‑crate step sharing.
@@ -902,14 +1183,14 @@ To enable validation, pin a feature in the project's `dev-dependencies`:
 
 ```toml
 [dev-dependencies]
-rstest-bdd-macros = { version = "0.4.0", features = ["compile-time-validation"] }
+rstest-bdd-macros = { version = "0.5.0", features = ["compile-time-validation"] }
 ```
 
 For strict checking use:
 
 ```toml
 [dev-dependencies]
-rstest-bdd-macros = { version = "0.4.0", features = ["strict-compile-time-validation"] }
+rstest-bdd-macros = { version = "0.5.0", features = ["strict-compile-time-validation"] }
 ```
 
 Steps are only validated when one of these features is enabled.
@@ -1302,7 +1583,7 @@ Localization tooling can be added to `Cargo.toml` as follows:
 
 ```toml
 [dependencies]
-rstest-bdd = "0.4.0"
+rstest-bdd = "0.5.0"
 i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester"] }
 unic-langid = "0.9"
 ```
@@ -1599,10 +1880,23 @@ definitions:
   provides a doc string but the matching Rust implementation does not expect
   one, a warning diagnostic is published on the doc string in the feature file.
 
+- **Missing Examples column** (`example-column-missing`): When a step in a
+  Scenario Outline uses a placeholder (e.g., `<count>`) that has no matching
+  column header in the Examples table, a warning diagnostic is published on the
+  step that references the undefined placeholder. The message lists the
+  available columns to help identify typos or missing data.
+
+- **Surplus Examples column** (`example-column-surplus`): When an Examples
+  table includes a column header that is not referenced by any `<placeholder>`
+  in the Scenario Outline's steps, a warning diagnostic is published on the
+  unused column header. This helps identify redundant data in the Examples
+  table that may indicate a copy-paste error or an incomplete refactoring.
+
 Diagnostics are updated incrementally:
 
 - Saving a `.feature` file recomputes diagnostics for that file, including
-  unimplemented steps and table/docstring expectation mismatches.
+  unimplemented steps, table/docstring expectation mismatches, and scenario
+  outline column mismatches.
 - Saving a `.rs` file recomputes diagnostics for all feature files (since new
   or removed step definitions may affect which steps are implemented) and
   checks for unused definitions and placeholder count mismatches in the saved

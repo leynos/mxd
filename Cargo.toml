@@ -13,6 +13,8 @@ resolver = "2"
 [workspace.dependencies]
 diesel-cte-ext = { version = "0.1.0", default-features = false, features = ["async"] }
 rstest = "0.26.1"
+rstest-bdd = "0.5.0"
+rstest-bdd-macros = { version = "0.5.0", features = ["compile-time-validation"] }
 
 [package]
 name = "mxd"
@@ -126,8 +128,8 @@ workspace = true
 test-util = { path = "test-util", default-features = false }
 postgresql_embedded = { version = "0.20", features = ["tokio"] }
 rstest = { workspace = true }
-rstest-bdd = "0.4.0"
-rstest-bdd-macros = { version = "0.4.0", features = ["compile-time-validation"] }
+rstest-bdd = { workspace = true }
+rstest-bdd-macros = { workspace = true }
 serial_test = "3"
 proptest = "1.4.0"
 tempfile = "3.23.0"

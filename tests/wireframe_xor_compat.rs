@@ -1,90 +1,37 @@
 //! Behavioural tests for XOR compatibility in wireframe routing.
 
-use std::{
-    cell::{Cell, RefCell},
-    net::SocketAddr,
-    sync::Arc,
-};
-
 use mxd::{
-    db::DbPool,
     field_id::FieldId,
-    handler::Session,
-    privileges::Privileges,
-    server::outbound::NoopOutboundMessaging,
-    transaction::{Transaction, parse_transaction},
+    transaction::Transaction,
     transaction_type::TransactionType,
-    wireframe::{
-        compat::XorCompatibility,
-        compat_policy::ClientCompatibility,
-        connection::HandshakeMetadata,
-        routes::{RouteContext, process_transaction_bytes},
-        test_helpers::xor_bytes,
-    },
+    wireframe::test_helpers::xor_bytes,
 };
 use rstest::fixture;
-use rstest_bdd_macros::{given, scenario, then, when};
-use test_util::{SetupFn, TestDb, build_frame, build_test_db, setup_files_db, setup_news_db};
-use tokio::runtime::Runtime;
+use rstest_bdd_macros::{given, scenarios, then, when};
+use test_util::{SetupFn, WireframeBddWorld, build_frame, setup_files_db, setup_news_db};
 
 struct XorWorld {
-    rt: Runtime,
-    peer: SocketAddr,
-    pool: RefCell<DbPool>,
-    db_guard: RefCell<Option<TestDb>>,
-    session: RefCell<Session>,
-    reply: RefCell<Option<Result<Transaction, String>>>,
-    compat: Arc<XorCompatibility>,
-    client_compat: Arc<ClientCompatibility>,
-    skipped: Cell<bool>,
+    base: WireframeBddWorld,
 }
 
-#[expect(clippy::expect_used, reason = "test assertions")]
 impl XorWorld {
-    fn new() -> Self {
-        let rt = Runtime::new().expect("runtime");
-        let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
-        Self {
-            rt,
-            peer,
-            pool: RefCell::new(mxd::wireframe::test_helpers::dummy_pool()),
-            db_guard: RefCell::new(None),
-            session: RefCell::new(Session::default()),
-            reply: RefCell::new(None),
-            compat: Arc::new(XorCompatibility::disabled()),
-            client_compat: Arc::new(ClientCompatibility::from_handshake(
-                &HandshakeMetadata::default(),
-            )),
-            skipped: Cell::new(false),
-        }
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            base: WireframeBddWorld::new()?,
+        })
     }
 
-    const fn is_skipped(&self) -> bool { self.skipped.get() }
+    const fn is_skipped(&self) -> bool { self.base.is_skipped() }
 
-    fn setup_db(&self, setup: SetupFn) {
-        if self.is_skipped() {
-            return;
-        }
-        let db = match build_test_db(&self.rt, setup) {
-            Ok(Some(db)) => db,
-            Ok(None) => {
-                self.skipped.set(true);
-                return;
-            }
-            Err(err) => panic!("failed to set up database: {err}"),
-        };
-        self.pool.replace(db.pool());
-        self.db_guard.replace(Some(db));
-        self.session.replace(Session::default());
+    fn setup_db(&self, setup: SetupFn) -> Result<(), Box<dyn std::error::Error>> {
+        self.base.setup_db(setup).map_err(Into::into)
     }
 
     fn authenticate(&self) {
         if self.is_skipped() {
             return;
         }
-        let mut session = self.session.borrow_mut();
-        session.user_id = Some(1);
-        session.privileges = Privileges::default_user();
+        self.base.authenticate_default_user(1);
     }
 
     fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
@@ -94,68 +41,38 @@ impl XorWorld {
         let frame = match build_frame(ty, id, params) {
             Ok(frame) => frame,
             Err(err) => {
-                self.reply.borrow_mut().replace(Err(err.to_string()));
+                self.base.set_reply_error(err.to_string());
                 return;
             }
         };
-        self.send_raw(&frame);
+        self.base.send_raw(&frame);
     }
 
-    fn send_raw(&self, frame: &[u8]) {
-        if self.is_skipped() {
-            return;
-        }
-        let pool = self.pool.borrow().clone();
-        let peer = self.peer;
-        let mut session = self.session.replace(Session::default());
-        let messaging = NoopOutboundMessaging;
-        let compat = Arc::clone(&self.compat);
-        let reply = self.rt.block_on(async {
-            process_transaction_bytes(
-                frame,
-                RouteContext {
-                    peer,
-                    pool,
-                    session: &mut session,
-                    messaging: &messaging,
-                    compat: compat.as_ref(),
-                    client_compat: self.client_compat.as_ref(),
-                },
-            )
-            .await
-        });
-        self.session.replace(session);
-        let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
-        self.reply.borrow_mut().replace(outcome);
-    }
+    fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T { self.base.with_reply(f) }
 
-    fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T {
-        let reply_ref = self.reply.borrow();
-        let Some(reply) = reply_ref.as_ref() else {
-            panic!("no reply received");
-        };
-        let tx = match reply.as_ref() {
-            Ok(tx) => tx,
-            Err(error) => panic!("reply parse failed: {error}"),
-        };
-        f(tx)
-    }
+    fn is_xor_enabled(&self) -> bool { self.base.is_xor_enabled() }
 }
 
 #[fixture]
 fn world() -> XorWorld {
-    let world = XorWorld::new();
-    let _ = world.is_skipped();
+    let world = match XorWorld::new() {
+        Ok(world) => world,
+        Err(error) => panic!("failed to construct XOR compatibility fixture runtime: {error}"),
+    };
+    assert!(!world.is_skipped(), "world starts active");
     world
 }
 
 #[given("a routing context with user accounts")]
-fn given_users(world: &XorWorld) { world.setup_db(setup_files_db); }
+fn given_users(world: &XorWorld) -> Result<(), Box<dyn std::error::Error>> {
+    world.setup_db(setup_files_db)
+}
 
 #[given("a routing context with news articles")]
-fn given_news(world: &XorWorld) {
-    world.setup_db(setup_news_db);
+fn given_news(world: &XorWorld) -> Result<(), Box<dyn std::error::Error>> {
+    world.setup_db(setup_news_db)?;
     world.authenticate();
+    Ok(())
 }
 
 #[when("I send a login with XOR-encoded credentials")]
@@ -222,14 +139,10 @@ fn then_xor_enabled(world: &XorWorld) {
     if world.is_skipped() {
         return;
     }
-    assert!(world.compat.is_enabled());
+    assert!(world.is_xor_enabled());
 }
 
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 0)]
-fn xor_login(world: XorWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 1)]
-fn xor_message(world: XorWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_xor_compat.feature", index = 2)]
-fn xor_news(world: XorWorld) { let _ = world; }
+scenarios!(
+    "tests/features/wireframe_xor_compat.feature",
+    fixtures = [world: XorWorld]
+);

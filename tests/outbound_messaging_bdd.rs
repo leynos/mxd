@@ -13,12 +13,10 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd::assert_step_ok;
-use rstest_bdd_macros::{given, scenario, then, when};
-use tokio::runtime::Runtime;
+use rstest_bdd_macros::{given, scenarios, then, when};
 use wireframe::push::{PushPriority, PushQueues};
 
 struct OutboundWorld {
-    rt: Runtime,
     connection: Arc<WireframeOutboundConnection>,
     messaging: WireframeOutboundMessaging,
     queues: RefCell<Option<PushQueues<Vec<u8>>>>,
@@ -26,15 +24,12 @@ struct OutboundWorld {
 }
 
 impl OutboundWorld {
-    #[expect(clippy::expect_used, reason = "test setup")]
     fn new() -> Self {
-        let rt = Runtime::new().expect("runtime");
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
         let connection = Arc::new(WireframeOutboundConnection::new(id, registry));
         let messaging = WireframeOutboundMessaging::new(Arc::clone(&connection));
         Self {
-            rt,
             connection,
             messaging,
             queues: RefCell::new(None),
@@ -61,7 +56,7 @@ impl OutboundWorld {
 #[fixture]
 fn world() -> OutboundWorld {
     let world = OutboundWorld::new();
-    debug_assert!(
+    assert!(
         world.queues.borrow().is_none(),
         "world starts without queues"
     );
@@ -70,11 +65,19 @@ fn world() -> OutboundWorld {
 
 #[given("a wireframe outbound messenger with a registered connection")]
 fn given_registered(world: &OutboundWorld) {
-    let (queues, handle) = PushQueues::<Vec<u8>>::builder()
+    let build_result = PushQueues::<Vec<u8>>::builder()
         .high_capacity(1)
         .low_capacity(1)
-        .build()
-        .unwrap_or_else(|err| panic!("push queues: {err}"));
+        .build();
+    let (queues, handle) = match build_result {
+        Ok(pair) => pair,
+        Err(err) => {
+            panic!(
+                "expected PushQueues builder to succeed for fixture capacities high=1 and low=1, \
+                 got configuration error: {err:?}"
+            );
+        }
+    };
     world.connection.register_handle(&handle);
     world.queues.replace(Some(queues));
 }
@@ -83,12 +86,15 @@ fn given_registered(world: &OutboundWorld) {
 fn given_unregistered(world: &OutboundWorld) { world.queues.replace(None); }
 
 #[when("I push a low priority message to the current connection")]
-fn when_push_low(world: &OutboundWorld) {
-    let result = world.rt.block_on(world.messaging.push(
-        OutboundTarget::Current,
-        OutboundWorld::message(),
-        OutboundPriority::Low,
-    ));
+async fn when_push_low(world: &OutboundWorld) {
+    let result = world
+        .messaging
+        .push(
+            OutboundTarget::Current,
+            OutboundWorld::message(),
+            OutboundPriority::Low,
+        )
+        .await;
     world.result.replace(Some(result));
 }
 
@@ -114,14 +120,18 @@ fn then_push_fails(world: &OutboundWorld, message: String) {
 }
 
 #[then("the low priority queue receives the message")]
-fn then_queue_receives(world: &OutboundWorld) {
-    let mut queues_ref = world.queues.borrow_mut();
-    let Some(queues) = queues_ref.as_mut() else {
-        panic!("queues not initialised");
+async fn then_queue_receives(world: &OutboundWorld) {
+    let mut queues = {
+        let mut queues_slot = world.queues.borrow_mut();
+        let Some(queues) = queues_slot.take() else {
+            panic!("queues not initialized");
+        };
+        queues
     };
-    let queued = world.rt.block_on(async { queues.recv().await });
+    let queued = queues.recv().await;
+    world.queues.borrow_mut().replace(queues);
     let Some((priority, frame)) = queued else {
-        panic!("frame queued");
+        panic!("expected a queued frame but queue was empty");
     };
     assert_eq!(priority, PushPriority::Low);
     let parsed = parse_transaction(&frame).unwrap_or_else(|err| {
@@ -130,8 +140,8 @@ fn then_queue_receives(world: &OutboundWorld) {
     assert_eq!(parsed, OutboundWorld::message());
 }
 
-#[scenario(path = "tests/features/outbound_messaging.feature", index = 0)]
-fn push_to_current_connection(world: OutboundWorld) { drop(world); }
-
-#[scenario(path = "tests/features/outbound_messaging.feature", index = 1)]
-fn push_missing_target(world: OutboundWorld) { drop(world); }
+scenarios!(
+    "tests/features/outbound_messaging.feature",
+    runtime = "tokio-current-thread",
+    fixtures = [world: OutboundWorld]
+);
