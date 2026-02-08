@@ -6,7 +6,7 @@ use std::cell::RefCell;
 
 use mxd_verification::session_model::SessionModel;
 use rstest::fixture;
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 use stateright::Model;
 use verification_harness::{MIN_STATE_COUNT, verify_session_model};
 
@@ -70,64 +70,54 @@ impl VerificationWorld {
 }
 
 #[fixture]
-fn world() -> Result<VerificationWorld, Box<dyn std::error::Error>> {
-    let world = VerificationWorld::new();
-    if world.result.borrow().is_some() {
-        return Err(Box::new(VerificationError::AlreadyExecuted));
+fn world() -> VerificationWorld {
+    #[expect(
+        clippy::allow_attributes,
+        reason = "fixture macro expansion triggers unused-braces on expression bodies"
+    )]
+    #[allow(
+        unused_braces,
+        reason = "fixture macro expansion triggers unused-braces on expression bodies"
+    )]
+    {
+        VerificationWorld::new()
     }
-    Ok(world)
 }
 
-fn resolve_world(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<&VerificationWorld, Box<dyn std::error::Error>> {
-    world.as_ref().map_err(|error| error.to_string().into())
-}
-
-fn ensure_unverified(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if resolve_world(world)?.result.borrow().is_some() {
+fn ensure_unverified(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+    if world.result.borrow().is_some() {
         return Err(Box::new(VerificationError::AlreadyExecuted));
     }
     Ok(())
 }
 
 #[given("the session gating model uses default bounds")]
-fn given_default_model(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn given_default_model(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
-    let resolved_world = resolve_world(world)?;
-    resolved_world.set_model(SessionModel::default());
+    // The Given step explicitly re-states the feature precondition, even
+    // though the fixture starts with the default model.
+    world.set_model(SessionModel::default());
     Ok(())
 }
 
 #[when("I verify the session gating model")]
-fn when_verify_model(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn when_verify_model(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
-    let resolved_world = resolve_world(world)?;
-    resolved_world.verify();
+    world.verify();
     Ok(())
 }
 
 #[then("the verification completes")]
 fn then_verification_completes(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+    world: &VerificationWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let resolved_world = resolve_world(world)?;
-    assert!(resolved_world.result()?.ran);
+    assert!(world.result()?.ran);
     Ok(())
 }
 
 #[then("the properties are satisfied")]
-fn then_properties_satisfied(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let resolved_world = resolve_world(world)?;
-    let result = resolved_world.result()?;
+fn then_properties_satisfied(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
+    let result = world.result()?;
     assert!(
         result.properties_verified,
         "reachability missing: {}, safety counterexamples: {}",
@@ -138,15 +128,14 @@ fn then_properties_satisfied(
 
 #[then("the model explores at least {count} states")]
 fn then_state_space_size(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
+    world: &VerificationWorld,
     count: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     assert!(
         count >= MIN_STATE_COUNT,
         "feature expectations should not undercut the harness minimum"
     );
-    let resolved_world = resolve_world(world)?;
-    let result = resolved_world.result()?;
+    let result = world.result()?;
     assert!(
         result.unique_state_count >= count,
         "expected at least {count} states, got {}",
@@ -155,13 +144,14 @@ fn then_state_space_size(
     Ok(())
 }
 
+/// Assert a structural model property rather than a verification result.
+///
+/// The `ensure_unverified` guard ensures this step is only run while the
+/// world still represents the model definition phase.
 #[then("the model includes the out-of-order delivery property")]
-fn then_out_of_order_property(
-    world: &Result<VerificationWorld, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn then_out_of_order_property(world: &VerificationWorld) -> Result<(), Box<dyn std::error::Error>> {
     ensure_unverified(world)?;
-    let resolved_world = resolve_world(world)?;
-    let properties = resolved_world.model.borrow().properties();
+    let properties = world.model.borrow().properties();
     assert!(
         properties
             .iter()
@@ -170,38 +160,7 @@ fn then_out_of_order_property(
     Ok(())
 }
 
-#[scenario(
-    path = "../../tests/features/session_gating_verification.feature",
-    index = 0
-)]
-fn session_model_verifies_default_bounds(
-    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
-) {
-    if let Err(error) = world {
-        panic!("world fixture failed: {error}");
-    }
-}
-
-#[scenario(
-    path = "../../tests/features/session_gating_verification.feature",
-    index = 1
-)]
-fn session_model_explores_state_space(
-    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
-) {
-    if let Err(error) = world {
-        panic!("world fixture failed: {error}");
-    }
-}
-
-#[scenario(
-    path = "../../tests/features/session_gating_verification.feature",
-    index = 2
-)]
-fn session_model_registers_out_of_order_property(
-    world: Result<VerificationWorld, Box<dyn std::error::Error>>,
-) {
-    if let Err(error) = world {
-        panic!("world fixture failed: {error}");
-    }
-}
+scenarios!(
+    "../../tests/features/session_gating_verification.feature",
+    fixtures = [world: VerificationWorld]
+);

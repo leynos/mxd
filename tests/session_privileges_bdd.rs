@@ -28,7 +28,7 @@ use mxd::{
     },
 };
 use rstest::fixture;
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 use test_util::{
     DatabaseUrl,
     SetupFn,
@@ -41,7 +41,7 @@ use test_util::{
 use tokio::runtime::Runtime;
 
 struct PrivilegeWorld {
-    rt: Runtime,
+    runtime: Runtime,
     peer: SocketAddr,
     pool: RefCell<DbPool>,
     db_guard: RefCell<Option<TestDb>>,
@@ -53,12 +53,14 @@ struct PrivilegeWorld {
 }
 
 impl PrivilegeWorld {
-    #[expect(clippy::expect_used, reason = "test setup")]
     fn new() -> Self {
-        let rt = Runtime::new().expect("runtime");
-        let peer = "127.0.0.1:12345".parse().expect("valid peer addr");
+        let peer = "127.0.0.1:12345"
+            .parse()
+            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
+        let runtime =
+            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
         Self {
-            rt,
+            runtime,
             peer,
             pool: RefCell::new(dummy_pool()),
             db_guard: RefCell::new(None),
@@ -78,7 +80,7 @@ impl PrivilegeWorld {
         if self.is_skipped() {
             return;
         }
-        let db = match build_test_db(&self.rt, setup) {
+        let db = match build_test_db(&self.runtime, setup) {
             Ok(Some(db)) => db,
             Ok(None) => {
                 self.skipped.set(true);
@@ -109,32 +111,30 @@ impl PrivilegeWorld {
         let mut session = self.session.borrow().clone();
         let messaging = NoopOutboundMessaging;
         let compat = Arc::clone(&self.compat);
-        let reply = self.rt.block_on(async {
-            process_transaction_bytes(
-                &frame,
-                RouteContext {
-                    peer,
-                    pool,
-                    session: &mut session,
-                    messaging: &messaging,
-                    compat: compat.as_ref(),
-                    client_compat: self.client_compat.as_ref(),
-                },
-            )
-            .await
-        });
+        let reply = self.runtime.block_on(process_transaction_bytes(
+            &frame,
+            RouteContext {
+                peer,
+                pool,
+                session: &mut session,
+                messaging: &messaging,
+                compat: compat.as_ref(),
+                client_compat: self.client_compat.as_ref(),
+            },
+        ));
         self.session.replace(session);
         let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
         self.reply.borrow_mut().replace(outcome);
     }
 
-    #[expect(clippy::expect_used, reason = "test assertion helper")]
     fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T {
         let reply_ref = self.reply.borrow();
         let Some(reply) = reply_ref.as_ref() else {
             panic!("no reply received");
         };
-        let tx = reply.as_ref().expect("reply should be Ok");
+        let Ok(tx) = reply.as_ref() else {
+            panic!("reply should be Ok");
+        };
         f(tx)
     }
 
@@ -143,18 +143,20 @@ impl PrivilegeWorld {
     /// # Panics
     ///
     /// Panics if the user does not exist; this indicates a test setup failure.
-    #[expect(clippy::expect_used, reason = "test helper")]
     fn get_test_user_id(&self, username: &str) -> i32 {
         let pool = self.pool.borrow().clone();
         let name = username.to_owned();
-        self.rt.block_on(async move {
-            let mut conn = pool.get().await.expect("pool connection");
+        self.runtime.block_on(async move {
+            let mut conn = pool
+                .get()
+                .await
+                .unwrap_or_else(|err| panic!("pool connection should be available: {err}"));
             users_dsl::users
                 .filter(users_dsl::username.eq(&name))
                 .select(users_dsl::id)
                 .first::<i32>(&mut conn)
                 .await
-                .expect("test user should exist")
+                .unwrap_or_else(|err| panic!("test user should exist in fixture db: {err}"))
         })
     }
 }
@@ -251,29 +253,7 @@ fn then_insufficient_privileges_error(world: &PrivilegeWorld) {
     then_error_code(world, ERR_INSUFFICIENT_PRIVILEGES);
 }
 
-#[scenario(path = "tests/features/session_privileges.feature", index = 0)]
-fn unauthenticated_file_list(world: PrivilegeWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/session_privileges.feature", index = 1)]
-fn authenticated_file_list(world: PrivilegeWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/session_privileges.feature", index = 2)]
-fn authenticated_but_unprivileged_file_list(world: PrivilegeWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/session_privileges.feature", index = 3)]
-fn unauthenticated_news_categories(world: PrivilegeWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/session_privileges.feature", index = 4)]
-fn authenticated_news_categories(world: PrivilegeWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/session_privileges.feature", index = 5)]
-fn authenticated_but_unprivileged_news_categories(world: PrivilegeWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/session_privileges.feature", index = 6)]
-fn unauthenticated_post_news(world: PrivilegeWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/session_privileges.feature", index = 7)]
-fn authenticated_post_news(world: PrivilegeWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/session_privileges.feature", index = 8)]
-fn authenticated_but_unprivileged_post_news(world: PrivilegeWorld) { let _ = world; }
+scenarios!(
+    "tests/features/session_privileges.feature",
+    fixtures = [world: PrivilegeWorld]
+);

@@ -182,6 +182,17 @@ fn generate_db_name(prefix: &str) -> Result<DatabaseName, DatabaseNameError> {
     DatabaseName::new(name)
 }
 
+fn create_external_db_if_available(
+    admin_url: &DatabaseUrl,
+) -> Result<(DatabaseUrl, DatabaseName), PostgresTestDbError> {
+    let parsed =
+        Url::parse(admin_url.as_ref()).map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
+    if !postgres_available(&parsed) {
+        return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
+    }
+    create_external_db(admin_url).map_err(PostgresTestDbError::InitFailed)
+}
+
 /// Generates a stable template name based on migration content hash.
 /// Template name changes when migrations change, forcing template recreation.
 fn migration_template_name() -> Result<DatabaseName, Box<dyn StdError + Send + Sync>> {
@@ -298,6 +309,39 @@ where
     start_embedded_postgres_with_strategy(setup, false)
 }
 
+/// Starts an embedded `PostgreSQL` cluster on the caller's async runtime.
+///
+/// This variant avoids creating a nested runtime and is therefore safe to call
+/// from async contexts.
+pub(crate) async fn start_embedded_postgres_async<F>(
+    setup: F,
+) -> Result<EmbeddedPg, EmbeddedPgError>
+where
+    F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>> + Send + 'static,
+{
+    let cluster = TestCluster::start_async().await.map_err(|e| {
+        EmbeddedPgError::Unavailable(format!("bootstrapping embedded PostgreSQL: {e}"))
+    })?;
+    let connection = cluster.connection();
+    let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
+        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let admin_url_for_setup = admin_url.clone();
+    let (url, db_name) = tokio::task::spawn_blocking(move || {
+        let (url, db_name) =
+            create_external_db(&admin_url_for_setup).map_err(EmbeddedPgError::InitFailed)?;
+        setup(&url).map_err(EmbeddedPgError::InitFailed)?;
+        Ok::<(DatabaseUrl, DatabaseName), EmbeddedPgError>((url, db_name))
+    })
+    .await
+    .map_err(|error| EmbeddedPgError::InitFailed(Box::new(error)))??;
+    Ok(EmbeddedPg {
+        url,
+        db_name,
+        admin_url,
+        _cluster: cluster,
+    })
+}
+
 pub(crate) fn reset_postgres_db(url: &DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let mut client = Client::connect(url.as_ref(), NoTls)?;
     client.batch_execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")?;
@@ -380,13 +424,7 @@ impl PostgresTestDb {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let admin_url = DatabaseUrl::parse(&value.to_string_lossy())
                 .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
-            let parsed = Url::parse(admin_url.as_ref())
-                .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
-            if !postgres_available(&parsed) {
-                return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
-            }
-            let (url, db_name) =
-                create_external_db(&admin_url).map_err(PostgresTestDbError::InitFailed)?;
+            let (url, db_name) = create_external_db_if_available(&admin_url)?;
             return Ok(Self {
                 url,
                 admin_url: Some(admin_url),
@@ -401,6 +439,55 @@ impl PostgresTestDb {
             }
             EmbeddedPgError::InitFailed(inner) => PostgresTestDbError::InitFailed(inner),
         })?;
+        let url = embedded.url.clone();
+        let db_name = embedded.db_name.clone();
+        Ok(Self {
+            url,
+            admin_url: None,
+            embedded: Some(embedded),
+            db_name: Some(db_name),
+        })
+    }
+
+    /// Creates a new test database instance from an async context.
+    ///
+    /// Uses `POSTGRES_TEST_URL` environment variable if set, otherwise starts
+    /// an embedded `PostgreSQL` instance using the caller runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresTestDbError::Unavailable`] if:
+    /// - The configured external server cannot be reached
+    /// - The embedded `PostgreSQL` binary is not available
+    ///
+    /// Returns [`PostgresTestDbError::InitFailed`] for other errors
+    /// (URL parsing, database creation, etc.).
+    pub async fn new_async() -> Result<Self, PostgresTestDbError> {
+        if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
+            let admin_url = DatabaseUrl::parse(&value.to_string_lossy())
+                .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
+            let admin_url_for_blocking = admin_url.clone();
+            let (url, db_name) = tokio::task::spawn_blocking(move || {
+                create_external_db_if_available(&admin_url_for_blocking)
+            })
+            .await
+            .map_err(|error| PostgresTestDbError::InitFailed(Box::new(error)))??;
+            return Ok(Self {
+                url,
+                admin_url: Some(admin_url),
+                embedded: None,
+                db_name: Some(db_name),
+            });
+        }
+
+        let embedded = start_embedded_postgres_async(reset_postgres_db)
+            .await
+            .map_err(|e| match e {
+                EmbeddedPgError::Unavailable(_) => {
+                    PostgresTestDbError::Unavailable(PostgresUnavailable)
+                }
+                EmbeddedPgError::InitFailed(inner) => PostgresTestDbError::InitFailed(inner),
+            })?;
         let url = embedded.url.clone();
         let db_name = embedded.db_name.clone();
         Ok(Self {

@@ -17,7 +17,7 @@ use mxd::{
 use proptest::prelude::*;
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, scenarios, then, when};
 
 /// Return the bincode configuration for Hotline transaction decoding.
 ///
@@ -88,33 +88,29 @@ fn build_valid_payload(size: usize) -> Vec<u8> {
     payload
 }
 
-#[given("a transaction with total size {total} and data size {data}")]
-fn given_transaction_sizes(world: &TransactionWorld, total: u32, data: u32) {
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 107,
-        id: 1,
-        error: 0,
-        total_size: total,
-        data_size: data,
-    };
-    let payload = build_valid_payload(data as usize);
-    world.set_bytes(&transaction_bytes(&header, &payload));
-}
-
-#[given("a transaction with flags {flags}")]
-fn given_transaction_flags(world: &TransactionWorld, flags: u8) {
+/// Build a fixture transaction for BDD steps using shared default header values.
+fn build_transaction(world: &TransactionWorld, flags: u8, total_size: u32, data_size: u32) {
     let header = FrameHeader {
         flags,
         is_reply: 0,
         ty: 107,
         id: 1,
         error: 0,
-        total_size: 0,
-        data_size: 0,
+        total_size,
+        data_size,
     };
-    world.set_bytes(&transaction_bytes(&header, &[]));
+    let payload = build_valid_payload(data_size as usize);
+    world.set_bytes(&transaction_bytes(&header, &payload));
+}
+
+#[given("a transaction with total size {total} and data size {data}")]
+fn given_transaction_sizes(world: &TransactionWorld, total: u32, data: u32) {
+    build_transaction(world, 0, total, data);
+}
+
+#[given("a transaction with flags {flags}")]
+fn given_transaction_flags(world: &TransactionWorld, flags: u8) {
+    build_transaction(world, flags, 0, 0);
 }
 
 #[given("a fragmented transaction with total size {total} across {count} fragments")]
@@ -181,33 +177,10 @@ fn then_failure(world: &TransactionWorld, message: String) {
     });
 }
 
-// Scenario bindings
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 0)]
-fn single_frame_with_payload(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 1)]
-fn empty_transaction(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 2)]
-fn multi_fragment_request(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 3)]
-fn rejects_data_exceeds_total(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 4)]
-fn rejects_empty_data_nonzero_total(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 5)]
-fn rejects_invalid_flags(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 6)]
-fn rejects_oversized_total(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 7)]
-fn rejects_oversized_data(world: TransactionWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/wireframe_transaction.feature", index = 8)]
-fn rejects_mismatched_continuation(world: TransactionWorld) { let _ = world; }
+scenarios!(
+    "tests/features/wireframe_transaction.feature",
+    fixtures = [world: TransactionWorld]
+);
 
 // -----------------------------------------------------------------------------
 // Property Tests

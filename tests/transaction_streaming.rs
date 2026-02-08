@@ -1,5 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 //! Behavioural tests for streaming transaction framing.
 
 use std::{cell::RefCell, io::Cursor};
@@ -14,39 +12,41 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
-use rstest_bdd_macros::{given, scenario, then, when};
-use tokio::{io::BufReader, runtime::Runtime};
+use rstest_bdd_macros::{given, scenarios, then, when};
+use tokio::io::BufReader;
 
 struct StreamingWorld {
     bytes: RefCell<Vec<u8>>,
     outcome: RefCell<Option<Result<Vec<TransactionFragment>, String>>>,
-    rt: Runtime,
 }
 
 impl StreamingWorld {
-    fn new() -> Self {
-        let rt = Runtime::new().expect("runtime");
+    const fn new() -> Self {
         Self {
             bytes: RefCell::new(Vec::new()),
             outcome: RefCell::new(None),
-            rt,
         }
     }
 
     fn set_bytes(&self, bytes: Vec<u8>) { *self.bytes.borrow_mut() = bytes; }
 
-    fn stream_fragments(&self, limit: usize) {
+    async fn stream_fragments(&self, limit: usize) {
         let bytes = self.bytes.borrow().clone();
-        let result = self.rt.block_on(async move {
-            let mut reader = TransactionStreamReader::new(BufReader::new(Cursor::new(bytes)))
-                .with_max_total(limit);
-            let mut stream = reader.start_transaction().await?;
-            let mut fragments = Vec::new();
-            while let Some(fragment) = stream.next_fragment().await? {
-                fragments.push(fragment);
+        let mut reader =
+            TransactionStreamReader::new(BufReader::new(Cursor::new(bytes))).with_max_total(limit);
+        let result = match reader.start_transaction().await {
+            Ok(mut stream) => {
+                let mut fragments = Vec::new();
+                loop {
+                    match stream.next_fragment().await {
+                        Ok(Some(fragment)) => fragments.push(fragment),
+                        Ok(None) => break Ok(fragments),
+                        Err(err) => break Err(err),
+                    }
+                }
             }
-            Ok::<_, mxd::transaction::TransactionError>(fragments)
-        });
+            Err(err) => Err(err),
+        };
         self.outcome
             .borrow_mut()
             .replace(result.map_err(|e| e.to_string()));
@@ -101,6 +101,10 @@ fn given_transaction_sizes(world: &StreamingWorld, total: u32, data: u32) {
 }
 
 #[given("a fragmented transaction with total size {total} across {count} fragments")]
+#[expect(
+    clippy::expect_used,
+    reason = "fixture construction should fail immediately with explicit context"
+)]
 fn given_fragmented_transaction(world: &StreamingWorld, total: usize, count: usize) {
     assert!(count > 0, "fragment count must be positive");
     let payload = build_payload(total);
@@ -111,23 +115,27 @@ fn given_fragmented_transaction(world: &StreamingWorld, total: usize, count: usi
         ty: 410,
         id: 7,
         error: 0,
-        total_size: u32::try_from(total).expect("total fits u32"),
-        data_size: u32::try_from(total).expect("total fits u32"),
+        total_size: u32::try_from(total).expect("total size must fit u32 for fixture"),
+        data_size: u32::try_from(total).expect("total size must fit u32 for fixture"),
     };
-    let fragments =
-        fragmented_transaction_bytes(&header, &payload, fragment_size).expect("fragments");
+    let fragments = fragmented_transaction_bytes(&header, &payload, fragment_size)
+        .expect("failed to fragment fixture transaction");
     let bytes: Vec<u8> = fragments.into_iter().flatten().collect();
     world.set_bytes(bytes);
 }
 
 #[given("a fragmented transaction with mismatched continuation headers")]
+#[expect(
+    clippy::expect_used,
+    reason = "fixture construction should fail immediately with explicit context"
+)]
 fn given_mismatched_continuation(world: &StreamingWorld) {
-    let bytes = mismatched_continuation_bytes().expect("mismatched bytes");
+    let bytes = mismatched_continuation_bytes().expect("failed to build mismatched fixture bytes");
     world.set_bytes(bytes);
 }
 
 #[when("I stream the transaction fragments with a limit of {limit} bytes")]
-fn when_stream(world: &StreamingWorld, limit: usize) { world.stream_fragments(limit); }
+async fn when_stream(world: &StreamingWorld, limit: usize) { world.stream_fragments(limit).await; }
 
 #[then("streaming succeeds")]
 fn then_streaming_succeeds(world: &StreamingWorld) {
@@ -167,11 +175,8 @@ fn then_streaming_fails(world: &StreamingWorld, message: String) {
     world.assert_failure_contains(&message);
 }
 
-#[scenario(path = "tests/features/transaction_streaming.feature", index = 0)]
-fn streaming_multi_fragment(world: StreamingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/transaction_streaming.feature", index = 1)]
-fn streaming_rejects_mismatch(world: StreamingWorld) { let _ = world; }
-
-#[scenario(path = "tests/features/transaction_streaming.feature", index = 2)]
-fn streaming_rejects_limit(world: StreamingWorld) { let _ = world; }
+scenarios!(
+    "tests/features/transaction_streaming.feature",
+    runtime = "tokio-current-thread",
+    fixtures = [world: StreamingWorld]
+);
