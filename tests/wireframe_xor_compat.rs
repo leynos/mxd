@@ -21,21 +21,19 @@ impl XorWorld {
         })
     }
 
-    const fn is_skipped(&self) -> bool { self.base.is_skipped() }
-
     fn setup_db(&self, setup: SetupFn) -> Result<(), Box<dyn std::error::Error>> {
         self.base.setup_db(setup).map_err(Into::into)
     }
 
     fn authenticate(&self) {
-        if self.is_skipped() {
+        if self.base.is_skipped() {
             return;
         }
         self.base.authenticate_default_user(1);
     }
 
     fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
-        if self.is_skipped() {
+        if self.base.is_skipped() {
             return;
         }
         let frame = match build_frame(ty, id, params) {
@@ -59,7 +57,7 @@ fn world() -> XorWorld {
         Ok(world) => world,
         Err(error) => panic!("failed to construct XOR compatibility fixture runtime: {error}"),
     };
-    assert!(!world.is_skipped(), "world starts active");
+    assert!(!world.base.is_skipped(), "world starts active");
     world
 }
 
@@ -126,7 +124,7 @@ fn when_post_news_xor(world: &XorWorld) {
 
 #[then("the reply error code is {code}")]
 fn then_error_code(world: &XorWorld, code: u32) {
-    if world.is_skipped() {
+    if world.base.is_skipped() {
         return;
     }
     world.with_reply(|tx| {
@@ -136,7 +134,7 @@ fn then_error_code(world: &XorWorld, code: u32) {
 
 #[then("XOR compatibility is enabled")]
 fn then_xor_enabled(world: &XorWorld) {
-    if world.is_skipped() {
+    if world.base.is_skipped() {
         return;
     }
     assert!(world.is_xor_enabled());

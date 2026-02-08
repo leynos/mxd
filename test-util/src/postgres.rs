@@ -306,7 +306,7 @@ pub(crate) async fn start_embedded_postgres_async<F>(
     setup: F,
 ) -> Result<EmbeddedPg, EmbeddedPgError>
 where
-    F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
+    F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>> + Send + 'static,
 {
     let cluster = TestCluster::start_async().await.map_err(|e| {
         EmbeddedPgError::Unavailable(format!("bootstrapping embedded PostgreSQL: {e}"))
@@ -314,8 +314,15 @@ where
     let connection = cluster.connection();
     let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
         .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-    let (url, db_name) = create_external_db(&admin_url).map_err(EmbeddedPgError::InitFailed)?;
-    setup(&url).map_err(EmbeddedPgError::InitFailed)?;
+    let admin_url_for_setup = admin_url.clone();
+    let (url, db_name) = tokio::task::spawn_blocking(move || {
+        let (url, db_name) =
+            create_external_db(&admin_url_for_setup).map_err(EmbeddedPgError::InitFailed)?;
+        setup(&url).map_err(EmbeddedPgError::InitFailed)?;
+        Ok::<(DatabaseUrl, DatabaseName), EmbeddedPgError>((url, db_name))
+    })
+    .await
+    .map_err(|error| EmbeddedPgError::InitFailed(Box::new(error)))??;
     Ok(EmbeddedPg {
         url,
         db_name,

@@ -15,6 +15,15 @@ struct LoginCompatWorld {
     base: WireframeBddWorld,
 }
 
+#[derive(Debug)]
+struct AssertionError(String);
+
+impl std::fmt::Display for AssertionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.0) }
+}
+
+impl std::error::Error for AssertionError {}
+
 impl LoginCompatWorld {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
@@ -22,14 +31,12 @@ impl LoginCompatWorld {
         })
     }
 
-    const fn is_skipped(&self) -> bool { self.base.is_skipped() }
-
     fn setup_db(&self, setup: SetupFn) -> Result<(), Box<dyn std::error::Error>> {
         self.base.setup_db(setup).map_err(Into::into)
     }
 
     fn set_handshake_sub_version(&self, sub_version: u16) {
-        if self.is_skipped() {
+        if self.base.is_skipped() {
             return;
         }
         let handshake = HandshakeMetadata {
@@ -40,7 +47,7 @@ impl LoginCompatWorld {
     }
 
     fn send_login(&self, version: u16) {
-        if self.is_skipped() {
+        if self.base.is_skipped() {
             return;
         }
         #[expect(
@@ -69,7 +76,7 @@ impl LoginCompatWorld {
     fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T { self.base.with_reply(f) }
 
     fn assertion_error(message: impl Into<String>) -> Box<dyn std::error::Error> {
-        std::io::Error::other(message.into()).into()
+        Box::new(AssertionError(message.into()))
     }
 
     fn assert_includes_banner_fields(
@@ -116,7 +123,7 @@ impl LoginCompatWorld {
     }
 
     fn assert_banner_fields(&self, should_include: bool) -> Result<(), Box<dyn std::error::Error>> {
-        if self.is_skipped() {
+        if self.base.is_skipped() {
             return Ok(());
         }
         self.with_reply(|tx| {
@@ -152,7 +159,7 @@ fn world() -> LoginCompatWorld {
             panic!("failed to construct login compatibility fixture world runtime: {error}")
         }
     };
-    assert!(!world.is_skipped());
+    assert!(!world.base.is_skipped());
     world
 }
 
