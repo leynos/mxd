@@ -182,6 +182,17 @@ fn generate_db_name(prefix: &str) -> Result<DatabaseName, DatabaseNameError> {
     DatabaseName::new(name)
 }
 
+fn create_external_db_if_available(
+    admin_url: &DatabaseUrl,
+) -> Result<(DatabaseUrl, DatabaseName), PostgresTestDbError> {
+    let parsed =
+        Url::parse(admin_url.as_ref()).map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
+    if !postgres_available(&parsed) {
+        return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
+    }
+    create_external_db(admin_url).map_err(PostgresTestDbError::InitFailed)
+}
+
 /// Generates a stable template name based on migration content hash.
 /// Template name changes when migrations change, forcing template recreation.
 fn migration_template_name() -> Result<DatabaseName, Box<dyn StdError + Send + Sync>> {
@@ -413,13 +424,7 @@ impl PostgresTestDb {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let admin_url = DatabaseUrl::parse(&value.to_string_lossy())
                 .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
-            let parsed = Url::parse(admin_url.as_ref())
-                .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
-            if !postgres_available(&parsed) {
-                return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
-            }
-            let (url, db_name) =
-                create_external_db(&admin_url).map_err(PostgresTestDbError::InitFailed)?;
+            let (url, db_name) = create_external_db_if_available(&admin_url)?;
             return Ok(Self {
                 url,
                 admin_url: Some(admin_url),
@@ -461,13 +466,12 @@ impl PostgresTestDb {
         if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
             let admin_url = DatabaseUrl::parse(&value.to_string_lossy())
                 .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
-            let parsed = Url::parse(admin_url.as_ref())
-                .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
-            if !postgres_available(&parsed) {
-                return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
-            }
-            let (url, db_name) =
-                create_external_db(&admin_url).map_err(PostgresTestDbError::InitFailed)?;
+            let admin_url_for_blocking = admin_url.clone();
+            let (url, db_name) = tokio::task::spawn_blocking(move || {
+                create_external_db_if_available(&admin_url_for_blocking)
+            })
+            .await
+            .map_err(|error| PostgresTestDbError::InitFailed(Box::new(error)))??;
             return Ok(Self {
                 url,
                 admin_url: Some(admin_url),

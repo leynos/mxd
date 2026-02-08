@@ -8,7 +8,7 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenarios, then, when};
-use test_util::{SetupFn, WireframeBddWorld, build_frame, setup_files_db, setup_news_db};
+use test_util::{AnyError, SetupFn, WireframeBddWorld, build_frame, setup_files_db, setup_news_db};
 
 struct XorWorld {
     base: WireframeBddWorld,
@@ -21,9 +21,7 @@ impl XorWorld {
         })
     }
 
-    fn setup_db(&self, setup: SetupFn) -> Result<(), Box<dyn std::error::Error>> {
-        self.base.setup_db(setup).map_err(Into::into)
-    }
+    fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> { self.base.setup_db(setup) }
 
     fn authenticate(&self) {
         if self.base.is_skipped() {
@@ -62,12 +60,10 @@ fn world() -> XorWorld {
 }
 
 #[given("a routing context with user accounts")]
-fn given_users(world: &XorWorld) -> Result<(), Box<dyn std::error::Error>> {
-    world.setup_db(setup_files_db)
-}
+fn given_users(world: &XorWorld) -> Result<(), AnyError> { world.setup_db(setup_files_db) }
 
 #[given("a routing context with news articles")]
-fn given_news(world: &XorWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn given_news(world: &XorWorld) -> Result<(), AnyError> {
     world.setup_db(setup_news_db)?;
     world.authenticate();
     Ok(())
