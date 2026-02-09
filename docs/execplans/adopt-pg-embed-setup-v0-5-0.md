@@ -135,9 +135,13 @@ If the migration requires violating any constraint, stop and escalate.
   explicit cleanup strategy guidance. Rationale: these are the highest-value
   changes for this repository's current test harness shape and are called out
   in the migration guide. Date/Author: 2026-02-09 / Codex.
-- Decision: keep this ExecPlan in `DRAFT` status and stop before code
-  implementation. Rationale: the execplans workflow requires explicit user
+- Decision (superseded): keep this ExecPlan in `DRAFT` status and stop before
+  code implementation. Rationale: the execplans workflow requires explicit user
   approval before implementation begins. Date/Author: 2026-02-09 / Codex.
+- Decision: supersede the draft-stage hold decision after explicit user
+  approval and proceed with implementation. Rationale: approval was provided
+  and implementation completed with full quality-gate validation. Date/Author:
+  2026-02-09 / Codex.
 - Decision: for template-backed test databases, use
   `test_support::shared_cluster_handle()` with cluster-native
   `create_database_from_template` instead of manual SQL template cloning on a

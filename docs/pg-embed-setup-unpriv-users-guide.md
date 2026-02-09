@@ -73,16 +73,16 @@ Troubleshooting guidance:
 3. Run the helper (`cargo run --release --bin pg_embedded_setup_unpriv`). The
    command downloads the specified PostgreSQL release, ensures the directories
    exist, applies PostgreSQL-compatible permissions (0755 for the installation
-   cache, 0700 for the runtime and data directories), and initialises the
+   cache, 0700 for the runtime and data directories), and initializes the
    cluster with the provided credentials. Invocations that begin as `root`
    prepare directories for `nobody` and execute lifecycle commands through the
    worker helper so the privileged operations run entirely under the sandbox
    user. Ownership fix-ups occur on every call so running the tool twice
    remains idempotent.
 
-4. Pass the resulting paths and credentials to your tests. If you use
-   `postgresql_embedded` directly after the setup step, it can reuse the staged
-   binaries and data directory without needing `root`.
+4. Pass the resulting paths and credentials to the test suite. When
+   `postgresql_embedded` runs directly after the setup step, it can reuse the
+   staged binaries and data directory without needing `root`.
 
 ## Bootstrap for test suites
 
@@ -100,9 +100,13 @@ use pg_embedded_setup_unpriv::error::BootstrapResult;
 fn bootstrap() -> BootstrapResult<TestBootstrapSettings> {
     let prepared = bootstrap_for_tests()?;
     for (key, value) in prepared.environment.to_env() {
-        match value {
-            Some(value) => std::env::set_var(&key, value),
-            None => std::env::remove_var(&key),
+        // SAFETY: This example mutates process environment variables during
+        // single-threaded test setup before worker threads are spawned.
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
         }
     }
     Ok(prepared)
@@ -122,7 +126,7 @@ rather than when PostgreSQL launches.
 configuration entries into `bootstrap.settings.configuration` to minimize
 background and parallel worker processes for ephemeral test clusters. Override
 these values by mutating the configuration map before starting the cluster if
-your tests need different behaviour.
+the test suite needs different behaviour.
 
 ## Resource Acquisition Is Initialization (RAII) test clusters
 
@@ -140,7 +144,7 @@ fn exercise_cluster() -> BootstrapResult<()> {
     let cluster = TestCluster::new()?;
     let url = cluster.settings().url("app_db");
     // Issue queries using any preferred client here.
-drop(cluster); // PostgreSQL shuts down automatically.
+    drop(cluster); // PostgreSQL shuts down automatically.
     Ok(())
 }
 ```
@@ -175,14 +179,14 @@ from within a runtime" because it creates its own internal Tokio runtime. Async
 contexts require enabling the `async-api` feature and using the async
 constructor and shutdown methods.
 
-Enable the feature in your `Cargo.toml`:
+Enable the feature in the project's `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-pg-embed-setup-unpriv = { version = "0.2", features = ["async-api"] }
+pg-embed-setup-unpriv = { version = "0.5.0", features = ["async-api"] }
 ```
 
-Then use `start_async()` and `stop_async()` in your async tests:
+Then use `start_async()` and `stop_async()` in async tests:
 
 ```rust,no_run
 use pg_embedded_setup_unpriv::{TestCluster, error::BootstrapResult};
@@ -336,8 +340,8 @@ overhead from seconds to milliseconds.
 `TestCluster::connection()` exposes `TestClusterConnection`, a lightweight view
 over the running cluster's connection metadata. Use it to read the host, port,
 superuser name, generated password, or the `.pgpass` path without cloning the
-entire bootstrap struct. When you need to persist those values beyond the guard
-you can call `metadata()` to obtain an owned `ConnectionMetadata`.
+entire bootstrap struct. Persisting those values beyond the guard requires
+calling `metadata()` to obtain an owned `ConnectionMetadata`.
 
 Enable the `diesel-support` feature to call `diesel_connection()` and obtain a
 ready-to-use `diesel::PgConnection`. The default feature set keeps Diesel
@@ -489,7 +493,7 @@ let template_name = format!("template_{}", &hash[..8]);
 # }
 ```
 
-If you already track a migration version, include it in the template name
+If a migration version is already tracked, include it in the template name
 instead (for example, `format!("template_v{SCHEMA_VERSION}")`). This keeps
 template invalidation explicit without hashing the migration directory.
 
@@ -648,19 +652,19 @@ still running as `root`, follow these steps:
   without interactive prompts. The
   `bootstrap_for_tests().environment.pgpass_file` helper returns the path if
   the bootstrap ran inside the test process.
-- Provide `TZDIR=/usr/share/zoneinfo` (or the correct path for your
-  distribution) if you are running the CLI. The library helper sets `TZ`
+- Provide `TZDIR=/usr/share/zoneinfo` (or the correct path for the host
+  distribution) when running the CLI. The library helper sets `TZ`
   automatically and, on Unix-like hosts, also seeds `TZDIR` when it discovers a
   valid timezone database.
 
 ## Known issues and mitigations
 
 - **TimeZone errors**: The embedded cluster loads timezone data from the host
-  `tzdata` package. Install it inside the execution environment if you see
+  `tzdata` package. Install it inside the execution environment when
   `invalid value for parameter "TimeZone": "UTC"`.
 - **Download rate limits**: `postgresql_embedded` fetches binaries from the
-  Theseus GitHub releases. Supply a `GITHUB_TOKEN` environment variable if you
-  hit rate limits in CI.
+  Theseus GitHub releases. Supply a `GITHUB_TOKEN` environment variable when
+  rate limits are encountered in CI.
 - **CLI arguments in tests**: `PgEnvCfg::load()` ignores `std::env::args` during
   library use so Cargo test filters (for example,
   `bootstrap_privileges::bootstrap_as_root`) do not trip the underlying Clap

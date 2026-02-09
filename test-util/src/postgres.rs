@@ -369,6 +369,13 @@ pub(crate) fn reset_postgres_db(url: &DatabaseUrl) -> Result<(), Box<dyn StdErro
 )]
 fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
     if let Ok(mut client) = Client::connect(admin_url.as_ref(), NoTls) {
+        if let Err(e) = client.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> \
+             pg_backend_pid()",
+            &[&db_name.as_ref()],
+        ) {
+            eprintln!("error terminating active connections for database {db_name}: {e}");
+        }
         let query = format!("DROP DATABASE IF EXISTS \"{db_name}\"");
         if let Err(e) = client.batch_execute(&query) {
             eprintln!("error dropping database {db_name}: {e}");
