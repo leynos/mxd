@@ -15,7 +15,7 @@ codebase, plus the PostgreSQL helper needed for integration coverage.
 Install the helper once:
 
 ```sh
-cargo install pg-embed-setup-unpriv
+cargo install --locked pg-embed-setup-unpriv --version 0.5.0
 ```
 
 Run the helper before `make test` whenever PostgreSQL coverage is required. The
@@ -27,11 +27,32 @@ export PG_RUNTIME_DIR="/var/tmp/pg-embedded-setup-unpriv/install"
 export PG_DATA_DIR="/var/tmp/pg-embedded-setup-unpriv/data"
 export PG_SUPERUSER="postgres"
 export PG_PASSWORD="postgres_pass"
+export PG_TEST_BACKEND="postgresql_embedded"
 pg_embedded_setup_unpriv
 ```
 
+`PG_TEST_BACKEND` accepts only unset or `postgresql_embedded` for embedded
+cluster bootstrapping. Any other value should be treated as an intentional
+skip/fail signal from the test harness.
+
 See `docs/pg-embed-setup-unpriv-users-guide.md` for the full reference and
 troubleshooting tips.
+
+## PostgreSQL migration strategy (v0.5.0)
+
+The migration target for this branch adopts v0.5.0 lifecycle APIs to improve
+test reliability and throughput without changing test semantics.
+
+- Keep `POSTGRES_TEST_URL` support for external PostgreSQL integration tests.
+- Keep template-based provisioning (`postgres_db_fast`) for large suites where
+  migration amortization matters.
+- Use send-safe split lifecycle APIs (`TestCluster::new_split()` and
+  `TestCluster::start_async_split()`) or
+  `test_support::shared_test_cluster_handle()` when shared fixtures must cross
+  thread or timeout boundaries.
+- Prefer default cleanup (`CleanupMode::DataOnly`) for day-to-day runs, use
+  `CleanupMode::Full` for strict filesystem hygiene, and reserve
+  `CleanupMode::None` for explicit forensic debugging sessions.
 
 ## Behavioural testing strategy
 
