@@ -2860,12 +2860,12 @@ dependencies = [
 
 [[package]]
 name = "pg-embed-setup-unpriv"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b10479f1fe07895b9cf36d2ce8f808b44152b8918d86d75ad3e355c3dce92a3"
+checksum = "f3331937f47bb304d7aa1c3337c4ac52fdd9db5063c399a3e4dad5ecec274b72"
 dependencies = [
  "camino",
- "cap-std 3.4.5",
+ "cap-std 4.0.0",
  "clap",
  "color-eyre",
  "dashmap 6.1.0",

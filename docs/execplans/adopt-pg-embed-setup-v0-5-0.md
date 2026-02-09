@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 No `PLANS.md` was found in the repository root.
 
@@ -91,7 +91,13 @@ If the migration requires violating any constraint, stop and escalate.
   strategy and helper usage are cohesive with the v0.5.0 migration target.
 - [x] (2026-02-09 02:35Z) Ran quality gates for this planning/documentation
   change: `make check-fmt`, `make lint`, and `make test`.
-- [ ] Obtain approval for this ExecPlan before implementation.
+- [x] (2026-02-09 02:38Z) Obtained approval to begin implementation.
+- [x] (2026-02-09 02:45Z) Upgraded `pg-embed-setup-unpriv` dependencies in
+  `Cargo.toml` and `test-util/Cargo.toml` from `0.4.0` to `0.5.0`.
+- [x] (2026-02-09 02:47Z) Refactored embedded Postgres helpers to use v0.5.0
+  split/shared lifecycle APIs and cluster-native template cloning methods.
+- [x] (2026-02-09 11:38Z) Re-ran required gates for the implementation change:
+  `make check-fmt`, `make lint`, and `make test`.
 
 ## Surprises & Discoveries
 
@@ -109,6 +115,13 @@ If the migration requires violating any constraint, stop and escalate.
   `test-util/src/postgres.rs`. Impact: adopting `new_split`/`start_async_split`
   is a concrete place to realize v0.5.0 benefits for shared/send-safe test
   contexts.
+- Observation: template speedups in the existing helper relied on per-cluster
+  behaviour that is less reliable once v0.5.0 defaults to
+  `CleanupMode::DataOnly` on drop. Evidence: previous implementation created a
+  fresh `TestCluster` per fast-db request and cloned templates manually via SQL
+  inside that cluster. Impact: migrated `postgres_db_fast` creation flow to
+  `shared_cluster_handle()` plus `ensure_template_exists` and
+  `create_database_from_template` to preserve process-level template reuse.
 
 ## Decision Log
 
@@ -125,15 +138,37 @@ If the migration requires violating any constraint, stop and escalate.
 - Decision: keep this ExecPlan in `DRAFT` status and stop before code
   implementation. Rationale: the execplans workflow requires explicit user
   approval before implementation begins. Date/Author: 2026-02-09 / Codex.
+- Decision: for template-backed test databases, use
+  `test_support::shared_cluster_handle()` with cluster-native
+  `create_database_from_template` instead of manual SQL template cloning on a
+  per-test cluster. Rationale: this aligns with v0.5.0 send-safe lifecycle
+  guidance and keeps template reuse effective despite stricter cleanup
+  defaults. Date/Author: 2026-02-09 / Codex.
 
 ## Outcomes & Retrospective
 
-This plan establishes a concrete, repo-specific migration route from
-`pg-embed-setup-unpriv` `v0.4.0` to `v0.5.0` for Postgres tests. It identifies
-exact files and APIs to change, the validation gates to pass, and the
-behavioural checks needed to confirm no regressions in test semantics.
+The migration is complete and validated.
 
-Retrospective notes will be added after implementation completes.
+Implemented outcomes:
+
+- `pg-embed-setup-unpriv` is now `0.5.0` in both root and `test-util`
+  manifests, with `Cargo.lock` updated accordingly.
+- Embedded setup in `test-util/src/postgres.rs` now uses v0.5.0 split lifecycle
+  APIs (`new_split`, `start_async_split`) and cluster-native template cloning
+  via a process-shared `shared_cluster_handle()`.
+- The fast fixture path now preserves migration amortization under v0.5.0
+  cleanup defaults by creating templates once and cloning per test database.
+- `docs/developers-guide.md` now describes the active strategy in cohesive
+  terms aligned with implementation.
+- Required gates passed after implementation:
+  `make check-fmt`, `make lint`, and `make test`.
+
+Retrospective:
+
+- Adopting split handle/guard APIs in the helper was a low-risk way to gain
+  send-safe lifecycle control without changing test semantics.
+- Moving template orchestration to the shared cluster handle reduced the chance
+  of cleanup-related template churn and kept the fast path robust.
 
 ## Context and orientation
 
@@ -294,3 +329,11 @@ concrete staged migration path with explicit validation gates.
 Revision (2026-02-09): marked documentation updates and required quality-gate
 runs as complete in `Progress`, and recorded the explicit decision to await
 approval before implementation.
+
+Revision (2026-02-09): implementation started after approval; dependency bump
+and embedded-helper lifecycle refactor were completed, and the plan status was
+updated to `IN PROGRESS`.
+
+Revision (2026-02-09): implementation validation completed; required quality
+gates were re-run and passed, outcomes/retrospective were updated, and status
+was set to `COMPLETE`.

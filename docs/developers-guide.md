@@ -44,11 +44,12 @@ The migration target for this branch adopts v0.5.0 lifecycle APIs to improve
 test reliability and throughput without changing test semantics.
 
 - Keep `POSTGRES_TEST_URL` support for external PostgreSQL integration tests.
-- Keep template-based provisioning (`postgres_db_fast`) for large suites where
-  migration amortization matters.
+- Use template-based provisioning (`postgres_db_fast`) with a process-shared
+  `ClusterHandle` and `CREATE DATABASE ... TEMPLATE` clones so migration
+  amortization remains effective under v0.5.0 cleanup defaults.
 - Use send-safe split lifecycle APIs (`TestCluster::new_split()` and
   `TestCluster::start_async_split()`) or
-  `test_support::shared_test_cluster_handle()` when shared fixtures must cross
+  `test_support::shared_cluster_handle()` when shared fixtures must cross
   thread or timeout boundaries.
 - Prefer default cleanup (`CleanupMode::DataOnly`) for day-to-day runs, use
   `CleanupMode::Full` for strict filesystem hygiene, and reserve
