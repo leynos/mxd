@@ -80,9 +80,9 @@ Troubleshooting guidance:
    user. Ownership fix-ups occur on every call so running the tool twice
    remains idempotent.
 
-4. Pass the resulting paths and credentials to the test suite. When
-   `postgresql_embedded` runs directly after the setup step, it can reuse the
-   staged binaries and data directory without needing `root`.
+4. Pass the resulting paths and credentials to the test runner. When
+   `postgresql_embedded` is used directly after the setup step, it can reuse
+   the staged binaries and data directory without requiring `root`.
 
 ## Bootstrap for test suites
 
