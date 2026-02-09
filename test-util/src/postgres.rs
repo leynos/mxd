@@ -115,6 +115,10 @@ pub(crate) struct EmbeddedPg {
     _guard: Option<ClusterGuard>,
 }
 
+impl Drop for EmbeddedPg {
+    fn drop(&mut self) { drop_database(&self.admin_url, &self.db_name) }
+}
+
 /// Error indicating that a `PostgreSQL` server could not be reached.
 #[derive(Debug)]
 pub struct PostgresUnavailable;
@@ -369,6 +373,8 @@ pub(crate) fn reset_postgres_db(url: &DatabaseUrl) -> Result<(), Box<dyn StdErro
 )]
 fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
     if let Ok(mut client) = Client::connect(admin_url.as_ref(), NoTls) {
+        // Always force-terminate sessions before dropping test databases.
+        // This keeps cleanup reliable when fixtures leak pooled connections.
         if let Err(e) = client.execute(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> \
              pg_backend_pid()",
@@ -555,7 +561,7 @@ impl Drop for PostgresTestDb {
     )]
     fn drop(&mut self) {
         if let Some(embedded) = self.embedded.take() {
-            drop_database(&embedded.admin_url, &embedded.db_name);
+            drop(embedded);
             return;
         }
         match (&self.admin_url, &self.db_name) {
