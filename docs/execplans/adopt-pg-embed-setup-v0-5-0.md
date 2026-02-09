@@ -182,10 +182,10 @@ Primary migration touchpoints:
 
 - `Cargo.toml` (`[dev-dependencies]`):
   `pg-embedded-setup-unpriv = { package = "pg-embed-setup-unpriv",`
-  `version = "0.4.0", features = ["diesel-support"] }`
+  `version = "0.5.0", features = ["diesel-support"] }`
 - `test-util/Cargo.toml` (`[dependencies]`):
   `pg-embedded-setup-unpriv = { package = "pg-embed-setup-unpriv",`
-  `version = "0.4.0", optional = true, features = ["async-api"] }`
+  `version = "0.5.0", optional = true, features = ["async-api"] }`
 - `test-util/src/postgres.rs`:
   contains embedded/external setup and teardown (`PostgresTestDb`,
   `start_embedded_postgres_with_strategy`, `start_embedded_postgres_async`).
