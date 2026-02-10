@@ -16,8 +16,9 @@ use std::{
 use eyre::eyre;
 use pg_embedded_setup_unpriv::{
     BootstrapResult as PgBootstrapResult,
+    ClusterGuard,
     TestCluster,
-    test_support::hash_directory,
+    test_support::{hash_directory, shared_cluster_handle},
 };
 use postgres::{Client, NoTls};
 use rstest::fixture;
@@ -111,7 +112,11 @@ pub(crate) struct EmbeddedPg {
     url: DatabaseUrl,
     db_name: DatabaseName,
     admin_url: DatabaseUrl,
-    _cluster: TestCluster,
+    _guard: Option<ClusterGuard>,
+}
+
+impl Drop for EmbeddedPg {
+    fn drop(&mut self) { drop_database(&self.admin_url, &self.db_name) }
 }
 
 /// Error indicating that a `PostgreSQL` server could not be reached.
@@ -247,30 +252,23 @@ pub(crate) fn start_embedded_postgres_with_strategy<F>(
 where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
 {
-    let cluster = TestCluster::new().map_err(|e| {
-        // TestCluster::new fails when the PostgreSQL binary is not found or cannot start.
-        // This is an "unavailable" condition, not an initialization failure.
-        EmbeddedPgError::Unavailable(format!("bootstrapping embedded PostgreSQL: {e}"))
-    })?;
-    let connection = cluster.connection();
-    let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
-        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    if use_template {
+        let handle = shared_cluster_handle().map_err(|e| {
+            EmbeddedPgError::Unavailable(format!("bootstrapping shared embedded PostgreSQL: {e}"))
+        })?;
+        let connection = handle.connection();
+        let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
+            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+        let db_name =
+            generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
 
-    let db_name =
-        generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-
-    let url = if use_template {
-        // Template-based database creation using ensure_template_exists for
-        // concurrency-safe template creation with per-template locking.
+        // Template-based database creation uses per-template locking in the
+        // shared handle, so migration setup only runs once per process.
         let template_name = migration_template_name().map_err(EmbeddedPgError::InitFailed)?;
-
-        // ensure_template_exists handles the race condition by using per-template
-        // locking - only one caller creates the template while others wait.
-        cluster
+        handle
             .ensure_template_exists(
                 template_name.as_ref(),
                 |template_db| -> PgBootstrapResult<()> {
-                    // Run migrations on the newly created template database
                     let template_url = DatabaseUrl::parse(&connection.database_url(template_db))
                         .map_err(|e| eyre!("failed to parse template URL: {e}"))?;
                     setup(&template_url).map_err(|e| eyre!("migration failed: {e}"))?;
@@ -278,22 +276,40 @@ where
                 },
             )
             .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+        handle
+            .create_database_from_template(db_name.as_ref(), template_name.as_ref())
+            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+        let url = DatabaseUrl::parse(&connection.database_url(db_name.as_ref()))
+            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
 
-        // Clone from template
-        create_db_from_template(&admin_url, &db_name, &template_name)
-            .map_err(EmbeddedPgError::InitFailed)?
-    } else {
-        // Traditional approach: create fresh database and run migrations
-        let (url, _) = create_external_db(&admin_url).map_err(EmbeddedPgError::InitFailed)?;
-        setup(&url).map_err(EmbeddedPgError::InitFailed)?;
-        url
-    };
+        return Ok(EmbeddedPg {
+            url,
+            db_name,
+            admin_url,
+            _guard: None,
+        });
+    }
+
+    let (handle, guard) = TestCluster::new_split().map_err(|e| {
+        EmbeddedPgError::Unavailable(format!("bootstrapping embedded PostgreSQL: {e}"))
+    })?;
+    let connection = handle.connection();
+    let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
+        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let db_name =
+        generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    handle
+        .create_database(db_name.as_ref())
+        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let url = DatabaseUrl::parse(&connection.database_url(db_name.as_ref()))
+        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    setup(&url).map_err(EmbeddedPgError::InitFailed)?;
 
     Ok(EmbeddedPg {
         url,
         db_name,
         admin_url,
-        _cluster: cluster,
+        _guard: Some(guard),
     })
 }
 
@@ -319,16 +335,19 @@ pub(crate) async fn start_embedded_postgres_async<F>(
 where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>> + Send + 'static,
 {
-    let cluster = TestCluster::start_async().await.map_err(|e| {
+    let (handle, guard) = TestCluster::start_async_split().await.map_err(|e| {
         EmbeddedPgError::Unavailable(format!("bootstrapping embedded PostgreSQL: {e}"))
     })?;
-    let connection = cluster.connection();
-    let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
+    let admin_url = DatabaseUrl::parse(&handle.connection().database_url("postgres"))
         .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-    let admin_url_for_setup = admin_url.clone();
     let (url, db_name) = tokio::task::spawn_blocking(move || {
-        let (url, db_name) =
-            create_external_db(&admin_url_for_setup).map_err(EmbeddedPgError::InitFailed)?;
+        let db_name =
+            generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+        handle
+            .create_database(db_name.as_ref())
+            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+        let url = DatabaseUrl::parse(&handle.connection().database_url(db_name.as_ref()))
+            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
         setup(&url).map_err(EmbeddedPgError::InitFailed)?;
         Ok::<(DatabaseUrl, DatabaseName), EmbeddedPgError>((url, db_name))
     })
@@ -338,7 +357,7 @@ where
         url,
         db_name,
         admin_url,
-        _cluster: cluster,
+        _guard: Some(guard),
     })
 }
 
@@ -354,30 +373,20 @@ pub(crate) fn reset_postgres_db(url: &DatabaseUrl) -> Result<(), Box<dyn StdErro
 )]
 fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
     if let Ok(mut client) = Client::connect(admin_url.as_ref(), NoTls) {
+        // Always force-terminate sessions before dropping test databases.
+        // This keeps cleanup reliable when fixtures leak pooled connections.
+        if let Err(e) = client.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> \
+             pg_backend_pid()",
+            &[&db_name.as_ref()],
+        ) {
+            eprintln!("error terminating active connections for database {db_name}: {e}");
+        }
         let query = format!("DROP DATABASE IF EXISTS \"{db_name}\"");
         if let Err(e) = client.batch_execute(&query) {
             eprintln!("error dropping database {db_name}: {e}");
         }
     }
-}
-
-/// Creates a database from a template.
-fn create_db_from_template(
-    admin_url: &DatabaseUrl,
-    db_name: &DatabaseName,
-    template_name: &DatabaseName,
-) -> Result<DatabaseUrl, Box<dyn StdError + Send + Sync>> {
-    let mut url = Url::parse(admin_url.as_ref())?;
-    let admin_url_str = url.to_string();
-    let mut client = Client::connect(&admin_url_str, NoTls)?;
-    let query = format!(
-        "CREATE DATABASE \"{}\" WITH TEMPLATE \"{}\"",
-        db_name.as_ref(),
-        template_name.as_ref()
-    );
-    client.batch_execute(&query)?;
-    url.set_path(db_name.as_ref());
-    Ok(DatabaseUrl::parse(url.as_str())?)
 }
 
 fn create_external_db(
@@ -552,7 +561,7 @@ impl Drop for PostgresTestDb {
     )]
     fn drop(&mut self) {
         if let Some(embedded) = self.embedded.take() {
-            drop_database(&embedded.admin_url, &embedded.db_name);
+            drop(embedded);
             return;
         }
         match (&self.admin_url, &self.db_name) {

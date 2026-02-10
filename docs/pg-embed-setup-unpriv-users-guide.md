@@ -25,6 +25,31 @@ tool and integrate it into automated test flows.
 - Windows always behaves as unprivileged, so the helper runs in-process and
   ignores root-only scenarios.
 
+## Test backend selection
+
+`PG_TEST_BACKEND` selects the backend used by `bootstrap_for_tests()` and
+`TestCluster`. Supported values are:
+
+- unset or empty: `postgresql_embedded`
+- `postgresql_embedded`: run the embedded PostgreSQL backend
+
+Any other value triggers a `SKIP-TEST-CLUSTER` error, so test harnesses can
+intentionally skip the embedded cluster in mixed environments.
+
+The embedded backend downloads PostgreSQL binaries, initializes the data
+directory, and writes to the configured runtime and data paths. It requires
+outbound network access. On Linux, root workflows must supply
+`PG_EMBEDDED_WORKER` so the helper can drop privileges. On macOS, root
+execution is unsupported and expected to fail fast; on Windows the backend
+always runs in-process.
+
+Troubleshooting guidance:
+
+- If tests skip with `SKIP-TEST-CLUSTER: unsupported PG_TEST_BACKEND`, unset
+  `PG_TEST_BACKEND` or set it to `postgresql_embedded`.
+- If setup fails under root, verify `PG_EMBEDDED_WORKER` points to the worker
+  binary.
+
 ## Quick start
 
 1. Choose directories for the staged PostgreSQL distribution and the cluster’s
@@ -51,13 +76,13 @@ tool and integrate it into automated test flows.
    cache, 0700 for the runtime and data directories), and initializes the
    cluster with the provided credentials. Invocations that begin as `root`
    prepare directories for `nobody` and execute lifecycle commands through the
-   worker helper, so the privileged operations run entirely under the sandbox
+   worker helper so the privileged operations run entirely under the sandbox
    user. Ownership fix-ups occur on every call so running the tool twice
    remains idempotent.
 
-4. The resulting paths and credentials are then available for test consumption.
-   When `postgresql_embedded` is started directly after setup, it can reuse the
-   staged binaries and data directory without requiring root privileges.
+4. Pass the resulting paths and credentials to the test runner. When
+   `postgresql_embedded` is used directly after the setup step, it can reuse
+   the staged binaries and data directory without requiring `root`.
 
 ## Bootstrap for test suites
 
@@ -75,8 +100,8 @@ use pg_embedded_setup_unpriv::error::BootstrapResult;
 fn bootstrap() -> BootstrapResult<TestBootstrapSettings> {
     let prepared = bootstrap_for_tests()?;
     for (key, value) in prepared.environment.to_env() {
-        // SAFETY: This example assumes single-threaded test setup where
-        // environment variable mutation is safe.
+        // SAFETY: This example mutates process environment variables during
+        // single-threaded test setup before worker threads are spawned.
         unsafe {
             match value {
                 Some(value) => std::env::set_var(&key, value),
@@ -96,6 +121,12 @@ platform-specific defaults remain available. If the system timezone database is
 missing, the helper returns an error advising the caller to install `tzdata` or
 set `TZDIR` explicitly, making the dependency visible during test startup
 rather than when PostgreSQL launches.
+
+`bootstrap_for_tests()` also inserts a small set of PostgreSQL server
+configuration entries into `bootstrap.settings.configuration` to minimize
+background and parallel worker processes for ephemeral test clusters. Override
+these values by mutating the configuration map before starting the cluster if
+the test suite needs different behaviour.
 
 ## Resource Acquisition Is Initialization (RAII) test clusters
 
@@ -122,6 +153,24 @@ The guard keeps `PGPASSFILE`, `TZ`, `TZDIR`, and the XDG directories populated
 for the duration of its lifetime, making synchronous tests usable without extra
 setup.
 
+By default the guard removes the PostgreSQL data directory when it drops. Use
+`CleanupMode` to control whether the installation directory is removed or to
+skip cleanup for debugging:
+
+```rust,no_run
+use pg_embedded_setup_unpriv::{CleanupMode, TestCluster};
+
+# fn main() -> pg_embedded_setup_unpriv::BootstrapResult<()> {
+let cluster = TestCluster::new()?.with_cleanup_mode(CleanupMode::Full);
+drop(cluster);
+# Ok(())
+# }
+```
+
+Shared clusters created with `test_support::shared_test_cluster()` are
+intentionally leaked for the process lifetime and therefore do not perform
+cleanup on drop.
+
 ### Async API for `#[tokio::test]` contexts
 
 Tests within an async runtime (e.g. `#[tokio::test]`) must not use the standard
@@ -134,7 +183,7 @@ Enable the feature in the project's `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-pg-embed-setup-unpriv = { version = "0.4", features = ["async-api"] }
+pg-embed-setup-unpriv = { version = "0.5.0", features = ["async-api"] }
 ```
 
 Then use `start_async()` and `stop_async()` in async tests:
@@ -291,8 +340,8 @@ overhead from seconds to milliseconds.
 `TestCluster::connection()` exposes `TestClusterConnection`, a lightweight view
 over the running cluster's connection metadata. Use it to read the host, port,
 superuser name, generated password, or the `.pgpass` path without cloning the
-entire bootstrap struct. To persist those values beyond the guard, call
-`metadata()` to obtain an owned `ConnectionMetadata`.
+entire bootstrap struct. Persisting those values beyond the guard requires
+calling `metadata()` to obtain an owned `ConnectionMetadata`.
 
 Enable the `diesel-support` feature to call `diesel_connection()` and obtain a
 ready-to-use `diesel::PgConnection`. The default feature set keeps Diesel
@@ -444,8 +493,8 @@ let template_name = format!("template_{}", &hash[..8]);
 # }
 ```
 
-Projects that already track a migration version can include it in the template
-name instead (for example, `format!("template_v{SCHEMA_VERSION}")`). This keeps
+If a migration version is already tracked, include it in the template name
+instead (for example, `format!("template_v{SCHEMA_VERSION}")`). This keeps
 template invalidation explicit without hashing the migration directory.
 
 ### Performance comparison
@@ -612,10 +661,10 @@ still running as `root`, follow these steps:
 
 - **TimeZone errors**: The embedded cluster loads timezone data from the host
   `tzdata` package. Install it inside the execution environment when
-  `invalid value for parameter "TimeZone": "UTC"` appears.
+  `invalid value for parameter "TimeZone": "UTC"`.
 - **Download rate limits**: `postgresql_embedded` fetches binaries from the
-  Theseus GitHub releases. Supply a `GITHUB_TOKEN` environment variable to
-  avoid rate limits in CI.
+  Theseus GitHub releases. Supply a `GITHUB_TOKEN` environment variable when
+  rate limits are encountered in CI.
 - **CLI arguments in tests**: `PgEnvCfg::load()` ignores `std::env::args` during
   library use so Cargo test filters (for example,
   `bootstrap_privileges::bootstrap_as_root`) do not trip the underlying Clap
@@ -625,112 +674,7 @@ still running as `root`, follow these steps:
   the library no longer mutates the process UID mid-test. Configure
   `PG_EMBEDDED_WORKER` instead so the subprocess performs the privilege drop.
 
-## MXD test infrastructure integration
-
-The `test-util` crate provides convenient `rstest` fixtures that wrap
-pg-embed-setup-unpriv with template-based database creation for fast test
-execution.
-
-### Test fixture selection guide
-
-The project provides two PostgreSQL test fixtures with different performance
-characteristics:
-
-| Fixture            | Per-test overhead    | Isolation | Use case                              |
-| ------------------ | -------------------- | --------- | ------------------------------------- |
-| `postgres_db`      | 2–10 seconds         | Full      | Tests modifying cluster settings      |
-| `postgres_db_fast` | 10–50 milliseconds   | Database  | Fast isolated databases via templates |
-
-### Using `postgres_db` (traditional)
-
-Full cluster isolation — each test gets a fresh PostgreSQL instance. This is
-the traditional approach and provides maximum isolation.
-
-```rust
-use rstest::rstest;
-use test_util::postgres_db;
-
-#[rstest]
-fn test_with_full_isolation(postgres_db: PostgresTestDb) {
-    // Each test gets its own cluster
-    // 2-10 seconds startup time
-}
-```
-
-**When to use:**
-
-- Tests that modify cluster-level PostgreSQL settings
-- Tests that require complete isolation from other tests
-- First-time setup or when debugging migration issues
-
-### Using `postgres_db_fast` (template-based)
-
-Fast database creation via templates. The first test creates a template
-database and runs migrations once. Subsequent tests clone from the template in
-milliseconds.
-
-```rust
-use rstest::rstest;
-use test_util::postgres_db_fast;
-
-#[rstest]
-fn test_with_fast_database(postgres_db_fast: PostgresTestDb) {
-    // Fast database creation via template cloning
-    // 10-50ms for subsequent tests after template creation
-}
-```
-
-**When to use:**
-
-- Large test suites where startup time is significant
-- Tests that don't modify `PostgreSQL` cluster settings
-- Tests that only need database-level isolation
-- When running tests frequently during development
-
-**Performance characteristics:**
-
-- First test: ~5-10 seconds (template creation + migration)
-- Subsequent tests: ~10-50ms (template clone only)
-- 95-99% faster than `postgres_db` for large test suites
-
-**Template naming:**
-
-Template databases are named `template_{hash}` where `{hash}` is derived from
-the content of the `migrations` directory using `hash_directory`. When any
-migration file changes, a new template is automatically created with updated
-migrations.
-
-### Thread safety constraints (v0.4.0)
-
-In pg-embed-setup-unpriv v0.4.0, `TestCluster` is intentionally `!Send` (cannot
-be sent between threads) due to its environment variable manipulation via
-`ScopedEnv`. This is a safety feature — environment variables are
-process-global and thread-unsafe.
-
-**Implications:**
-
-- Shared cluster across tests is not supported
-- Each test gets its own `TestCluster` instance
-- Template-based approach provides the primary performance benefit
-- `RSTEST_TIMEOUT` is disabled for postgres tests to avoid Send requirements
-
-### External PostgreSQL support
-
-Both fixtures support the `POSTGRES_TEST_URL` environment variable. When set,
-they will use an external PostgreSQL instance instead of starting an embedded
-one:
-
-```bash
-export POSTGRES_TEST_URL="postgresql://user:pass@localhost/postgres"
-cargo test --features postgres
-```
-
-**Note:** Template-based creation is not yet implemented for external servers.
-When `POSTGRES_TEST_URL` is set, `postgres_db_fast` falls back to regular
-database creation.
-
 ## Further reading
 
-- `README.md` — overview, configuration reference, and troubleshooting tips.
-- `docs/developers-guide.md` — contributor notes and internal testing context.
-- `test-util/src/postgres.rs` — test infrastructure implementation.
+- `README.md` – overview, configuration reference, and troubleshooting tips.
+- `docs/developers-guide.md` – contributor notes and internal testing context.
