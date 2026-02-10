@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETED (2026-02-10)
 
 PLANS.md does not exist in this repository.
 
@@ -94,12 +94,19 @@ Success is observable when:
   `src/wireframe/codec/kani.rs`, `src/transaction/reader/kani.rs`, and
   `src/header_util/kani.rs`.
 - [x] (2026-02-10 20:31Z) Drafted this ExecPlan.
-- [ ] Implement bounded Kani harnesses for XOR round-trip and client-kind
-  gating invariants.
-- [ ] Add/extend unit and behavioural tests for happy/unhappy/edge compatibility
-  paths.
-- [ ] Update design, verification strategy, users guide, and roadmap docs.
-- [ ] Run formatting, lint, tests, and Kani verification gates.
+- [x] (2026-02-10 22:57Z) Implemented bounded Kani harnesses for XOR
+  round-trip and client-kind gating invariants:
+  `kani_xor_bytes_round_trip_bounded`,
+  `kani_xor_payload_round_trip_text_fields_bounded`,
+  `kani_client_kind_sub_version_precedence`, and
+  `kani_login_extras_boundary_gate`.
+- [x] (2026-02-10 22:57Z) Added and extended `rstest` unit tests and
+  `rstest-bdd` behavioural scenarios for happy, unhappy, and boundary
+  compatibility paths.
+- [x] (2026-02-10 22:57Z) Updated `docs/design.md`,
+  `docs/verification-strategy.md`, `docs/users-guide.md`, and `docs/roadmap.md`.
+- [x] (2026-02-10 23:10Z) Ran formatting, lint, test, docs, and Kani
+  verification gates; all passed.
 
 ## Surprises & Discoveries
 
@@ -114,6 +121,11 @@ Success is observable when:
   risk and allows focused edge-case additions.
 - `Makefile` currently has no dedicated Kani target; Kani proofs run via
   explicit `cargo kani --harness ...` commands.
+- Kani exploration initially stalled when wrapper-level XOR harnessing touched
+  transitive internals using randomness and hash set allocation paths.
+- The environment's `/data` filesystem was full during heavy builds, so
+  `CARGO_TARGET_DIR` and `CARGO_INCREMENTAL=0` were required for reliable local
+  gate execution.
 
 ## Decision Log
 
@@ -133,10 +145,45 @@ Success is observable when:
   requested coverage includes behavioural testing where applicable.
   Date/Author: 2026-02-10 / Codex.
 
+- Decision: Prove payload transform invariants through
+  `xor_params`-centred bounded harnesses instead of wrapper entry points when
+  Kani enters transitive randomness-heavy internals. Rationale: preserves
+  acceptance intent while keeping proofs tractable and deterministic.
+  Date/Author: 2026-02-10 / Codex.
+
+- Decision: Keep runtime panic behaviour for impossible payload length overflow
+  in `header_util`, but guard the branch under `#[cfg(kani)]` with
+  `kani::assume(false)` plus abort for verifier compatibility. Rationale:
+  maintains runtime semantics while avoiding Kani panic instrumentation issues.
+  Date/Author: 2026-02-10 / Codex.
+
 ## Outcomes & Retrospective
 
-This section is intentionally pending. It will be completed after
-implementation and gate execution.
+Roadmap item 1.5.4 was implemented and validated end-to-end.
+
+What shipped:
+
+- Added Kani harness modules for XOR compatibility and sub-version/login
+  compatibility gating.
+- Added `rstest` unit coverage for XOR unhappy-path decode failures, login
+  version boundaries, SynHX precedence, idempotent augmentation, and
+  unparseable login payload handling.
+- Added `rstest-bdd` behavioural scenarios for boundary login gating and SynHX
+  precedence.
+- Updated design, verification strategy, and users guide documentation.
+- Marked roadmap item 1.5.4 as done.
+
+Verification outcomes:
+
+- Kani harnesses passed for all target invariants.
+- Full repository quality gates passed (`make check-fmt`, `make lint`,
+  `make test`, `make markdownlint`, and `make nixie`).
+
+Key retrospective note:
+
+- Kani proofability improved materially when harnesses targeted pure bounded
+  helpers and avoided payload wrapper paths that transitively reached entropy
+  or heavier library internals.
 
 ## Context and orientation
 
@@ -348,5 +395,5 @@ No new dependencies are expected.
 ## Revision note
 
 Initial draft created from current roadmap, compatibility code, existing Kani
-patterns, and testing/documentation guidance. Remaining sections will be
-updated as implementation progresses.
+patterns, and testing/documentation guidance. Updated on 2026-02-10 with
+implementation outcomes, final decisions, and gate results.

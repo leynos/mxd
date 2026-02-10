@@ -22,6 +22,9 @@ use crate::{
     wireframe::connection::HandshakeMetadata,
 };
 
+#[cfg(kani)]
+mod kani;
+
 const UNKNOWN_LOGIN_VERSION: u32 = u32::MAX;
 const SYNHX_SUB_VERSION: u16 = 2;
 const HOTLINE_85_MIN_VERSION: u16 = 151;
@@ -291,5 +294,68 @@ mod tests {
         let compat = ClientCompatibility::from_handshake(&handshake(0));
         compat.record_login_version(u16::MAX);
         assert_eq!(compat.login_version(), Some(u16::MAX));
+    }
+
+    #[rstest]
+    fn synhx_classification_takes_precedence_over_login_version() {
+        let compat = ClientCompatibility::from_handshake(&handshake(SYNHX_SUB_VERSION));
+        compat.record_login_version(190);
+        assert_eq!(compat.kind(), ClientKind::SynHx);
+        assert!(!compat.should_include_login_extras());
+    }
+
+    #[rstest]
+    #[case(150, false)]
+    #[case(151, true)]
+    #[case(189, true)]
+    #[case(190, true)]
+    fn login_extras_gate_matches_version_boundaries(
+        #[case] login_version: u16,
+        #[case] should_include: bool,
+    ) {
+        let compat = ClientCompatibility::from_handshake(&handshake(0));
+        compat.record_login_version(login_version);
+
+        assert_eq!(compat.should_include_login_extras(), should_include);
+    }
+
+    #[rstest]
+    fn augment_login_reply_is_idempotent_when_extras_exist() {
+        let compat = ClientCompatibility::from_handshake(&handshake(0));
+        compat.record_login_version(190);
+        #[expect(
+            clippy::big_endian_bytes,
+            reason = "network protocol uses big-endian integers"
+        )]
+        let payload = encode_params(&[
+            (FieldId::Version, 190u16.to_be_bytes().as_ref()),
+            (FieldId::BannerId, 0i32.to_be_bytes().as_ref()),
+            (FieldId::ServerName, b"mxd".as_ref()),
+        ])
+        .expect("payload encodes");
+        let original_payload = payload.clone();
+        let header = reply_header(payload.len());
+        let mut reply = Transaction { header, payload };
+
+        let updated = compat
+            .augment_login_reply(&mut reply)
+            .expect("augment reply");
+
+        assert!(!updated, "extras are already present");
+        assert_eq!(reply.payload, original_payload);
+    }
+
+    #[rstest]
+    fn record_login_payload_ignores_unparseable_version_lengths() {
+        let compat = ClientCompatibility::from_handshake(&handshake(0));
+        let payload = encode_params(&[(FieldId::Version, vec![1u8, 2u8, 3u8].as_slice())])
+            .expect("payload encodes");
+
+        compat
+            .record_login_payload(&payload)
+            .expect("record login payload");
+
+        assert_eq!(compat.login_version(), None);
+        assert_eq!(compat.kind(), ClientKind::Unknown);
     }
 }

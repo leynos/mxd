@@ -183,9 +183,12 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `docs/internal-compatibility-matrix.md`, adding the release-note QA checklist
   in `docs/release-notes-qa-sign-off.md`, and extending unit plus behavioural
   compatibility coverage for unhappy and edge paths. Dependencies: 1.5.2.
-- [ ] 1.5.4. Verify XOR and sub-version compatibility logic with Kani.
+- [x] 1.5.4. Verify XOR and sub-version compatibility logic with Kani.
   Acceptance: Kani harnesses show XOR encode/decode round-trips and version
-  gating for bounded inputs without panics. Dependencies: 1.5.2.
+  gating for bounded inputs without panics. Status: Completed on 10 February
+  2026 by adding Kani harnesses for XOR payload round-trips and
+  sub-version/login-version compatibility gating, plus boundary-focused unit
+  and behavioural regression coverage. Dependencies: 1.5.2.
 - [ ] 1.5.5. Add wireframe compatibility guardrails and a routing entrypoint.
   Acceptance: A `WireframeRouter` provides the only public routing entrypoint,
   a `CompatibilityLayer` runs request and reply hooks, and a spy-based test

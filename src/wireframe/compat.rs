@@ -14,6 +14,9 @@ use crate::{
     wireframe::connection::HandshakeMetadata,
 };
 
+#[cfg(kani)]
+mod kani;
+
 /// Per-connection XOR compatibility state.
 #[derive(Debug)]
 pub struct XorCompatibility {
@@ -257,5 +260,33 @@ mod tests {
         let encoded = compat.encode_payload(&payload).expect("encode payload");
 
         assert_eq!(encoded, payload);
+    }
+
+    #[rstest]
+    fn encode_then_decode_round_trip_when_enabled() {
+        let compat = XorCompatibility::enabled();
+        #[expect(
+            clippy::big_endian_bytes,
+            reason = "network protocol integer payloads use big-endian encoding"
+        )]
+        let payload = build_payload(&[
+            (FieldId::Data, b"hello"),
+            (FieldId::NewsArticleId, 17i32.to_be_bytes().as_ref()),
+        ]);
+
+        let encoded = compat.encode_payload(&payload).expect("encode payload");
+        let decoded = compat.decode_payload(&encoded).expect("decode payload");
+
+        assert_eq!(decoded, payload);
+    }
+
+    #[rstest]
+    fn decode_payload_returns_error_for_invalid_parameter_bytes() {
+        let compat = XorCompatibility::disabled();
+        let invalid_payload = vec![0xff, 0x01, 0x02];
+
+        let result = compat.decode_payload(&invalid_payload);
+
+        assert!(result.is_err(), "invalid payload should fail decoding");
     }
 }
