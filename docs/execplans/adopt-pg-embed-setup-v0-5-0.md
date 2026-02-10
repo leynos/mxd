@@ -250,14 +250,30 @@ Use branch-aware logs for long outputs:
 
 Planned execution sequence:
 
-1. `make check-fmt | tee /tmp/check-fmt-$(basename "$(pwd)")-$(git branch --show).out`
-2. `make lint | tee /tmp/lint-$(basename "$(pwd)")-$(git branch --show).out`
-3. `make test | tee /tmp/test-$(basename "$(pwd)")-$(git branch --show).out`
+1. Run formatting checks:
+
+   ```sh
+   make check-fmt | tee "/tmp/check-fmt-$(basename "$(pwd)")-$(git branch --show).out"
+   ```
+
+2. Run lint checks:
+
+   ```sh
+   make lint | tee "/tmp/lint-$(basename "$(pwd)")-$(git branch --show).out"
+   ```
+
+3. Run tests:
+
+   ```sh
+   make test | tee "/tmp/test-$(basename "$(pwd)")-$(git branch --show).out"
+   ```
 
 Optional targeted probes during implementation:
 
-- `cargo test -p test-util --no-default-features --features postgres`
-- `cargo test --test postgres_env --no-default-features --features "postgres test-support"`
+```sh
+cargo test -p test-util --no-default-features --features postgres
+cargo test --test postgres_env --no-default-features --features "postgres test-support"
+```
 
 Expected success snippets:
 
