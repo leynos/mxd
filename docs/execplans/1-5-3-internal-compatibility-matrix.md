@@ -12,7 +12,8 @@ PLANS.md does not exist in this repository.
 
 Roadmap item 1.5.3 requires an internal compatibility matrix that documents
 supported clients, known deviations, and required toggles. The matrix must live
-in `docs/` and be referenced during release-note QA sign-off.
+in `docs/` and be referenced during release-note quality assurance (QA)
+sign-off.
 
 Success is observable when:
 
@@ -37,8 +38,8 @@ Success is observable when:
 - The matrix document must be under `docs/` and written for internal QA use.
 - The matrix must cite evidence sources already present in this repository
   (tests, protocol docs, design notes) so claims are auditable.
-- Use `rstest` for unit tests and `rstest-bdd` for behavioural scenarios where
-  applicable.
+- Use `rstest` for unit tests and `rstest-bdd` for behaviour-driven
+  development (BDD) scenarios where applicable.
 - Local Postgres-backed validation must use `pg_embedded_setup_unpriv` before
   running full test gates.
 - No new external dependencies without explicit escalation.
@@ -47,8 +48,8 @@ Success is observable when:
 
 ## Tolerances (exception triggers)
 
-- Scope: if implementation exceeds 16 changed files or 500 net LOC, stop and
-  escalate with options.
+- Scope: if implementation exceeds 16 changed files or 500 net lines of code
+  (LOC), stop and escalate with options.
 - Release-note linkage ambiguity: if no durable, reviewable release-note
   location can be identified for QA sign-off evidence, stop and request a
   product-owner decision before proceeding.
@@ -117,7 +118,7 @@ Success is observable when:
   not an implicit process assumption. Rationale: roadmap acceptance requires
   traceable QA sign-off linkage. Date/Author: 2026-02-10 / Codex.
 
-## Outcomes & Retrospective
+## Outcomes and retrospective
 
 Implemented outcome:
 
@@ -133,7 +134,7 @@ Retrospective:
 
 - Compatibility claims are now easier to audit because matrix rows are tied to
   specific tests rather than inferred from narrative docs.
-- The release-note reference requirement needed a concrete artifact because the
+- The release-note reference requirement needed a concrete artefact because the
   repository did not previously include a release-notes process document.
 
 ## Context and orientation

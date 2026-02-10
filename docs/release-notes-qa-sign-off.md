@@ -1,4 +1,4 @@
-# Release-note QA sign-off checklist
+# Release-note quality assurance (QA) sign-off checklist
 
 Use this checklist when preparing release notes for compatibility-related
 changes. The checklist ensures roadmap acceptance criteria that require QA
