@@ -14,6 +14,12 @@ Feature: XOR text field compatibility
     Then the reply error code is 3
     And XOR compatibility is enabled
 
+  Scenario: Plaintext message keeps XOR compatibility disabled
+    Given a routing context with user accounts
+    When I send an unknown transaction with plaintext message "hello"
+    Then the reply error code is 3
+    And XOR compatibility is disabled
+
   Scenario: XOR-encoded news article body is accepted
     Given a routing context with news articles
     When I post a news article with XOR-encoded fields

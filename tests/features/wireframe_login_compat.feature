@@ -19,3 +19,9 @@ Feature: Wireframe login compatibility
     And a handshake sub-version 2
     When I send a login request with client version 190
     Then the login reply omits banner fields
+
+  Scenario: Unknown client version omits banner fields
+    Given a routing context with user accounts
+    And a handshake sub-version 0
+    When I send a login request with client version 100
+    Then the login reply omits banner fields

@@ -218,6 +218,21 @@ mod tests {
     }
 
     #[rstest]
+    fn decode_payload_does_not_enable_xor_for_non_text_fields() {
+        let compat = XorCompatibility::disabled();
+        #[expect(
+            clippy::big_endian_bytes,
+            reason = "network protocol integer payloads use big-endian encoding"
+        )]
+        let payload = build_payload(&[(FieldId::NewsArticleId, 42i32.to_be_bytes().as_ref())]);
+
+        let decoded = compat.decode_payload(&payload).expect("decode payload");
+
+        assert!(!compat.is_enabled());
+        assert_eq!(decoded, payload);
+    }
+
+    #[rstest]
     fn encode_payload_xors_text_fields_when_enabled() {
         let compat = XorCompatibility::enabled();
         let payload = build_payload(&[

@@ -14,6 +14,9 @@ struct XorWorld {
     base: WireframeBddWorld,
 }
 
+/// Deliberately uses a non-routed transaction id so routing returns `UnknownType`.
+const UNKNOWN_MESSAGE_TRANSACTION_TYPE: TransactionType = TransactionType::Other(900);
+
 impl XorWorld {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
@@ -89,9 +92,18 @@ fn when_login_xor(world: &XorWorld) {
 fn when_message_xor(world: &XorWorld, message: String) {
     let encoded_message = xor_bytes(message.as_bytes());
     world.send(
-        TransactionType::Other(900),
+        UNKNOWN_MESSAGE_TRANSACTION_TYPE,
         2,
         &[(FieldId::Data, encoded_message.as_slice())],
+    );
+}
+
+#[when("I send an unknown transaction with plaintext message \"{message}\"")]
+fn when_message_plaintext(world: &XorWorld, message: String) {
+    world.send(
+        UNKNOWN_MESSAGE_TRANSACTION_TYPE,
+        2,
+        &[(FieldId::Data, message.as_bytes())],
     );
 }
 
@@ -136,6 +148,14 @@ fn then_xor_enabled(world: &XorWorld) {
         return;
     }
     assert!(world.is_xor_enabled());
+}
+
+#[then("XOR compatibility is disabled")]
+fn then_xor_disabled(world: &XorWorld) {
+    if world.is_skipped() {
+        return;
+    }
+    assert!(!world.is_xor_enabled());
 }
 
 scenarios!(

@@ -282,6 +282,11 @@ mod tests {
     }
 
     #[rstest]
+    fn does_not_augment_login_reply_for_unknown_client_kind() {
+        assert_login_reply_augmentation(0, 100, false);
+    }
+
+    #[rstest]
     fn records_u16_max_version_without_sentinel_collision() {
         let compat = ClientCompatibility::from_handshake(&handshake(0));
         compat.record_login_version(u16::MAX);
