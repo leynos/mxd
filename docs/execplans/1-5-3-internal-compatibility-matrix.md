@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: TODO
+Status: COMPLETE
 
 PLANS.md does not exist in this repository.
 
@@ -79,13 +79,18 @@ Success is observable when:
 
 - [x] (2026-02-10 00:00Z) Draft ExecPlan from roadmap 1.5.3, existing
   compatibility implementation, and testing/documentation guides.
-- [ ] Confirm and implement release-note QA sign-off reference mechanism.
-- [ ] Create the internal compatibility matrix document in `docs/`.
-- [ ] Add or extend `rstest` unit tests that back each matrix row.
-- [ ] Add or extend `rstest-bdd` scenarios for happy/unhappy/edge paths.
-- [ ] Update `docs/design.md` and `docs/users-guide.md`.
-- [ ] Mark roadmap item 1.5.3 as done.
-- [ ] Run quality gates and capture logs.
+- [x] (2026-02-10 00:00Z) Confirmed and implemented release-note QA sign-off
+  reference mechanism via `docs/release-notes-qa-sign-off.md`.
+- [x] (2026-02-10 00:00Z) Created
+  `docs/internal-compatibility-matrix.md` in `docs/`.
+- [x] (2026-02-10 00:00Z) Added `rstest` unit coverage for unknown-client login
+  augmentation and non-text XOR edge handling.
+- [x] (2026-02-10 00:00Z) Extended `rstest-bdd` scenarios for unhappy and edge
+  paths (unknown login version and plaintext XOR-disabled flow).
+- [x] (2026-02-10 00:00Z) Updated `docs/design.md` and `docs/users-guide.md`
+  with matrix governance and operator references.
+- [x] (2026-02-10 00:00Z) Marked roadmap item 1.5.3 done in `docs/roadmap.md`.
+- [x] (2026-02-10 00:00Z) Ran quality gates and captured logs.
 
 ## Surprises & Discoveries
 
@@ -96,6 +101,9 @@ Success is observable when:
   suites `tests/wireframe_login_compat.rs` and `tests/wireframe_xor_compat.rs`.
 - `docs/users-guide.md` already describes XOR detection and login field gating,
   which reduces user-guide delta but still requires matrix cross-linking.
+- `make test` initially failed once because a transient local bind conflict left
+  a test port unavailable (`Address already in use`); rerunning succeeded
+  without code changes.
 
 ## Decision Log
 
@@ -111,10 +119,22 @@ Success is observable when:
 
 ## Outcomes & Retrospective
 
-Pending implementation.
+Implemented outcome:
 
-Expected outcome: a maintained internal compatibility matrix with automated
-evidence, release-note QA linkage, and roadmap closure for 1.5.3.
+- Published `docs/internal-compatibility-matrix.md` with supported clients,
+  known deviations, required toggles, and evidence pointers.
+- Added `docs/release-notes-qa-sign-off.md` so release-note QA sign-off has an
+  explicit matrix reference checkpoint.
+- Extended compatibility test evidence with new unhappy and edge coverage in
+  both unit and behavioural suites.
+- Updated `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md`.
+
+Retrospective:
+
+- Compatibility claims are now easier to audit because matrix rows are tied to
+  specific tests rather than inferred from narrative docs.
+- The release-note reference requirement needed a concrete artifact because the
+  repository did not previously include a release-notes process document.
 
 ## Context and orientation
 

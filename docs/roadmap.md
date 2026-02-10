@@ -176,10 +176,13 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Hotline 1.8.5/1.9, omitted for SynHX). Subsequent feature implementations
   must consult this compatibility policy when applying client-specific quirks.
   Dependencies: 1.2.3.
-- [ ] 1.5.3. Publish an internal compatibility matrix documenting supported
+- [x] 1.5.3. Publish an internal compatibility matrix documenting supported
   clients, known deviations, and required toggles. Acceptance: The matrix lives
-  in `docs/` and is referenced by release notes during QA sign-off.
-  Dependencies: 1.5.2.
+  in `docs/` and is referenced by release notes during QA sign-off. Status:
+  Completed on 10 February 2026 by publishing
+  `docs/internal-compatibility-matrix.md`, adding the release-note QA checklist
+  in `docs/release-notes-qa-sign-off.md`, and extending unit plus behavioural
+  compatibility coverage for unhappy and edge paths. Dependencies: 1.5.2.
 - [ ] 1.5.4. Verify XOR and sub-version compatibility logic with Kani.
   Acceptance: Kani harnesses show XOR encode/decode round-trips and version
   gating for bounded inputs without panics. Dependencies: 1.5.2.

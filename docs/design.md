@@ -231,6 +231,19 @@ XOR decode. This keeps the domain layer free of client quirks while allowing
 future handshake-based toggles to replace the heuristic when the mapping is
 known.
 
+### Internal compatibility matrix governance
+
+Roadmap item 1.5.3 establishes `docs/internal-compatibility-matrix.md` as the
+internal source of truth for client compatibility claims. Matrix rows must stay
+evidence-backed: every supported or partial claim must cite automated unit and
+behavioural tests, and known deviations must be listed explicitly rather than
+inferred from roadmap text.
+
+Release-note QA sign-off references the same matrix through
+`docs/release-notes-qa-sign-off.md`, which standardizes the required sign-off
+statement and reviewer prompts. This prevents releases from claiming support
+that is still marked partial or planned.
+
 - *Storage layer*: Implements **outbound ports** (database operations) using
   Diesel. For instance, the domain core may call
   `db::get_user_by_name(username)` which is implemented with a Diesel query

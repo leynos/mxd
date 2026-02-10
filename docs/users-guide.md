@@ -50,6 +50,10 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   (160). Hotline 1.8.5 and 1.9 clients are identified by the login request's
   version field (160) and receive the banner fields 161/162 in addition to the
   server version.
+- Internal release validation uses
+  `docs/internal-compatibility-matrix.md` as the compatibility source of truth.
+  Release-note QA sign-off must reference that matrix using the checklist in
+  `docs/release-notes-qa-sign-off.md`.
 
 ## Selecting a runtime
 

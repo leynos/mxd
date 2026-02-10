@@ -95,6 +95,15 @@ fn when_message_xor(world: &XorWorld, message: String) {
     );
 }
 
+#[when("I send an unknown transaction with plaintext message \"{message}\"")]
+fn when_message_plaintext(world: &XorWorld, message: String) {
+    world.send(
+        TransactionType::Other(900),
+        2,
+        &[(FieldId::Data, message.as_bytes())],
+    );
+}
+
 #[expect(
     clippy::big_endian_bytes,
     reason = "wire protocol uses big-endian bytes"
@@ -136,6 +145,14 @@ fn then_xor_enabled(world: &XorWorld) {
         return;
     }
     assert!(world.is_xor_enabled());
+}
+
+#[then("XOR compatibility is disabled")]
+fn then_xor_disabled(world: &XorWorld) {
+    if world.is_skipped() {
+        return;
+    }
+    assert!(!world.is_xor_enabled());
 }
 
 scenarios!(
