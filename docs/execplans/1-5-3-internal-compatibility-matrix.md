@@ -1,8 +1,8 @@
 # Publish an internal Hotline and SynHX compatibility matrix
 
 This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
-`Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
-`Outcomes & Retrospective` must be kept up to date as work proceeds.
+`Risks`, `Progress`, `Surprises and discoveries`, `Decision log`, and
+`Outcomes and retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -93,7 +93,7 @@ Success is observable when:
 - [x] (2026-02-10 00:00Z) Marked roadmap item 1.5.3 done in `docs/roadmap.md`.
 - [x] (2026-02-10 00:00Z) Ran quality gates and captured logs.
 
-## Surprises & Discoveries
+## Surprises and discoveries
 
 - `docs/roadmap.md` requires release-note QA sign-off linkage, but the
   repository currently has no dedicated release-notes document.
@@ -106,7 +106,7 @@ Success is observable when:
   a test port unavailable (`Address already in use`); rerunning succeeded
   without code changes.
 
-## Decision Log
+## Decision log
 
 - Decision: place the matrix at `docs/internal-compatibility-matrix.md`.
   Rationale: keeps roadmap acceptance explicit ("lives in docs") and avoids
@@ -163,7 +163,7 @@ Current documentation references:
 
 ## Plan of work
 
-### Stage A: Define matrix scope and release-note linkage
+### Stage A: define matrix scope and release-note linkage
 
 Confirm the matrix schema and QA evidence model before writing content. At
 minimum include:
@@ -179,7 +179,7 @@ Then define how release notes reference the matrix during QA sign-off. If a
 repository-native release-notes location is absent, create a durable reference
 point (for example a release-note template or documented QA checklist step).
 
-### Stage B: Create matrix document under `docs/`
+### Stage B: create matrix document under `docs/`
 
 Add `docs/internal-compatibility-matrix.md` with internal-facing scope,
 explicitly distinguishing:
@@ -192,7 +192,7 @@ Each row must include at least one evidence pointer (unit test, behavioural
 scenario, or protocol clause). Include a short glossary for client names and
 toggle terminology.
 
-### Stage C: Back matrix claims with `rstest` unit coverage
+### Stage C: back matrix claims with `rstest` unit coverage
 
 Extend unit coverage where gaps exist so each matrix claim has deterministic
 proof. Prioritize:
@@ -205,7 +205,7 @@ proof. Prioritize:
 Ensure unhappy and edge cases are explicit, such as unknown or low login
 version values and payloads that should not trigger XOR mode.
 
-### Stage D: Back matrix claims with `rstest-bdd` behavioural coverage
+### Stage D: back matrix claims with `rstest-bdd` behavioural coverage
 
 Add or extend BDD scenarios so external behaviour aligns with matrix rows:
 
@@ -218,7 +218,7 @@ Add or extend BDD scenarios so external behaviour aligns with matrix rows:
 
 Use existing `WireframeBddWorld` fixtures and keep scenarios isolated.
 
-### Stage E: Update design and user-facing docs
+### Stage E: update design and user-facing docs
 
 Update `docs/design.md` with the matrix design decisions:
 
@@ -229,7 +229,7 @@ Update `docs/design.md` with the matrix design decisions:
 Update `docs/users-guide.md` to link to the matrix and document any operator
 actions required to interpret compatibility status or client toggles.
 
-### Stage F: Close roadmap item 1.5.3
+### Stage F: close roadmap item 1.5.3
 
 Mark roadmap entry 1.5.3 as done in `docs/roadmap.md` with:
 
@@ -237,7 +237,7 @@ Mark roadmap entry 1.5.3 as done in `docs/roadmap.md` with:
 - concise summary of what shipped (matrix location + QA linkage);
 - confirmation that dependency 1.5.2 was satisfied.
 
-### Stage G: Run verification and quality gates
+### Stage G: run verification and quality gates
 
 Use `pg_embedded_setup_unpriv` before full test gates, then run documentation
 and Rust quality gates with `tee` logs for auditability.

@@ -5,7 +5,7 @@ and SynHX clients in the wireframe adapter. It is the source of truth for
 release-note quality assurance (QA) sign-off when validating roadmap item
 1.5.3.
 
-For release-note QA sign-off workflow details, use
+For release-note quality assurance (QA) sign-off workflow details, use
 `docs/release-notes-qa-sign-off.md`.
 
 ## Scope and status labels
