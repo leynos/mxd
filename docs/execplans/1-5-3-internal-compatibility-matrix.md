@@ -37,7 +37,7 @@ Success is observable when:
   - Login banner fields 161/162 are omitted for SynHX and included for Hotline.
 - The matrix document must be under `docs/` and written for internal QA use.
 - The matrix must cite evidence sources already present in this repository
-  (tests, protocol docs, design notes) so claims are auditable.
+  (tests, protocol docs, design notes), so claims are auditable.
 - Use `rstest` for unit tests and `rstest-bdd` for behaviour-driven
   development (BDD) scenarios where applicable.
 - Local Postgres-backed validation must use `pg_embedded_setup_unpriv` before
@@ -63,12 +63,12 @@ Success is observable when:
 
 - Risk: matrix becomes stale as compatibility logic evolves.
   Severity: medium. Likelihood: medium. Mitigation: derive every matrix row
-  from code paths and attach explicit test identifiers so future edits fail
+  from code paths and attach explicit test identifiers, so future edits fail
   loudly when behaviour changes.
 - Risk: release-note reference requirement is fulfilled informally and cannot be
   audited later. Severity: medium. Likelihood: medium. Mitigation: define a
-  concrete release-note reference point and document the QA sign-off step in
-  repository docs or workflow guidance.
+  concrete release-note reference point, so that the QA sign-off step is
+  documented in repository docs or workflow guidance.
 - Risk: matrix overstates support for unimplemented transactions.
   Severity: high. Likelihood: medium. Mitigation: add a status column that
   distinguishes "implemented and tested" from "planned / not yet implemented".
@@ -124,7 +124,7 @@ Implemented outcome:
 
 - Published `docs/internal-compatibility-matrix.md` with supported clients,
   known deviations, required toggles, and evidence pointers.
-- Added `docs/release-notes-qa-sign-off.md` so release-note QA sign-off has an
+- Added `docs/release-notes-qa-sign-off.md`, so release-note QA sign-off has an
   explicit matrix reference checkpoint.
 - Extended compatibility test evidence with new unhappy and edge coverage in
   both unit and behavioural suites.
@@ -194,7 +194,7 @@ toggle terminology.
 
 ### Stage C: back matrix claims with `rstest` unit coverage
 
-Extend unit coverage where gaps exist so each matrix claim has deterministic
+Extend unit coverage where gaps exist, so each matrix claim has deterministic
 proof. Prioritize:
 
 - client classification boundaries (`Unknown`, `Hotline85`, `Hotline19`,
@@ -207,7 +207,7 @@ version values and payloads that should not trigger XOR mode.
 
 ### Stage D: back matrix claims with `rstest-bdd` behavioural coverage
 
-Add or extend BDD scenarios so external behaviour aligns with matrix rows:
+Add or extend BDD scenarios, so external behaviour aligns with matrix rows:
 
 - happy: Hotline 1.8.5 and 1.9 login replies include banner fields;
 - happy: SynHX-compatible XOR login/news paths succeed with automatic
