@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises and discoveries`, `Decision log`, and
 `Outcomes and retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 PLANS.md does not exist in this repository.
 
@@ -85,17 +85,17 @@ Success is observable when:
 
 - [x] (2026-02-10 00:00Z) Drafted ExecPlan for roadmap item 1.6.1 with
       required testing, documentation, and roadmap-close criteria.
-- [ ] Audit direct route-invocation test suites and classify each as keep
+- [x] Audit direct route-invocation test suites and classify each as keep
       unit-level vs port to binary-backed coverage.
-- [ ] Implement shared binary-backed BDD/world test utilities in `test-util`.
-- [ ] Port behavioural suites for login and routing file/news flows to binary
+- [x] Implement shared binary-backed BDD/world test utilities in `test-util`.
+- [x] Port behavioural suites for login and routing file/news flows to binary
       execution.
-- [ ] Add presence-flow coverage against the binary (or document and approve
+- [x] Add presence-flow coverage against the binary (or document and approve
       scoped interpretation when 2.1 functionality is not yet implemented).
-- [ ] Add `rstest` unit tests for new harness utilities (happy/unhappy/edge).
-- [ ] Update `docs/design.md` and `docs/users-guide.md`.
-- [ ] Mark `docs/roadmap.md` item 1.6.1 as done with completion note.
-- [ ] Run full quality gates with tee-captured logs and commit atomic changes.
+- [x] Add `rstest` unit tests for new harness utilities (happy/unhappy/edge).
+- [x] Update `docs/design.md` and `docs/users-guide.md`.
+- [x] Mark `docs/roadmap.md` item 1.6.1 as done with completion note.
+- [x] Run full quality gates with tee-captured logs and commit atomic changes.
 
 ## Surprises and discoveries
 
@@ -109,6 +109,13 @@ Success is observable when:
 - The referenced Postgres setup guide path in the request uses
   `pg-embedded-setup-unpriv`, while the repository document path is
   `docs/pg-embed-setup-unpriv-users-guide.md`.
+- Server-only routing scenarios (unknown transaction type) still need an
+  active TCP connection and therefore must start `TestServer` with a no-op DB
+  setup; otherwise the binary-backed world has no stream to send on.
+- XOR compatibility state cannot be observed directly from the binary-backed
+  harness. A stable probe is to attempt a plaintext login: success implies XOR
+  compatibility is disabled, while failure after prior XOR traffic implies it
+  is enabled.
 
 ## Decision log
 
@@ -121,6 +128,16 @@ Success is observable when:
   unless required to satisfy agreed 1.6.1 presence coverage semantics.
   Rationale: roadmap phase ordering places full presence parity in 2.1.
   Date/Author: 2026-02-10 / Codex (ExecPlan draft).
+- Decision: define 1.6.1 "presence" as authenticated-session continuity on a
+  single connection (login followed by a privileged request that no longer
+  returns `ERR_NOT_AUTHENTICATED`), while keeping full user-list presence for
+  roadmap 2.1. Rationale: current implementation scope includes session gating
+  but not the user-list/presence transaction family. Date/Author: 2026-02-10 /
+  Codex.
+- Decision: keep truncated-frame behavioural expectations in unit/parser
+  coverage rather than binary BDD scenarios. Rationale: partial socket writes
+  do not constitute complete wireframe frames, so immediate error replies are
+  not a stable transport contract. Date/Author: 2026-02-10 / Codex.
 
 ## Outcomes and retrospective
 
@@ -134,8 +151,25 @@ Intended outcomes once implemented:
 
 Retrospective placeholder:
 
-- Populate after implementation with what changed, what did not, and lessons
-  for 1.6.2+ tasks.
+- Implemented:
+  `test-util/src/wireframe_bdd_world.rs` now launches `mxd-wireframe-server`
+  and exchanges framed transactions over TCP.
+- Implemented:
+  `tests/wireframe_routing_bdd.rs`, `tests/wireframe_login_compat.rs`, and
+  `tests/wireframe_xor_compat.rs` now run against the binary with existing
+  feature scenarios updated for transport-realistic expectations.
+- Implemented:
+  `test-util/src/protocol.rs` now supports handshake sub-version overrides and
+  adds `rstest` coverage for handshake happy/unhappy paths.
+- Implemented:
+  `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md` record the
+  migration decisions and mark roadmap item 1.6.1 done.
+- Did not implement:
+  full user-list presence transactions or runtime privilege persistence (both
+  remain planned in roadmap 2.1+ and separate tasks).
+- Lesson:
+  binary-backed BDD coverage should focus on complete wire-level transactions;
+  parser truncation edge cases remain better validated at unit-test level.
 
 ## Context and orientation
 
@@ -147,17 +181,19 @@ Primary files and modules in current state:
 - `tests/common.rs`: integration entry point that starts `TestServer`.
 - `tests/file_list.rs`, `tests/news_categories.rs`, `tests/news_articles.rs`:
   binary-backed integration flows already in place.
-- `test-util/src/wireframe_bdd_world.rs`: in-process BDD world currently
-  bypassing binary startup.
+- `test-util/src/wireframe_bdd_world.rs`: shared binary-backed BDD world that
+  now starts `TestServer`, handshakes over TCP, and exchanges framed
+  transactions.
 - `tests/wireframe_routing_bdd.rs` and
-  `tests/features/wireframe_routing.feature`: route-level BDD scenarios
-  currently using in-process execution.
+  `tests/features/wireframe_routing.feature`: route-level BDD scenarios now
+  execute against `mxd-wireframe-server`.
 - `tests/wireframe_login_compat.rs` and
   `tests/features/wireframe_login_compat.feature`: login compatibility BDD
-  scenarios currently using in-process execution.
+  scenarios now execute against `mxd-wireframe-server`.
 - `tests/session_privileges_bdd.rs` and
   `tests/features/session_privileges.feature`: auth/privilege behavioural
-  scenarios currently using in-process execution.
+  scenarios remain in-process to preserve explicit unprivileged-session branch
+  coverage until privilege persistence is modelled in runtime state.
 - `docs/design.md`: design record to update with migration decisions.
 - `docs/users-guide.md`: user-facing operational behaviour guide to update if
   runtime behaviour or testing expectations become user-relevant.
@@ -380,3 +416,10 @@ No new dependencies are expected for this task.
 
 - 2026-02-10: Initial draft created from roadmap 1.6.1 requirements and
   current wireframe test harness state.
+- 2026-02-10: Implementation in progress. Binary-backed world refactor and BDD
+  migrations landed locally; documentation and roadmap entries updated pending
+  final quality-gate run and commit.
+- 2026-02-10: Final quality gates passed (`make check-fmt`, `make lint`,
+  `make test-postgres`, `make test-sqlite`, `make test-wireframe-only`,
+  `make test-verification`, `make markdownlint`, `make nixie`); plan marked
+  complete.

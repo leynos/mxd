@@ -1,130 +1,170 @@
-//! Shared world state and helpers for wireframe BDD routing tests.
+//! Shared world state and helpers for wireframe BDD tests.
+//!
+//! This world launches the `mxd-wireframe-server` binary and interacts with it
+//! through a real TCP connection so behavioural tests exercise transport and
+//! routing together.
 
 use std::{
     cell::{Cell, RefCell},
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
+    io::{Read, Write},
+    net::TcpStream,
+    time::Duration,
 };
 
 use anyhow::Context as _;
 use mxd::{
-    db::DbPool,
-    handler::Session,
-    privileges::Privileges,
-    server::outbound::NoopOutboundMessaging,
-    transaction::{Transaction, parse_transaction},
-    wireframe::{
-        compat::XorCompatibility,
-        compat_policy::ClientCompatibility,
-        connection::HandshakeMetadata,
-        routes::{RouteContext, process_transaction_bytes},
-        test_helpers::dummy_pool,
-    },
+    field_id::FieldId,
+    transaction::{FrameHeader, HEADER_LEN, Transaction},
+    transaction_type::TransactionType,
+    wireframe::{connection::HandshakeMetadata, test_helpers::build_frame},
 };
-use tokio::runtime::Runtime;
 
-use crate::{AnyError, SetupFn, TestDb, bdd_helpers::build_test_db};
+#[cfg(feature = "postgres")]
+use crate::postgres::PostgresTestDbError;
+use crate::{AnyError, DatabaseUrl, SetupFn, TestServer, protocol::handshake_with_sub_version};
 
-/// Shared BDD world backing for wireframe routing-focused scenarios.
+const IO_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Shared BDD world backing for binary transport scenarios.
 pub struct WireframeBddWorld {
-    runtime: Runtime,
-    peer: SocketAddr,
-    pool: RefCell<DbPool>,
-    db_guard: RefCell<Option<TestDb>>,
-    session: RefCell<Session>,
+    server: RefCell<Option<TestServer>>,
+    stream: RefCell<Option<TcpStream>>,
     reply: RefCell<Option<Result<Transaction, String>>>,
-    compat: Arc<XorCompatibility>,
-    client_compat: RefCell<Arc<ClientCompatibility>>,
+    handshake_sub_version: Cell<u16>,
     skipped: Cell<bool>,
 }
 
+impl Default for WireframeBddWorld {
+    fn default() -> Self { Self::new() }
+}
+
 impl WireframeBddWorld {
-    /// Create a fresh wireframe BDD world with default compatibility settings.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the Tokio runtime for this scenario world cannot
-    /// be created.
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let peer = SocketAddr::from((Ipv4Addr::LOCALHOST, 12_345));
-        let runtime = Runtime::new()?;
-        Ok(Self {
-            runtime,
-            peer,
-            pool: RefCell::new(dummy_pool()),
-            db_guard: RefCell::new(None),
-            session: RefCell::new(Session::default()),
+    /// Create a fresh wireframe BDD world.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            server: RefCell::new(None),
+            stream: RefCell::new(None),
             reply: RefCell::new(None),
-            compat: Arc::new(XorCompatibility::disabled()),
-            client_compat: RefCell::new(Arc::new(ClientCompatibility::from_handshake(
-                &HandshakeMetadata::default(),
-            ))),
+            handshake_sub_version: Cell::new(0),
             skipped: Cell::new(false),
-        })
+        }
     }
 
     /// Return true when backend availability caused this scenario to be skipped.
     #[must_use]
     pub const fn is_skipped(&self) -> bool { self.skipped.get() }
 
-    /// Build and install a fixture database for this scenario.
+    /// Build and install a fixture database for this scenario, then connect.
     ///
     /// # Errors
     ///
-    /// Returns an error when fixture database construction fails.
+    /// Returns an error when fixture setup, server startup, or client
+    /// connection/handshake fails.
     pub fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> {
         if self.is_skipped() {
             return Ok(());
         }
-        let db = match build_test_db(&self.runtime, setup) {
-            Ok(Some(db)) => db,
-            Ok(None) => {
-                self.skipped.set(true);
-                return Ok(());
-            }
-            Err(err) => return Err(err).context("failed to set up database"),
-        };
-        self.pool.replace(db.pool());
-        self.db_guard.replace(Some(db));
-        self.session.replace(Session::default());
+        self.reply.borrow_mut().take();
+
+        let server =
+            match TestServer::start_with_setup("./Cargo.toml", |db| setup(DatabaseUrl::from(db))) {
+                Ok(server) => server,
+                Err(error) => {
+                    #[cfg(feature = "postgres")]
+                    if error
+                        .downcast_ref::<PostgresTestDbError>()
+                        .is_some_and(PostgresTestDbError::is_unavailable)
+                    {
+                        self.skipped.set(true);
+                        return Ok(());
+                    }
+                    return Err(error).context("failed to start wireframe test server");
+                }
+            };
+
+        self.server.borrow_mut().replace(server);
+        self.reconnect()
+            .context("failed to connect to wireframe test server")?;
         Ok(())
     }
 
-    /// Update client compatibility policy from handshake metadata.
+    /// Update handshake compatibility metadata for this connection.
+    ///
+    /// When the test client is already connected, this reconnects so the next
+    /// request uses the updated handshake values.
     pub fn set_client_compat_from_handshake(&self, handshake: &HandshakeMetadata) {
-        let compat = Arc::new(ClientCompatibility::from_handshake(handshake));
-        self.client_compat.replace(compat);
+        self.handshake_sub_version.set(handshake.sub_version);
+        if self.is_skipped() || self.server.borrow().is_none() {
+            return;
+        }
+        if let Err(error) = self.reconnect() {
+            self.set_reply_error(format!(
+                "failed to reconnect with handshake sub-version {}: {error}",
+                handshake.sub_version
+            ));
+        }
     }
 
-    /// Route a raw frame through wireframe transaction processing.
+    fn reconnect(&self) -> Result<(), AnyError> {
+        let server_addr = self
+            .server
+            .borrow()
+            .as_ref()
+            .map(TestServer::bind_addr)
+            .ok_or_else(|| anyhow::anyhow!("wireframe test server has not been started"))?;
+
+        let mut stream = TcpStream::connect(server_addr)?;
+        stream.set_read_timeout(Some(IO_TIMEOUT))?;
+        stream.set_write_timeout(Some(IO_TIMEOUT))?;
+        handshake_with_sub_version(&mut stream, self.handshake_sub_version.get())?;
+        self.stream.borrow_mut().replace(stream);
+        Ok(())
+    }
+
+    fn read_reply(stream: &mut TcpStream) -> Result<Transaction, AnyError> {
+        let mut header_buf = [0u8; HEADER_LEN];
+        stream.read_exact(&mut header_buf)?;
+        let header = FrameHeader::from_bytes(&header_buf);
+        let mut payload = vec![0u8; header.data_size as usize];
+        if header.data_size > 0 {
+            stream.read_exact(&mut payload)?;
+        }
+        Ok(Transaction { header, payload })
+    }
+
+    fn send_frame(&self, frame: &[u8]) -> Result<Transaction, AnyError> {
+        let mut stream_ref = self.stream.borrow_mut();
+        let stream = stream_ref
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("wireframe test stream has not been connected"))?;
+        stream.write_all(frame)?;
+        Self::read_reply(stream)
+    }
+
+    fn send_login_with_credentials(&self, username: &[u8], password: &[u8]) -> Result<(), String> {
+        let frame = build_frame(
+            TransactionType::Login,
+            90,
+            &[(FieldId::Login, username), (FieldId::Password, password)],
+        )
+        .map_err(|error| format!("failed to build login frame: {error}"))?;
+        let reply = self.send_frame(&frame).map_err(|error| error.to_string())?;
+        if reply.header.error == 0 {
+            return Ok(());
+        }
+        Err(format!(
+            "login probe failed with error code {}",
+            reply.header.error
+        ))
+    }
+
+    /// Route a raw frame through the running wireframe server binary.
     pub fn send_raw(&self, frame: &[u8]) {
         if self.is_skipped() {
             return;
         }
-        let pool = self.pool.borrow().clone();
-        let peer = self.peer;
-        // In `send_raw`, we intentionally use `session.replace(Session::default())`
-        // to swap out state before `runtime.block_on(process_transaction_bytes(...))`
-        // and restore it afterwards. If `process_transaction_bytes` panics, the
-        // original session is dropped; that fragility is acceptable in test code,
-        // but production paths should avoid this or use a safer take/restore pattern.
-        let mut session = self.session.replace(Session::default());
-        let messaging = NoopOutboundMessaging;
-        let compat = Arc::clone(&self.compat);
-        let client_compat = Arc::clone(&self.client_compat.borrow());
-        let reply = self.runtime.block_on(process_transaction_bytes(
-            frame,
-            RouteContext {
-                peer,
-                pool,
-                session: &mut session,
-                messaging: &messaging,
-                compat: compat.as_ref(),
-                client_compat: client_compat.as_ref(),
-            },
-        ));
-        self.session.replace(session);
-        let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
+        let outcome = self.send_frame(frame).map_err(|error| error.to_string());
         self.reply.borrow_mut().replace(outcome);
     }
 
@@ -151,17 +191,29 @@ impl WireframeBddWorld {
         f(tx)
     }
 
-    /// Mark the session as authenticated with default user privileges.
-    pub fn authenticate_default_user(&self, user_id: i32) {
+    /// Authenticate the test connection as the default fixture user.
+    ///
+    /// The user id argument is ignored; it is retained only to preserve
+    /// compatibility with existing BDD step helpers.
+    pub fn authenticate_default_user(&self, _user_id: i32) {
         if self.is_skipped() {
             return;
         }
-        let mut session = self.session.borrow_mut();
-        session.user_id = Some(user_id);
-        session.privileges = Privileges::default_user();
+        if let Err(error) = self.send_login_with_credentials(b"alice", b"secret") {
+            self.set_reply_error(error);
+        }
     }
 
-    /// Return true when XOR compatibility has been enabled by observed traffic.
+    /// Return true when XOR compatibility appears enabled on this connection.
+    ///
+    /// The check sends a plaintext login probe and treats authentication failure
+    /// as a signal that compatibility decoding is active for text fields.
     #[must_use]
-    pub fn is_xor_enabled(&self) -> bool { self.compat.is_enabled() }
+    pub fn is_xor_enabled(&self) -> bool {
+        if self.is_skipped() {
+            return false;
+        }
+        self.send_login_with_credentials(b"alice", b"secret")
+            .is_err()
+    }
 }

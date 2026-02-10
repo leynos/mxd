@@ -8,7 +8,15 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenarios, then, when};
-use test_util::{AnyError, SetupFn, WireframeBddWorld, build_frame, setup_files_db, setup_news_db};
+use test_util::{
+    AnyError,
+    SetupFn,
+    WireframeBddWorld,
+    build_frame,
+    ensure_server_binary_env,
+    setup_files_db,
+    setup_news_db,
+};
 
 struct XorWorld {
     base: WireframeBddWorld,
@@ -18,10 +26,10 @@ struct XorWorld {
 const UNKNOWN_MESSAGE_TRANSACTION_TYPE: TransactionType = TransactionType::Other(900);
 
 impl XorWorld {
-    fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {
-            base: WireframeBddWorld::new()?,
-        })
+    const fn new() -> Self {
+        Self {
+            base: WireframeBddWorld::new(),
+        }
     }
 
     fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> { self.base.setup_db(setup) }
@@ -56,10 +64,9 @@ impl XorWorld {
 
 #[fixture]
 fn world() -> XorWorld {
-    let world = match XorWorld::new() {
-        Ok(world) => world,
-        Err(error) => panic!("failed to construct XOR compatibility fixture runtime: {error}"),
-    };
+    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server"))
+        .unwrap_or_else(|error| panic!("failed to configure wireframe test binary path: {error}"));
+    let world = XorWorld::new();
     assert!(!world.is_skipped(), "world starts active");
     world
 }

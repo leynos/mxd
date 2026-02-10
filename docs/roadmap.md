@@ -204,9 +204,14 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 1.6. Regression and platform verification
 
-- [ ] 1.6.1. Port unit and integration tests so they start the wireframe server
+- [x] 1.6.1. Port unit and integration tests so they start the wireframe server
   binary under test. Acceptance: `cargo test` exercises login, presence, file
-  listing, and news flows against the new binary. Dependencies: 1.4.
+  listing, and news flows against the new binary. Status: Completed on 10
+  February 2026 by refactoring the shared wireframe BDD world to launch
+  `mxd-wireframe-server`, adding handshake-sub-version coverage in test-util
+  unit tests, and running routing/login/XOR behavioural suites over real TCP
+  transport for login, authenticated-session continuity, file list, and news
+  flows. Dependencies: 1.4.
 - [ ] 1.6.2. Extend the hx-based validator harness to target the wireframe
   server. Acceptance: The harness covers login, file download, chat, and news
   flows and runs in CI. Dependencies: 1.6.1.
