@@ -11,9 +11,8 @@ PLANS.md does not exist in this repository.
 ## Purpose / big picture
 
 Roadmap item 1.5.4 requires bounded formal verification of the existing
-wireframe compatibility logic added in 1.5.1 and 1.5.2. After this work, we
-will be able to run Kani harnesses that prove two high-value properties without
-panics:
+wireframe compatibility logic added in 1.5.1 and 1.5.2. After this work, Kani
+harnesses prove two high-value properties without panics:
 
 - XOR text-field transformations are involutive for bounded payloads
   (encode/decode round-trip).
@@ -105,7 +104,7 @@ Success is observable when:
   compatibility paths.
 - [x] (2026-02-10 22:57Z) Updated `docs/design.md`,
   `docs/verification-strategy.md`, `docs/users-guide.md`, and `docs/roadmap.md`.
-- [x] (2026-02-10 23:10Z) Ran formatting, lint, test, docs, and Kani
+- [x] (2026-02-10 23:10Z) Ran formatting, lint, tests, docs, and Kani
   verification gates; all passed.
 
 ## Surprises & Discoveries
@@ -152,16 +151,16 @@ Success is observable when:
   Date/Author: 2026-02-10 / Codex.
 
 - Decision: Keep runtime panic behaviour for impossible payload length overflow
-  in `header_util`, but guard the branch under `#[cfg(kani)]` with
-  `kani::assume(false)` plus abort for verifier compatibility. Rationale:
-  maintains runtime semantics while avoiding Kani panic instrumentation issues.
-  Date/Author: 2026-02-10 / Codex.
+  in `header_util`, but route Kani builds to an explicit aborting overflow
+  helper. Rationale: maintains runtime semantics while keeping Kani
+  verification compatible with overflow-path handling constraints. Date/Author:
+  2026-02-10 / Codex.
 
 ## Outcomes & Retrospective
 
 Roadmap item 1.5.4 was implemented and validated end-to-end.
 
-What shipped:
+Shipped changes
 
 - Added Kani harness modules for XOR compatibility and sub-version/login
   compatibility gating.
