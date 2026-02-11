@@ -11,8 +11,8 @@ PLANS.md does not exist in this repository.
 ## Purpose / big picture
 
 Roadmap item 1.5.4 requires bounded formal verification of the existing
-wireframe compatibility logic added in 1.5.1 and 1.5.2. After this work, Kani
-harnesses prove two high-value properties without panics:
+wireframe compatibility logic added in 1.5.1 and 1.5.2. Completion requires
+Kani harnesses to prove two high-value properties without panics:
 
 - XOR text-field transformations are involutive for bounded payloads
   (encode/decode round-trip).
