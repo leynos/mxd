@@ -9,6 +9,10 @@
 ///
 /// # Panics
 /// Panics if `payload_len` does not fit within `u32`.
+///
+/// # Aborts
+/// Under Kani verification builds, aborts if `payload_len` does not fit within
+/// `u32`.
 #[must_use]
 pub fn reply_header(
     req: &crate::transaction::FrameHeader,
