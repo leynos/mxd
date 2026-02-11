@@ -231,6 +231,14 @@ XOR decode. This keeps the domain layer free of client quirks while allowing
 future handshake-based toggles to replace the heuristic when the mapping is
 known.
 
+Roadmap item 1.5.4 adds bounded Kani proofs for compatibility logic so the
+adapter-level quirks stay regression-resistant without widening runtime
+behaviour. The proofs cover XOR round-trips for bounded parameter payloads and
+client-kind/version gating boundaries, while `rstest` and `rstest-bdd`
+scenarios continue to exercise end-to-end routing outcomes. This split keeps
+formal checks focused on pure invariants and keeps transport integration
+confidence in behavioural suites.
+
 ### Internal compatibility matrix governance
 
 Roadmap item 1.5.3 establishes `docs/internal-compatibility-matrix.md` as the

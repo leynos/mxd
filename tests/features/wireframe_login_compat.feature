@@ -25,3 +25,15 @@ Feature: Wireframe login compatibility
     And a handshake sub-version 0
     When I send a login request with client version 100
     Then the login reply omits banner fields
+
+  Scenario: Login version boundary below Hotline 1.8.5 omits banner fields
+    Given a routing context with user accounts
+    And a handshake sub-version 0
+    When I send a login request with client version 150
+    Then the login reply omits banner fields
+
+  Scenario: SynHX handshake takes precedence over login-version gating
+    Given a routing context with user accounts
+    And a handshake sub-version 2
+    When I send a login request with client version 151
+    Then the login reply omits banner fields

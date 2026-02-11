@@ -94,6 +94,12 @@ Current harnesses cover transaction framing invariants in
 `src/header_util/kani.rs`, proving header validation, fragment sizing, and
 transaction ID echoing for bounded payloads.
 
+Roadmap item 1.5.4 extends Kani coverage to compatibility invariants in
+`src/wireframe/compat/kani.rs` and `src/wireframe/compat_policy/kani.rs`. These
+harnesses prove XOR encode/decode round-trips for bounded payloads and
+sub-version/version gating behaviour for bounded handshake and login values,
+without panics.
+
 ## TLA+ specifications
 
 ### Handshake specification (MxdHandshake.tla)
@@ -229,4 +235,10 @@ cargo kani -p mxd --harness kani_fragment_ranges_cover_payload
 cargo kani -p mxd --harness kani_validate_first_header_matches_predicate
 cargo kani -p mxd --harness kani_validate_continuation_frame_matches_predicate
 cargo kani -p mxd --harness kani_reply_header_echoes_id
+
+# Kani harnesses (compatibility invariants)
+cargo kani -p mxd --harness kani_xor_bytes_round_trip_bounded
+cargo kani -p mxd --harness kani_xor_payload_round_trip_text_fields_bounded
+cargo kani -p mxd --harness kani_client_kind_sub_version_precedence
+cargo kani -p mxd --harness kani_login_extras_boundary_gate
 ```

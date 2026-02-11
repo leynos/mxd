@@ -50,6 +50,9 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   (160). Hotline 1.8.5 and 1.9 clients are identified by the login request's
   version field (160) and receive the banner fields 161/162 in addition to the
   server version.
+- Compatibility behaviour is unchanged by roadmap item 1.5.4; that milestone
+  adds bounded Kani verification for XOR round-trips and login
+  sub-version/version gating invariants.
 - Internal release validation uses
   `docs/internal-compatibility-matrix.md` as the compatibility source of truth.
   Release-note QA sign-off must reference that matrix using the checklist in
@@ -108,4 +111,7 @@ cover successful account creation, missing-credential errors, and runtime
 selection so the adapter strategy remains observable to end users.
 Verification-focused behaviour scenarios for the session gating Stateright
 model live in `tests/features/session_gating_verification.feature` and are
-bound by the `mxd-verification` test harness.
+bound by the `mxd-verification` test harness. Compatibility verification also
+includes Kani harnesses in `src/wireframe/compat/kani.rs` and
+`src/wireframe/compat_policy/kani.rs`, which prove bounded XOR and login-gating
+invariants without changing runtime behaviour.
