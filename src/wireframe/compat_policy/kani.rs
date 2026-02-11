@@ -7,14 +7,27 @@ use super::{
     HOTLINE_85_MIN_VERSION,
     SYNHX_SUB_VERSION,
 };
-use crate::wireframe::connection::HandshakeMetadata;
+use crate::{protocol::VERSION, wireframe::connection::HandshakeMetadata};
 
 fn handshake(sub_version: u16) -> HandshakeMetadata {
     HandshakeMetadata {
         sub_protocol: u32::from_be_bytes(*b"HOTL"),
-        version: 1,
+        version: VERSION,
         sub_version,
     }
+}
+
+fn expected_kind(sub_version: u16, login_version: u16) -> ClientKind {
+    if sub_version == SYNHX_SUB_VERSION {
+        return ClientKind::SynHx;
+    }
+    if login_version >= HOTLINE_19_MIN_VERSION {
+        return ClientKind::Hotline19;
+    }
+    if login_version >= HOTLINE_85_MIN_VERSION {
+        return ClientKind::Hotline85;
+    }
+    ClientKind::Unknown
 }
 
 #[kani::proof]
@@ -24,19 +37,10 @@ fn kani_client_kind_sub_version_precedence() {
 
     let compat = ClientCompatibility::from_handshake(&handshake(sub_version));
     compat.record_login_version(login_version);
-
-    let expected_kind = if sub_version == SYNHX_SUB_VERSION {
-        ClientKind::SynHx
-    } else if login_version >= HOTLINE_19_MIN_VERSION {
-        ClientKind::Hotline19
-    } else if login_version >= HOTLINE_85_MIN_VERSION {
-        ClientKind::Hotline85
-    } else {
-        ClientKind::Unknown
-    };
+    let expected_kind_value = expected_kind(sub_version, login_version);
 
     kani::assert(
-        compat.kind() == expected_kind,
+        compat.kind() == expected_kind_value,
         "client kind classification matches version thresholds and SynHX precedence",
     );
 }

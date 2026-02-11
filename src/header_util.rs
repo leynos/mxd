@@ -16,17 +16,7 @@ pub fn reply_header(
     payload_len: usize,
 ) -> crate::transaction::FrameHeader {
     let Ok(payload_len_u32) = u32::try_from(payload_len) else {
-        #[cfg(kani)]
-        {
-            // Kani does not currently model this panic path; prune impossible
-            // overflow states while proving bounded harnesses.
-            ::kani::assume(false);
-            std::process::abort();
-        }
-        #[cfg(not(kani))]
-        {
-            panic!("payload length exceeds u32::MAX: {payload_len}");
-        }
+        payload_len_overflow(payload_len);
     };
     crate::transaction::FrameHeader {
         flags: 0,
@@ -37,6 +27,16 @@ pub fn reply_header(
         total_size: payload_len_u32,
         data_size: payload_len_u32,
     }
+}
+
+#[cfg(kani)]
+#[cold]
+fn payload_len_overflow(_payload_len: usize) -> ! { std::process::abort() }
+
+#[cfg(not(kani))]
+#[cold]
+fn payload_len_overflow(payload_len: usize) -> ! {
+    panic!("payload length exceeds u32::MAX: {payload_len}");
 }
 
 #[cfg(kani)]

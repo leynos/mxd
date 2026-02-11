@@ -1,4 +1,4 @@
-# Verify XOR and sub-version compatibility logic with Kani
+# Verify exclusive OR (XOR) and sub-version compatibility logic with Kani
 
 This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
