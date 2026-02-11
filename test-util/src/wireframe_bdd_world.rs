@@ -13,8 +13,9 @@ use std::{
 
 use anyhow::Context as _;
 use mxd::{
+    commands::{ERR_INTERNAL_SERVER, ERR_NOT_AUTHENTICATED},
     field_id::FieldId,
-    transaction::{FrameHeader, HEADER_LEN, Transaction},
+    transaction::{FrameHeader, HEADER_LEN, MAX_FRAME_DATA, MAX_PAYLOAD_SIZE, Transaction},
     transaction_type::TransactionType,
     wireframe::{connection::HandshakeMetadata, test_helpers::build_frame},
 };
@@ -125,11 +126,74 @@ impl WireframeBddWorld {
     fn read_reply(stream: &mut TcpStream) -> Result<Transaction, AnyError> {
         let mut header_buf = [0u8; HEADER_LEN];
         stream.read_exact(&mut header_buf)?;
-        let header = FrameHeader::from_bytes(&header_buf);
-        let mut payload = vec![0u8; header.data_size as usize];
-        if header.data_size > 0 {
+        let mut header = FrameHeader::from_bytes(&header_buf);
+        let total_size = header.total_size as usize;
+        let first_data_size = header.data_size as usize;
+        if total_size > MAX_PAYLOAD_SIZE {
+            return Err(anyhow::anyhow!(
+                "reply total payload exceeds limit: {total_size} > {MAX_PAYLOAD_SIZE}",
+            ));
+        }
+        if first_data_size > MAX_FRAME_DATA {
+            return Err(anyhow::anyhow!(
+                "reply frame payload exceeds frame limit: {first_data_size} > {MAX_FRAME_DATA}",
+            ));
+        }
+        if first_data_size > total_size {
+            return Err(anyhow::anyhow!(
+                "reply data size exceeds total size: {first_data_size} > {total_size}",
+            ));
+        }
+        if total_size > 0 && first_data_size == 0 {
+            return Err(anyhow::anyhow!(
+                "reply has non-zero total size but zero first frame size",
+            ));
+        }
+
+        let mut payload = vec![0u8; first_data_size];
+        if first_data_size > 0 {
             stream.read_exact(&mut payload)?;
         }
+
+        while payload.len() < total_size {
+            let mut continuation_header_buf = [0u8; HEADER_LEN];
+            stream.read_exact(&mut continuation_header_buf)?;
+            let continuation_header = FrameHeader::from_bytes(&continuation_header_buf);
+            if continuation_header.flags != header.flags
+                || continuation_header.is_reply != header.is_reply
+                || continuation_header.ty != header.ty
+                || continuation_header.id != header.id
+                || continuation_header.error != header.error
+                || continuation_header.total_size != header.total_size
+            {
+                return Err(anyhow::anyhow!("reply continuation header mismatch"));
+            }
+
+            let remaining = total_size - payload.len();
+            let continuation_size = continuation_header.data_size as usize;
+            if continuation_size == 0 {
+                return Err(anyhow::anyhow!(
+                    "reply continuation frame had zero payload size"
+                ));
+            }
+            if continuation_size > MAX_FRAME_DATA {
+                return Err(anyhow::anyhow!(
+                    "reply continuation payload exceeds frame limit: {continuation_size} > \
+                     {MAX_FRAME_DATA}",
+                ));
+            }
+            if continuation_size > remaining {
+                return Err(anyhow::anyhow!(
+                    "reply continuation payload exceeds remaining bytes: {continuation_size} > \
+                     {remaining}",
+                ));
+            }
+            let mut continuation_payload = vec![0u8; continuation_size];
+            stream.read_exact(&mut continuation_payload)?;
+            payload.extend_from_slice(&continuation_payload);
+        }
+
+        header.data_size = header.total_size;
         Ok(Transaction { header, payload })
     }
 
@@ -142,21 +206,18 @@ impl WireframeBddWorld {
         Self::read_reply(stream)
     }
 
-    fn send_login_with_credentials(&self, username: &[u8], password: &[u8]) -> Result<(), String> {
+    fn send_login_with_credentials(
+        &self,
+        username: &[u8],
+        password: &[u8],
+    ) -> Result<Transaction, String> {
         let frame = build_frame(
             TransactionType::Login,
             90,
             &[(FieldId::Login, username), (FieldId::Password, password)],
         )
         .map_err(|error| format!("failed to build login frame: {error}"))?;
-        let reply = self.send_frame(&frame).map_err(|error| error.to_string())?;
-        if reply.header.error == 0 {
-            return Ok(());
-        }
-        Err(format!(
-            "login probe failed with error code {}",
-            reply.header.error
-        ))
+        self.send_frame(&frame).map_err(|error| error.to_string())
     }
 
     /// Route a raw frame through the running wireframe server binary.
@@ -199,7 +260,18 @@ impl WireframeBddWorld {
         if self.is_skipped() {
             return;
         }
-        if let Err(error) = self.send_login_with_credentials(b"alice", b"secret") {
+        let outcome = self
+            .send_login_with_credentials(b"alice", b"secret")
+            .and_then(|reply| {
+                if reply.header.error == 0 {
+                    return Ok(());
+                }
+                Err(format!(
+                    "login probe failed with error code {}",
+                    reply.header.error
+                ))
+            });
+        if let Err(error) = outcome {
             self.set_reply_error(error);
         }
     }
@@ -213,7 +285,12 @@ impl WireframeBddWorld {
         if self.is_skipped() {
             return false;
         }
-        self.send_login_with_credentials(b"alice", b"secret")
-            .is_err()
+        let Ok(reply) = self.send_login_with_credentials(b"alice", b"secret") else {
+            return false;
+        };
+        matches!(
+            reply.header.error,
+            ERR_NOT_AUTHENTICATED | ERR_INTERNAL_SERVER
+        )
     }
 }

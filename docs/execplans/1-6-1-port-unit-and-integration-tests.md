@@ -33,7 +33,8 @@ Success is observable when:
 
 ## Constraints
 
-- Keep the wireframe migration dependency boundary intact: this task depends on
+- Keep the migration dependency boundary for wireframe intact: this task
+  depends on
   roadmap 1.4 outputs and must not reintroduce legacy transport coupling.
 - Preserve transport realism in integration coverage: target the
   `mxd-wireframe-server` binary via `TestServer` helpers in `test-util`.
@@ -210,7 +211,7 @@ into:
 
 Document the selected definition of "presence flow" for 1.6.1 and map it to
 existing implemented transactions. If this mapping is ambiguous, stop and
-escalate per tolerances.
+escalate per tolerance.
 
 Validation gate for Stage A:
 
@@ -272,7 +273,7 @@ migration, including:
 - any trade-offs in test speed vs fidelity.
 
 Update `docs/users-guide.md` if user-visible server behaviour changed, or add a
-brief clarification if only validation posture changed but operational
+brief clarification if only validation posture changed, but operational
 behaviour did not.
 
 After all acceptance criteria are validated, mark roadmap item 1.6.1 as done in
