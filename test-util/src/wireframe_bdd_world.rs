@@ -145,6 +145,16 @@ impl WireframeBddWorld {
             .map(Duration::from_secs)
     }
 
+    /// Validate continuation frame header consistency with the original header.
+    const fn is_valid_continuation(original: &FrameHeader, continuation: &FrameHeader) -> bool {
+        continuation.flags == original.flags
+            && continuation.is_reply == original.is_reply
+            && continuation.ty == original.ty
+            && continuation.id == original.id
+            && continuation.error == original.error
+            && continuation.total_size == original.total_size
+    }
+
     fn read_reply(stream: &mut TcpStream) -> Result<Transaction, AnyError> {
         let mut header_buf = [0u8; HEADER_LEN];
         stream.read_exact(&mut header_buf)?;
@@ -181,13 +191,7 @@ impl WireframeBddWorld {
             let mut continuation_header_buf = [0u8; HEADER_LEN];
             stream.read_exact(&mut continuation_header_buf)?;
             let continuation_header = FrameHeader::from_bytes(&continuation_header_buf);
-            if continuation_header.flags != header.flags
-                || continuation_header.is_reply != header.is_reply
-                || continuation_header.ty != header.ty
-                || continuation_header.id != header.id
-                || continuation_header.error != header.error
-                || continuation_header.total_size != header.total_size
-            {
+            if !Self::is_valid_continuation(&header, &continuation_header) {
                 return Err(anyhow::anyhow!("reply continuation header mismatch"));
             }
 
