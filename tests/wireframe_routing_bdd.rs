@@ -209,8 +209,10 @@ fn then_session_authenticated(world: &RoutingWorld) {
     world.with_reply(|tx| {
         assert_eq!(
             tx.header.error, 0,
-            "session should remain authenticated after successful login and file listing should \
-             succeed",
+            concat!(
+                "session should remain authenticated after successful login and ",
+                "file listing should succeed",
+            ),
         );
     });
 }
