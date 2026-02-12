@@ -159,6 +159,24 @@ impl WireframeBddWorld {
         let mut header_buf = [0u8; HEADER_LEN];
         stream.read_exact(&mut header_buf)?;
         let mut header = FrameHeader::from_bytes(&header_buf);
+        let (total_size, first_data_size) = Self::validate_initial_header(&header)?;
+
+        let mut payload = vec![0u8; first_data_size];
+        if first_data_size > 0 {
+            stream.read_exact(&mut payload)?;
+        }
+
+        while payload.len() < total_size {
+            let remaining = total_size - payload.len();
+            let continuation_payload = Self::read_continuation_frame(stream, &header, remaining)?;
+            payload.extend_from_slice(&continuation_payload);
+        }
+
+        header.data_size = header.total_size;
+        Ok(Transaction { header, payload })
+    }
+
+    fn validate_initial_header(header: &FrameHeader) -> Result<(usize, usize), AnyError> {
         let total_size = header.total_size as usize;
         let first_data_size = header.data_size as usize;
         if total_size > MAX_PAYLOAD_SIZE {
@@ -181,46 +199,43 @@ impl WireframeBddWorld {
                 "reply has non-zero total size but zero first frame size",
             ));
         }
+        Ok((total_size, first_data_size))
+    }
 
-        let mut payload = vec![0u8; first_data_size];
-        if first_data_size > 0 {
-            stream.read_exact(&mut payload)?;
+    fn read_continuation_frame(
+        stream: &mut TcpStream,
+        header: &FrameHeader,
+        remaining: usize,
+    ) -> Result<Vec<u8>, AnyError> {
+        let mut continuation_header_buf = [0u8; HEADER_LEN];
+        stream.read_exact(&mut continuation_header_buf)?;
+        let continuation_header = FrameHeader::from_bytes(&continuation_header_buf);
+        if !Self::is_valid_continuation(header, &continuation_header) {
+            return Err(anyhow::anyhow!("reply continuation header mismatch"));
         }
 
-        while payload.len() < total_size {
-            let mut continuation_header_buf = [0u8; HEADER_LEN];
-            stream.read_exact(&mut continuation_header_buf)?;
-            let continuation_header = FrameHeader::from_bytes(&continuation_header_buf);
-            if !Self::is_valid_continuation(&header, &continuation_header) {
-                return Err(anyhow::anyhow!("reply continuation header mismatch"));
-            }
-
-            let remaining = total_size - payload.len();
-            let continuation_size = continuation_header.data_size as usize;
-            if continuation_size == 0 {
-                return Err(anyhow::anyhow!(
-                    "reply continuation frame had zero payload size"
-                ));
-            }
-            if continuation_size > MAX_FRAME_DATA {
-                return Err(anyhow::anyhow!(
-                    "reply continuation payload exceeds frame limit: {continuation_size} > \
-                     {MAX_FRAME_DATA}",
-                ));
-            }
-            if continuation_size > remaining {
-                return Err(anyhow::anyhow!(
-                    "reply continuation payload exceeds remaining bytes: {continuation_size} > \
-                     {remaining}",
-                ));
-            }
-            let mut continuation_payload = vec![0u8; continuation_size];
-            stream.read_exact(&mut continuation_payload)?;
-            payload.extend_from_slice(&continuation_payload);
+        let continuation_size = continuation_header.data_size as usize;
+        if continuation_size == 0 {
+            return Err(anyhow::anyhow!(
+                "reply continuation frame had zero payload size"
+            ));
+        }
+        if continuation_size > MAX_FRAME_DATA {
+            return Err(anyhow::anyhow!(
+                "reply continuation payload exceeds frame limit: {continuation_size} > \
+                 {MAX_FRAME_DATA}",
+            ));
+        }
+        if continuation_size > remaining {
+            return Err(anyhow::anyhow!(
+                "reply continuation payload exceeds remaining bytes: {continuation_size} > \
+                 {remaining}",
+            ));
         }
 
-        header.data_size = header.total_size;
-        Ok(Transaction { header, payload })
+        let mut continuation_payload = vec![0u8; continuation_size];
+        stream.read_exact(&mut continuation_payload)?;
+        Ok(continuation_payload)
     }
 
     fn send_frame(&self, frame: &[u8]) -> Result<Transaction, AnyError> {
