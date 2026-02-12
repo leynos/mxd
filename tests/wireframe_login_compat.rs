@@ -8,7 +8,13 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenarios, then, when};
-use test_util::{SetupFn, WireframeBddWorld, build_frame, setup_login_db};
+use test_util::{
+    SetupFn,
+    WireframeBddWorld,
+    build_frame,
+    ensure_server_binary_env,
+    setup_login_db,
+};
 
 /// Shared BDD world state for login compatibility scenarios.
 struct LoginCompatWorld {
@@ -25,10 +31,10 @@ impl std::fmt::Display for AssertionError {
 impl std::error::Error for AssertionError {}
 
 impl LoginCompatWorld {
-    fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {
-            base: WireframeBddWorld::new()?,
-        })
+    const fn new() -> Self {
+        Self {
+            base: WireframeBddWorld::new(),
+        }
     }
 
     fn setup_db(&self, setup: SetupFn) -> Result<(), Box<dyn std::error::Error>> {
@@ -153,12 +159,9 @@ impl LoginCompatWorld {
 
 #[fixture]
 fn world() -> LoginCompatWorld {
-    let world = match LoginCompatWorld::new() {
-        Ok(world) => world,
-        Err(error) => {
-            panic!("failed to construct login compatibility fixture world runtime: {error}")
-        }
-    };
+    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server"))
+        .unwrap_or_else(|error| panic!("failed to configure wireframe test binary path: {error}"));
+    let world = LoginCompatWorld::new();
     assert!(!world.base.is_skipped());
     world
 }

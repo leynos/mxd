@@ -108,10 +108,13 @@ fixtures to validate configuration loading across env, dotfile, and CLI layers.
 High-level behaviour tests are defined in `tests/features/create_user_command`
 and `tests/features/runtime_selection.feature`, bound via `rstest-bdd`. They
 cover successful account creation, missing-credential errors, and runtime
-selection so the adapter strategy remains observable to end users.
-Verification-focused behaviour scenarios for the session gating Stateright
-model live in `tests/features/session_gating_verification.feature` and are
-bound by the `mxd-verification` test harness. Compatibility verification also
-includes Kani harnesses in `src/wireframe/compat/kani.rs` and
-`src/wireframe/compat_policy/kani.rs`, which prove bounded XOR and login-gating
-invariants without changing runtime behaviour.
+selection so the adapter strategy remains observable to end users. Wireframe
+routing behaviour suites now run through the `mxd-wireframe-server` binary by
+default via shared `test-util` harnesses, covering login compatibility,
+authenticated-session continuity, file listing, and news routing flows in
+`cargo test`. Verification-focused behaviour scenarios for the session gating
+Stateright model live in `tests/features/session_gating_verification.feature`
+and are bound by the `mxd-verification` test harness. Compatibility
+verification also includes Kani harnesses in `src/wireframe/compat/kani.rs`
+and `src/wireframe/compat_policy/kani.rs`, which prove bounded XOR and
+login-gating invariants without changing runtime behaviour.

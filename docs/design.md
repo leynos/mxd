@@ -770,6 +770,34 @@ Integration tests in `tests/file_list.rs`, `tests/news_categories.rs`, and
 server binary (`mxd-wireframe-server`), validating end-to-end transaction
 handling.
 
+#### Regression verification via the wireframe binary (February 2026)
+
+Roadmap item 1.6.1 extends behavioural coverage so routing-focused BDD suites
+run through `mxd-wireframe-server` instead of calling
+`process_transaction_bytes()` directly. The shared
+`test-util/src/wireframe_bdd_world.rs` fixture now:
+
+- starts `TestServer` with the requested fixture database setup;
+- connects over TCP, completes the Hotline handshake, and re-handshakes when
+  compatibility scenarios change the handshake sub-version;
+- sends framed transactions over the socket and reads full reply frames from
+  the running binary.
+
+This keeps login compatibility (`tests/wireframe_login_compat.rs`), XOR
+compatibility (`tests/wireframe_xor_compat.rs`), and routing login/file/news
+flows (`tests/wireframe_routing_bdd.rs`) aligned with production transport
+behaviour.
+
+For 1.6.1, "presence" is validated as authenticated session continuity: after a
+successful login, a follow-up privileged request on the same connection must no
+longer return `ERR_NOT_AUTHENTICATED` (1). Full user-list presence and
+notification transactions remain scheduled in roadmap 2.1.
+
+Transport-level truncation checks stay in route/parser unit tests because the
+wireframe socket codec naturally waits for complete frames; asserting immediate
+error replies for intentionally partial TCP writes is not a stable behavioural
+contract.
+
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
 Configuration management in MXD is handled by the **OrthoConfig** library,

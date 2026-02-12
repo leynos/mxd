@@ -1,105 +1,51 @@
-//! Behavioural tests for wireframe transaction routing.
-
-use std::{
-    cell::{Cell, RefCell},
-    net::SocketAddr,
-    sync::Arc,
-};
+//! Behavioural tests for wireframe transaction routing against the binary.
 
 use mxd::{
-    db::DbPool,
     field_id::FieldId,
-    handler::Session,
-    privileges::Privileges,
-    server::outbound::NoopOutboundMessaging,
-    transaction::{FrameHeader, HEADER_LEN, Transaction, decode_params, parse_transaction},
+    transaction::{FrameHeader, HEADER_LEN, Transaction, decode_params},
     transaction_type::TransactionType,
-    wireframe::{
-        compat::XorCompatibility,
-        compat_policy::ClientCompatibility,
-        connection::HandshakeMetadata,
-        routes::{RouteContext, process_transaction_bytes},
-        test_helpers::dummy_pool,
-    },
 };
 use rstest::fixture;
 use rstest_bdd::assert_step_ok;
 use rstest_bdd_macros::{given, scenarios, then, when};
 use test_util::{
+    AnyError,
     SetupFn,
-    TestDb,
+    WireframeBddWorld,
     build_frame,
-    build_test_db,
     collect_strings,
+    ensure_server_binary_env,
     setup_files_db,
     setup_news_categories_root_db,
     setup_news_db,
 };
-use tokio::runtime::Runtime;
 
 struct RoutingWorld {
-    runtime: Runtime,
-    peer: SocketAddr,
-    pool: RefCell<DbPool>,
-    db_guard: RefCell<Option<TestDb>>,
-    session: RefCell<Session>,
-    reply: RefCell<Option<Result<Transaction, String>>>,
-    compat: Arc<XorCompatibility>,
-    client_compat: Arc<ClientCompatibility>,
-    skipped: Cell<bool>,
+    base: WireframeBddWorld,
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "keeps setup callback signature aligned with fixture setup helpers"
+)]
+fn noop_setup(_: test_util::DatabaseUrl) -> Result<(), AnyError> { Ok(()) }
+
 impl RoutingWorld {
-    fn new() -> Self {
-        let peer = "127.0.0.1:12345"
-            .parse()
-            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
-        let runtime =
-            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
+    const fn new() -> Self {
         Self {
-            runtime,
-            peer,
-            pool: RefCell::new(dummy_pool()),
-            db_guard: RefCell::new(None),
-            session: RefCell::new(Session::default()),
-            reply: RefCell::new(None),
-            compat: Arc::new(XorCompatibility::disabled()),
-            client_compat: Arc::new(ClientCompatibility::from_handshake(
-                &HandshakeMetadata::default(),
-            )),
-            skipped: Cell::new(false),
+            base: WireframeBddWorld::new(),
         }
     }
 
-    const fn is_skipped(&self) -> bool { self.skipped.get() }
+    const fn is_skipped(&self) -> bool { self.base.is_skipped() }
 
-    fn setup_db(&self, setup: SetupFn) {
-        if self.is_skipped() {
-            return;
-        }
-        let db = match build_test_db(&self.runtime, setup) {
-            Ok(Some(db)) => db,
-            Ok(None) => {
-                self.skipped.set(true);
-                return;
-            }
-            Err(err) => panic!("failed to set up database: {err}"),
-        };
-        self.pool.replace(db.pool());
-        self.db_guard.replace(Some(db));
-        self.session.replace(Session::default());
-    }
+    fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> { self.base.setup_db(setup) }
 
-    /// Pre-authenticate the session with default user privileges.
-    ///
-    /// Used for tests that need to bypass the login flow.
     fn authenticate(&self) {
         if self.is_skipped() {
             return;
         }
-        let mut session = self.session.borrow_mut();
-        session.user_id = Some(1);
-        session.privileges = Privileges::default_user();
+        self.base.authenticate_default_user(1);
     }
 
     fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
@@ -108,47 +54,22 @@ impl RoutingWorld {
         }
         let frame = match build_frame(ty, id, params) {
             Ok(frame) => frame,
-            Err(err) => {
-                self.reply.borrow_mut().replace(Err(err.to_string()));
+            Err(error) => {
+                self.base.set_reply_error(error.to_string());
                 return;
             }
         };
-        self.send_raw(&frame);
+        self.base.send_raw(&frame);
     }
 
     fn send_raw(&self, frame: &[u8]) {
         if self.is_skipped() {
             return;
         }
-        let pool = self.pool.borrow().clone();
-        let peer = self.peer;
-        let mut session = self.session.replace(Session::default());
-        let messaging = NoopOutboundMessaging;
-        let compat = Arc::clone(&self.compat);
-        let reply = self.runtime.block_on(process_transaction_bytes(
-            frame,
-            RouteContext {
-                peer,
-                pool,
-                session: &mut session,
-                messaging: &messaging,
-                compat: compat.as_ref(),
-                client_compat: self.client_compat.as_ref(),
-            },
-        ));
-        self.session.replace(session);
-        let outcome = parse_transaction(&reply).map_err(|err| err.to_string());
-        self.reply.borrow_mut().replace(outcome);
+        self.base.send_raw(frame);
     }
 
-    fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T {
-        let reply_ref = self.reply.borrow();
-        let Some(reply) = reply_ref.as_ref() else {
-            panic!("no reply received");
-        };
-        let tx = assert_step_ok!(reply.as_ref().map_err(ToString::to_string));
-        f(tx)
-    }
+    fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T { self.base.with_reply(f) }
 
     fn assert_reply_contains_two_strings(&self, field_id: FieldId, first: &str, second: &str) {
         self.with_reply(|tx| {
@@ -168,56 +89,39 @@ impl RoutingWorld {
 
 #[fixture]
 fn world() -> RoutingWorld {
-    let world = RoutingWorld::new();
-    debug_assert!(!world.is_skipped(), "world starts active");
-    world
+    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server"))
+        .unwrap_or_else(|error| panic!("failed to configure wireframe test binary path: {error}"));
+    RoutingWorld::new()
 }
 
 #[given("a wireframe server handling transactions")]
-fn given_server(world: &RoutingWorld) {
+fn given_server(world: &RoutingWorld) -> Result<(), AnyError> {
     debug_assert!(!world.is_skipped(), "world starts active");
+    world.setup_db(noop_setup)
 }
 
 #[given("a routing context with user accounts")]
-fn given_users(world: &RoutingWorld) { world.setup_db(setup_files_db); }
+fn given_users(world: &RoutingWorld) -> Result<(), AnyError> { world.setup_db(setup_files_db) }
 
 #[given("a routing context with file access entries")]
-fn given_files(world: &RoutingWorld) { world.setup_db(setup_files_db); }
+fn given_files(world: &RoutingWorld) -> Result<(), AnyError> { world.setup_db(setup_files_db) }
 
 #[given("a routing context with news categories")]
-fn given_news_categories(world: &RoutingWorld) {
-    world.setup_db(setup_news_categories_root_db);
+fn given_news_categories(world: &RoutingWorld) -> Result<(), AnyError> {
+    world.setup_db(setup_news_categories_root_db)?;
     world.authenticate();
+    Ok(())
 }
 
 #[given("a routing context with news articles")]
-fn given_news_articles(world: &RoutingWorld) {
-    world.setup_db(setup_news_db);
+fn given_news_articles(world: &RoutingWorld) -> Result<(), AnyError> {
+    world.setup_db(setup_news_db)?;
     world.authenticate();
+    Ok(())
 }
 
 #[when("I send a transaction with unknown type 65535")]
 fn when_unknown_type(world: &RoutingWorld) { world.send(TransactionType::Other(65535), 1, &[]); }
-
-#[when("I send a truncated frame of 10 bytes")]
-fn when_truncated(world: &RoutingWorld) { world.send_raw(&[0u8; 10]); }
-
-#[when("I send a transaction with type {ty} and ID {id} but a truncated payload")]
-fn when_truncated_payload(world: &RoutingWorld, ty: u16, id: u32) {
-    if world.is_skipped() {
-        return;
-    }
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty,
-        id,
-        error: 0,
-        total_size: 4,
-        data_size: 4,
-    };
-    world.send_header(&header);
-}
 
 #[when("I send a transaction with unknown type 65535 and ID {id}")]
 fn when_unknown_with_id(world: &RoutingWorld, id: u32) {
@@ -301,8 +205,16 @@ fn then_session_authenticated(world: &RoutingWorld) {
     if world.is_skipped() {
         return;
     }
-    let session = world.session.borrow();
-    assert!(session.user_id.is_some());
+    world.send(TransactionType::GetFileNameList, 14, &[]);
+    world.with_reply(|tx| {
+        assert_eq!(
+            tx.header.error, 0,
+            concat!(
+                "session should remain authenticated after successful login and ",
+                "file listing should succeed",
+            ),
+        );
+    });
 }
 
 #[then("the reply lists files \"{first}\" and \"{second}\"")]
