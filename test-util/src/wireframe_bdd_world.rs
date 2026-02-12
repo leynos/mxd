@@ -63,6 +63,9 @@ impl WireframeBddWorld {
     ///
     /// This can be used by slower integration environments that need longer
     /// deadlines than the default ten seconds.
+    ///
+    /// When `TEST_IO_TIMEOUT_SECS` is set, the environment value takes
+    /// precedence over this field value.
     pub fn set_io_timeout(&self, timeout: Duration) { self.io_timeout.set(timeout); }
 
     /// Build and install a fixture database for this scenario, then connect.
@@ -297,7 +300,11 @@ impl WireframeBddWorld {
     ///
     /// The user id argument is ignored; it is retained only to preserve
     /// compatibility with existing BDD step helpers.
-    pub fn authenticate_default_user(&self, _user_id: i32) {
+    #[expect(
+        unused_variables,
+        reason = "signature retained for existing BDD step helper compatibility"
+    )]
+    pub fn authenticate_default_user(&self, user_id: i32) {
         if self.is_skipped() {
             return;
         }
@@ -347,6 +354,6 @@ mod tests {
         let world = WireframeBddWorld::new();
         world.set_io_timeout(Duration::from_secs(42));
 
-        assert_eq!(world.io_timeout(), Duration::from_secs(42));
+        assert_eq!(world.io_timeout.get(), Duration::from_secs(42));
     }
 }

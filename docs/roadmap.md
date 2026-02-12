@@ -211,9 +211,9 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `mxd-wireframe-server`, adding handshake-sub-version coverage in test-util
   unit tests, and running routing/login/XOR behavioural suites over real TCP
   transport for login, authenticated-session continuity, file list, and news
-  flows. See `docs/design.md` section "Transaction routing middleware (December
-  2025)" and section "Regression verification via the wireframe binary
-  (February 2026)". Dependencies: 1.4.
+  flows. See `docs/design.md` §Transaction routing middleware (December 2025)
+  and `docs/design.md` §Regression verification via the wireframe binary
+  (February 2026). Dependencies: 1.4.
 - [ ] 1.6.2. Extend the hx-based validator harness to target the wireframe
   server. Acceptance: The harness covers login, file download, chat, and news
   flows and runs in CI. Dependencies: 1.6.1.

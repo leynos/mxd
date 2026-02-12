@@ -1,7 +1,6 @@
 //! Behavioural tests for wireframe transaction routing against the binary.
 
 use mxd::{
-    commands::ERR_NOT_AUTHENTICATED,
     field_id::FieldId,
     transaction::{FrameHeader, HEADER_LEN, Transaction, decode_params},
     transaction_type::TransactionType,
@@ -42,7 +41,12 @@ impl RoutingWorld {
 
     fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> { self.base.setup_db(setup) }
 
-    fn authenticate(&self) { self.base.authenticate_default_user(1); }
+    fn authenticate(&self) {
+        if self.is_skipped() {
+            return;
+        }
+        self.base.authenticate_default_user(1);
+    }
 
     fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
         if self.is_skipped() {
@@ -203,9 +207,10 @@ fn then_session_authenticated(world: &RoutingWorld) {
     }
     world.send(TransactionType::GetFileNameList, 14, &[]);
     world.with_reply(|tx| {
-        assert_ne!(
-            tx.header.error, ERR_NOT_AUTHENTICATED,
-            "session should remain authenticated after successful login",
+        assert_eq!(
+            tx.header.error, 0,
+            "session should remain authenticated after successful login and file listing should \
+             succeed",
         );
     });
 }
