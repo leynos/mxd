@@ -24,13 +24,15 @@ use mxd::{
 use crate::postgres::PostgresTestDbError;
 use crate::{AnyError, DatabaseUrl, SetupFn, TestServer, protocol::handshake_with_sub_version};
 
-const IO_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(10);
+const IO_TIMEOUT_ENV_VAR: &str = "TEST_IO_TIMEOUT_SECS";
 
 /// Shared BDD world backing for binary transport scenarios.
 pub struct WireframeBddWorld {
     server: RefCell<Option<TestServer>>,
     stream: RefCell<Option<TcpStream>>,
     reply: RefCell<Option<Result<Transaction, String>>>,
+    io_timeout: Cell<Duration>,
     handshake_sub_version: Cell<u16>,
     skipped: Cell<bool>,
 }
@@ -47,6 +49,7 @@ impl WireframeBddWorld {
             server: RefCell::new(None),
             stream: RefCell::new(None),
             reply: RefCell::new(None),
+            io_timeout: Cell::new(DEFAULT_IO_TIMEOUT),
             handshake_sub_version: Cell::new(0),
             skipped: Cell::new(false),
         }
@@ -55,6 +58,12 @@ impl WireframeBddWorld {
     /// Return true when backend availability caused this scenario to be skipped.
     #[must_use]
     pub const fn is_skipped(&self) -> bool { self.skipped.get() }
+
+    /// Override socket read and write timeout for this world.
+    ///
+    /// This can be used by slower integration environments that need longer
+    /// deadlines than the default ten seconds.
+    pub fn set_io_timeout(&self, timeout: Duration) { self.io_timeout.set(timeout); }
 
     /// Build and install a fixture database for this scenario, then connect.
     ///
@@ -115,12 +124,25 @@ impl WireframeBddWorld {
             .map(TestServer::bind_addr)
             .ok_or_else(|| anyhow::anyhow!("wireframe test server has not been started"))?;
 
+        let io_timeout = self.io_timeout();
         let mut stream = TcpStream::connect(server_addr)?;
-        stream.set_read_timeout(Some(IO_TIMEOUT))?;
-        stream.set_write_timeout(Some(IO_TIMEOUT))?;
+        stream.set_read_timeout(Some(io_timeout))?;
+        stream.set_write_timeout(Some(io_timeout))?;
         handshake_with_sub_version(&mut stream, self.handshake_sub_version.get())?;
         self.stream.borrow_mut().replace(stream);
         Ok(())
+    }
+
+    fn io_timeout(&self) -> Duration {
+        Self::io_timeout_from_env().unwrap_or_else(|| self.io_timeout.get())
+    }
+
+    fn io_timeout_from_env() -> Option<Duration> {
+        std::env::var(IO_TIMEOUT_ENV_VAR)
+            .ok()?
+            .parse::<u64>()
+            .ok()
+            .map(Duration::from_secs)
     }
 
     fn read_reply(stream: &mut TcpStream) -> Result<Transaction, AnyError> {
@@ -292,5 +314,20 @@ impl WireframeBddWorld {
             reply.header.error,
             ERR_NOT_AUTHENTICATED | ERR_INTERNAL_SERVER
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::WireframeBddWorld;
+
+    #[test]
+    fn set_io_timeout_overrides_default() {
+        let world = WireframeBddWorld::new();
+        world.set_io_timeout(Duration::from_secs(42));
+
+        assert_eq!(world.io_timeout(), Duration::from_secs(42));
     }
 }
