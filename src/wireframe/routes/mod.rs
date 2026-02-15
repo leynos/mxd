@@ -32,18 +32,24 @@ use wireframe::{
 #[cfg(test)]
 use crate::header_util::reply_header;
 #[cfg(test)]
+use crate::transaction::Transaction;
+#[cfg(test)]
 use crate::wireframe::codec::HotlineTransaction;
 use crate::{
     commands::{Command, CommandContext},
     db::DbPool,
     handler::Session,
     server::outbound::{OutboundMessaging, ReplyBuffer},
-    transaction::{FrameHeader, Transaction, parse_transaction},
+    transaction::{FrameHeader, parse_transaction},
     transaction_type::TransactionType,
-    wireframe::{compat::XorCompatibility, compat_policy::ClientCompatibility},
+    wireframe::{
+        compat::XorCompatibility,
+        compat_layer::{self, CompatibilityLayer},
+        compat_policy::ClientCompatibility,
+    },
 };
 
-mod reply_builder;
+pub(crate) mod reply_builder;
 
 use reply_builder::ReplyBuilder;
 
@@ -127,17 +133,17 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
         compat,
         client_compat,
     } = context;
+    let compat_layer = CompatibilityLayer::new(compat, client_compat);
     let transaction = match parse_transaction(frame) {
         Ok(tx) => tx,
         Err(e) => return handle_parse_error(peer, frame, e),
     };
     let header = transaction.header.clone();
     let tx_type = TransactionType::from(header.ty);
-    let tx = match decode_payload_for_transaction(peer, tx_type, transaction, compat) {
+    let tx = match compat_layer.on_request(peer, tx_type, transaction) {
         Ok(tx) => tx,
         Err(reply) => return reply,
     };
-    record_login_version_if_needed(tx_type, client_compat, &tx.payload);
 
     let cmd = match Command::from_transaction(tx) {
         Ok(cmd) => cmd,
@@ -156,67 +162,9 @@ pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) 
         messaging,
     };
     match cmd.process_with_outbound(command_context).await {
-        Ok(()) => finalize_reply(peer, &header, transport, client_compat),
+        Ok(()) => compat_layer::finalize_reply(peer, &header, transport, &compat_layer),
         Err(e) => handle_process_error(peer, &header, e),
     }
-}
-
-/// Decode transaction payload bytes when the transaction type carries payload.
-///
-/// Transactions without payload are passed through unchanged.
-fn decode_payload_for_transaction(
-    peer: SocketAddr,
-    tx_type: TransactionType,
-    transaction: Transaction,
-    compat: &XorCompatibility,
-) -> Result<Transaction, Vec<u8>> {
-    if !tx_type.allows_payload() {
-        return Ok(transaction);
-    }
-    let decoded_payload = match compat.decode_payload(&transaction.payload) {
-        Ok(payload) => payload,
-        Err(e) => return Err(handle_command_parse_error(peer, &transaction.header, e)),
-    };
-    Ok(Transaction {
-        payload: decoded_payload,
-        ..transaction
-    })
-}
-
-/// Record login version metadata for compatibility policy when handling login.
-fn record_login_version_if_needed(
-    tx_type: TransactionType,
-    client_compat: &ClientCompatibility,
-    payload: &[u8],
-) {
-    if tx_type == TransactionType::Login
-        && let Err(error) = client_compat.record_login_payload(payload)
-    {
-        tracing::warn!(%error, "failed to record login version from payload");
-    }
-}
-
-/// Finalize a successful command reply and apply client compatibility extras.
-fn finalize_reply(
-    peer: SocketAddr,
-    header: &FrameHeader,
-    mut transport: ReplyBuffer,
-    client_compat: &ClientCompatibility,
-) -> Vec<u8> {
-    transport.take_reply().map_or_else(
-        || handle_missing_reply(peer, header),
-        |mut reply| {
-            if let Err(error) = client_compat.augment_login_reply(&mut reply) {
-                tracing::warn!(
-                    %error,
-                    client_kind = ?client_compat.kind(),
-                    login_version = ?client_compat.login_version(),
-                    "failed to apply login compatibility extras"
-                );
-            }
-            reply.to_bytes()
-        },
-    )
 }
 
 /// Convert a transaction to raw bytes.
@@ -253,11 +201,6 @@ fn handle_process_error(
     e: impl std::fmt::Display,
 ) -> Vec<u8> {
     ReplyBuilder::from_header(peer, header).process_error(e, ERR_INTERNAL)
-}
-
-/// Handle missing replies by returning an error reply.
-fn handle_missing_reply(peer: SocketAddr, header: &FrameHeader) -> Vec<u8> {
-    ReplyBuilder::from_header(peer, header).missing_reply(ERR_INTERNAL)
 }
 
 /// Build an error reply as a `HotlineTransaction`.
