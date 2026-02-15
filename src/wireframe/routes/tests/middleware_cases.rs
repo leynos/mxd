@@ -2,6 +2,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    net::SocketAddr,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -12,6 +13,7 @@ use async_trait::async_trait;
 use rstest::rstest;
 use serial_test::serial;
 use test_util::{AnyError, DatabaseUrl, build_test_db, setup_files_db, setup_news_db};
+use tokio::runtime::Runtime;
 use wireframe::middleware::{HandlerService, Service, ServiceRequest, ServiceResponse, Transform};
 
 use super::{
@@ -19,6 +21,7 @@ use super::{
     helpers::{build_frame, runtime},
 };
 use crate::{
+    db::DbPool,
     field_id::FieldId,
     handler::Session,
     server::outbound::NoopOutboundMessaging,
@@ -32,18 +35,19 @@ use crate::{
     },
 };
 
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#[rstest]
-#[serial]
-fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
-    let rt = runtime()?;
-    let Some(test_db) = build_test_db(&rt, setup_full_db)? else {
-        return Ok(());
-    };
-    let pool = test_db.pool();
-    // Start with an unauthenticated session; login should establish privileges.
+/// Build the wrapped middleware service, peer address, and call counter.
+fn setup_middleware_test(
+    rt: &Runtime,
+    pool: DbPool,
+) -> (
+    impl Service<Error: Into<AnyError>>,
+    SocketAddr,
+    Arc<AtomicUsize>,
+) {
     let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
-    let peer = "127.0.0.1:12345".parse().expect("peer addr");
+    let peer: SocketAddr = "127.0.0.1:12345"
+        .parse()
+        .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
     let messaging = Arc::new(NoopOutboundMessaging);
     let router = WireframeRouter::new(
         Arc::new(XorCompatibility::disabled()),
@@ -54,7 +58,7 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     let middleware = TransactionMiddleware::new(TransactionMiddlewareConfig {
         router,
         pool,
-        session: Arc::clone(&session),
+        session,
         peer,
         messaging,
     });
@@ -63,7 +67,15 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     let spy = SpyService::new(Arc::clone(&calls));
     let service = HandlerService::from_service(0, spy);
     let wrapped = rt.block_on(middleware.transform(service));
+    (wrapped, peer, calls)
+}
 
+/// Route each test case through the middleware and assert success.
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+fn execute_test_cases(
+    rt: &Runtime,
+    wrapped: &impl Service<Error: Into<AnyError>>,
+) -> Result<(), AnyError> {
     dispatch_spy::clear();
     let cases = build_middleware_cases();
     for case in &cases {
@@ -77,7 +89,13 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
         let reply = parse_transaction(response.frame())?;
         assert_eq!(reply.header.error, 0, "case {} failed", case.label);
     }
+    Ok(())
+}
 
+/// Verify dispatch spy records match the expected test cases.
+/// Verify dispatch spy records match the expected test cases.
+fn verify_dispatch_records(peer: SocketAddr, calls: &Arc<AtomicUsize>) {
+    let cases = build_middleware_cases();
     let records = dispatch_spy::take();
     let expected_ids: HashSet<u32> = cases.iter().map(|case| case.id).collect();
     let mut records_by_id = HashMap::new();
@@ -96,7 +114,7 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     for case in &cases {
         let record = records_by_id
             .get(&case.id)
-            .expect("missing dispatch record");
+            .unwrap_or_else(|| panic!("missing dispatch record for case {}", case.label));
         assert_eq!(record.peer, peer, "case {} peer mismatch", case.label);
         assert_eq!(
             record.ty,
@@ -107,6 +125,19 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
         assert_eq!(record.id, case.id, "case {} id mismatch", case.label);
     }
     assert_eq!(calls.load(Ordering::SeqCst), cases.len());
+}
+
+#[rstest]
+#[serial]
+fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
+    let rt = runtime()?;
+    let Some(test_db) = build_test_db(&rt, setup_full_db)? else {
+        return Ok(());
+    };
+
+    let (wrapped, peer, calls) = setup_middleware_test(&rt, test_db.pool());
+    execute_test_cases(&rt, &wrapped)?;
+    verify_dispatch_records(peer, &calls);
     Ok(())
 }
 
