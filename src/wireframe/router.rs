@@ -150,11 +150,184 @@ pub(crate) mod compat_spy {
         EVENTS.with(|events| events.borrow_mut().push(event));
     }
 
-    #[expect(dead_code, reason = "used by spy-based tests in Stage E")]
     pub(crate) fn take() -> Vec<HookEvent> {
         EVENTS.with(|events| std::mem::take(&mut *events.borrow_mut()))
     }
 
-    #[expect(dead_code, reason = "used by spy-based tests in Stage E")]
     pub(crate) fn clear() { EVENTS.with(|events| events.borrow_mut().clear()); }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use rstest::rstest;
+    use serial_test::serial;
+    use test_util::{AnyError, build_test_db, setup_files_db};
+    use tokio::runtime::{Builder, Runtime};
+
+    use super::{RouteContext, WireframeRouter, compat_spy};
+    use crate::{
+        field_id::FieldId,
+        handler::Session,
+        server::outbound::NoopOutboundMessaging,
+        transaction::parse_transaction,
+        transaction_type::TransactionType,
+        wireframe::{
+            compat::XorCompatibility,
+            compat_policy::ClientCompatibility,
+            connection::HandshakeMetadata,
+            test_helpers::{build_frame, dummy_pool},
+        },
+    };
+
+    fn runtime() -> Result<Runtime, AnyError> {
+        Ok(Builder::new_current_thread().enable_all().build()?)
+    }
+
+    fn test_router() -> WireframeRouter {
+        WireframeRouter::new(
+            Arc::new(XorCompatibility::disabled()),
+            Arc::new(ClientCompatibility::from_handshake(
+                &HandshakeMetadata::default(),
+            )),
+        )
+    }
+
+    /// Login hooks fire in order: `on_request` → dispatch → `on_reply`.
+    #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+    #[rstest]
+    #[serial]
+    fn login_hook_ordering_is_request_then_dispatch_then_reply() -> Result<(), AnyError> {
+        let rt = runtime()?;
+        let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
+            return Ok(());
+        };
+        let router = test_router();
+        let mut session = Session::default();
+        let peer = "127.0.0.1:12345".parse()?;
+        let messaging = NoopOutboundMessaging;
+
+        compat_spy::clear();
+
+        let frame = build_frame(
+            TransactionType::Login,
+            1,
+            &[(FieldId::Login, b"alice"), (FieldId::Password, b"secret")],
+        )?;
+        let reply = rt.block_on(router.route(
+            &frame,
+            RouteContext {
+                peer,
+                pool: test_db.pool(),
+                session: &mut session,
+                messaging: &messaging,
+            },
+        ));
+        let tx = parse_transaction(&reply)?;
+        assert_eq!(tx.header.error, 0, "login should succeed");
+
+        let events = compat_spy::take();
+        assert_eq!(
+            events,
+            vec![
+                compat_spy::HookEvent::OnRequest { tx_type: 107 },
+                compat_spy::HookEvent::Dispatch { tx_type: 107 },
+                compat_spy::HookEvent::OnReply { tx_type: 107 },
+            ],
+        );
+        Ok(())
+    }
+
+    /// Non-login hooks fire in order for authenticated requests.
+    #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+    #[rstest]
+    #[serial]
+    fn non_login_hooks_fire_in_order() -> Result<(), AnyError> {
+        let rt = runtime()?;
+        let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
+            return Ok(());
+        };
+        let router = test_router();
+        let mut session = Session::default();
+        let peer = "127.0.0.1:12345".parse()?;
+        let messaging = NoopOutboundMessaging;
+
+        // Log in first.
+        let login_frame = build_frame(
+            TransactionType::Login,
+            1,
+            &[(FieldId::Login, b"alice"), (FieldId::Password, b"secret")],
+        )?;
+        let login_reply = rt.block_on(router.route(
+            &login_frame,
+            RouteContext {
+                peer,
+                pool: test_db.pool(),
+                session: &mut session,
+                messaging: &messaging,
+            },
+        ));
+        let login_tx = parse_transaction(&login_reply)?;
+        assert_eq!(login_tx.header.error, 0, "login should succeed");
+
+        // Clear spy after login, then send file list request.
+        compat_spy::clear();
+
+        let frame = build_frame(TransactionType::GetFileNameList, 2, &[])?;
+        let reply = rt.block_on(router.route(
+            &frame,
+            RouteContext {
+                peer,
+                pool: test_db.pool(),
+                session: &mut session,
+                messaging: &messaging,
+            },
+        ));
+        let tx = parse_transaction(&reply)?;
+        assert_eq!(tx.header.error, 0, "file list should succeed");
+
+        let events = compat_spy::take();
+        assert_eq!(
+            events,
+            vec![
+                compat_spy::HookEvent::OnRequest { tx_type: 200 },
+                compat_spy::HookEvent::Dispatch { tx_type: 200 },
+                compat_spy::HookEvent::OnReply { tx_type: 200 },
+            ],
+        );
+        Ok(())
+    }
+
+    /// Parse failure does not trigger any compatibility hooks.
+    #[rstest]
+    #[serial]
+    fn parse_failure_does_not_trigger_hooks() {
+        let router = test_router();
+        let mut session = Session::default();
+        let peer = "127.0.0.1:12345".parse().expect("valid address");
+        let messaging = NoopOutboundMessaging;
+        let pool = dummy_pool();
+
+        compat_spy::clear();
+
+        // Truncated frame: only 10 bytes, less than HEADER_LEN.
+        let truncated = vec![0u8; 10];
+        let rt = runtime().expect("runtime");
+        rt.block_on(router.route(
+            &truncated,
+            RouteContext {
+                peer,
+                pool,
+                session: &mut session,
+                messaging: &messaging,
+            },
+        ));
+
+        let events = compat_spy::take();
+        assert!(
+            events.is_empty(),
+            "no hooks should fire for unparseable input"
+        );
+    }
 }
