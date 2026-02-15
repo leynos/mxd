@@ -189,12 +189,16 @@ and explicit dependencies. Timeframes are intentionally omitted.
   2026 by adding Kani harnesses for XOR payload round-trips and
   sub-version/login-version compatibility gating, plus boundary-focused unit
   and behavioural regression coverage. Dependencies: 1.5.2.
-- [ ] 1.5.5. Add wireframe compatibility guardrails and a routing entrypoint.
+- [x] 1.5.5. Add wireframe compatibility guardrails and a routing entrypoint.
   Acceptance: A `WireframeRouter` provides the only public routing entrypoint,
   a `CompatibilityLayer` runs request and reply hooks, and a spy-based test
   asserts login hook ordering. See
-  `docs/adr-002-compatibility-guardrails-and-augmentation.md`. Dependencies:
-  1.5.2.
+  `docs/adr-002-compatibility-guardrails-and-augmentation.md`. Status:
+  Completed on 15 February 2026. `WireframeRouter` is the sole `pub` routing
+  entrypoint; `CompatibilityLayer` orchestrates `on_request` and `on_reply`
+  hooks; a quirk registry documents per-transaction-type expectations;
+  spy-based and BDD tests verify hook ordering and client-specific behaviour.
+  Dependencies: 1.5.2.
 - [ ] 1.5.6. Split login authentication strategies from reply augmentation.
   Acceptance: `AuthStrategy` and `LoginReplyAugmenter` are wired into the
   guardrail routing entrypoint, and default behaviour for Hotline and SynHX

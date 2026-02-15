@@ -798,6 +798,37 @@ wireframe socket codec naturally waits for complete frames; asserting immediate
 error replies for intentionally partial TCP writes is not a stable behavioural
 contract.
 
+### Compatibility guardrails (February 2026)
+
+`WireframeRouter` (`src/wireframe/router.rs`) is the sole `pub` routing
+entrypoint. It embeds a `CompatibilityLayer` (`src/wireframe/compat_layer.rs`)
+that orchestrates request-side and reply-side compatibility hooks on every
+routed transaction:
+
+- **`on_request`** — decodes XOR-encoded payloads and records the login
+  version when the transaction is a login request.
+- **`on_reply`** — augments the reply with client-specific extras (banner
+  fields for Hotline 1.9 clients).
+
+Because the router is the only public entrypoint, new routes cannot
+accidentally bypass compatibility hooks. Internal routing functions
+(`process_transaction_bytes`, `RouteContext`) are `pub(crate)`.
+
+A **quirk registry** (`compat_layer::quirk_registry`) is the single source of
+truth for per-transaction-type hook expectations. The registry is a `const fn`
+mapping each `TransactionType` variant to a `HookExpectation` struct. The
+compatibility layer consults the registry at runtime, and parameterised tests
+verify that the registry agrees with type metadata for every known variant.
+
+Hook ordering is verified by a **spy-based test** that asserts the sequence
+`on_request` → dispatch → `on_reply` for login and non-login transactions. BDD
+scenarios in `tests/features/wireframe_compat_guardrails.feature` cover banner
+field inclusion for Hotline 1.9, banner omission for SynHX, XOR login, and file
+list after login.
+
+See [ADR-002](adr-002-compatibility-guardrails-and-augmentation.md) (Option C,
+accepted) for the architectural rationale.
+
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
 Configuration management in MXD is handled by the **OrthoConfig** library,

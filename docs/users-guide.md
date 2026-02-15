@@ -57,6 +57,11 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   `docs/internal-compatibility-matrix.md` as the compatibility source of truth.
   Release-note QA sign-off must reference that matrix using the checklist in
   `docs/release-notes-qa-sign-off.md`.
+- `WireframeRouter` is the sole public routing entrypoint. It embeds a
+  `CompatibilityLayer` that applies XOR decoding, login-version recording, and
+  banner-field augmentation on every routed transaction. Compatibility hooks
+  cannot be accidentally bypassed by new routes. No user-visible behaviour
+  change.
 
 ## Selecting a runtime
 
