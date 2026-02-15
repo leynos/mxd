@@ -75,16 +75,6 @@ impl<'a> CompatibilityLayer<'a> {
         }
     }
 
-    /// Read-only access to the XOR compatibility state.
-    #[cfg(test)]
-    #[expect(dead_code, reason = "used by spy-based tests in later stages")]
-    pub(crate) const fn xor(&self) -> &XorCompatibility { self.xor }
-
-    /// Read-only access to the client compatibility policy.
-    #[cfg(test)]
-    #[expect(dead_code, reason = "used by spy-based tests in later stages")]
-    pub(crate) const fn client(&self) -> &ClientCompatibility { self.client }
-
     /// Decode transaction payload bytes when the transaction type
     /// carries payload.
     fn decode_payload(

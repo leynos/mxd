@@ -28,6 +28,7 @@ pub mod outbound;
 pub mod preamble;
 pub mod protocol;
 pub mod route_ids;
+pub mod router;
 pub mod routes;
 
 #[cfg(any(test, feature = "test-support"))]

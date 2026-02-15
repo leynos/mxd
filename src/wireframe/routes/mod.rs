@@ -57,7 +57,7 @@ use reply_builder::ReplyBuilder;
 const ERR_INTERNAL: u32 = 3;
 
 /// Routing context used when dispatching a frame.
-pub struct RouteContext<'a> {
+pub(crate) struct RouteContext<'a> {
     /// Remote peer socket address.
     pub peer: SocketAddr,
     /// Database connection pool.
@@ -73,7 +73,7 @@ pub struct RouteContext<'a> {
 }
 
 #[cfg(test)]
-mod dispatch_spy {
+pub(crate) mod dispatch_spy {
     //! Captures dispatch details for transaction routing tests.
 
     use std::{cell::RefCell, net::SocketAddr};
@@ -81,17 +81,17 @@ mod dispatch_spy {
     use crate::transaction::FrameHeader;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub(super) struct DispatchRecord {
-        pub(super) peer: SocketAddr,
-        pub(super) ty: u16,
-        pub(super) id: u32,
+    pub(crate) struct DispatchRecord {
+        pub(crate) peer: SocketAddr,
+        pub(crate) ty: u16,
+        pub(crate) id: u32,
     }
 
     thread_local! {
         static RECORDS: RefCell<Vec<DispatchRecord>> = const { RefCell::new(Vec::new()) };
     }
 
-    pub(super) fn record(peer: SocketAddr, header: &FrameHeader) {
+    pub(crate) fn record(peer: SocketAddr, header: &FrameHeader) {
         RECORDS.with(|records| {
             records.borrow_mut().push(DispatchRecord {
                 peer,
@@ -101,11 +101,11 @@ mod dispatch_spy {
         });
     }
 
-    pub(super) fn take() -> Vec<DispatchRecord> {
+    pub(crate) fn take() -> Vec<DispatchRecord> {
         RECORDS.with(|records| std::mem::take(&mut *records.borrow_mut()))
     }
 
-    pub(super) fn clear() { RECORDS.with(|records| records.borrow_mut().clear()); }
+    pub(crate) fn clear() { RECORDS.with(|records| records.borrow_mut().clear()); }
 }
 
 /// Process a Hotline transaction from raw bytes and return the reply bytes.
@@ -124,7 +124,7 @@ mod dispatch_spy {
 ///
 /// Raw bytes containing the reply transaction, or an error transaction if
 /// processing fails.
-pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) -> Vec<u8> {
+pub(crate) async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) -> Vec<u8> {
     let RouteContext {
         peer,
         pool,
@@ -181,12 +181,16 @@ fn error_transaction(header: &FrameHeader, error_code: u32) -> Transaction {
 }
 
 /// Handle transaction parse errors by returning an error reply.
-fn handle_parse_error(peer: SocketAddr, frame: &[u8], e: impl std::fmt::Display) -> Vec<u8> {
+pub(crate) fn handle_parse_error(
+    peer: SocketAddr,
+    frame: &[u8],
+    e: impl std::fmt::Display,
+) -> Vec<u8> {
     ReplyBuilder::from_frame(peer, frame).parse_error(e, ERR_INTERNAL)
 }
 
 /// Handle command parsing errors by returning an error reply.
-fn handle_command_parse_error(
+pub(crate) fn handle_command_parse_error(
     peer: SocketAddr,
     header: &FrameHeader,
     e: impl std::fmt::Display,
@@ -195,7 +199,7 @@ fn handle_command_parse_error(
 }
 
 /// Handle command processing errors by returning an error reply.
-fn handle_process_error(
+pub(crate) fn handle_process_error(
     peer: SocketAddr,
     header: &FrameHeader,
     e: impl std::fmt::Display,
@@ -235,7 +239,7 @@ fn error_reply(
 /// The wrapped service processes transactions and returns the transformed
 /// `HandlerService` expected by the middleware pipeline.
 #[derive(Clone)]
-pub struct TransactionMiddleware {
+pub(crate) struct TransactionMiddleware {
     pool: DbPool,
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
@@ -245,7 +249,7 @@ pub struct TransactionMiddleware {
 }
 
 /// Construction parameters for [`TransactionMiddleware`].
-pub struct TransactionMiddlewareConfig {
+pub(crate) struct TransactionMiddlewareConfig {
     /// Database connection pool.
     pub(crate) pool: DbPool,
     /// Session state for the connection.
@@ -263,7 +267,7 @@ pub struct TransactionMiddlewareConfig {
 impl TransactionMiddleware {
     /// Create a new transaction middleware with the given pool and session.
     #[must_use]
-    pub fn new(config: TransactionMiddlewareConfig) -> Self {
+    pub(crate) fn new(config: TransactionMiddlewareConfig) -> Self {
         Self {
             pool: config.pool,
             session: config.session,
