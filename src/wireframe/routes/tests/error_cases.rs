@@ -1,14 +1,14 @@
 //! Unit tests covering routing error paths and state scaffolding.
 
+use std::sync::Arc;
+
 use rstest::rstest;
 
 use super::super::{
-    RouteContext,
     error_reply,
     error_transaction,
     handle_command_parse_error,
     handle_parse_error,
-    process_transaction_bytes,
 };
 use crate::{
     handler::Session,
@@ -18,6 +18,7 @@ use crate::{
         compat::XorCompatibility,
         compat_policy::ClientCompatibility,
         connection::HandshakeMetadata,
+        router::{RouteContext, WireframeRouter},
         test_helpers::{dummy_pool, transaction_bytes},
     },
 };
@@ -165,6 +166,15 @@ fn error_transaction_sets_reply_flag() {
     assert!(err_tx.payload.is_empty());
 }
 
+fn test_router() -> WireframeRouter {
+    WireframeRouter::new(
+        Arc::new(XorCompatibility::disabled()),
+        Arc::new(ClientCompatibility::from_handshake(
+            &HandshakeMetadata::default(),
+        )),
+    )
+}
+
 /// Tests that truncated input returns error.
 #[rstest]
 #[tokio::test]
@@ -173,23 +183,21 @@ async fn process_transaction_bytes_truncated_input() {
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
-    let compat = XorCompatibility::disabled();
-    let client_compat = ClientCompatibility::from_handshake(&HandshakeMetadata::default());
+    let router = test_router();
 
     // Send only 10 bytes (less than HEADER_LEN = 20).
     let truncated = vec![0u8; 10];
-    let result = process_transaction_bytes(
-        &truncated,
-        RouteContext {
-            peer,
-            pool,
-            session: &mut session,
-            messaging: &messaging,
-            compat: &compat,
-            client_compat: &client_compat,
-        },
-    )
-    .await;
+    let result = router
+        .route(
+            &truncated,
+            RouteContext {
+                peer,
+                pool,
+                session: &mut session,
+                messaging: &messaging,
+            },
+        )
+        .await;
 
     // Should return an error transaction.
     assert!(result.len() >= HEADER_LEN);
@@ -206,23 +214,21 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
-    let compat = XorCompatibility::disabled();
-    let client_compat = ClientCompatibility::from_handshake(&HandshakeMetadata::default());
+    let router = test_router();
 
     let frame = transaction_bytes(&header, payload);
 
-    let result = process_transaction_bytes(
-        &frame,
-        RouteContext {
-            peer,
-            pool,
-            session: &mut session,
-            messaging: &messaging,
-            compat: &compat,
-            client_compat: &client_compat,
-        },
-    )
-    .await;
+    let result = router
+        .route(
+            &frame,
+            RouteContext {
+                peer,
+                pool,
+                session: &mut session,
+                messaging: &messaging,
+            },
+        )
+        .await;
 
     FrameHeader::from_bytes(
         result[..HEADER_LEN]

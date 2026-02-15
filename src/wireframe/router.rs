@@ -29,6 +29,7 @@ use crate::{
 /// [`route`](Self::route). This guarantees that every transaction
 /// passes through the same request and reply hooks regardless of
 /// which code path dispatches it.
+#[derive(Clone)]
 pub struct WireframeRouter {
     xor: Arc<XorCompatibility>,
     client: Arc<ClientCompatibility>,

@@ -115,6 +115,6 @@ authenticated-session continuity, file listing, and news routing flows in
 `cargo test`. Verification-focused behaviour scenarios for the session gating
 Stateright model live in `tests/features/session_gating_verification.feature`
 and are bound by the `mxd-verification` test harness. Compatibility
-verification also includes Kani harnesses in `src/wireframe/compat/kani.rs`
-and `src/wireframe/compat_policy/kani.rs`, which prove bounded XOR and
-login-gating invariants without changing runtime behaviour.
+verification also includes Kani harnesses in `src/wireframe/compat/kani.rs` and
+`src/wireframe/compat_policy/kani.rs`, which prove bounded XOR and login-gating
+invariants without changing runtime behaviour.

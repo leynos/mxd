@@ -28,6 +28,7 @@ use crate::{
         compat::XorCompatibility,
         compat_policy::ClientCompatibility,
         connection::HandshakeMetadata,
+        router::WireframeRouter,
     },
 };
 
@@ -44,17 +45,18 @@ fn transaction_middleware_routes_known_types() -> Result<(), AnyError> {
     let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
     let peer = "127.0.0.1:12345".parse().expect("peer addr");
     let messaging = Arc::new(NoopOutboundMessaging);
-    let compat = Arc::new(XorCompatibility::disabled());
-    let client_compat = Arc::new(ClientCompatibility::from_handshake(
-        &HandshakeMetadata::default(),
-    ));
+    let router = WireframeRouter::new(
+        Arc::new(XorCompatibility::disabled()),
+        Arc::new(ClientCompatibility::from_handshake(
+            &HandshakeMetadata::default(),
+        )),
+    );
     let middleware = TransactionMiddleware::new(TransactionMiddlewareConfig {
+        router,
         pool,
         session: Arc::clone(&session),
         peer,
         messaging,
-        compat,
-        client_compat,
     });
 
     let calls = Arc::new(AtomicUsize::new(0));
