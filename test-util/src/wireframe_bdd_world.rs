@@ -7,8 +7,8 @@
 use std::{
     cell::{Cell, RefCell},
     io::{Read, Write},
-    net::TcpStream,
-    time::Duration,
+    net::{SocketAddr, TcpStream},
+    time::{Duration, Instant},
 };
 
 use anyhow::Context as _;
@@ -25,6 +25,9 @@ use crate::postgres::PostgresTestDbError;
 use crate::{AnyError, DatabaseUrl, SetupFn, TestServer, protocol::handshake_with_sub_version};
 
 const DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(10);
+const MIN_CONNECT_TIMEOUT: Duration = Duration::from_millis(1);
+const RECONNECT_CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
+const RECONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const IO_TIMEOUT_ENV_VAR: &str = "TEST_IO_TIMEOUT_SECS";
 
 /// Shared BDD world backing for binary transport scenarios.
@@ -128,12 +131,50 @@ impl WireframeBddWorld {
             .ok_or_else(|| anyhow::anyhow!("wireframe test server has not been started"))?;
 
         let io_timeout = self.io_timeout();
-        let mut stream = TcpStream::connect(server_addr)?;
+        let handshake_sub_version = self.handshake_sub_version.get();
+        let started_at = Instant::now();
+        let mut attempts = 0usize;
+        let mut last_error: Option<AnyError> = None;
+
+        loop {
+            attempts += 1;
+            match Self::connect_and_handshake(server_addr, io_timeout, handshake_sub_version) {
+                Ok(stream) => {
+                    self.stream.borrow_mut().replace(stream);
+                    return Ok(());
+                }
+                Err(error) => last_error = Some(error),
+            }
+            let elapsed = started_at.elapsed();
+            if elapsed >= io_timeout {
+                break;
+            }
+            let remaining = io_timeout.saturating_sub(elapsed);
+            std::thread::sleep(remaining.min(RECONNECT_RETRY_INTERVAL));
+        }
+
+        let error = last_error.unwrap_or_else(|| {
+            anyhow::anyhow!(
+                "failed to connect and handshake after {attempts} attempts in {:?}",
+                started_at.elapsed()
+            )
+        });
+        Err(error)
+    }
+
+    fn connect_and_handshake(
+        server_addr: SocketAddr,
+        io_timeout: Duration,
+        handshake_sub_version: u16,
+    ) -> Result<TcpStream, AnyError> {
+        let connect_timeout = io_timeout
+            .min(RECONNECT_CONNECT_TIMEOUT)
+            .max(MIN_CONNECT_TIMEOUT);
+        let mut stream = TcpStream::connect_timeout(&server_addr, connect_timeout)?;
         stream.set_read_timeout(Some(io_timeout))?;
         stream.set_write_timeout(Some(io_timeout))?;
-        handshake_with_sub_version(&mut stream, self.handshake_sub_version.get())?;
-        self.stream.borrow_mut().replace(stream);
-        Ok(())
+        handshake_with_sub_version(&mut stream, handshake_sub_version)?;
+        Ok(stream)
     }
 
     fn io_timeout(&self) -> Duration {
