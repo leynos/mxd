@@ -221,44 +221,38 @@ fn when_xor_login(world: &GuardrailWorld) {
 fn when_file_list(world: &GuardrailWorld) { world.send(TransactionType::GetFileNameList, 2, &[]); }
 
 #[expect(clippy::expect_used, reason = "test assertion")]
-#[then("the login reply includes banner fields")]
-fn then_includes_banner(world: &GuardrailWorld) {
+fn assert_banner_fields(world: &GuardrailWorld, should_include: bool) {
     if world.is_skipped() {
         return;
     }
+
     world.with_reply(|tx| {
         assert_eq!(tx.header.error, 0, "login should succeed");
         let params = decode_params(&tx.payload).expect("valid reply payload");
-        assert!(
+        let expectation = if should_include {
+            "contain"
+        } else {
+            "not contain"
+        };
+
+        assert_eq!(
             params.iter().any(|(id, _)| *id == FieldId::BannerId),
-            "reply should contain BannerId field"
+            should_include,
+            "reply should {expectation} BannerId field"
         );
-        assert!(
+        assert_eq!(
             params.iter().any(|(id, _)| *id == FieldId::ServerName),
-            "reply should contain ServerName field"
+            should_include,
+            "reply should {expectation} ServerName field"
         );
     });
 }
 
-#[expect(clippy::expect_used, reason = "test assertion")]
+#[then("the login reply includes banner fields")]
+fn then_includes_banner(world: &GuardrailWorld) { assert_banner_fields(world, true); }
+
 #[then("the login reply does not include banner fields")]
-fn then_omits_banner(world: &GuardrailWorld) {
-    if world.is_skipped() {
-        return;
-    }
-    world.with_reply(|tx| {
-        assert_eq!(tx.header.error, 0, "login should succeed");
-        let params = decode_params(&tx.payload).expect("valid reply payload");
-        assert!(
-            !params.iter().any(|(id, _)| *id == FieldId::BannerId),
-            "reply should not contain BannerId field"
-        );
-        assert!(
-            !params.iter().any(|(id, _)| *id == FieldId::ServerName),
-            "reply should not contain ServerName field"
-        );
-    });
-}
+fn then_omits_banner(world: &GuardrailWorld) { assert_banner_fields(world, false); }
 
 #[then("the login succeeds")]
 fn then_login_succeeds(world: &GuardrailWorld) {
