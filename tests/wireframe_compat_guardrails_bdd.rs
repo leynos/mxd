@@ -251,19 +251,29 @@ fn assert_banner_fields(world: &GuardrailWorld, should_include: bool) {
     });
 }
 
+#[expect(
+    clippy::allow_attributes,
+    reason = "explicitly documenting delegated lint expectation"
+)]
+#[allow(
+    unfulfilled_lint_expectations,
+    reason = "step delegates expect usage to helper"
+)]
 #[expect(clippy::expect_used, reason = "test assertion")]
 #[then("the login reply includes banner fields")]
-fn then_includes_banner(world: &GuardrailWorld) {
-    let _ = Option::from(world).expect("test assertion");
-    assert_banner_fields(world, true);
-}
+fn then_includes_banner(world: &GuardrailWorld) { assert_banner_fields(world, true); }
 
+#[expect(
+    clippy::allow_attributes,
+    reason = "explicitly documenting delegated lint expectation"
+)]
+#[allow(
+    unfulfilled_lint_expectations,
+    reason = "step delegates expect usage to helper"
+)]
 #[expect(clippy::expect_used, reason = "test assertion")]
 #[then("the login reply does not include banner fields")]
-fn then_omits_banner(world: &GuardrailWorld) {
-    let _ = Option::from(world).expect("test assertion");
-    assert_banner_fields(world, false);
-}
+fn then_omits_banner(world: &GuardrailWorld) { assert_banner_fields(world, false); }
 
 #[then("the login succeeds")]
 fn then_login_succeeds(world: &GuardrailWorld) {
