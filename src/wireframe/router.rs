@@ -310,12 +310,13 @@ mod tests {
     }
 
     /// Parse failure does not trigger any compatibility hooks.
+    #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
     #[rstest]
     #[serial]
-    fn parse_failure_does_not_trigger_hooks() {
+    fn parse_failure_does_not_trigger_hooks() -> Result<(), AnyError> {
         let router = test_router();
         let mut session = Session::default();
-        let peer = "127.0.0.1:12345".parse().expect("valid address");
+        let peer = "127.0.0.1:12345".parse().map_err(AnyError::from)?;
         let messaging = NoopOutboundMessaging;
         let pool = dummy_pool();
 
@@ -323,7 +324,7 @@ mod tests {
 
         // Truncated frame: only 10 bytes, less than HEADER_LEN.
         let truncated = vec![0u8; 10];
-        let rt = runtime().expect("runtime");
+        let rt = runtime()?;
         rt.block_on(router.route(
             &truncated,
             RouteContext {
@@ -339,5 +340,6 @@ mod tests {
             events.is_empty(),
             "no hooks should fire for unparseable input"
         );
+        Ok(())
     }
 }

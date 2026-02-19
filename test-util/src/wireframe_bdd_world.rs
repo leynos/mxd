@@ -130,6 +130,8 @@ impl WireframeBddWorld {
             .map(TestServer::bind_addr)
             .ok_or_else(|| anyhow::anyhow!("wireframe test server has not been started"))?;
 
+        self.stream.borrow_mut().take();
+
         let io_timeout = self.io_timeout();
         let handshake_sub_version = self.handshake_sub_version.get();
         let started_at = Instant::now();

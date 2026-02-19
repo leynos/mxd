@@ -215,11 +215,8 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `mxd-wireframe-server`, adding handshake-sub-version coverage in test-util
   unit tests, and running routing/login/XOR behavioural suites over real TCP
   transport for login, authenticated-session continuity, file list, and news
-  flows. See
-  [docs/design.md §Transaction routing middleware (December 2025)](docs/design.md#transaction-routing-middleware-december-2025)
-   and
-  [docs/design.md §Regression verification via the wireframe binary (February 2026)](docs/design.md#regression-verification-via-the-wireframe-binary-february-2026).
-   Dependencies: 1.4.
+  flows. See [^design-routing-middleware] and
+  [^design-regression-wireframe-binary]. Dependencies: 1.4.
 - [ ] 1.6.2. Extend the hx-based validator harness to target the wireframe
   server. Acceptance: The harness covers login, file download, chat, and news
   flows and runs in CI. Dependencies: 1.6.1.
@@ -230,6 +227,18 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 1.6.4. Add CI checks for formal verification artefacts. Acceptance: CI
   runs Stateright models, selected Kani harnesses, and TLC specs, publishing
   counterexample traces as build artefacts. Dependencies: 1.6.1.
+
+[^design-routing-middleware]:
+    [docs/design.md §Transaction routing middleware (December
+    2025)][design-routing-link]
+[^design-regression-wireframe-binary]:
+    [docs/design.md §Regression verification via the wireframe binary (February
+    2026)][design-regression-link]
+
+[design-routing-link]:
+    docs/design.md#transaction-routing-middleware-december-2025
+[design-regression-link]:
+    docs/design.md#regression-verification-via-the-wireframe-binary-february-2026
 
 ## 2. Session and presence parity
 
