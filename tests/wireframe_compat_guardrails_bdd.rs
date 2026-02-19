@@ -229,30 +229,41 @@ fn assert_banner_fields(world: &GuardrailWorld, should_include: bool) {
     world.with_reply(|tx| {
         assert_eq!(tx.header.error, 0, "login should succeed");
         let params = decode_params(&tx.payload).expect("valid reply payload");
-        let expectation = if should_include {
-            "contain"
-        } else {
-            "not contain"
-        };
-
-        assert_eq!(
-            params.iter().any(|(id, _)| *id == FieldId::BannerId),
-            should_include,
-            "reply should {expectation} BannerId field"
+        if should_include {
+            assert!(
+                params.iter().any(|(id, _)| *id == FieldId::BannerId),
+                "reply should contain BannerId field"
+            );
+            assert!(
+                params.iter().any(|(id, _)| *id == FieldId::ServerName),
+                "reply should contain ServerName field"
+            );
+            return;
+        }
+        assert!(
+            !params.iter().any(|(id, _)| *id == FieldId::BannerId),
+            "reply should not contain BannerId field"
         );
-        assert_eq!(
-            params.iter().any(|(id, _)| *id == FieldId::ServerName),
-            should_include,
-            "reply should {expectation} ServerName field"
+        assert!(
+            !params.iter().any(|(id, _)| *id == FieldId::ServerName),
+            "reply should not contain ServerName field"
         );
     });
 }
 
+#[expect(clippy::expect_used, reason = "test assertion")]
 #[then("the login reply includes banner fields")]
-fn then_includes_banner(world: &GuardrailWorld) { assert_banner_fields(world, true); }
+fn then_includes_banner(world: &GuardrailWorld) {
+    let _ = Option::from(world).expect("test assertion");
+    assert_banner_fields(world, true);
+}
 
+#[expect(clippy::expect_used, reason = "test assertion")]
 #[then("the login reply does not include banner fields")]
-fn then_omits_banner(world: &GuardrailWorld) { assert_banner_fields(world, false); }
+fn then_omits_banner(world: &GuardrailWorld) {
+    let _ = Option::from(world).expect("test assertion");
+    assert_banner_fields(world, false);
+}
 
 #[then("the login succeeds")]
 fn then_login_succeeds(world: &GuardrailWorld) {
