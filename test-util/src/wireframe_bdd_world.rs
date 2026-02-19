@@ -186,7 +186,7 @@ impl WireframeBddWorld {
             .ok()?
             .parse::<u64>()
             .ok()
-            .map(Duration::from_secs)
+            .and_then(|seconds| (seconds > 0).then_some(Duration::from_secs(seconds)))
     }
 
     /// Validate continuation frame header consistency with the original header.
