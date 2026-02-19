@@ -193,10 +193,10 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Acceptance: A `WireframeRouter` provides the only public routing entrypoint,
   a `CompatibilityLayer` runs request and reply hooks, and a spy-based test
   asserts login hook ordering. See
-  `docs/adr-002-compatibility-guardrails-and-augmentation.md`. Status:
+  [ADR-002](docs/adr-002-compatibility-guardrails-and-augmentation.md). Status:
   Completed on 15 February 2026. `WireframeRouter` is the sole `pub` routing
   entrypoint; `CompatibilityLayer` orchestrates `on_request` and `on_reply`
-  hooks; a quirk registry documents per-transaction-type expectations;
+  hooks; compatibility decisions derive from `TransactionType` semantics;
   spy-based and BDD tests verify hook ordering and client-specific behaviour.
   Dependencies: 1.5.2.
 - [ ] 1.5.6. Split login authentication strategies from reply augmentation.

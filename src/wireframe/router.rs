@@ -95,11 +95,7 @@ impl WireframeRouter {
             messaging,
         };
         match cmd.process_with_outbound(command_context).await {
-            Ok(()) => {
-                #[cfg(test)]
-                compat_spy::record(compat_spy::HookEvent::OnReply { tx_type: header.ty });
-                compat_layer::finalize_reply(peer, &header, transport, &compat_layer)
-            }
+            Ok(()) => compat_layer::finalize_reply(peer, &header, transport, &compat_layer),
             Err(e) => handle_process_error(peer, &header, e),
         }
     }

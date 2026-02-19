@@ -1,7 +1,7 @@
 //! Integration tests for `TransactionMiddleware` routing.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     net::SocketAddr,
     sync::{
         Arc,
@@ -88,21 +88,46 @@ fn execute_test_cases(
         let response = rt.block_on(wrapped.call(ServiceRequest::new(frame, None)))?;
         let reply = parse_transaction(response.frame())?;
         assert_eq!(reply.header.error, 0, "case {} failed", case.label);
+        assert_eq!(
+            reply.header.ty,
+            u16::from(case.ty),
+            "case {} reply ty mismatch",
+            case.label
+        );
+        assert_eq!(
+            reply.header.id, case.id,
+            "case {} reply id mismatch",
+            case.label
+        );
     }
     Ok(())
 }
 
 /// Verify dispatch spy records match the expected test cases.
-/// Verify dispatch spy records match the expected test cases.
 fn verify_dispatch_records(peer: SocketAddr, calls: &Arc<AtomicUsize>) {
     let cases = build_middleware_cases();
     let records = dispatch_spy::take();
-    let expected_ids: HashSet<u32> = cases.iter().map(|case| case.id).collect();
+    let records_by_id = records_by_id(records, cases.len());
+    for case in &cases {
+        let record = records_by_id
+            .get(&case.id)
+            .unwrap_or_else(|| panic!("missing dispatch record for case {}", case.label));
+        assert_record_matches_case(record, case, peer);
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), cases.len());
+}
+
+fn records_by_id(
+    records: Vec<dispatch_spy::DispatchRecord>,
+    expected_count: usize,
+) -> HashMap<u32, dispatch_spy::DispatchRecord> {
+    assert_eq!(
+        records.len(),
+        expected_count,
+        "unexpected number of dispatch records"
+    );
     let mut records_by_id = HashMap::new();
-    for record in records
-        .into_iter()
-        .filter(|record| expected_ids.contains(&record.id))
-    {
+    for record in records {
         let record_id = record.id;
         let replaced = records_by_id.insert(record_id, record);
         assert!(
@@ -110,21 +135,23 @@ fn verify_dispatch_records(peer: SocketAddr, calls: &Arc<AtomicUsize>) {
             "duplicate dispatch record for id {record_id}"
         );
     }
-    assert_eq!(records_by_id.len(), cases.len());
-    for case in &cases {
-        let record = records_by_id
-            .get(&case.id)
-            .unwrap_or_else(|| panic!("missing dispatch record for case {}", case.label));
-        assert_eq!(record.peer, peer, "case {} peer mismatch", case.label);
-        assert_eq!(
-            record.ty,
-            u16::from(case.ty),
-            "case {} ty mismatch",
-            case.label
-        );
-        assert_eq!(record.id, case.id, "case {} id mismatch", case.label);
-    }
-    assert_eq!(calls.load(Ordering::SeqCst), cases.len());
+    assert_eq!(records_by_id.len(), expected_count);
+    records_by_id
+}
+
+fn assert_record_matches_case(
+    record: &dispatch_spy::DispatchRecord,
+    case: &MiddlewareCase,
+    peer: SocketAddr,
+) {
+    assert_eq!(record.peer, peer, "case {} peer mismatch", case.label);
+    assert_eq!(
+        record.ty,
+        u16::from(case.ty),
+        "case {} ty mismatch",
+        case.label
+    );
+    assert_eq!(record.id, case.id, "case {} id mismatch", case.label);
 }
 
 #[rstest]

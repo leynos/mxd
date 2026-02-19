@@ -814,11 +814,10 @@ Because the router is the only public entrypoint, new routes cannot
 accidentally bypass compatibility hooks. Internal routing functions
 (`process_transaction_bytes`, `RouteContext`) are `pub(crate)`.
 
-A **quirk registry** (`compat_layer::quirk_registry`) is the single source of
-truth for per-transaction-type hook expectations. The registry is a `const fn`
-mapping each `TransactionType` variant to a `HookExpectation` struct. The
-compatibility layer consults the registry at runtime, and parameterised tests
-verify that the registry agrees with type metadata for every known variant.
+Compatibility decisions are derived directly from `TransactionType` metadata:
+`on_request` decodes payload only for transaction types where
+`TransactionType::allows_payload()` is true, and login version recording runs
+only for `TransactionType::Login`.
 
 Hook ordering is verified by a **spy-based test** that asserts the sequence
 `on_request` → dispatch → `on_reply` for login and non-login transactions. BDD

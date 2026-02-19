@@ -1,6 +1,6 @@
 //! Compatibility layer orchestrating request and reply hooks.
 //!
-//! `CompatibilityLayer` centralises the per-transaction compatibility
+//! `CompatibilityLayer` centralizes the per-transaction compatibility
 //! logic that was previously scattered across inline calls in the
 //! routing module. It owns references to the XOR and client
 //! compatibility state and exposes `on_request` and `on_reply`
@@ -22,7 +22,7 @@ use crate::{
 /// Error code for internal server failures.
 const ERR_INTERNAL: u32 = 3;
 
-/// Centralised compatibility hooks for the transaction lifecycle.
+/// Centralized compatibility hooks for the transaction lifecycle.
 ///
 /// The layer is constructed once per connection and shared by the
 /// router. It exposes two hooks:
@@ -124,6 +124,10 @@ pub(crate) fn finalize_reply(
     transport.take_reply().map_or_else(
         || ReplyBuilder::from_header(peer, header).missing_reply(ERR_INTERNAL),
         |mut reply| {
+            #[cfg(test)]
+            crate::wireframe::router::compat_spy::record(
+                crate::wireframe::router::compat_spy::HookEvent::OnReply { tx_type: header.ty },
+            );
             compat_layer.on_reply(&mut reply);
             reply.to_bytes()
         },
