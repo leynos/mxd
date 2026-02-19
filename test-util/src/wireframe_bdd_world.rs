@@ -25,7 +25,7 @@ use crate::postgres::PostgresTestDbError;
 use crate::{AnyError, DatabaseUrl, SetupFn, TestServer, protocol::handshake_with_sub_version};
 
 const DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(10);
-const MIN_CONNECT_TIMEOUT: Duration = Duration::from_millis(1);
+const MIN_CONNECT_TIMEOUT: Duration = Duration::from_millis(10);
 const RECONNECT_CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
 const RECONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const IO_TIMEOUT_ENV_VAR: &str = "TEST_IO_TIMEOUT_SECS";

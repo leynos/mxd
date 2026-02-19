@@ -106,7 +106,7 @@ impl WireframeRouter {
 
     /// Read-only access to the XOR compatibility state.
     #[must_use]
-    pub fn xor(&self) -> &XorCompatibility { &self.xor }
+    pub fn xor(&self) -> &XorCompatibility { self.xor.as_ref() }
 }
 
 /// Reduced routing context for the domain dispatch path.
@@ -194,6 +194,8 @@ mod tests {
         )
     }
 
+    fn tx_id(tx_type: TransactionType) -> u16 { u16::from(tx_type) }
+
     /// Login hooks fire in order: `on_request` → dispatch → `on_reply`.
     #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
     #[rstest]
@@ -231,9 +233,15 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                compat_spy::HookEvent::OnRequest { tx_type: 107 },
-                compat_spy::HookEvent::Dispatch { tx_type: 107 },
-                compat_spy::HookEvent::OnReply { tx_type: 107 },
+                compat_spy::HookEvent::OnRequest {
+                    tx_type: tx_id(TransactionType::Login),
+                },
+                compat_spy::HookEvent::Dispatch {
+                    tx_type: tx_id(TransactionType::Login),
+                },
+                compat_spy::HookEvent::OnReply {
+                    tx_type: tx_id(TransactionType::Login),
+                },
             ],
         );
         Ok(())
@@ -291,9 +299,15 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                compat_spy::HookEvent::OnRequest { tx_type: 200 },
-                compat_spy::HookEvent::Dispatch { tx_type: 200 },
-                compat_spy::HookEvent::OnReply { tx_type: 200 },
+                compat_spy::HookEvent::OnRequest {
+                    tx_type: tx_id(TransactionType::GetFileNameList),
+                },
+                compat_spy::HookEvent::Dispatch {
+                    tx_type: tx_id(TransactionType::GetFileNameList),
+                },
+                compat_spy::HookEvent::OnReply {
+                    tx_type: tx_id(TransactionType::GetFileNameList),
+                },
             ],
         );
         Ok(())
