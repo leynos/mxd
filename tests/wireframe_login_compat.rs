@@ -90,6 +90,14 @@ impl LoginCompatWorld {
         Box::new(AssertionError(message.into()))
     }
 
+    fn expected_login_error_message(expected_error: i32, actual_error: u32) -> String {
+        if expected_error == 0 {
+            format!("expected successful reply (error = 0), got {actual_error}")
+        } else {
+            format!("expected login failure error {expected_error}, got {actual_error}")
+        }
+    }
+
     fn assert_includes_banner_fields(
         params: &[(FieldId, Vec<u8>)],
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -133,15 +141,25 @@ impl LoginCompatWorld {
         Ok(())
     }
 
-    fn assert_banner_fields(&self, should_include: bool) -> Result<(), Box<dyn std::error::Error>> {
+    fn assert_login_reply(
+        &self,
+        expected_error: i32,
+        validate_params: impl FnOnce(&[(FieldId, Vec<u8>)]) -> Result<(), Box<dyn std::error::Error>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if self.base.is_skipped() {
             return Ok(());
         }
         self.with_reply(|tx| {
-            if tx.header.error != 0 {
-                return Err(Self::assertion_error(format!(
-                    "expected successful reply (error = 0), got {}",
-                    tx.header.error
+            let expected_error_u32 = u32::try_from(expected_error).map_err(|_| {
+                Self::assertion_error(format!(
+                    "expected login failure error {}, got {}",
+                    expected_error, tx.header.error
+                ))
+            })?;
+            if tx.header.error != expected_error_u32 {
+                return Err(Self::assertion_error(Self::expected_login_error_message(
+                    expected_error,
+                    tx.header.error,
                 )));
             }
             let tx_type = TransactionType::from(tx.header.ty);
@@ -151,38 +169,27 @@ impl LoginCompatWorld {
                 )));
             }
             let params = decode_params(&tx.payload)?;
-            if should_include {
-                Self::assert_includes_banner_fields(&params)?;
-            } else {
-                Self::assert_omits_banner_fields(&params)?;
-            }
+            validate_params(&params)?;
             Ok::<(), Box<dyn std::error::Error>>(())
         })?;
         Ok(())
     }
 
+    fn assert_banner_fields(&self, should_include: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.assert_login_reply(0, |params| {
+            if should_include {
+                Self::assert_includes_banner_fields(params)?;
+            } else {
+                Self::assert_omits_banner_fields(params)?;
+            }
+            Ok(())
+        })
+    }
+
     fn assert_login_fails_without_banner_fields(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.base.is_skipped() {
-            return Ok(());
-        }
-        self.with_reply(|tx| {
-            if tx.header.error != ERR_NOT_AUTHENTICATED {
-                return Err(Self::assertion_error(format!(
-                    "expected login failure error {}, got {}",
-                    ERR_NOT_AUTHENTICATED, tx.header.error
-                )));
-            }
-            let tx_type = TransactionType::from(tx.header.ty);
-            if tx_type != TransactionType::Login {
-                return Err(Self::assertion_error(format!(
-                    "expected Login reply, got {tx_type:?}"
-                )));
-            }
-            let params = decode_params(&tx.payload)?;
-            Self::assert_omits_banner_fields(&params)?;
-            Ok::<(), Box<dyn std::error::Error>>(())
-        })?;
-        Ok(())
+        self.assert_login_reply(ERR_NOT_AUTHENTICATED.cast_signed(), |params| {
+            Self::assert_omits_banner_fields(params)
+        })
     }
 }
 
