@@ -11,7 +11,7 @@ use std::{
 use tracing::warn;
 use wait_timeout::ChildExt;
 
-use crate::AnyError;
+use crate::{AnyError, protocol::handshake};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
@@ -26,7 +26,13 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 pub(super) fn wait_for_server(child: &mut Child, addr: SocketAddr) -> Result<(), AnyError> {
     let start = Instant::now();
     loop {
-        if is_listening(addr) {
+        if let Some(status) = child.wait_timeout(Duration::ZERO)? {
+            return Err(anyhow::anyhow!("server exited before readiness ({status})"));
+        }
+        if is_protocol_ready(addr) {
+            if let Some(status) = child.wait_timeout(Duration::ZERO)? {
+                return Err(anyhow::anyhow!("server exited before readiness ({status})"));
+            }
             return Ok(());
         }
         if start.elapsed() >= STARTUP_TIMEOUT {
@@ -39,8 +45,21 @@ pub(super) fn wait_for_server(child: &mut Child, addr: SocketAddr) -> Result<(),
     }
 }
 
+#[cfg(test)]
 fn is_listening(addr: SocketAddr) -> bool {
     TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).is_ok()
+}
+
+fn is_protocol_ready(addr: SocketAddr) -> bool {
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) else {
+        return false;
+    };
+    if stream.set_read_timeout(Some(CONNECT_TIMEOUT)).is_err()
+        || stream.set_write_timeout(Some(CONNECT_TIMEOUT)).is_err()
+    {
+        return false;
+    }
+    handshake(&mut stream).is_ok()
 }
 
 #[cfg(test)]
@@ -59,12 +78,13 @@ fn wait_for_listening(addr: SocketAddr, timeout: Duration) -> Result<(), AnyErro
 mod tests {
     use std::{
         net::{SocketAddr, TcpListener},
+        process::Command,
         time::Duration,
     };
 
     use rstest::{fixture, rstest};
 
-    use super::wait_for_listening;
+    use super::{wait_for_listening, wait_for_server};
     use crate::AnyError;
 
     #[fixture]
@@ -97,6 +117,25 @@ mod tests {
         assert!(
             result.is_err(),
             "expected readiness to time out for closed port"
+        );
+    }
+
+    #[rstest]
+    fn wait_for_server_rejects_exited_child_even_if_port_is_open(listening_socket: TcpListener) {
+        let addr = listening_socket
+            .local_addr()
+            .expect("listening socket should provide a local address");
+        let mut child = Command::new("rustc")
+            .arg("--version")
+            .spawn()
+            .expect("rustc should spawn");
+        child.wait().expect("rustc should exit");
+
+        let result = wait_for_server(&mut child, addr);
+
+        assert!(
+            result.is_err(),
+            "readiness must fail if the spawned child already exited"
         );
     }
 }
