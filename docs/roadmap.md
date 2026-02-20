@@ -203,8 +203,11 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Acceptance: `AuthStrategy` and `LoginReplyAugmenter` are wired into the
   guardrail routing entrypoint, and default behaviour for Hotline and SynHX
   remains unchanged. See
-  `docs/adr-003-login-authentication-and-reply-augmentation.md`. Dependencies:
-  1.5.5.
+  `docs/adr-003-login-authentication-and-reply-augmentation.md`. Status: In
+  progress on 20 February 2026 by keeping request-side login metadata capture
+  and reply-side augmentation split in the guardrail pipeline, while preserving
+  default Hotline/SynHX behaviour. Remaining work: wire explicit `AuthStrategy`
+  and `LoginReplyAugmenter` contracts into that pipeline. Dependencies: 1.5.5.
 
 ### 1.6. Regression and platform verification
 

@@ -62,6 +62,11 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   banner-field augmentation on every routed transaction. Compatibility hooks
   cannot be accidentally bypassed by new routes. No user-visible behaviour
   change.
+- Roadmap item 1.5.6 keeps login compatibility responsibilities split at the
+  guardrail boundary: request hooks perform payload decode and login metadata
+  capture, while reply hooks perform login reply augmentation. This preserves
+  default Hotline 1.8.5/1.9 and SynHX behaviour while keeping future strategy
+  wiring additive.
 
 ## Selecting a runtime
 
