@@ -26,23 +26,40 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 pub(super) fn wait_for_server(child: &mut Child, addr: SocketAddr) -> Result<(), AnyError> {
     let start = Instant::now();
     loop {
-        if let Some(status) = child.wait_timeout(Duration::ZERO)? {
-            return Err(anyhow::anyhow!("server exited before readiness ({status})"));
-        }
+        check_child_alive(child)?;
         if is_protocol_ready(addr) {
-            if let Some(status) = child.wait_timeout(Duration::ZERO)? {
-                return Err(anyhow::anyhow!("server exited before readiness ({status})"));
-            }
-            return Ok(());
+            return verify_ready_server(child);
         }
-        if start.elapsed() >= STARTUP_TIMEOUT {
-            warn!(?addr, "server did not open listening port before timeout");
-            return Err(anyhow::anyhow!("server failed to open listening port"));
-        }
-        if let Some(status) = child.wait_timeout(POLL_INTERVAL)? {
-            return Err(anyhow::anyhow!("server exited before readiness ({status})"));
-        }
+        check_timeout(&start, addr)?;
+        wait_or_fail_if_exited(child)?;
     }
+}
+
+fn check_child_alive(child: &mut Child) -> Result<(), AnyError> {
+    if let Some(status) = child.wait_timeout(Duration::ZERO)? {
+        return Err(anyhow::anyhow!("server exited before readiness ({status})"));
+    }
+    Ok(())
+}
+
+fn verify_ready_server(child: &mut Child) -> Result<(), AnyError> {
+    check_child_alive(child)?;
+    Ok(())
+}
+
+fn check_timeout(start: &Instant, addr: SocketAddr) -> Result<(), AnyError> {
+    if start.elapsed() >= STARTUP_TIMEOUT {
+        warn!(?addr, "server did not open listening port before timeout");
+        return Err(anyhow::anyhow!("server failed to open listening port"));
+    }
+    Ok(())
+}
+
+fn wait_or_fail_if_exited(child: &mut Child) -> Result<(), AnyError> {
+    if let Some(status) = child.wait_timeout(POLL_INTERVAL)? {
+        return Err(anyhow::anyhow!("server exited before readiness ({status})"));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
