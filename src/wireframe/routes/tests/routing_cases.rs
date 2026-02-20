@@ -94,7 +94,7 @@ fn process_transaction_bytes_login_success_with_xor_password() -> Result<(), Any
     ))?;
 
     assert_eq!(reply.header.error, 0);
-    assert!(ctx.compat().is_enabled());
+    assert!(ctx.xor().is_enabled());
     Ok(())
 }
 
@@ -115,7 +115,7 @@ fn process_transaction_bytes_enables_xor_from_message_field() -> Result<(), AnyE
     ))?;
 
     assert_eq!(reply.header.error, crate::commands::ERR_INTERNAL_SERVER);
-    assert!(ctx.compat().is_enabled());
+    assert!(ctx.xor().is_enabled());
     Ok(())
 }
 
@@ -290,6 +290,6 @@ fn process_transaction_bytes_post_news_article_success_with_xor_data() -> Result
         ],
     ))?;
     assert_eq!(reply.header.error, 0);
-    assert!(ctx.compat().is_enabled());
+    assert!(ctx.xor().is_enabled());
     Ok(())
 }

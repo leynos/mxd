@@ -19,6 +19,7 @@
 
 pub mod codec;
 pub mod compat;
+pub(crate) mod compat_layer;
 pub mod compat_policy;
 pub mod connection;
 pub mod context;
@@ -27,6 +28,7 @@ pub mod outbound;
 pub mod preamble;
 pub mod protocol;
 pub mod route_ids;
+pub mod router;
 pub mod routes;
 
 #[cfg(any(test, feature = "test-support"))]

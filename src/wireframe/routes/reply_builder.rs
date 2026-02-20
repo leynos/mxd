@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub(super) struct ReplyBuilder {
+pub(crate) struct ReplyBuilder {
     peer: SocketAddr,
     header: Option<FrameHeader>,
 }
@@ -46,7 +46,7 @@ macro_rules! log_method {
 }
 
 impl ReplyBuilder {
-    pub(super) fn from_frame(peer: SocketAddr, frame: &[u8]) -> Self {
+    pub(crate) fn from_frame(peer: SocketAddr, frame: &[u8]) -> Self {
         let header = frame
             .get(..HEADER_LEN)
             .and_then(|slice| slice.try_into().ok())
@@ -54,34 +54,34 @@ impl ReplyBuilder {
         Self { peer, header }
     }
 
-    pub(super) fn from_header(peer: SocketAddr, header: &FrameHeader) -> Self {
+    pub(crate) fn from_header(peer: SocketAddr, header: &FrameHeader) -> Self {
         Self {
             peer,
             header: Some(header.clone()),
         }
     }
 
-    pub(super) fn parse_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
+    pub(crate) fn parse_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
         self.log_warn_with_error(err, error_code, "failed to parse transaction from bytes");
         self.error_bytes(error_code)
     }
 
-    pub(super) fn command_parse_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
+    pub(crate) fn command_parse_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
         self.log_warn_with_error(err, error_code, "failed to parse command from transaction");
         self.error_bytes(error_code)
     }
 
-    pub(super) fn process_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
+    pub(crate) fn process_error<E: Display>(&self, err: E, error_code: u32) -> Vec<u8> {
         self.log_error_with_error(err, error_code, "command processing failed");
         self.error_bytes(error_code)
     }
 
-    pub(super) fn missing_reply(&self, error_code: u32) -> Vec<u8> {
+    pub(crate) fn missing_reply(&self, error_code: u32) -> Vec<u8> {
         self.log_error_without_error(error_code, "command processing did not emit a reply");
         self.error_bytes(error_code)
     }
 
-    pub(super) fn error_transaction(&self, error_code: u32) -> Transaction {
+    pub(crate) fn error_transaction(&self, error_code: u32) -> Transaction {
         let request_header = self.request_header_or_default();
         Transaction {
             header: reply_header(&request_header, error_code, 0),

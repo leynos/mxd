@@ -23,7 +23,7 @@ use mxd::{
         compat::XorCompatibility,
         compat_policy::ClientCompatibility,
         connection::HandshakeMetadata,
-        routes::{RouteContext, process_transaction_bytes},
+        router::{RouteContext, WireframeRouter},
         test_helpers::dummy_pool,
     },
 };
@@ -47,8 +47,7 @@ struct PrivilegeWorld {
     db_guard: RefCell<Option<TestDb>>,
     session: RefCell<Session>,
     reply: RefCell<Option<Result<Transaction, String>>>,
-    compat: Arc<XorCompatibility>,
-    client_compat: Arc<ClientCompatibility>,
+    router: WireframeRouter,
     skipped: Cell<bool>,
 }
 
@@ -59,6 +58,12 @@ impl PrivilegeWorld {
             .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
         let runtime =
             Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
+        let router = WireframeRouter::new(
+            Arc::new(XorCompatibility::disabled()),
+            Arc::new(ClientCompatibility::from_handshake(
+                &HandshakeMetadata::default(),
+            )),
+        );
         Self {
             runtime,
             peer,
@@ -66,10 +71,7 @@ impl PrivilegeWorld {
             db_guard: RefCell::new(None),
             session: RefCell::new(Session::default()),
             reply: RefCell::new(None),
-            compat: Arc::new(XorCompatibility::disabled()),
-            client_compat: Arc::new(ClientCompatibility::from_handshake(
-                &HandshakeMetadata::default(),
-            )),
+            router,
             skipped: Cell::new(false),
         }
     }
@@ -110,16 +112,13 @@ impl PrivilegeWorld {
         let peer = self.peer;
         let mut session = self.session.borrow().clone();
         let messaging = NoopOutboundMessaging;
-        let compat = Arc::clone(&self.compat);
-        let reply = self.runtime.block_on(process_transaction_bytes(
+        let reply = self.runtime.block_on(self.router.route(
             &frame,
             RouteContext {
                 peer,
                 pool,
                 session: &mut session,
                 messaging: &messaging,
-                compat: compat.as_ref(),
-                client_compat: self.client_compat.as_ref(),
             },
         ));
         self.session.replace(session);

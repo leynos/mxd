@@ -57,6 +57,11 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   `docs/internal-compatibility-matrix.md` as the compatibility source of truth.
   Release-note QA sign-off must reference that matrix using the checklist in
   `docs/release-notes-qa-sign-off.md`.
+- `WireframeRouter` is the sole public routing entrypoint. It embeds a
+  `CompatibilityLayer` that applies XOR decoding, login-version recording, and
+  banner-field augmentation on every routed transaction. Compatibility hooks
+  cannot be accidentally bypassed by new routes. No user-visible behaviour
+  change.
 
 ## Selecting a runtime
 
@@ -115,6 +120,6 @@ authenticated-session continuity, file listing, and news routing flows in
 `cargo test`. Verification-focused behaviour scenarios for the session gating
 Stateright model live in `tests/features/session_gating_verification.feature`
 and are bound by the `mxd-verification` test harness. Compatibility
-verification also includes Kani harnesses in `src/wireframe/compat/kani.rs`
-and `src/wireframe/compat_policy/kani.rs`, which prove bounded XOR and
-login-gating invariants without changing runtime behaviour.
+verification also includes Kani harnesses in `src/wireframe/compat/kani.rs` and
+`src/wireframe/compat_policy/kani.rs`, which prove bounded XOR and login-gating
+invariants without changing runtime behaviour.

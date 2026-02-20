@@ -17,7 +17,7 @@ use crate::{
     wireframe::{
         compat::XorCompatibility,
         compat_policy::ClientCompatibility,
-        routes::{RouteContext, process_transaction_bytes},
+        router::{RouteContext, WireframeRouter},
     },
 };
 
@@ -29,10 +29,8 @@ pub(super) struct RouteTestContext {
     pub(super) session: Session,
     /// Peer socket address supplied to routing for auditing and auth checks.
     peer: SocketAddr,
-    /// XOR compatibility state shared across test calls.
-    compat: Arc<XorCompatibility>,
-    /// Client compatibility policy shared across test calls.
-    client_compat: Arc<ClientCompatibility>,
+    /// Wireframe router owning compatibility state.
+    router: WireframeRouter,
 }
 
 impl RouteTestContext {
@@ -47,14 +45,17 @@ impl RouteTestContext {
     /// Returns an error if the fixed peer address literal fails to parse.
     pub(super) fn new(pool: DbPool) -> Result<Self, AnyError> {
         let peer = "127.0.0.1:12345".parse()?;
+        let router = WireframeRouter::new(
+            Arc::new(XorCompatibility::disabled()),
+            Arc::new(ClientCompatibility::from_handshake(
+                &crate::wireframe::connection::HandshakeMetadata::default(),
+            )),
+        );
         Ok(Self {
             pool,
             session: Session::default(),
             peer,
-            compat: Arc::new(XorCompatibility::disabled()),
-            client_compat: Arc::new(ClientCompatibility::from_handshake(
-                &crate::wireframe::connection::HandshakeMetadata::default(),
-            )),
+            router,
         })
     }
 
@@ -96,24 +97,23 @@ impl RouteTestContext {
     ) -> Result<Transaction, AnyError> {
         let frame = build_frame(ty, id, params)?;
         let messaging = NoopOutboundMessaging;
-        let compat = Arc::clone(&self.compat);
-        let reply = process_transaction_bytes(
-            &frame,
-            RouteContext {
-                peer: self.peer,
-                pool: self.pool.clone(),
-                session: &mut self.session,
-                messaging: &messaging,
-                compat: compat.as_ref(),
-                client_compat: self.client_compat.as_ref(),
-            },
-        )
-        .await;
+        let reply = self
+            .router
+            .route(
+                &frame,
+                RouteContext {
+                    peer: self.peer,
+                    pool: self.pool.clone(),
+                    session: &mut self.session,
+                    messaging: &messaging,
+                },
+            )
+            .await;
         Ok(parse_transaction(&reply)?)
     }
 
     /// Access the XOR compatibility state for assertions.
-    pub(super) fn compat(&self) -> &Arc<XorCompatibility> { &self.compat }
+    pub(super) fn xor(&self) -> &XorCompatibility { self.router.xor() }
 }
 
 /// Build a single-threaded Tokio runtime with all features enabled.

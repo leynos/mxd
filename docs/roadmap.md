@@ -189,12 +189,16 @@ and explicit dependencies. Timeframes are intentionally omitted.
   2026 by adding Kani harnesses for XOR payload round-trips and
   sub-version/login-version compatibility gating, plus boundary-focused unit
   and behavioural regression coverage. Dependencies: 1.5.2.
-- [ ] 1.5.5. Add wireframe compatibility guardrails and a routing entrypoint.
+- [x] 1.5.5. Add wireframe compatibility guardrails and a routing entrypoint.
   Acceptance: A `WireframeRouter` provides the only public routing entrypoint,
   a `CompatibilityLayer` runs request and reply hooks, and a spy-based test
   asserts login hook ordering. See
-  `docs/adr-002-compatibility-guardrails-and-augmentation.md`. Dependencies:
-  1.5.2.
+  [ADR-002](docs/adr-002-compatibility-guardrails-and-augmentation.md). Status:
+  Completed on 15 February 2026. `WireframeRouter` is the sole `pub` routing
+  entrypoint; `CompatibilityLayer` orchestrates `on_request` and `on_reply`
+  hooks; compatibility decisions derive from `TransactionType` semantics;
+  spy-based and BDD tests verify hook ordering and client-specific behaviour.
+  Dependencies: 1.5.2.
 - [ ] 1.5.6. Split login authentication strategies from reply augmentation.
   Acceptance: `AuthStrategy` and `LoginReplyAugmenter` are wired into the
   guardrail routing entrypoint, and default behaviour for Hotline and SynHX
@@ -211,11 +215,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   `mxd-wireframe-server`, adding handshake-sub-version coverage in test-util
   unit tests, and running routing/login/XOR behavioural suites over real TCP
   transport for login, authenticated-session continuity, file list, and news
-  flows. See [docs/design.md §Transaction routing middleware (December
-  2025)](docs/design.md#transaction-routing-middleware-december-2025) and
-  [docs/design.md §Regression verification via the wireframe binary (February
-  2026)](docs/design.md#regression-verification-via-the-wireframe-binary-february-2026).
-  Dependencies: 1.4.
+  flows. See [^1] and [^2]. Dependencies: 1.4.
 - [ ] 1.6.2. Extend the hx-based validator harness to target the wireframe
   server. Acceptance: The harness covers login, file download, chat, and news
   flows and runs in CI. Dependencies: 1.6.1.
@@ -226,6 +226,13 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 1.6.4. Add CI checks for formal verification artefacts. Acceptance: CI
   runs Stateright models, selected Kani harnesses, and TLC specs, publishing
   counterexample traces as build artefacts. Dependencies: 1.6.1.
+
+[^1]:
+    [docs/design.md §Transaction routing middleware (December
+    2025)](docs/design.md#transaction-routing-middleware-december-2025)
+[^2]:
+    [docs/design.md §Regression verification via the wireframe binary (February
+    2026)](docs/design.md#regression-verification-via-the-wireframe-binary-february-2026)
 
 ## 2. Session and presence parity
 

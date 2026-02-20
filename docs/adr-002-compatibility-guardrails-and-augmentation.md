@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Accepted (February 2026).
 
 ## Date
 
@@ -117,10 +117,14 @@ Non-goals:
 
 ## Outstanding decisions
 
-- Naming and module location for `WireframeRouter` and `CompatibilityLayer`.
-- Whether the quirk registry is compiled or kept as documentation-only.
-- The specific data passed into the spy test (for example, login payload
-  shapes).
+Resolved in roadmap item 1.5.5 (February 2026):
+
+- `WireframeRouter` lives in `src/wireframe/router.rs`;
+  `CompatibilityLayer` lives in `src/wireframe/compat_layer.rs`.
+- The quirk registry is compiled as a `const fn` mapping in
+  `compat_layer::quirk_registry` and consulted at runtime.
+- Spy-based ordering tests send login and file-list frames through the
+  router and assert `[OnRequest, Dispatch, OnReply]` event sequences.
 
 ## Architectural rationale
 

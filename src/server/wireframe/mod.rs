@@ -62,6 +62,7 @@ use crate::{
         preamble::HotlinePreamble,
         protocol::HotlineProtocol,
         route_ids::{FALLBACK_ROUTE_ID, ROUTE_IDS},
+        router::WireframeRouter,
         routes::{TransactionMiddleware, TransactionMiddlewareConfig},
     },
 };
@@ -239,6 +240,7 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
         Arc::clone(outbound_registry),
     ));
     let outbound_messaging = WireframeOutboundMessaging::new(Arc::clone(&outbound_connection));
+    let router = WireframeRouter::new(Arc::clone(&compat), client_compat);
     let protocol = HotlineProtocol::new(
         pool.clone(),
         Arc::clone(argon2),
@@ -250,12 +252,11 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
         .fragmentation(None)
         .with_protocol(protocol)
         .wrap(TransactionMiddleware::new(TransactionMiddlewareConfig {
+            router,
             pool: pool.clone(),
             session: Arc::clone(&session),
             peer,
             messaging: Arc::new(outbound_messaging),
-            compat,
-            client_compat,
         }))?;
 
     let handler = routing_placeholder_handler();

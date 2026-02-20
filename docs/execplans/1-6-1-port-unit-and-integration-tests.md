@@ -34,8 +34,8 @@ Success is observable when:
 ## Constraints
 
 - Keep the migration dependency boundary for wireframe intact: this task
-  depends on
-  roadmap 1.4 outputs and must not reintroduce legacy transport coupling.
+  depends on roadmap 1.4 outputs and must not reintroduce legacy transport
+  coupling.
 - Preserve transport realism in integration coverage: target the
   `mxd-wireframe-server` binary via `TestServer` helpers in `test-util`.
 - Keep deterministic tests. Reuse existing DB setup fixtures and avoid global

@@ -32,42 +32,25 @@ use wireframe::{
 #[cfg(test)]
 use crate::header_util::reply_header;
 #[cfg(test)]
+use crate::transaction::Transaction;
+#[cfg(test)]
 use crate::wireframe::codec::HotlineTransaction;
 use crate::{
-    commands::{Command, CommandContext},
     db::DbPool,
-    handler::Session,
-    server::outbound::{OutboundMessaging, ReplyBuffer},
-    transaction::{FrameHeader, Transaction, parse_transaction},
-    transaction_type::TransactionType,
-    wireframe::{compat::XorCompatibility, compat_policy::ClientCompatibility},
+    server::outbound::OutboundMessaging,
+    transaction::FrameHeader,
+    wireframe::router::{RouteContext as RouterRouteContext, WireframeRouter},
 };
 
-mod reply_builder;
+pub(crate) mod reply_builder;
 
 use reply_builder::ReplyBuilder;
 
 /// Error code for internal server failures.
 const ERR_INTERNAL: u32 = 3;
 
-/// Routing context used when dispatching a frame.
-pub struct RouteContext<'a> {
-    /// Remote peer socket address.
-    pub peer: SocketAddr,
-    /// Database connection pool.
-    pub pool: DbPool,
-    /// Mutable session state for the connection.
-    pub session: &'a mut Session,
-    /// Outbound messaging adapter for push notifications.
-    pub messaging: &'a dyn OutboundMessaging,
-    /// XOR compatibility state for this connection.
-    pub compat: &'a XorCompatibility,
-    /// Client compatibility policy for handshake and login quirks.
-    pub client_compat: &'a ClientCompatibility,
-}
-
 #[cfg(test)]
-mod dispatch_spy {
+pub(crate) mod dispatch_spy {
     //! Captures dispatch details for transaction routing tests.
 
     use std::{cell::RefCell, net::SocketAddr};
@@ -75,17 +58,17 @@ mod dispatch_spy {
     use crate::transaction::FrameHeader;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub(super) struct DispatchRecord {
-        pub(super) peer: SocketAddr,
-        pub(super) ty: u16,
-        pub(super) id: u32,
+    pub(crate) struct DispatchRecord {
+        pub(crate) peer: SocketAddr,
+        pub(crate) ty: u16,
+        pub(crate) id: u32,
     }
 
     thread_local! {
         static RECORDS: RefCell<Vec<DispatchRecord>> = const { RefCell::new(Vec::new()) };
     }
 
-    pub(super) fn record(peer: SocketAddr, header: &FrameHeader) {
+    pub(crate) fn record(peer: SocketAddr, header: &FrameHeader) {
         RECORDS.with(|records| {
             records.borrow_mut().push(DispatchRecord {
                 peer,
@@ -95,128 +78,11 @@ mod dispatch_spy {
         });
     }
 
-    pub(super) fn take() -> Vec<DispatchRecord> {
+    pub(crate) fn take() -> Vec<DispatchRecord> {
         RECORDS.with(|records| std::mem::take(&mut *records.borrow_mut()))
     }
 
-    pub(super) fn clear() { RECORDS.with(|records| records.borrow_mut().clear()); }
-}
-
-/// Process a Hotline transaction from raw bytes and return the reply bytes.
-///
-/// This function implements the core routing logic. It parses the raw bytes
-/// into a domain transaction, dispatches to the appropriate command handler,
-/// and returns the reply as raw bytes.
-///
-/// # Arguments
-///
-/// * `frame` - Raw transaction bytes (header + payload).
-/// * `context` - Routing context containing peer, database, session, and outbound messaging
-///   adapters.
-///
-/// # Returns
-///
-/// Raw bytes containing the reply transaction, or an error transaction if
-/// processing fails.
-pub async fn process_transaction_bytes(frame: &[u8], context: RouteContext<'_>) -> Vec<u8> {
-    let RouteContext {
-        peer,
-        pool,
-        session,
-        messaging,
-        compat,
-        client_compat,
-    } = context;
-    let transaction = match parse_transaction(frame) {
-        Ok(tx) => tx,
-        Err(e) => return handle_parse_error(peer, frame, e),
-    };
-    let header = transaction.header.clone();
-    let tx_type = TransactionType::from(header.ty);
-    let tx = match decode_payload_for_transaction(peer, tx_type, transaction, compat) {
-        Ok(tx) => tx,
-        Err(reply) => return reply,
-    };
-    record_login_version_if_needed(tx_type, client_compat, &tx.payload);
-
-    let cmd = match Command::from_transaction(tx) {
-        Ok(cmd) => cmd,
-        Err(e) => return handle_command_parse_error(peer, &header, e),
-    };
-
-    #[cfg(test)]
-    dispatch_spy::record(peer, &header);
-
-    let mut transport = ReplyBuffer::new();
-    let command_context = CommandContext {
-        peer,
-        pool,
-        session,
-        transport: &mut transport,
-        messaging,
-    };
-    match cmd.process_with_outbound(command_context).await {
-        Ok(()) => finalize_reply(peer, &header, transport, client_compat),
-        Err(e) => handle_process_error(peer, &header, e),
-    }
-}
-
-/// Decode transaction payload bytes when the transaction type carries payload.
-///
-/// Transactions without payload are passed through unchanged.
-fn decode_payload_for_transaction(
-    peer: SocketAddr,
-    tx_type: TransactionType,
-    transaction: Transaction,
-    compat: &XorCompatibility,
-) -> Result<Transaction, Vec<u8>> {
-    if !tx_type.allows_payload() {
-        return Ok(transaction);
-    }
-    let decoded_payload = match compat.decode_payload(&transaction.payload) {
-        Ok(payload) => payload,
-        Err(e) => return Err(handle_command_parse_error(peer, &transaction.header, e)),
-    };
-    Ok(Transaction {
-        payload: decoded_payload,
-        ..transaction
-    })
-}
-
-/// Record login version metadata for compatibility policy when handling login.
-fn record_login_version_if_needed(
-    tx_type: TransactionType,
-    client_compat: &ClientCompatibility,
-    payload: &[u8],
-) {
-    if tx_type == TransactionType::Login
-        && let Err(error) = client_compat.record_login_payload(payload)
-    {
-        tracing::warn!(%error, "failed to record login version from payload");
-    }
-}
-
-/// Finalize a successful command reply and apply client compatibility extras.
-fn finalize_reply(
-    peer: SocketAddr,
-    header: &FrameHeader,
-    mut transport: ReplyBuffer,
-    client_compat: &ClientCompatibility,
-) -> Vec<u8> {
-    transport.take_reply().map_or_else(
-        || handle_missing_reply(peer, header),
-        |mut reply| {
-            if let Err(error) = client_compat.augment_login_reply(&mut reply) {
-                tracing::warn!(
-                    %error,
-                    client_kind = ?client_compat.kind(),
-                    login_version = ?client_compat.login_version(),
-                    "failed to apply login compatibility extras"
-                );
-            }
-            reply.to_bytes()
-        },
-    )
+    pub(crate) fn clear() { RECORDS.with(|records| records.borrow_mut().clear()); }
 }
 
 /// Convert a transaction to raw bytes.
@@ -233,12 +99,16 @@ fn error_transaction(header: &FrameHeader, error_code: u32) -> Transaction {
 }
 
 /// Handle transaction parse errors by returning an error reply.
-fn handle_parse_error(peer: SocketAddr, frame: &[u8], e: impl std::fmt::Display) -> Vec<u8> {
+pub(crate) fn handle_parse_error(
+    peer: SocketAddr,
+    frame: &[u8],
+    e: impl std::fmt::Display,
+) -> Vec<u8> {
     ReplyBuilder::from_frame(peer, frame).parse_error(e, ERR_INTERNAL)
 }
 
 /// Handle command parsing errors by returning an error reply.
-fn handle_command_parse_error(
+pub(crate) fn handle_command_parse_error(
     peer: SocketAddr,
     header: &FrameHeader,
     e: impl std::fmt::Display,
@@ -247,17 +117,12 @@ fn handle_command_parse_error(
 }
 
 /// Handle command processing errors by returning an error reply.
-fn handle_process_error(
+pub(crate) fn handle_process_error(
     peer: SocketAddr,
     header: &FrameHeader,
     e: impl std::fmt::Display,
 ) -> Vec<u8> {
     ReplyBuilder::from_header(peer, header).process_error(e, ERR_INTERNAL)
-}
-
-/// Handle missing replies by returning an error reply.
-fn handle_missing_reply(peer: SocketAddr, header: &FrameHeader) -> Vec<u8> {
-    ReplyBuilder::from_header(peer, header).missing_reply(ERR_INTERNAL)
 }
 
 /// Build an error reply as a `HotlineTransaction`.
@@ -282,8 +147,9 @@ fn error_reply(
 ///
 /// This middleware intercepts all incoming frames, processes them through the
 /// domain command dispatcher, and writes the reply bytes to the response. It
-/// holds the database pool, peer address, and session state directly rather
-/// than using thread-local storage.
+/// holds a [`WireframeRouter`] that owns the compatibility state, plus the
+/// database pool, peer address, and session state directly rather than using
+/// thread-local storage.
 ///
 /// # Wireframe Integration
 ///
@@ -292,17 +158,18 @@ fn error_reply(
 /// The wrapped service processes transactions and returns the transformed
 /// `HandlerService` expected by the middleware pipeline.
 #[derive(Clone)]
-pub struct TransactionMiddleware {
+pub(crate) struct TransactionMiddleware {
+    router: WireframeRouter,
     pool: DbPool,
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
-    compat: Arc<XorCompatibility>,
-    client_compat: Arc<ClientCompatibility>,
 }
 
 /// Construction parameters for [`TransactionMiddleware`].
-pub struct TransactionMiddlewareConfig {
+pub(crate) struct TransactionMiddlewareConfig {
+    /// Wireframe router owning compatibility state.
+    pub(crate) router: WireframeRouter,
     /// Database connection pool.
     pub(crate) pool: DbPool,
     /// Session state for the connection.
@@ -311,36 +178,30 @@ pub struct TransactionMiddlewareConfig {
     pub(crate) peer: SocketAddr,
     /// Outbound messaging adapter for push notifications.
     pub(crate) messaging: Arc<dyn OutboundMessaging>,
-    /// XOR compatibility state for the connection.
-    pub(crate) compat: Arc<XorCompatibility>,
-    /// Client compatibility policy for handshake and login quirks.
-    pub(crate) client_compat: Arc<ClientCompatibility>,
 }
 
 impl TransactionMiddleware {
     /// Create a new transaction middleware with the given pool and session.
     #[must_use]
-    pub fn new(config: TransactionMiddlewareConfig) -> Self {
+    pub(crate) fn new(config: TransactionMiddlewareConfig) -> Self {
         Self {
+            router: config.router,
             pool: config.pool,
             session: config.session,
             peer: config.peer,
             messaging: config.messaging,
-            compat: config.compat,
-            client_compat: config.client_compat,
         }
     }
 }
 
-/// Inner service that processes transactions with the pool and session passed in.
+/// Inner service that processes transactions via [`WireframeRouter`].
 struct TransactionHandler {
     inner: HandlerService<Envelope>,
+    router: WireframeRouter,
     pool: DbPool,
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
-    compat: Arc<XorCompatibility>,
-    client_compat: Arc<ClientCompatibility>,
 }
 
 #[async_trait]
@@ -350,18 +211,17 @@ impl Service for TransactionHandler {
     async fn call(&self, req: ServiceRequest) -> Result<ServiceResponse, Self::Error> {
         let reply_bytes = {
             let mut session_guard = self.session.lock().await;
-            process_transaction_bytes(
-                req.frame(),
-                RouteContext {
-                    peer: self.peer,
-                    pool: self.pool.clone(),
-                    session: &mut session_guard,
-                    messaging: self.messaging.as_ref(),
-                    compat: &self.compat,
-                    client_compat: &self.client_compat,
-                },
-            )
-            .await
+            self.router
+                .route(
+                    req.frame(),
+                    RouterRouteContext {
+                        peer: self.peer,
+                        pool: self.pool.clone(),
+                        session: &mut session_guard,
+                        messaging: self.messaging.as_ref(),
+                    },
+                )
+                .await
         };
 
         // Call inner service to propagate through the chain, then replace the response frame
@@ -380,12 +240,11 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
         let id = service.id();
         let wrapped = TransactionHandler {
             inner: service,
+            router: self.router.clone(),
             pool: self.pool.clone(),
             session: Arc::clone(&self.session),
             peer: self.peer,
             messaging: Arc::clone(&self.messaging),
-            compat: Arc::clone(&self.compat),
-            client_compat: Arc::clone(&self.client_compat),
         };
         HandlerService::from_service(id, wrapped)
     }
