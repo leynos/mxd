@@ -122,6 +122,10 @@ impl WireframeBddWorld {
         }
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "retry loop records an error on every failed attempt"
+    )]
     fn reconnect(&self) -> Result<(), AnyError> {
         let server_addr = self
             .server
@@ -155,12 +159,11 @@ impl WireframeBddWorld {
             std::thread::sleep(remaining.min(RECONNECT_RETRY_INTERVAL));
         }
 
-        let error = last_error.unwrap_or_else(|| {
-            anyhow::anyhow!(
-                "failed to connect and handshake after {attempts} attempts in {:?}",
-                started_at.elapsed()
-            )
-        });
+        let elapsed = started_at.elapsed();
+        let no_error_recorded = format!(
+            "reconnect exhausted {attempts} attempts in {elapsed:?} without recording an error"
+        );
+        let error = last_error.expect(&no_error_recorded);
         Err(error)
     }
 
