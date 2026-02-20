@@ -122,10 +122,6 @@ impl WireframeBddWorld {
         }
     }
 
-    #[expect(
-        clippy::expect_used,
-        reason = "retry loop records an error on every failed attempt"
-    )]
     fn reconnect(&self) -> Result<(), AnyError> {
         let server_addr = self
             .server
@@ -163,8 +159,7 @@ impl WireframeBddWorld {
         let no_error_recorded = format!(
             "reconnect exhausted {attempts} attempts in {elapsed:?} without recording an error"
         );
-        let error = last_error.expect(&no_error_recorded);
-        Err(error)
+        Err(last_error.unwrap_or_else(|| anyhow::anyhow!(no_error_recorded)))
     }
 
     fn connect_and_handshake(
@@ -185,6 +180,11 @@ impl WireframeBddWorld {
     fn io_timeout(&self) -> Duration {
         Self::io_timeout_from_env().unwrap_or_else(|| self.io_timeout.get())
     }
+
+    /// Return the active IO timeout used for wireframe socket operations.
+    #[cfg(test)]
+    #[must_use]
+    pub fn get_io_timeout(&self) -> Duration { self.io_timeout() }
 
     fn io_timeout_from_env() -> Option<Duration> {
         std::env::var(IO_TIMEOUT_ENV_VAR)
@@ -390,16 +390,5 @@ impl WireframeBddWorld {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::WireframeBddWorld;
-
-    #[test]
-    fn set_io_timeout_overrides_default() {
-        let world = WireframeBddWorld::new();
-        world.set_io_timeout(Duration::from_secs(42));
-
-        assert_eq!(world.io_timeout.get(), Duration::from_secs(42));
-    }
-}
+#[path = "wireframe_bdd_world_tests.rs"]
+mod tests;

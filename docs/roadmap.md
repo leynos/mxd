@@ -228,15 +228,11 @@ and explicit dependencies. Timeframes are intentionally omitted.
   counterexample traces as build artefacts. Dependencies: 1.6.1.
 
 [^1]:
-    [docs/design.md §Transaction routing middleware (December 2025)][1-link]
+    [docs/design.md §Transaction routing middleware (December
+    2025)](docs/design.md#transaction-routing-middleware-december-2025)
 [^2]:
     [docs/design.md §Regression verification via the wireframe binary (February
-    2026)][2-link]
-
-[1-link]:
-    docs/design.md#transaction-routing-middleware-december-2025
-[2-link]:
-    docs/design.md#regression-verification-via-the-wireframe-binary-february-2026
+    2026)](docs/design.md#regression-verification-via-the-wireframe-binary-february-2026)
 
 ## 2. Session and presence parity
 
