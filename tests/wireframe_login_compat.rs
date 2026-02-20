@@ -1,6 +1,7 @@
 //! Behavioural tests for login compatibility gating.
 
 use mxd::{
+    commands::ERR_NOT_AUTHENTICATED,
     field_id::FieldId,
     transaction::{Transaction, decode_params},
     transaction_type::TransactionType,
@@ -53,6 +54,10 @@ impl LoginCompatWorld {
     }
 
     fn send_login(&self, version: u16) {
+        self.send_login_with_credentials(version, b"alice", b"secret");
+    }
+
+    fn send_login_with_credentials(&self, version: u16, username: &[u8], password: &[u8]) {
         if self.base.is_skipped() {
             return;
         }
@@ -65,8 +70,8 @@ impl LoginCompatWorld {
             TransactionType::Login,
             1,
             &[
-                (FieldId::Login, b"alice"),
-                (FieldId::Password, b"secret"),
+                (FieldId::Login, username),
+                (FieldId::Password, password),
                 (FieldId::Version, version_bytes.as_slice()),
             ],
         ) {
@@ -155,6 +160,30 @@ impl LoginCompatWorld {
         })?;
         Ok(())
     }
+
+    fn assert_login_fails_without_banner_fields(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.base.is_skipped() {
+            return Ok(());
+        }
+        self.with_reply(|tx| {
+            if tx.header.error != ERR_NOT_AUTHENTICATED {
+                return Err(Self::assertion_error(format!(
+                    "expected login failure error {}, got {}",
+                    ERR_NOT_AUTHENTICATED, tx.header.error
+                )));
+            }
+            let tx_type = TransactionType::from(tx.header.ty);
+            if tx_type != TransactionType::Login {
+                return Err(Self::assertion_error(format!(
+                    "expected Login reply, got {tx_type:?}"
+                )));
+            }
+            let params = decode_params(&tx.payload)?;
+            Self::assert_omits_banner_fields(&params)?;
+            Ok::<(), Box<dyn std::error::Error>>(())
+        })?;
+        Ok(())
+    }
 }
 
 #[fixture]
@@ -179,6 +208,11 @@ fn given_sub_version(world: &LoginCompatWorld, sub_version: u16) {
 #[when("I send a login request with client version {version}")]
 fn when_login(world: &LoginCompatWorld, version: u16) { world.send_login(version); }
 
+#[when("I send a login request with invalid credentials and client version {version}")]
+fn when_login_with_invalid_credentials(world: &LoginCompatWorld, version: u16) {
+    world.send_login_with_credentials(version, b"alice", b"wrong-password");
+}
+
 #[then("the login reply includes banner fields")]
 fn then_includes_banner_fields(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error>> {
     world.assert_banner_fields(true)
@@ -187,6 +221,13 @@ fn then_includes_banner_fields(world: &LoginCompatWorld) -> Result<(), Box<dyn s
 #[then("the login reply omits banner fields")]
 fn then_omits_banner_fields(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error>> {
     world.assert_banner_fields(false)
+}
+
+#[then("the login reply fails without banner fields")]
+fn then_login_fails_without_banner_fields(
+    world: &LoginCompatWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
+    world.assert_login_fails_without_banner_fields()
 }
 
 scenarios!(

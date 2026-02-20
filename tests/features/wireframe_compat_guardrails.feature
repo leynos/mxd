@@ -12,11 +12,21 @@ Feature: Wireframe compatibility guardrails
     When a SynHX client logs in
     Then the login reply does not include banner fields
 
+  Scenario: SynHX handshake takes precedence over Hotline 1.9 version
+    Given a wireframe server with user accounts
+    When a SynHX client logs in with Hotline 1.9 version
+    Then the login reply does not include banner fields
+
   Scenario: XOR-encoded login succeeds through the router
     Given a wireframe server with user accounts
     When a client sends a XOR-encoded login
     Then the login succeeds
     And XOR encoding is enabled for the connection
+
+  Scenario: Login failure does not include banner fields
+    Given a wireframe server with user accounts
+    When a client logs in with invalid credentials and Hotline 1.9 version
+    Then the login fails without banner fields
 
   Scenario: File list request succeeds after login through the router
     Given a wireframe server with user accounts

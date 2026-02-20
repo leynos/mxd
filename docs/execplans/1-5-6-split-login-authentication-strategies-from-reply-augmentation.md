@@ -4,8 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS (implementation underway; documentation now records current
-outcomes and remaining wiring work)
+Status: COMPLETED (implemented, validated, and documented on 20 February 2026)
 
 PLANS.md does not exist in this repository.
 
@@ -287,10 +286,23 @@ before skipping.
   with roadmap 1.5.6 progress and preserved-behaviour notes.
 - [x] (2026-02-20 16:49Z) Updated roadmap item 1.5.6 with in-progress status,
   captured outcomes, and explicit remaining scope.
+- [x] (2026-02-20 17:07Z) Implemented strategy/augmenter split in source:
+  added `AuthStrategy` and `LoginReplyAugmenter` modules, wired
+  `WireframeRouter` to select strategies by `ClientKind`, and routed login
+  dispatch through `CompatibilityLayer::process_command`.
+- [x] (2026-02-20 17:07Z) Extended behavioural coverage for happy, unhappy, and
+  edge paths in `tests/wireframe_login_compat.rs`,
+  `tests/wireframe_compat_guardrails_bdd.rs`, and corresponding feature files.
+- [x] (2026-02-20 17:07Z) Ran local Postgres setup with
+  `pg_embedded_setup_unpriv` and executed full gates with log capture:
+  `make check-fmt`, `make lint`, `CARGO_INCREMENTAL=0 make test`,
+  `make markdownlint`, `make nixie`, and `make typecheck`.
+- [x] (2026-02-20 17:07Z) Updated `docs/design.md`, `docs/users-guide.md`, and
+  `docs/roadmap.md` to final completion wording; marked roadmap item 1.5.6 done.
 - [x] Implementation started.
-- [ ] Strategy/augmenter wiring merged and validated.
+- [x] Strategy/augmenter wiring merged and validated.
 - [x] Docs updated for roadmap item 1.5.6.
-- [ ] Roadmap item 1.5.6 marked done after implementation and gate evidence.
+- [x] Roadmap item 1.5.6 marked done after implementation and gate evidence.
 
 ## Surprises & Discoveries
 
@@ -299,8 +311,9 @@ before skipping.
 - The current compatibility guardrail already centralizes reply augmentation
   (`on_reply`), but authentication remains in the login handler path; 1.5.6 is
   primarily an architectural split and wiring task.
-- The explicit `AuthStrategy` and `LoginReplyAugmenter` contracts are not yet
-  present in source modules, so roadmap 1.5.6 cannot be closed in this pass.
+- The `pg_embedded_setup_unpriv` prerequisite is available as an installed CLI
+  in this environment; this repository does not expose that tool as a local
+  Cargo bin target.
 - Existing BDD coverage for login compatibility and guardrails provides a strong
   regression baseline for preserving default behaviour.
 - `make typecheck` is available in this repository and should be included in
@@ -328,20 +341,30 @@ before skipping.
 
 ## Outcomes & Retrospective
 
-Implementation is underway and partially reflected in documentation.
+Roadmap item 1.5.6 is complete.
 
-Current outcomes:
+Completion outcomes:
 
-- `docs/design.md` now records the 1.5.6 responsibility split in the guardrail
-  path (request-side metadata capture versus reply-side augmentation).
-- `docs/users-guide.md` now clarifies that the 1.5.6 refactor preserves default
-  Hotline 1.8.5/1.9 and SynHX behaviour.
-- `docs/roadmap.md` now tracks item 1.5.6 as in progress with explicit
-  remaining scope: wire `AuthStrategy` and `LoginReplyAugmenter` contracts into
-  the guardrail routing entrypoint.
-
-Remaining completion evidence required:
-
-- strategy/augmenter wiring merged in source and tests;
-- verification gates run with captured logs;
-- roadmap item 1.5.6 flipped to done with completion date.
+- Source wiring is complete:
+  - `src/wireframe/auth_strategy.rs` defines `AuthStrategy` and default client
+    mappings.
+  - `src/wireframe/login_reply_augmenter.rs` defines
+    `LoginReplyAugmenter` with a `ClientCompatibility` implementation.
+  - `src/wireframe/router.rs` selects `AuthStrategy` by `ClientKind` and wires
+    both abstractions into `CompatibilityLayer`.
+  - `src/wireframe/compat_layer.rs` routes login commands through
+    `AuthStrategy` and delegates reply decoration to `LoginReplyAugmenter`.
+- Behaviour parity is preserved for Hotline 1.8.5/1.9 and SynHX through
+  expanded unit and BDD coverage, including invalid-credential and precedence
+  edge cases.
+- Verification gates passed with captured logs:
+  - `/tmp/pg-setup-$(get-project)-$(git branch --show).out`
+  - `/tmp/check-fmt-$(get-project)-$(git branch --show).out`
+  - `/tmp/lint-$(get-project)-$(git branch --show).out`
+  - `/tmp/test-$(get-project)-$(git branch --show).out`
+  - `/tmp/markdownlint-$(get-project)-$(git branch --show).out`
+  - `/tmp/nixie-$(get-project)-$(git branch --show).out`
+  - `/tmp/typecheck-$(get-project)-$(git branch --show).out`
+- Documentation is synchronized with implementation:
+  `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md` now reflect
+  the completed split and preserved external behaviour.

@@ -15,9 +15,11 @@ use crate::{
     transaction::parse_transaction,
     transaction_type::TransactionType,
     wireframe::{
+        auth_strategy::{auth_strategy_for_client, auth_strategy_label},
         compat::XorCompatibility,
         compat_layer::{self, CompatibilityLayer},
         compat_policy::ClientCompatibility,
+        login_reply_augmenter::ClientCompatibilityLoginReplyAugmenter,
         routes::{handle_command_parse_error, handle_parse_error, handle_process_error},
     },
 };
@@ -50,8 +52,8 @@ impl WireframeRouter {
     ///
     /// 1. Parse the frame.
     /// 2. `CompatibilityLayer::on_request` (XOR decode + login version recording).
-    /// 3. `Command::from_transaction` + `process_with_outbound`.
-    /// 4. `CompatibilityLayer::on_reply` (login augmentation).
+    /// 3. `Command::from_transaction` + auth strategy dispatch.
+    /// 4. `CompatibilityLayer::on_reply` via `LoginReplyAugmenter`.
     pub async fn route(&self, frame: &[u8], context: RouteContext<'_>) -> Vec<u8> {
         let RouteContext {
             peer,
@@ -59,26 +61,19 @@ impl WireframeRouter {
             session,
             messaging,
         } = context;
-        let compat_layer = CompatibilityLayer::new(&self.xor, &self.client);
+        let client_kind = self.client.kind();
+        let auth_strategy = auth_strategy_for_client(client_kind);
+        let login_reply_augmenter = ClientCompatibilityLoginReplyAugmenter::new(&self.client);
+        let compat_layer = CompatibilityLayer::new(
+            &self.xor,
+            &self.client,
+            auth_strategy,
+            &login_reply_augmenter,
+        );
 
-        let transaction = match parse_transaction(frame) {
-            Ok(tx) => tx,
-            Err(e) => return handle_parse_error(peer, frame, e),
-        };
-        let header = transaction.header.clone();
-        let tx_type = TransactionType::from(header.ty);
-
-        #[cfg(test)]
-        compat_spy::record(compat_spy::HookEvent::OnRequest { tx_type: header.ty });
-
-        let tx = match compat_layer.on_request(peer, tx_type, transaction) {
-            Ok(tx) => tx,
+        let (header, tx_type, cmd) = match Self::prepare_command(frame, peer, &compat_layer) {
+            Ok(parsed) => parsed,
             Err(reply) => return reply,
-        };
-
-        let cmd = match Command::from_transaction(tx) {
-            Ok(cmd) => cmd,
-            Err(e) => return handle_command_parse_error(peer, &header, e),
         };
 
         #[cfg(test)]
@@ -94,10 +89,36 @@ impl WireframeRouter {
             transport: &mut transport,
             messaging,
         };
-        match cmd.process_with_outbound(command_context).await {
-            Ok(()) => compat_layer::finalize_reply(peer, &header, transport, &compat_layer),
-            Err(e) => handle_process_error(peer, &header, e),
-        }
+        tracing::trace!(
+            auth_strategy = auth_strategy_label(client_kind),
+            "routing transaction through selected login auth strategy"
+        );
+        compat_layer
+            .process_command(tx_type, cmd, command_context)
+            .await
+            .map_or_else(
+                |e| handle_process_error(peer, &header, e),
+                |()| compat_layer::finalize_reply(peer, &header, transport, &compat_layer),
+            )
+    }
+
+    fn prepare_command(
+        frame: &[u8],
+        peer: SocketAddr,
+        compat_layer: &CompatibilityLayer<'_>,
+    ) -> Result<(crate::transaction::FrameHeader, TransactionType, Command), Vec<u8>> {
+        let transaction =
+            parse_transaction(frame).map_err(|e| handle_parse_error(peer, frame, e))?;
+        let header = transaction.header.clone();
+        let tx_type = TransactionType::from(header.ty);
+
+        #[cfg(test)]
+        compat_spy::record(compat_spy::HookEvent::OnRequest { tx_type: header.ty });
+
+        let request_transaction = compat_layer.on_request(peer, tx_type, transaction)?;
+        let command = Command::from_transaction(request_transaction)
+            .map_err(|e| handle_command_parse_error(peer, &header, e))?;
+        Ok((header, tx_type, command))
     }
 
     /// Read-only access to the XOR compatibility state.
