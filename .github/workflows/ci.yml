@@ -51,6 +51,11 @@ jobs:
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
       - name: Cache Cargo directories
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Install cargo-nextest
+        run: |
+          if ! cargo nextest --version >/dev/null 2>&1; then
+            cargo binstall --no-confirm cargo-nextest
+          fi
       - name: Export POSTGRES_TEST_URL
         if: matrix.name == 'postgres'
         uses: ./.github/actions/export-postgres-url
