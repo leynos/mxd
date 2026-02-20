@@ -235,8 +235,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn login_commands_use_auth_strategy() {
+    #[cfg(test)]
+    fn run_auth_strategy_test(tx_type: TransactionType, expected_auth_calls: u32) {
         let xor = XorCompatibility::disabled();
         let client = ClientCompatibility::from_handshake(&HandshakeMetadata::default());
         let auth = SpyAuthStrategy::new();
@@ -253,7 +253,7 @@ mod tests {
             messaging: &messaging,
         };
         let command = Command::Unknown {
-            header: header(TransactionType::Login),
+            header: header(tx_type),
         };
 
         let runtime = Builder::new_current_thread()
@@ -261,50 +261,22 @@ mod tests {
             .build()
             .expect("runtime builds");
         runtime
-            .block_on(layer.process_command(TransactionType::Login, command, context))
-            .expect("login command succeeds");
+            .block_on(layer.process_command(tx_type, command, context))
+            .expect("command succeeds");
 
         assert_eq!(
             auth.login_calls.load(Ordering::SeqCst),
-            1,
-            "login should use auth strategy"
+            expected_auth_calls,
+            "unexpected auth strategy call count for {tx_type:?}"
         );
     }
 
     #[test]
+    fn login_commands_use_auth_strategy() { run_auth_strategy_test(TransactionType::Login, 1); }
+
+    #[test]
     fn non_login_commands_bypass_auth_strategy() {
-        let xor = XorCompatibility::disabled();
-        let client = ClientCompatibility::from_handshake(&HandshakeMetadata::default());
-        let auth = SpyAuthStrategy::new();
-        let augmenter = SpyReplyAugmenter::new();
-        let layer = CompatibilityLayer::new(&xor, &client, &auth, &augmenter);
-        let mut session = Session::default();
-        let mut transport = ReplyBuffer::new();
-        let messaging = NoopOutboundMessaging;
-        let context = CommandContext {
-            peer: "127.0.0.1:12345".parse().expect("valid loopback socket"),
-            pool: dummy_pool(),
-            session: &mut session,
-            transport: &mut transport,
-            messaging: &messaging,
-        };
-        let command = Command::Unknown {
-            header: header(TransactionType::GetFileNameList),
-        };
-
-        let runtime = Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("runtime builds");
-        runtime
-            .block_on(layer.process_command(TransactionType::GetFileNameList, command, context))
-            .expect("non-login command succeeds");
-
-        assert_eq!(
-            auth.login_calls.load(Ordering::SeqCst),
-            0,
-            "non-login commands should bypass auth strategy"
-        );
+        run_auth_strategy_test(TransactionType::GetFileNameList, 0);
     }
 
     #[test]
