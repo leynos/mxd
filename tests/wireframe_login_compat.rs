@@ -17,6 +17,44 @@ use test_util::{
     setup_login_db,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ClientVersion(u16);
+
+impl ClientVersion {
+    const fn new(version: u16) -> Self { Self(version) }
+
+    const fn as_u16(self) -> u16 { self.0 }
+}
+
+#[derive(Debug, Clone)]
+struct LoginCredentials<'a> {
+    username: &'a [u8],
+    password: &'a [u8],
+}
+
+impl<'a> LoginCredentials<'a> {
+    const fn new(username: &'a [u8], password: &'a [u8]) -> Self { Self { username, password } }
+
+    const fn into_parts(self) -> (&'a [u8], &'a [u8]) { (self.username, self.password) }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BannerFieldAssertion {
+    ShouldInclude,
+    ShouldOmit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ErrorCode(i32);
+
+impl ErrorCode {
+    const SUCCESS: Self = Self(0);
+
+    const fn new(error: i32) -> Self { Self(error) }
+
+    const fn as_i32(self) -> i32 { self.0 }
+}
+
 /// Shared BDD world state for login compatibility scenarios.
 struct LoginCompatWorld {
     base: WireframeBddWorld,
@@ -42,22 +80,26 @@ impl LoginCompatWorld {
         self.base.setup_db(setup).map_err(Into::into)
     }
 
-    fn set_handshake_sub_version(&self, sub_version: u16) {
+    fn set_handshake_sub_version(&self, sub_version: ClientVersion) {
         if self.base.is_skipped() {
             return;
         }
         let handshake = HandshakeMetadata {
-            sub_version,
+            sub_version: sub_version.as_u16(),
             ..HandshakeMetadata::default()
         };
         self.base.set_client_compat_from_handshake(&handshake);
     }
 
-    fn send_login(&self, version: u16) {
-        self.send_login_with_credentials(version, b"alice", b"secret");
+    fn send_login(&self, version: ClientVersion) {
+        self.send_login_with_credentials(version, LoginCredentials::new(b"alice", b"secret"));
     }
 
-    fn send_login_with_credentials(&self, version: u16, username: &[u8], password: &[u8]) {
+    fn send_login_with_credentials(
+        &self,
+        version: ClientVersion,
+        credentials: LoginCredentials<'_>,
+    ) {
         if self.base.is_skipped() {
             return;
         }
@@ -65,7 +107,8 @@ impl LoginCompatWorld {
             clippy::big_endian_bytes,
             reason = "test fixture uses explicit network byte order payload"
         )]
-        let version_bytes = version.to_be_bytes();
+        let version_bytes = version.as_u16().to_be_bytes();
+        let (username, password) = credentials.into_parts();
         let frame = match build_frame(
             TransactionType::Login,
             1,
@@ -143,22 +186,23 @@ impl LoginCompatWorld {
 
     fn assert_login_reply(
         &self,
-        expected_error: i32,
+        expected_error: ErrorCode,
         validate_params: impl FnOnce(&[(FieldId, Vec<u8>)]) -> Result<(), Box<dyn std::error::Error>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if self.base.is_skipped() {
             return Ok(());
         }
         self.with_reply(|tx| {
-            let expected_error_u32 = u32::try_from(expected_error).map_err(|_| {
+            let expected_error_value = expected_error.as_i32();
+            let expected_error_reply = u32::try_from(expected_error_value).map_err(|_| {
                 Self::assertion_error(format!(
                     "expected login failure error {}, got {}",
-                    expected_error, tx.header.error
+                    expected_error_value, tx.header.error
                 ))
             })?;
-            if tx.header.error != expected_error_u32 {
+            if tx.header.error != expected_error_reply {
                 return Err(Self::assertion_error(Self::expected_login_error_message(
-                    expected_error,
+                    expected_error_value,
                     tx.header.error,
                 )));
             }
@@ -175,21 +219,24 @@ impl LoginCompatWorld {
         Ok(())
     }
 
-    fn assert_banner_fields(&self, should_include: bool) -> Result<(), Box<dyn std::error::Error>> {
-        self.assert_login_reply(0, |params| {
-            if should_include {
-                Self::assert_includes_banner_fields(params)?;
-            } else {
-                Self::assert_omits_banner_fields(params)?;
+    fn assert_banner_fields(
+        &self,
+        assertion: BannerFieldAssertion,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.assert_login_reply(ErrorCode::SUCCESS, |params| {
+            match assertion {
+                BannerFieldAssertion::ShouldInclude => Self::assert_includes_banner_fields(params)?,
+                BannerFieldAssertion::ShouldOmit => Self::assert_omits_banner_fields(params)?,
             }
             Ok(())
         })
     }
 
     fn assert_login_fails_without_banner_fields(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.assert_login_reply(ERR_NOT_AUTHENTICATED.cast_signed(), |params| {
-            Self::assert_omits_banner_fields(params)
-        })
+        self.assert_login_reply(
+            ErrorCode::new(ERR_NOT_AUTHENTICATED.cast_signed()),
+            Self::assert_omits_banner_fields,
+        )
     }
 }
 
@@ -209,25 +256,30 @@ fn given_users(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error
 
 #[given("a handshake sub-version {sub_version}")]
 fn given_sub_version(world: &LoginCompatWorld, sub_version: u16) {
-    world.set_handshake_sub_version(sub_version);
+    world.set_handshake_sub_version(ClientVersion::new(sub_version));
 }
 
 #[when("I send a login request with client version {version}")]
-fn when_login(world: &LoginCompatWorld, version: u16) { world.send_login(version); }
+fn when_login(world: &LoginCompatWorld, version: u16) {
+    world.send_login(ClientVersion::new(version));
+}
 
 #[when("I send a login request with invalid credentials and client version {version}")]
 fn when_login_with_invalid_credentials(world: &LoginCompatWorld, version: u16) {
-    world.send_login_with_credentials(version, b"alice", b"wrong-password");
+    world.send_login_with_credentials(
+        ClientVersion::new(version),
+        LoginCredentials::new(b"alice", b"wrong-password"),
+    );
 }
 
 #[then("the login reply includes banner fields")]
 fn then_includes_banner_fields(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error>> {
-    world.assert_banner_fields(true)
+    world.assert_banner_fields(BannerFieldAssertion::ShouldInclude)
 }
 
 #[then("the login reply omits banner fields")]
 fn then_omits_banner_fields(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error>> {
-    world.assert_banner_fields(false)
+    world.assert_banner_fields(BannerFieldAssertion::ShouldOmit)
 }
 
 #[then("the login reply fails without banner fields")]
