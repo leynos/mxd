@@ -26,6 +26,15 @@ impl ClientVersion {
     const fn as_u16(self) -> u16 { self.0 }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HandshakeSubVersion(u16);
+
+impl HandshakeSubVersion {
+    const fn new(sub_version: u16) -> Self { Self(sub_version) }
+
+    const fn as_u16(self) -> u16 { self.0 }
+}
+
 #[derive(Debug, Clone)]
 struct LoginCredentials<'a> {
     username: &'a [u8],
@@ -80,12 +89,12 @@ impl LoginCompatWorld {
         self.base.setup_db(setup).map_err(Into::into)
     }
 
-    fn set_handshake_sub_version(&self, sub_version: ClientVersion) {
+    fn set_handshake_sub_version(&self, handshake_sub_version: HandshakeSubVersion) {
         if self.base.is_skipped() {
             return;
         }
         let handshake = HandshakeMetadata {
-            sub_version: sub_version.as_u16(),
+            sub_version: handshake_sub_version.as_u16(),
             ..HandshakeMetadata::default()
         };
         self.base.set_client_compat_from_handshake(&handshake);
@@ -251,7 +260,7 @@ fn given_users(world: &LoginCompatWorld) -> Result<(), Box<dyn std::error::Error
 
 #[given("a handshake sub-version {sub_version}")]
 fn given_sub_version(world: &LoginCompatWorld, sub_version: u16) {
-    world.set_handshake_sub_version(ClientVersion::new(sub_version));
+    world.set_handshake_sub_version(HandshakeSubVersion::new(sub_version));
 }
 
 #[when("I send a login request with client version {version}")]

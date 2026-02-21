@@ -37,9 +37,16 @@ fn test_router() -> WireframeRouter {
 
 fn tx_id(tx_type: TransactionType) -> u16 { u16::from(tx_type) }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct LoginVersion(u16);
+
+impl From<u16> for LoginVersion {
+    fn from(value: u16) -> Self { Self(value) }
+}
+
 #[expect(clippy::panic_in_result_fn, reason = "test helper assertions")]
 fn run_login_test(
-    login_version: Option<u16>,
+    login_version: Option<LoginVersion>,
     expected_auth_strategy: &str,
 ) -> Result<(), AnyError> {
     let rt = runtime()?;
@@ -53,7 +60,7 @@ fn run_login_test(
 
     compat_spy::clear();
 
-    let version_bytes = login_version.unwrap_or_default().to_be_bytes();
+    let version_bytes = login_version.unwrap_or_default().0.to_be_bytes();
     let mut fields: Vec<(FieldId, &[u8])> = vec![
         (FieldId::Login, b"alice".as_ref()),
         (FieldId::Password, b"secret".as_ref()),
@@ -217,7 +224,7 @@ fn parse_failure_does_not_trigger_hooks() -> Result<(), AnyError> {
 #[rstest]
 #[serial]
 fn first_hotline_login_dispatches_with_hotline_strategy_label() -> Result<(), AnyError> {
-    let result = run_login_test(Some(190), "hotline-default");
+    let result = run_login_test(Some(LoginVersion::from(190)), "hotline-default");
     assert!(result.is_ok(), "login test should succeed: {result:?}");
     result
 }
