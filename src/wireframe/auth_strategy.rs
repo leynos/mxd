@@ -27,49 +27,17 @@ pub(crate) trait AuthStrategy: Send + Sync {
     ) -> AuthStrategyFuture<'a>;
 }
 
-/// Default strategy for Hotline clients.
+/// Shared default strategy used by all current client kinds.
 #[derive(Debug, Default)]
-pub(crate) struct HotlineAuthStrategy;
+pub(crate) struct DefaultAuthStrategy;
 
-/// Default strategy for `SynHX` clients.
-#[derive(Debug, Default)]
-pub(crate) struct SynHxAuthStrategy;
-
-/// Default strategy for unknown clients.
-#[derive(Debug, Default)]
-pub(crate) struct UnknownAuthStrategy;
-
-fn default_authenticate(command: Command, context: CommandContext<'_>) -> AuthStrategyFuture<'_> {
-    Box::pin(async move { command.process_with_outbound(context).await })
-}
-
-impl AuthStrategy for HotlineAuthStrategy {
+impl AuthStrategy for DefaultAuthStrategy {
     fn authenticate<'a>(
         &self,
         command: Command,
         context: CommandContext<'a>,
     ) -> AuthStrategyFuture<'a> {
-        default_authenticate(command, context)
-    }
-}
-
-impl AuthStrategy for SynHxAuthStrategy {
-    fn authenticate<'a>(
-        &self,
-        command: Command,
-        context: CommandContext<'a>,
-    ) -> AuthStrategyFuture<'a> {
-        default_authenticate(command, context)
-    }
-}
-
-impl AuthStrategy for UnknownAuthStrategy {
-    fn authenticate<'a>(
-        &self,
-        command: Command,
-        context: CommandContext<'a>,
-    ) -> AuthStrategyFuture<'a> {
-        default_authenticate(command, context)
+        Box::pin(async move { command.process_with_outbound(context).await })
     }
 }
 
@@ -83,18 +51,12 @@ pub(crate) const fn auth_strategy_label(client_kind: ClientKind) -> &'static str
     }
 }
 
-static HOTLINE_AUTH_STRATEGY: HotlineAuthStrategy = HotlineAuthStrategy;
-static SYNHX_AUTH_STRATEGY: SynHxAuthStrategy = SynHxAuthStrategy;
-static UNKNOWN_AUTH_STRATEGY: UnknownAuthStrategy = UnknownAuthStrategy;
+static DEFAULT_AUTH_STRATEGY: DefaultAuthStrategy = DefaultAuthStrategy;
 
 /// Select the default login auth strategy for a classified client.
 #[must_use]
-pub(crate) fn auth_strategy_for_client(client_kind: ClientKind) -> &'static dyn AuthStrategy {
-    match client_kind {
-        ClientKind::Hotline85 | ClientKind::Hotline19 => &HOTLINE_AUTH_STRATEGY,
-        ClientKind::SynHx => &SYNHX_AUTH_STRATEGY,
-        ClientKind::Unknown => &UNKNOWN_AUTH_STRATEGY,
-    }
+pub(crate) fn auth_strategy_for_client(_client_kind: ClientKind) -> &'static dyn AuthStrategy {
+    &DEFAULT_AUTH_STRATEGY
 }
 
 #[cfg(test)]
