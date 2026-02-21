@@ -1,11 +1,10 @@
 //! Compatibility layer orchestrating request and reply hooks.
 //!
-//! `CompatibilityLayer` centralizes the per-transaction compatibility
-//! logic that was previously scattered across inline calls in the
-//! routing module. It owns references to the XOR and client
-//! compatibility state plus the selected login auth/reply strategies.
-//! The router calls the layer at well-defined points in the transaction
-//! lifecycle.
+//! `CompatibilityLayer` centralizes command-dispatch and reply-side
+//! compatibility logic that was previously scattered across inline calls in the
+//! routing module. Request-side hooks are handled by
+//! [`RequestCompatibility`] so login version metadata can be recorded before
+//! auth strategy selection.
 
 use std::net::SocketAddr;
 
@@ -27,18 +26,14 @@ const ERR_INTERNAL: u32 = 3;
 
 /// Centralized compatibility hooks for the transaction lifecycle.
 ///
-/// The layer is constructed once per connection and shared by the
-/// router. It exposes two hooks:
+/// The router constructs this layer after request hooks have run and client
+/// metadata has been recorded. It exposes two hooks:
 ///
-/// - [`on_request`](Self::on_request) — decodes XOR-encoded payloads and records the login version
-///   when applicable.
 /// - [`process_command`](Self::process_command) — routes login command execution through
 ///   [`AuthStrategy`].
 /// - [`on_reply`](Self::on_reply) — augments the reply with client-specific extras (e.g. banner
 ///   fields for Hotline 1.9).
 pub(crate) struct CompatibilityLayer<'a> {
-    xor: &'a XorCompatibility,
-    client: &'a ClientCompatibility,
     auth_strategy: &'a dyn AuthStrategy,
     login_reply_augmenter: &'a dyn LoginReplyAugmenter,
 }
@@ -46,35 +41,13 @@ pub(crate) struct CompatibilityLayer<'a> {
 impl<'a> CompatibilityLayer<'a> {
     /// Construct a new compatibility layer from borrowed state.
     pub(crate) const fn new(
-        xor: &'a XorCompatibility,
-        client: &'a ClientCompatibility,
         auth_strategy: &'a dyn AuthStrategy,
         login_reply_augmenter: &'a dyn LoginReplyAugmenter,
     ) -> Self {
         Self {
-            xor,
-            client,
             auth_strategy,
             login_reply_augmenter,
         }
-    }
-
-    /// Apply request-side compatibility hooks.
-    ///
-    /// 1. Decode XOR-encoded payload when the transaction type carries payload.
-    /// 2. Record the login version from the payload when the transaction is a login request.
-    ///
-    /// Returns the (potentially decoded) transaction on success, or
-    /// error reply bytes when payload decoding fails.
-    pub(crate) fn on_request(
-        &self,
-        peer: SocketAddr,
-        tx_type: TransactionType,
-        transaction: Transaction,
-    ) -> Result<Transaction, Vec<u8>> {
-        let tx = self.decode_payload(peer, tx_type, transaction)?;
-        self.record_login_version(tx_type, &tx.payload);
-        Ok(tx)
     }
 
     /// Process a parsed command through login auth strategy or default dispatch.
@@ -101,38 +74,66 @@ impl<'a> CompatibilityLayer<'a> {
     pub(crate) fn on_reply(&self, reply: &mut Transaction) {
         self.login_reply_augmenter.augment(reply);
     }
+}
 
-    /// Decode transaction payload bytes when the transaction type
-    /// carries payload.
-    fn decode_payload(
+/// Request-side compatibility hooks evaluated before auth strategy selection.
+pub(crate) struct RequestCompatibility<'a> {
+    xor: &'a XorCompatibility,
+    client: &'a ClientCompatibility,
+}
+
+impl<'a> RequestCompatibility<'a> {
+    /// Construct request-side compatibility from shared connection state.
+    pub(crate) const fn new(xor: &'a XorCompatibility, client: &'a ClientCompatibility) -> Self {
+        Self { xor, client }
+    }
+
+    /// Decode payload compatibility and record login version metadata.
+    pub(crate) fn on_request(
         &self,
         peer: SocketAddr,
         tx_type: TransactionType,
         transaction: Transaction,
     ) -> Result<Transaction, Vec<u8>> {
-        if !tx_type.allows_payload() {
-            return Ok(transaction);
-        }
-        let decoded_payload = match self.xor.decode_payload(&transaction.payload) {
-            Ok(payload) => payload,
-            Err(e) => {
-                return Err(ReplyBuilder::from_header(peer, &transaction.header)
-                    .command_parse_error(e, ERR_INTERNAL));
-            }
-        };
-        Ok(Transaction {
-            payload: decoded_payload,
-            ..transaction
-        })
+        let tx = decode_payload_for_request(self.xor, peer, tx_type, transaction)?;
+        record_login_version_for_request(self.client, tx_type, &tx.payload);
+        Ok(tx)
     }
+}
 
-    /// Record login version metadata for the compatibility policy.
-    fn record_login_version(&self, tx_type: TransactionType, payload: &[u8]) {
-        if tx_type == TransactionType::Login
-            && let Err(error) = self.client.record_login_payload(payload)
-        {
-            tracing::warn!(%error, "failed to record login version from payload");
+/// Decode transaction payload bytes when the transaction type carries payload.
+fn decode_payload_for_request(
+    xor: &XorCompatibility,
+    peer: SocketAddr,
+    tx_type: TransactionType,
+    transaction: Transaction,
+) -> Result<Transaction, Vec<u8>> {
+    if !tx_type.allows_payload() {
+        return Ok(transaction);
+    }
+    let decoded_payload = match xor.decode_payload(&transaction.payload) {
+        Ok(payload) => payload,
+        Err(error) => {
+            return Err(ReplyBuilder::from_header(peer, &transaction.header)
+                .command_parse_error(error, ERR_INTERNAL));
         }
+    };
+    Ok(Transaction {
+        payload: decoded_payload,
+        ..transaction
+    })
+}
+
+/// Record login version metadata for the compatibility policy.
+fn record_login_version_for_request(
+    client: &ClientCompatibility,
+    tx_type: TransactionType,
+    payload: &[u8],
+) {
+    if tx_type == TransactionType::Login
+        && let Err(error) = client.record_login_payload(payload)
+    {
+        tracing::warn!(%error, "failed to record login version from payload");
     }
 }
 
@@ -176,9 +177,6 @@ mod tests {
         transaction_type::TransactionType,
         wireframe::{
             auth_strategy::{AuthStrategy, AuthStrategyFuture},
-            compat::XorCompatibility,
-            compat_policy::ClientCompatibility,
-            connection::HandshakeMetadata,
             login_reply_augmenter::LoginReplyAugmenter,
             test_helpers::dummy_pool,
         },
@@ -236,11 +234,9 @@ mod tests {
     }
 
     fn run_auth_strategy_test(tx_type: TransactionType, expected_auth_calls: u32) {
-        let xor = XorCompatibility::disabled();
-        let client = ClientCompatibility::from_handshake(&HandshakeMetadata::default());
         let auth = SpyAuthStrategy::new();
         let augmenter = SpyReplyAugmenter::new();
-        let layer = CompatibilityLayer::new(&xor, &client, &auth, &augmenter);
+        let layer = CompatibilityLayer::new(&auth, &augmenter);
         let mut session = Session::default();
         let mut transport = ReplyBuffer::new();
         let messaging = NoopOutboundMessaging;
@@ -280,11 +276,9 @@ mod tests {
 
     #[test]
     fn on_reply_calls_login_reply_augmenter() {
-        let xor = XorCompatibility::disabled();
-        let client = ClientCompatibility::from_handshake(&HandshakeMetadata::default());
         let auth = SpyAuthStrategy::new();
         let augmenter = SpyReplyAugmenter::new();
-        let layer = CompatibilityLayer::new(&xor, &client, &auth, &augmenter);
+        let layer = CompatibilityLayer::new(&auth, &augmenter);
         let mut reply = Transaction {
             header: header(TransactionType::Login),
             payload: Vec::new(),

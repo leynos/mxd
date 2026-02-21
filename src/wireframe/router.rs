@@ -61,15 +61,9 @@ impl WireframeRouter {
             session,
             messaging,
         } = context;
-        let login_reply_augmenter = ClientCompatibilityLoginReplyAugmenter::new(&self.client);
-        let pre_request_layer = CompatibilityLayer::new(
-            &self.xor,
-            &self.client,
-            auth_strategy_for_client(self.client.kind()),
-            &login_reply_augmenter,
-        );
+        let request_compat = compat_layer::RequestCompatibility::new(&self.xor, &self.client);
 
-        let (header, tx_type, cmd) = match Self::prepare_command(frame, peer, &pre_request_layer) {
+        let (header, tx_type, cmd) = match Self::prepare_command(frame, peer, &request_compat) {
             Ok(parsed) => parsed,
             Err(reply) => return reply,
         };
@@ -77,12 +71,8 @@ impl WireframeRouter {
         // the first login dispatch.
         let client_kind = self.client.kind();
         let auth_strategy = auth_strategy_for_client(client_kind);
-        let compat_layer = CompatibilityLayer::new(
-            &self.xor,
-            &self.client,
-            auth_strategy,
-            &login_reply_augmenter,
-        );
+        let login_reply_augmenter = ClientCompatibilityLoginReplyAugmenter::new(&self.client);
+        let compat_layer = CompatibilityLayer::new(auth_strategy, &login_reply_augmenter);
 
         #[cfg(test)]
         {
@@ -117,7 +107,7 @@ impl WireframeRouter {
     fn prepare_command(
         frame: &[u8],
         peer: SocketAddr,
-        compat_layer: &CompatibilityLayer<'_>,
+        request_compat: &compat_layer::RequestCompatibility<'_>,
     ) -> Result<(crate::transaction::FrameHeader, TransactionType, Command), Vec<u8>> {
         let transaction =
             parse_transaction(frame).map_err(|e| handle_parse_error(peer, frame, e))?;
@@ -127,7 +117,7 @@ impl WireframeRouter {
         #[cfg(test)]
         compat_spy::record(compat_spy::HookEvent::OnRequest { tx_type: header.ty });
 
-        let request_transaction = compat_layer.on_request(peer, tx_type, transaction)?;
+        let request_transaction = request_compat.on_request(peer, tx_type, transaction)?;
         let command = Command::from_transaction(request_transaction)
             .map_err(|e| handle_command_parse_error(peer, &header, e))?;
         Ok((header, tx_type, command))
