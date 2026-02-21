@@ -115,7 +115,9 @@ mod tests {
         let cfg = AppConfig::default();
         let args = CreateUserArgs { username, password };
 
-        let err = run_command(Commands::CreateUser(args), &cfg)
+        // Validate missing-field checks directly to avoid process-wide
+        // environment/config merge races during `cargo test` parallel runs.
+        let err = run_create_user(args, &cfg)
             .await
             .expect_err("command must fail");
 
