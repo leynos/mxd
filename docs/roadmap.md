@@ -203,7 +203,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Acceptance: `AuthStrategy` and `LoginReplyAugmenter` are wired into the
   guardrail routing entrypoint, and default behaviour for Hotline and SynHX
   remains unchanged. See
-  `docs/adr-003-login-authentication-and-reply-augmentation.md`. Status:
+  [ADR-003](docs/adr-003-login-authentication-and-reply-augmentation.md). Status:
   Completed on 20 February 2026 by wiring `AuthStrategy` and
   `LoginReplyAugmenter` into `WireframeRouter`/`CompatibilityLayer` while
   preserving default Hotline and SynHX behaviour. Validation includes

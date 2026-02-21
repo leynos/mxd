@@ -235,7 +235,6 @@ mod tests {
         }
     }
 
-    #[cfg(test)]
     fn run_auth_strategy_test(tx_type: TransactionType, expected_auth_calls: u32) {
         let xor = XorCompatibility::disabled();
         let client = ClientCompatibility::from_handshake(&HandshakeMetadata::default());

@@ -194,13 +194,8 @@ impl LoginCompatWorld {
         }
         self.with_reply(|tx| {
             let expected_error_value = expected_error.as_i32();
-            let expected_error_reply = u32::try_from(expected_error_value).map_err(|_| {
-                Self::assertion_error(format!(
-                    "expected login failure error {}, got {}",
-                    expected_error_value, tx.header.error
-                ))
-            })?;
-            if tx.header.error != expected_error_reply {
+            let actual_error_value = i64::from(tx.header.error);
+            if actual_error_value != i64::from(expected_error_value) {
                 return Err(Self::assertion_error(Self::expected_login_error_message(
                     expected_error_value,
                     tx.header.error,

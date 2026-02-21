@@ -49,8 +49,11 @@ fn verify_ready_server(child: &mut Child) -> Result<(), AnyError> {
 
 fn check_timeout(start: &Instant, addr: SocketAddr) -> Result<(), AnyError> {
     if start.elapsed() >= STARTUP_TIMEOUT {
-        warn!(?addr, "server did not open listening port before timeout");
-        return Err(anyhow::anyhow!("server failed to open listening port"));
+        warn!(
+            ?addr,
+            "server did not complete protocol readiness before timeout"
+        );
+        return Err(anyhow::anyhow!("server failed protocol readiness check"));
     }
     Ok(())
 }

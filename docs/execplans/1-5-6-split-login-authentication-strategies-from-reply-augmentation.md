@@ -212,7 +212,7 @@ Recommended sequence:
 1. Prepare postgres runtime:
 
    ```sh
-   cargo run --release --bin pg_embedded_setup_unpriv \
+   pg_embedded_setup_unpriv \
      | tee /tmp/pg-setup-$(get-project)-$BRANCH.out
    ```
 
