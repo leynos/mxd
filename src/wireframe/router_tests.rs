@@ -37,11 +37,11 @@ fn test_router() -> WireframeRouter {
 
 fn tx_id(tx_type: TransactionType) -> u16 { u16::from(tx_type) }
 
-/// Login hooks fire in order: `on_request` → dispatch → `on_reply`.
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
-#[rstest]
-#[serial]
-fn login_hook_ordering_is_request_then_dispatch_then_reply() -> Result<(), AnyError> {
+#[expect(clippy::panic_in_result_fn, reason = "test helper assertions")]
+fn run_login_test(
+    login_version: Option<u16>,
+    expected_auth_strategy: &str,
+) -> Result<(), AnyError> {
     let rt = runtime()?;
     let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
         return Ok(());
@@ -53,11 +53,16 @@ fn login_hook_ordering_is_request_then_dispatch_then_reply() -> Result<(), AnyEr
 
     compat_spy::clear();
 
-    let frame = build_frame(
-        TransactionType::Login,
-        1,
-        &[(FieldId::Login, b"alice"), (FieldId::Password, b"secret")],
-    )?;
+    let version_bytes = login_version.unwrap_or_default().to_be_bytes();
+    let mut fields: Vec<(FieldId, &[u8])> = vec![
+        (FieldId::Login, b"alice".as_ref()),
+        (FieldId::Password, b"secret".as_ref()),
+    ];
+    if login_version.is_some() {
+        fields.push((FieldId::Version, version_bytes.as_ref()));
+    }
+
+    let frame = build_frame(TransactionType::Login, 1, &fields)?;
     let reply = rt.block_on(router.route(
         &frame,
         RouteContext {
@@ -72,21 +77,38 @@ fn login_hook_ordering_is_request_then_dispatch_then_reply() -> Result<(), AnyEr
 
     let events = compat_spy::take();
     assert_eq!(
-        events,
-        vec![
-            compat_spy::HookEvent::OnRequest {
-                tx_type: tx_id(TransactionType::Login),
-            },
-            compat_spy::HookEvent::Dispatch {
-                tx_type: tx_id(TransactionType::Login),
-                auth_strategy: "unknown-default",
-            },
-            compat_spy::HookEvent::OnReply {
-                tx_type: tx_id(TransactionType::Login),
-            },
-        ],
+        events[0],
+        compat_spy::HookEvent::OnRequest {
+            tx_type: tx_id(TransactionType::Login),
+        }
     );
+    assert_eq!(
+        events[2],
+        compat_spy::HookEvent::OnReply {
+            tx_type: tx_id(TransactionType::Login),
+        }
+    );
+    match &events[1] {
+        compat_spy::HookEvent::Dispatch {
+            tx_type,
+            auth_strategy,
+        } => {
+            assert_eq!(*tx_type, tx_id(TransactionType::Login));
+            assert_eq!(*auth_strategy, expected_auth_strategy);
+        }
+        unexpected => panic!("expected dispatch hook event, got {unexpected:?}"),
+    }
     Ok(())
+}
+
+/// Login hooks fire in order: `on_request` → dispatch → `on_reply`.
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
+#[serial]
+fn login_hook_ordering_is_request_then_dispatch_then_reply() -> Result<(), AnyError> {
+    let result = run_login_test(None, "unknown-default");
+    assert!(result.is_ok(), "login test should succeed: {result:?}");
+    result
 }
 
 /// Non-login hooks fire in order for authenticated requests.
@@ -195,54 +217,7 @@ fn parse_failure_does_not_trigger_hooks() -> Result<(), AnyError> {
 #[rstest]
 #[serial]
 fn first_hotline_login_dispatches_with_hotline_strategy_label() -> Result<(), AnyError> {
-    let rt = runtime()?;
-    let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
-        return Ok(());
-    };
-    let router = test_router();
-    let mut session = Session::default();
-    let peer = "127.0.0.1:12345".parse()?;
-    let messaging = NoopOutboundMessaging;
-    let login_version = 190u16.to_be_bytes();
-
-    compat_spy::clear();
-
-    let frame = build_frame(
-        TransactionType::Login,
-        1,
-        &[
-            (FieldId::Login, b"alice"),
-            (FieldId::Password, b"secret"),
-            (FieldId::Version, login_version.as_ref()),
-        ],
-    )?;
-    let reply = rt.block_on(router.route(
-        &frame,
-        RouteContext {
-            peer,
-            pool: test_db.pool(),
-            session: &mut session,
-            messaging: &messaging,
-        },
-    ));
-    let tx = parse_transaction(&reply)?;
-    assert_eq!(tx.header.error, 0, "login should succeed");
-
-    let events = compat_spy::take();
-    assert_eq!(
-        events,
-        vec![
-            compat_spy::HookEvent::OnRequest {
-                tx_type: tx_id(TransactionType::Login),
-            },
-            compat_spy::HookEvent::Dispatch {
-                tx_type: tx_id(TransactionType::Login),
-                auth_strategy: "hotline-default",
-            },
-            compat_spy::HookEvent::OnReply {
-                tx_type: tx_id(TransactionType::Login),
-            },
-        ],
-    );
-    Ok(())
+    let result = run_login_test(Some(190), "hotline-default");
+    assert!(result.is_ok(), "login test should succeed: {result:?}");
+    result
 }
