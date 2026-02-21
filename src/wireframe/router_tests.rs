@@ -84,6 +84,11 @@ fn run_login_test(
 
     let events = compat_spy::take();
     assert_eq!(
+        events.len(),
+        3,
+        "expected three compatibility hook events for login, got {events:?}"
+    );
+    assert_eq!(
         events[0],
         compat_spy::HookEvent::OnRequest {
             tx_type: tx_id(TransactionType::Login),

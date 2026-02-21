@@ -203,7 +203,7 @@ impl LoginCompatWorld {
         }
         self.with_reply(|tx| {
             let expected_error_value = expected_error.as_i32();
-            let actual_error_value = i64::from(tx.header.error);
+            let actual_error_value = i64::from(tx.header.error.cast_signed());
             if actual_error_value != i64::from(expected_error_value) {
                 return Err(Self::assertion_error(Self::expected_login_error_message(
                     expected_error_value,
