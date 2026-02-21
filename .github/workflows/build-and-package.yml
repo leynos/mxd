@@ -99,7 +99,7 @@ jobs:
 
       - name: Upload Linux artefacts
         if: inputs.platform == 'linux' && inputs.should-upload-workflow-artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact-name }}
           path: dist
