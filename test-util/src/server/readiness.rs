@@ -109,16 +109,6 @@ mod tests {
         TcpListener::bind("localhost:0").expect("listen socket should bind")
     }
 
-    #[fixture]
-    fn unused_addr() -> SocketAddr {
-        let listener = TcpListener::bind("localhost:0").expect("ephemeral socket should bind");
-        let addr = listener
-            .local_addr()
-            .expect("ephemeral socket should provide a local address");
-        drop(listener);
-        addr
-    }
-
     #[rstest]
     fn wait_for_listening_reports_ready(listening_socket: TcpListener) -> Result<(), AnyError> {
         let addr = listening_socket
@@ -129,8 +119,9 @@ mod tests {
     }
 
     #[rstest]
-    fn wait_for_listening_times_out(unused_addr: SocketAddr) {
-        let result = wait_for_listening(unused_addr, Duration::from_millis(150));
+    fn wait_for_listening_times_out() {
+        let closed_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        let result = wait_for_listening(closed_addr, Duration::from_millis(150));
         assert!(
             result.is_err(),
             "expected readiness to time out for closed port"
