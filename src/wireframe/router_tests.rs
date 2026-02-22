@@ -1,10 +1,10 @@
 //! Tests for wireframe router compatibility hook ordering and strategy dispatch.
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use serial_test::serial;
-use test_util::{AnyError, build_test_db, setup_files_db};
+use test_util::{AnyError, TestDb, build_test_db, setup_files_db};
 use tokio::runtime::{Builder, Runtime};
 
 use super::{RouteContext, WireframeRouter, compat_spy};
@@ -44,20 +44,39 @@ impl From<u16> for LoginVersion {
     fn from(value: u16) -> Self { Self(value) }
 }
 
+struct RouterTestSetup {
+    rt: Runtime,
+    test_db: TestDb,
+    router: WireframeRouter,
+    session: Session,
+    peer: SocketAddr,
+    messaging: NoopOutboundMessaging,
+}
+
+#[fixture]
+fn router_test_setup() -> Option<RouterTestSetup> {
+    let rt = runtime().unwrap_or_else(|error| panic!("failed to build runtime: {error}"));
+    let test_db = build_test_db(&rt, setup_files_db)
+        .unwrap_or_else(|error| panic!("failed to build test database: {error}"))?;
+    let peer = "127.0.0.1:12345"
+        .parse()
+        .unwrap_or_else(|error| panic!("failed to parse peer address: {error}"));
+    Some(RouterTestSetup {
+        rt,
+        test_db,
+        router: test_router(),
+        session: Session::default(),
+        peer,
+        messaging: NoopOutboundMessaging,
+    })
+}
+
 #[expect(clippy::panic_in_result_fn, reason = "test helper assertions")]
 fn run_login_test(
     login_version: Option<LoginVersion>,
     expected_auth_strategy: &str,
+    setup: &mut RouterTestSetup,
 ) -> Result<(), AnyError> {
-    let rt = runtime()?;
-    let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
-        return Ok(());
-    };
-    let router = test_router();
-    let mut session = Session::default();
-    let peer = "127.0.0.1:12345".parse()?;
-    let messaging = NoopOutboundMessaging;
-
     compat_spy::clear();
 
     let version_bytes = login_version.unwrap_or_default().0.to_be_bytes();
@@ -70,13 +89,13 @@ fn run_login_test(
     }
 
     let frame = build_frame(TransactionType::Login, 1, &fields)?;
-    let reply = rt.block_on(router.route(
+    let reply = setup.rt.block_on(setup.router.route(
         &frame,
         RouteContext {
-            peer,
-            pool: test_db.pool(),
-            session: &mut session,
-            messaging: &messaging,
+            peer: setup.peer,
+            pool: setup.test_db.pool(),
+            session: &mut setup.session,
+            messaging: &setup.messaging,
         },
     ));
     let tx = parse_transaction(&reply)?;
@@ -117,8 +136,13 @@ fn run_login_test(
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 #[serial]
-fn login_hook_ordering_is_request_then_dispatch_then_reply() -> Result<(), AnyError> {
-    let result = run_login_test(None, "unknown-default");
+fn login_hook_ordering_is_request_then_dispatch_then_reply(
+    router_test_setup: Option<RouterTestSetup>,
+) -> Result<(), AnyError> {
+    let Some(mut setup) = router_test_setup else {
+        return Ok(());
+    };
+    let result = run_login_test(None, "unknown-default", &mut setup);
     assert!(result.is_ok(), "login test should succeed: {result:?}");
     result
 }
@@ -127,15 +151,12 @@ fn login_hook_ordering_is_request_then_dispatch_then_reply() -> Result<(), AnyEr
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 #[serial]
-fn non_login_hooks_fire_in_order() -> Result<(), AnyError> {
-    let rt = runtime()?;
-    let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
+fn non_login_hooks_fire_in_order(
+    router_test_setup: Option<RouterTestSetup>,
+) -> Result<(), AnyError> {
+    let Some(mut setup) = router_test_setup else {
         return Ok(());
     };
-    let router = test_router();
-    let mut session = Session::default();
-    let peer = "127.0.0.1:12345".parse()?;
-    let messaging = NoopOutboundMessaging;
 
     // Log in first.
     let login_frame = build_frame(
@@ -143,13 +164,13 @@ fn non_login_hooks_fire_in_order() -> Result<(), AnyError> {
         1,
         &[(FieldId::Login, b"alice"), (FieldId::Password, b"secret")],
     )?;
-    let login_reply = rt.block_on(router.route(
+    let login_reply = setup.rt.block_on(setup.router.route(
         &login_frame,
         RouteContext {
-            peer,
-            pool: test_db.pool(),
-            session: &mut session,
-            messaging: &messaging,
+            peer: setup.peer,
+            pool: setup.test_db.pool(),
+            session: &mut setup.session,
+            messaging: &setup.messaging,
         },
     ));
     let login_tx = parse_transaction(&login_reply)?;
@@ -159,13 +180,13 @@ fn non_login_hooks_fire_in_order() -> Result<(), AnyError> {
     compat_spy::clear();
 
     let frame = build_frame(TransactionType::GetFileNameList, 2, &[])?;
-    let reply = rt.block_on(router.route(
+    let reply = setup.rt.block_on(setup.router.route(
         &frame,
         RouteContext {
-            peer,
-            pool: test_db.pool(),
-            session: &mut session,
-            messaging: &messaging,
+            peer: setup.peer,
+            pool: setup.test_db.pool(),
+            session: &mut setup.session,
+            messaging: &setup.messaging,
         },
     ));
     let tx = parse_transaction(&reply)?;
@@ -197,7 +218,7 @@ fn non_login_hooks_fire_in_order() -> Result<(), AnyError> {
 fn parse_failure_does_not_trigger_hooks() -> Result<(), AnyError> {
     let router = test_router();
     let mut session = Session::default();
-    let peer = "127.0.0.1:12345".parse().map_err(AnyError::from)?;
+    let peer = "127.0.0.1:12345".parse()?;
     let messaging = NoopOutboundMessaging;
     let pool = dummy_pool();
 
@@ -228,8 +249,13 @@ fn parse_failure_does_not_trigger_hooks() -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 #[serial]
-fn first_hotline_login_dispatches_with_hotline_strategy_label() -> Result<(), AnyError> {
-    let result = run_login_test(Some(LoginVersion::from(190)), "hotline-default");
+fn first_hotline_login_dispatches_with_hotline_strategy_label(
+    router_test_setup: Option<RouterTestSetup>,
+) -> Result<(), AnyError> {
+    let Some(mut setup) = router_test_setup else {
+        return Ok(());
+    };
+    let result = run_login_test(Some(LoginVersion::from(190)), "hotline-default", &mut setup);
     assert!(result.is_ok(), "login test should succeed: {result:?}");
     result
 }
