@@ -11,6 +11,7 @@ use std::{
 };
 
 use mxd::{
+    commands::ERR_NOT_AUTHENTICATED,
     db::DbPool,
     field_id::FieldId,
     handler::Session,
@@ -200,6 +201,56 @@ fn when_synhx_login(world: &GuardrailWorld) {
     );
 }
 
+#[expect(
+    clippy::big_endian_bytes,
+    reason = "test fixture uses explicit network byte order payload"
+)]
+#[when("a SynHX client logs in with Hotline 1.9 version")]
+fn when_synhx_login_with_hotline_19_version(world: &GuardrailWorld) {
+    if world.is_skipped() {
+        return;
+    }
+    let handshake = HandshakeMetadata {
+        sub_version: 2,
+        ..HandshakeMetadata::default()
+    };
+    world.set_router(GuardrailWorld::build_router(
+        XorCompatibility::disabled(),
+        &handshake,
+    ));
+    let version_bytes = 190u16.to_be_bytes();
+    world.send(
+        TransactionType::Login,
+        1,
+        &[
+            (FieldId::Login, b"alice"),
+            (FieldId::Password, b"secret"),
+            (FieldId::Version, version_bytes.as_slice()),
+        ],
+    );
+}
+
+#[expect(
+    clippy::big_endian_bytes,
+    reason = "test fixture uses explicit network byte order payload"
+)]
+#[when("a client logs in with invalid credentials and Hotline 1.9 version")]
+fn when_invalid_hotline_19_login(world: &GuardrailWorld) {
+    if world.is_skipped() {
+        return;
+    }
+    let version_bytes = 190u16.to_be_bytes();
+    world.send(
+        TransactionType::Login,
+        1,
+        &[
+            (FieldId::Login, b"alice"),
+            (FieldId::Password, b"wrong-password"),
+            (FieldId::Version, version_bytes.as_slice()),
+        ],
+    );
+}
+
 #[when("a client sends a XOR-encoded login")]
 fn when_xor_login(world: &GuardrailWorld) {
     if world.is_skipped() {
@@ -264,6 +315,30 @@ fn then_login_succeeds(world: &GuardrailWorld) {
     }
     world.with_reply(|tx| {
         assert_eq!(tx.header.error, 0, "login should succeed");
+    });
+}
+
+#[expect(clippy::expect_used, reason = "test assertion")]
+#[then("the login fails without banner fields")]
+fn then_login_fails_without_banner(world: &GuardrailWorld) {
+    if world.is_skipped() {
+        return;
+    }
+
+    world.with_reply(|tx| {
+        assert_eq!(
+            tx.header.error, ERR_NOT_AUTHENTICATED,
+            "login should fail with not-authenticated error"
+        );
+        let params = decode_params(&tx.payload).expect("valid reply payload");
+        assert!(
+            !params.iter().any(|(id, _)| *id == FieldId::BannerId),
+            "reply should not contain BannerId field"
+        );
+        assert!(
+            !params.iter().any(|(id, _)| *id == FieldId::ServerName),
+            "reply should not contain ServerName field"
+        );
     });
 }
 

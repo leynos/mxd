@@ -62,6 +62,11 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   banner-field augmentation on every routed transaction. Compatibility hooks
   cannot be accidentally bypassed by new routes. No user-visible behaviour
   change.
+- Roadmap item 1.5.6 is complete: the guardrail routing entrypoint now wires
+  `AuthStrategy` for login dispatch and `LoginReplyAugmenter` for login reply
+  decoration. Default Hotline 1.8.5/1.9 and SynHX behaviour remains unchanged,
+  so this is an internal architecture refactor rather than a user-visible
+  protocol change.
 
 ## Selecting a runtime
 

@@ -206,10 +206,11 @@ identification (`sub_version == 2`), while the login request's version field
 `>= 190`). Login replies always report server version 151, include banner
 fields 161/162 for Hotline 1.8.5 and 1.9 clients, and omit those fields for
 SynHX. Future quirks must consult this policy so adapter-layer gating remains
-centralized. ADR-002 and ADR-003 track follow-on guardrails that make routing
-entrypoints compatibility-aware by default and split login authentication
-strategies from reply augmentation to support HOPE extensions and SynHX hashed
-authentication.
+centralized. Roadmap item 1.5.6 implements ADR-003 by wiring `AuthStrategy` and
+`LoginReplyAugmenter` into the guardrail routing entrypoint while keeping
+request-side login metadata handling separate from reply augmentation. This
+preserves default Hotline and SynHX behaviour while keeping room for future
+HOPE and SynHX hashed-auth extensions.
 
 ### Exclusive OR (XOR) text-field compatibility
 
@@ -809,6 +810,11 @@ routed transaction:
   version when the transaction is a login request.
 - **`on_reply`** — augments the reply with client-specific extras (banner
   fields for Hotline 1.9 clients).
+
+Roadmap item 1.5.6 finalizes this split: `WireframeRouter` selects an
+`AuthStrategy` from `ClientKind`, `CompatibilityLayer::process_command` routes
+login transactions through that strategy, and `CompatibilityLayer::on_reply`
+delegates login reply decoration to `LoginReplyAugmenter`.
 
 Because the router is the only public entrypoint, new routes cannot
 accidentally bypass compatibility hooks. Internal routing functions

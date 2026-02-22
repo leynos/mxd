@@ -76,7 +76,7 @@ jobs:
       - name: Lint with Whitaker
         run: |
           if ! command -v whitaker >/dev/null 2>&1; then
-            cargo install --locked whitaker-installer --version 0.1.1
+            cargo install --locked whitaker-installer --version 0.2.0
             whitaker-installer --experimental
           fi
           RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }}
