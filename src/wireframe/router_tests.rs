@@ -79,7 +79,15 @@ fn run_login_test(
     setup: &mut RouterTestSetup,
 ) -> Result<(), AnyError> {
     compat_spy::clear();
+    let _ = execute_login(login_version, setup)?;
+    let events = compat_spy::take();
+    assert_hook_events(&events, expected_auth_strategy)
+}
 
+fn execute_login(
+    login_version: Option<LoginVersion>,
+    setup: &mut RouterTestSetup,
+) -> Result<Vec<u8>, AnyError> {
     let version_bytes = login_version.unwrap_or_default().0.to_be_bytes();
     let mut fields: Vec<(FieldId, &[u8])> = vec![
         (FieldId::Login, b"alice".as_ref()),
@@ -106,8 +114,13 @@ fn run_login_test(
             tx.header.error
         ));
     }
+    Ok(reply)
+}
 
-    let events = compat_spy::take();
+fn assert_hook_events(
+    events: &[compat_spy::HookEvent],
+    expected_auth_strategy: &str,
+) -> Result<(), AnyError> {
     if events.len() != 3 {
         return Err(anyhow!(
             "expected three compatibility hook events for login, got {events:?}"
