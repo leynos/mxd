@@ -2,6 +2,7 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
+use anyhow::anyhow;
 use rstest::{fixture, rstest};
 use serial_test::serial;
 use test_util::{AnyError, TestDb, build_test_db, setup_files_db};
@@ -54,24 +55,24 @@ struct RouterTestSetup {
 }
 
 #[fixture]
-fn router_test_setup() -> Option<RouterTestSetup> {
-    let rt = runtime().unwrap_or_else(|error| panic!("failed to build runtime: {error}"));
+fn router_test_setup() -> Result<Option<RouterTestSetup>, AnyError> {
+    let rt = runtime()?;
     let test_db = build_test_db(&rt, setup_files_db)
-        .unwrap_or_else(|error| panic!("failed to build test database: {error}"))?;
-    let peer = "127.0.0.1:12345"
-        .parse()
-        .unwrap_or_else(|error| panic!("failed to parse peer address: {error}"));
-    Some(RouterTestSetup {
+        .map_err(|error| anyhow!("failed to build test database: {error}"))?;
+    let Some(test_db) = test_db else {
+        return Ok(None);
+    };
+    let peer = "127.0.0.1:12345".parse()?;
+    Ok(Some(RouterTestSetup {
         rt,
         test_db,
         router: test_router(),
         session: Session::default(),
         peer,
         messaging: NoopOutboundMessaging,
-    })
+    }))
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "test helper assertions")]
 fn run_login_test(
     login_version: Option<LoginVersion>,
     expected_auth_strategy: &str,
@@ -99,61 +100,79 @@ fn run_login_test(
         },
     ));
     let tx = parse_transaction(&reply)?;
-    assert_eq!(tx.header.error, 0, "login should succeed");
+    if tx.header.error != 0 {
+        return Err(anyhow!(
+            "login should succeed, got error {}",
+            tx.header.error
+        ));
+    }
 
     let events = compat_spy::take();
-    assert_eq!(
-        events.len(),
-        3,
-        "expected three compatibility hook events for login, got {events:?}"
-    );
-    assert_eq!(
-        events[0],
-        compat_spy::HookEvent::OnRequest {
-            tx_type: tx_id(TransactionType::Login),
-        }
-    );
-    assert_eq!(
-        events[2],
-        compat_spy::HookEvent::OnReply {
-            tx_type: tx_id(TransactionType::Login),
-        }
-    );
+    if events.len() != 3 {
+        return Err(anyhow!(
+            "expected three compatibility hook events for login, got {events:?}"
+        ));
+    }
+    let expected_on_request = compat_spy::HookEvent::OnRequest {
+        tx_type: tx_id(TransactionType::Login),
+    };
+    if events[0] != expected_on_request {
+        return Err(anyhow!(
+            "expected first compatibility hook event {:?}, got {:?}",
+            expected_on_request,
+            events[0]
+        ));
+    }
+    let expected_on_reply = compat_spy::HookEvent::OnReply {
+        tx_type: tx_id(TransactionType::Login),
+    };
+    if events[2] != expected_on_reply {
+        return Err(anyhow!(
+            "expected final compatibility hook event {:?}, got {:?}",
+            expected_on_reply,
+            events[2]
+        ));
+    }
     match &events[1] {
         compat_spy::HookEvent::Dispatch {
             tx_type,
             auth_strategy,
-        } => {
-            assert_eq!(*tx_type, tx_id(TransactionType::Login));
-            assert_eq!(*auth_strategy, expected_auth_strategy);
+        } if *tx_type == tx_id(TransactionType::Login)
+            && *auth_strategy == expected_auth_strategy =>
+        {
+            Ok(())
         }
-        unexpected => panic!("expected dispatch hook event, got {unexpected:?}"),
+        compat_spy::HookEvent::Dispatch {
+            tx_type,
+            auth_strategy,
+        } => Err(anyhow!(
+            "unexpected dispatch hook event values (tx_type={tx_type}, \
+             auth_strategy={auth_strategy})"
+        )),
+        unexpected => Err(anyhow!("expected dispatch hook event, got {unexpected:?}")),
     }
-    Ok(())
 }
 
 /// Login hooks fire in order: `on_request` → dispatch → `on_reply`.
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 #[serial]
 fn login_hook_ordering_is_request_then_dispatch_then_reply(
-    router_test_setup: Option<RouterTestSetup>,
+    router_test_setup: Result<Option<RouterTestSetup>, AnyError>,
 ) -> Result<(), AnyError> {
+    let router_test_setup = router_test_setup?;
     let Some(mut setup) = router_test_setup else {
         return Ok(());
     };
-    let result = run_login_test(None, "unknown-default", &mut setup);
-    assert!(result.is_ok(), "login test should succeed: {result:?}");
-    result
+    run_login_test(None, "unknown-default", &mut setup)
 }
 
 /// Non-login hooks fire in order for authenticated requests.
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 #[serial]
 fn non_login_hooks_fire_in_order(
-    router_test_setup: Option<RouterTestSetup>,
+    router_test_setup: Result<Option<RouterTestSetup>, AnyError>,
 ) -> Result<(), AnyError> {
+    let router_test_setup = router_test_setup?;
     let Some(mut setup) = router_test_setup else {
         return Ok(());
     };
@@ -174,7 +193,12 @@ fn non_login_hooks_fire_in_order(
         },
     ));
     let login_tx = parse_transaction(&login_reply)?;
-    assert_eq!(login_tx.header.error, 0, "login should succeed");
+    if login_tx.header.error != 0 {
+        return Err(anyhow!(
+            "login should succeed, got error {}",
+            login_tx.header.error
+        ));
+    }
 
     // Clear spy after login, then send file list request.
     compat_spy::clear();
@@ -190,29 +214,36 @@ fn non_login_hooks_fire_in_order(
         },
     ));
     let tx = parse_transaction(&reply)?;
-    assert_eq!(tx.header.error, 0, "file list should succeed");
+    if tx.header.error != 0 {
+        return Err(anyhow!(
+            "file list should succeed, got error {}",
+            tx.header.error
+        ));
+    }
 
     let events = compat_spy::take();
-    assert_eq!(
-        events,
-        vec![
-            compat_spy::HookEvent::OnRequest {
-                tx_type: tx_id(TransactionType::GetFileNameList),
-            },
-            compat_spy::HookEvent::Dispatch {
-                tx_type: tx_id(TransactionType::GetFileNameList),
-                auth_strategy: "unknown-default",
-            },
-            compat_spy::HookEvent::OnReply {
-                tx_type: tx_id(TransactionType::GetFileNameList),
-            },
-        ],
-    );
+    let expected_events = vec![
+        compat_spy::HookEvent::OnRequest {
+            tx_type: tx_id(TransactionType::GetFileNameList),
+        },
+        compat_spy::HookEvent::Dispatch {
+            tx_type: tx_id(TransactionType::GetFileNameList),
+            auth_strategy: "unknown-default",
+        },
+        compat_spy::HookEvent::OnReply {
+            tx_type: tx_id(TransactionType::GetFileNameList),
+        },
+    ];
+    if events != expected_events {
+        return Err(anyhow!(
+            "unexpected non-login compatibility hook events: got {events:?}, expected \
+             {expected_events:?}"
+        ));
+    }
     Ok(())
 }
 
 /// Parse failure does not trigger any compatibility hooks.
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 #[serial]
 fn parse_failure_does_not_trigger_hooks() -> Result<(), AnyError> {
@@ -238,24 +269,21 @@ fn parse_failure_does_not_trigger_hooks() -> Result<(), AnyError> {
     ));
 
     let events = compat_spy::take();
-    assert!(
-        events.is_empty(),
-        "no hooks should fire for unparseable input"
-    );
+    if !events.is_empty() {
+        return Err(anyhow!("no hooks should fire for unparseable input"));
+    }
     Ok(())
 }
 
 /// Login strategy selection happens after request metadata recording.
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 #[serial]
 fn first_hotline_login_dispatches_with_hotline_strategy_label(
-    router_test_setup: Option<RouterTestSetup>,
+    router_test_setup: Result<Option<RouterTestSetup>, AnyError>,
 ) -> Result<(), AnyError> {
+    let router_test_setup = router_test_setup?;
     let Some(mut setup) = router_test_setup else {
         return Ok(());
     };
-    let result = run_login_test(Some(LoginVersion::from(190)), "hotline-default", &mut setup);
-    assert!(result.is_ok(), "login test should succeed: {result:?}");
-    result
+    run_login_test(Some(LoginVersion::from(190)), "hotline-default", &mut setup)
 }
