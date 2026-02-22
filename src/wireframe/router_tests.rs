@@ -46,11 +46,7 @@ const AUTH_STRATEGY_HOTLINE_DEFAULT: &str = "hotline-default";
 struct LoginVersion(u16);
 
 impl LoginVersion {
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "API mirrors domain newtype accessors used throughout tests"
-    )]
-    fn as_u16(&self) -> u16 { self.0 }
+    fn as_u16(self) -> u16 { self.0 }
 }
 
 impl From<u16> for LoginVersion {
