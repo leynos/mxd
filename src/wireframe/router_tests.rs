@@ -10,6 +10,7 @@ use tokio::runtime::{Builder, Runtime};
 
 use super::{RouteContext, WireframeRouter, compat_spy};
 use crate::{
+    db::DbPool,
     field_id::FieldId,
     handler::Session,
     server::outbound::NoopOutboundMessaging,
@@ -38,8 +39,19 @@ fn test_router() -> WireframeRouter {
 
 fn tx_id(tx_type: TransactionType) -> u16 { u16::from(tx_type) }
 
+const AUTH_STRATEGY_UNKNOWN_DEFAULT: &str = "unknown-default";
+const AUTH_STRATEGY_HOTLINE_DEFAULT: &str = "hotline-default";
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct LoginVersion(u16);
+
+impl LoginVersion {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "API mirrors domain newtype accessors used throughout tests"
+    )]
+    fn as_u16(&self) -> u16 { self.0 }
+}
 
 impl From<u16> for LoginVersion {
     fn from(value: u16) -> Self { Self(value) }
@@ -52,6 +64,15 @@ struct RouterTestSetup {
     session: Session,
     peer: SocketAddr,
     messaging: NoopOutboundMessaging,
+}
+
+struct MinimalRouterTestSetup {
+    rt: Runtime,
+    router: WireframeRouter,
+    session: Session,
+    peer: SocketAddr,
+    messaging: NoopOutboundMessaging,
+    pool: DbPool,
 }
 
 #[fixture]
@@ -73,6 +94,20 @@ fn router_test_setup() -> Result<Option<RouterTestSetup>, AnyError> {
     }))
 }
 
+#[fixture]
+fn minimal_router_setup() -> Result<MinimalRouterTestSetup, AnyError> {
+    let rt = runtime()?;
+    let peer = "127.0.0.1:12345".parse()?;
+    Ok(MinimalRouterTestSetup {
+        rt,
+        router: test_router(),
+        session: Session::default(),
+        peer,
+        messaging: NoopOutboundMessaging,
+        pool: dummy_pool(),
+    })
+}
+
 fn run_login_test(
     login_version: Option<LoginVersion>,
     expected_auth_strategy: &str,
@@ -88,7 +123,7 @@ fn execute_login(
     login_version: Option<LoginVersion>,
     setup: &mut RouterTestSetup,
 ) -> Result<Vec<u8>, AnyError> {
-    let version_bytes = login_version.unwrap_or_default().0.to_be_bytes();
+    let version_bytes = login_version.unwrap_or_default().as_u16().to_be_bytes();
     let mut fields: Vec<(FieldId, &[u8])> = vec![
         (FieldId::Login, b"alice".as_ref()),
         (FieldId::Password, b"secret".as_ref()),
@@ -176,7 +211,7 @@ fn login_hook_ordering_is_request_then_dispatch_then_reply(
     let Some(mut setup) = router_test_setup else {
         return Ok(());
     };
-    run_login_test(None, "unknown-default", &mut setup)
+    run_login_test(None, AUTH_STRATEGY_UNKNOWN_DEFAULT, &mut setup)
 }
 
 /// Non-login hooks fire in order for authenticated requests.
@@ -241,7 +276,7 @@ fn non_login_hooks_fire_in_order(
         },
         compat_spy::HookEvent::Dispatch {
             tx_type: tx_id(TransactionType::GetFileNameList),
-            auth_strategy: "unknown-default",
+            auth_strategy: AUTH_STRATEGY_UNKNOWN_DEFAULT,
         },
         compat_spy::HookEvent::OnReply {
             tx_type: tx_id(TransactionType::GetFileNameList),
@@ -259,25 +294,21 @@ fn non_login_hooks_fire_in_order(
 /// Parse failure does not trigger any compatibility hooks.
 #[rstest]
 #[serial]
-fn parse_failure_does_not_trigger_hooks() -> Result<(), AnyError> {
-    let router = test_router();
-    let mut session = Session::default();
-    let peer = "127.0.0.1:12345".parse()?;
-    let messaging = NoopOutboundMessaging;
-    let pool = dummy_pool();
-
+fn parse_failure_does_not_trigger_hooks(
+    minimal_router_setup: Result<MinimalRouterTestSetup, AnyError>,
+) -> Result<(), AnyError> {
+    let mut setup = minimal_router_setup?;
     compat_spy::clear();
 
     // Truncated frame: only 10 bytes, less than HEADER_LEN.
     let truncated = vec![0u8; 10];
-    let rt = runtime()?;
-    rt.block_on(router.route(
+    setup.rt.block_on(setup.router.route(
         &truncated,
         RouteContext {
-            peer,
-            pool,
-            session: &mut session,
-            messaging: &messaging,
+            peer: setup.peer,
+            pool: setup.pool,
+            session: &mut setup.session,
+            messaging: &setup.messaging,
         },
     ));
 
@@ -298,5 +329,9 @@ fn first_hotline_login_dispatches_with_hotline_strategy_label(
     let Some(mut setup) = router_test_setup else {
         return Ok(());
     };
-    run_login_test(Some(LoginVersion::from(190)), "hotline-default", &mut setup)
+    run_login_test(
+        Some(LoginVersion::from(190)),
+        AUTH_STRATEGY_HOTLINE_DEFAULT,
+        &mut setup,
+    )
 }
