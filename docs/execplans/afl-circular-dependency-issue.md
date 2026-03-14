@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: BLOCKED
 
 ## Purpose / big picture
 
@@ -78,10 +78,15 @@ contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
   `cargo afl build` without `--release`, so the produced harness is under
   `target/debug/fuzz`.
 - [x] (2026-03-11 00:19Z) Drafted this ExecPlan for review.
-- [ ] Implement the Dockerfile repair and any tightly related documentation
-  updates.
-- [ ] Run Markdown gates and Docker validation on a host with a running Docker
-  daemon.
+- [x] (2026-03-14 18:06Z) Implemented the Dockerfile repair by removing the
+  intra-stage self-copy and copying the debug harness from the completed
+  builder stage into the final image.
+- [x] (2026-03-14 18:06Z) Updated `docs/fuzzing.md` so the Docker section
+  matches the repaired image layout and the existing debug-harness contract.
+- [x] (2026-03-14 18:10Z) Ran `make fmt`, `make markdownlint`,
+  `make nixie`, and `make check-fmt`.
+- [ ] Run the remaining repository commit gates, plus Docker validation on a
+  host with a running Docker daemon.
 - [ ] Confirm the nightly workflow can proceed past image build.
 
 ## Surprises & Discoveries
@@ -108,6 +113,15 @@ contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
   Impact: the plan must specify an external validation step instead of claiming
   local proof.
 
+- Observation: the required repository commit gates are presently blocked by
+  environment/tooling issues unrelated to this Dockerfile change. Evidence:
+  `make lint` fails in the `whitaker` step with
+  `error: unknown start of token: \`` while probing a nightly toolchain, and
+  `make test` fails during the postgres nextest path because
+  `/root/.rustup/toolchains/nightly-2025-11-08-x86_64-unknown-linux-gnu/bin/rustc`
+  is missing. Impact: this change cannot be fully validated in the current
+  workspace until those toolchain problems are repaired.
+
 ## Decision Log
 
 - Decision: plan a minimal repair that keeps the current debug-profile fuzz
@@ -125,10 +139,13 @@ contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
 ## Outcomes & Retrospective
 
 The investigation is complete and the implementation plan is ready, but the
-repair has not been applied yet. The main lesson is that the failure message
+repair is now applied in-repo. The main lesson is that the failure message
 accurately points to Dockerfile stage structure, yet static inspection also
-shows a second defect that should be fixed in the same change to avoid a
-predictable follow-on failure.
+showed a second defect that needed to be fixed in the same change to avoid a
+predictable follow-on failure. Docker validation still needs to run on a host
+with a live daemon because this workspace cannot provide that proof. Repository
+commit gates are also blocked by independent nightly-toolchain issues in this
+environment.
 
 ## Context and orientation
 
