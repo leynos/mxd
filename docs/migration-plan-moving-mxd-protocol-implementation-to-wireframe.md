@@ -98,10 +98,9 @@ this framing using `wireframe`’s customizable serialization layer.
   implementation that knows how to parse and format Hotline frames. This
   serializer’s `deserialize` method should:
 
-- Read and parse the 20-byte header of an incoming message. The header layout
-  includes fields for flags, request/reply marker, transaction type,
+- Parse the 20-byte header of an incoming message to extract flags, request/reply marker, transaction type,
   transaction ID, error code, total payload size, and fragment data size[^9].
-  You can reuse `mxd`’s `FrameHeader` struct and its parsing logic
+  The `mxd` `FrameHeader` struct and its parsing logic can be reused
   here[^10][^11].
 
 - Determine if the message is fragmented. In Hotline, if
@@ -175,7 +174,7 @@ the message type.
 
 - **Manage Session State**: Preserve per-connection state across transactions.
   In `mxd`, a `Session` struct tracked data like the logged-in user ID for each
-  connection[^23]. Under `wireframe`, utilise its session or context features
+  connection[^23]. Under `wireframe`, utilize its session or context features
   to store this. For instance, implement the `WireframeProtocol` trait’s
   connection initialization to attach a new `Session` object to each connection
   (perhaps via `SessionRegistry` or by storing it in a thread-local context
@@ -218,7 +217,7 @@ these clients:
   SynHX might advertise its own sub-version number; the server can maintain a
   mapping or conditional code paths for known client versions. All such
   differences should fall back to the Hotline 1.9 baseline so that any
-  unrecognised client version (including SynHX, which aims to be compatible) at
+  unrecognized client version (including SynHX, which aims to be compatible) at
   least gets standard 1.8.5/1.9 protocol handling. In essence, *if a feature is
   unsupported by a client, the server should degrade gracefully to the older
   behaviour*.
@@ -295,7 +294,7 @@ trials are recommended:
 Finally, consider the deployment of the new server and the platforms it will
 run on, incorporating the target environment requirements:
 
-- **Linux (Primary Target)**: Optimise and test for Linux x86_64 and aarch64 as
+- **Linux (Primary Target)**: Optimize and test for Linux x86_64 and aarch64 as
   the main deployment targets. Ensure that continuous integration covers
   building the server on these architectures. Any Linux-specific configurations
   (like systemd service files or Docker images) should be updated to point to
@@ -316,10 +315,10 @@ run on, incorporating the target environment requirements:
 
 - **Deployment Rollout**: When the new implementation is fully tested, deploy
   it as the default server binary. Since breaking changes are acceptable at
-  this stage, you can retire the old implementation entirely. Coordinate the
+  this stage, the old implementation can be retired entirely. Coordinate the
   migration such that any existing test servers or development environments
-  switch to the `wireframe` server. Given that there’s effectively “no
-  deadline” pressure, favour a **thorough rollout**: run the new server in a
+  switch to the `wireframe` server. Given that there's effectively "no
+  deadline" pressure, favour a **thorough rollout**: run the new server in a
   staging environment if available, gather feedback, and only then replace the
   old server in production usage (if any). This careful approach ensures that
   by the time users rely on it, the server has been vetted with both automated

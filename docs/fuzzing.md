@@ -36,7 +36,7 @@ The harness panics on parsing errors so crashes will be detected. Refer to
 `fuzz/Dockerfile` builds the harness with sanitizers and runs AFL++ inside the
 official container. Building with sanitizers (for example by setting
 `RUSTFLAGS="-Zsanitizer=address"`) requires the nightly Rust toolchain, which
-the Dockerfile installs automatically. Use the container when you want a
+the Dockerfile installs automatically. Use the container for a
 reproducible environment:
 
 ```bash

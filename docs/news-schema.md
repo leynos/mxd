@@ -153,7 +153,7 @@ CREATE INDEX idx_articles_category      ON news_articles(category_id);
 
 - **Permission model** – The protocol defines 38 distinct access flags (e.g.
   *News Read Article* code 20, *Broadcast* code 32) . A lookup table plus an
-  M-N link cleanly represents that bitmap while remaining normalised and
+  M-N link cleanly represents that bitmap while remaining normalized and
   queryable.
 
 - **Users** – The provided `users` table is left intact and linked to

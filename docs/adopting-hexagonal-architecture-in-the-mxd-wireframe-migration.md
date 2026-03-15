@@ -20,7 +20,7 @@ Next, **wireframe** itself must be structured to cleanly represent the
 **“Ports”** through which the domain is accessed and the **“Adapters”** that
 implement those ports. In practice, this means `wireframe` should expose
 abstract extension points (traits or interfaces) for protocol-specific
-behaviors and use those to call into the domain. The planned introduction of a
+behaviours and use those to call into the domain. The planned introduction of a
 unified `WireframeProtocol` trait is a key structural change: this trait will
 encapsulate all protocol-specific logic in one
 interface([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L40-L43)).
@@ -67,7 +67,7 @@ In summary, **wireframe must be integrated as the outer adapter layer**, and
 any framework-specific constructs should be abstracted behind traits or
 interfaces that the domain implements. The domain module becomes the inner
 hexagon, focused purely on implementing Hotline protocol rules and business
-behavior. This structural approach will fulfill the Hexagonal Architecture’s
+behaviour. This structural approach will fulfill the Hexagonal Architecture's
 goal of making the core logic framework-agnostic and easily pluggable into
 different adapters.
 
@@ -186,10 +186,10 @@ logic”*(
 
 ## Ports vs. Application Core in the Wireframe Integration
 
-Under Hexagonal Architecture, a **“Port”** is an interface that defines how the
-outside world interacts with the core, while the **“Application Core”**
+Under Hexagonal Architecture, a **"Port"** is an interface that defines how the
+outside world interacts with the core, while the **"Application Core"**
 contains the domain logic that implements those interactions. In the context of
-the mxd wireframe adoption, we need to distinguish which parts of the system
+the mxd wireframe adoption, it is necessary to distinguish which parts of the system
 act as ports (interfaces or entry points) and which parts belong to the domain
 core.
 
@@ -212,7 +212,7 @@ application core.
 
 The **Application Core** is the existing mxd domain logic – all the code that
 actually processes requests and embodies the rules of the Hotline protocol and
-server behavior. This includes things like validating a user’s credentials,
+server behaviour. This includes things like validating a user's credentials,
 looking up files in the database, updating news posts, enforcing permissions,
 etc. The migration plan makes it clear that these routines (e.g.
 `handle_login`, `list_files_for_user`, etc.) should remain in the mxd library
@@ -239,16 +239,16 @@ connections)([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed5486
  Conceptually, we can model this as a port interface like “ClientNotifier” with
 methods to deliver certain events (e.g. `notifyUserJoined(sessionInfo)` or more
 generically `pushMessage(connectionId, frame)`). The implementation of this
-port is the adapter that uses `wireframe`’s `PushHandle` and `SessionRegistry`
+port is the adapter that uses `wireframe`'s `PushHandle` and `SessionRegistry`
 to actually deliver the frames. The roadmap indeed includes tasks to implement
 a `SessionRegistry` for discovering connection
 handles([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L40-L43))
  and a public `PushHandle` API to send outbound
 frames([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L40-L43)).
  These will act as the **adapter** enabling outbound communication. The domain
-core should use them via an abstract interface. For example, after processing a
+core should use them via an abstract interface. For instance, after processing a
 login, the core logic might call `Notifier.broadcastUserLogin(user)` – behind
-that, the adapter will use `wireframe` to send a “Notify New User” (transaction
+that, the adapter will use `wireframe` to send a "Notify New User" (transaction
 300) to all connected clients. By treating outbound messaging as a port, the
 domain remains unaware of *how* the broadcast is done (whether via `wireframe`
 channels, websockets, or any other mechanism – it could be swapped without
@@ -279,20 +279,20 @@ instead of manually managing sockets. In a Hexagonal model, the domain might
 not even know about `PushHandle` – it might call a method on a domain service,
 which internally uses the push adapter. In practice, since `wireframe` is
 tightly integrated, the domain might directly call something like
-`session.push(frame)` if not careful. To keep with the Hexagon, those calls
+`session.push(frame)` if not careful. To maintain the Hexagon structure, those calls
 should be wrapped or isolated. The new `WireframeProtocol` trait may help here:
 one of its responsibilities during connection setup is to attach any
 per-connection state, which could include a handle or context that domain logic
 uses when
 needed([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L176-L184)).
- For example, the domain’s session object (tracking user ID, etc.) might hold a
+ For example, the domain's session object (tracking user ID, etc.) might hold a
 reference to a sender that allows pushing to that client. Because
-`WireframeProtocol` (a port interface) mediates this, the domain isn’t
+`WireframeProtocol` (a port interface) mediates this, the domain isn't
 explicitly depending on the lower-level details – it just calls a method on its
 context, which the adapter fulfills by sending through `wireframe`.
 
 In summary, **the elements of the `wireframe` integration that should be
-considered “Ports” are those that interface with the domain**: the routing of
+considered "Ports" are those that interface with the domain**: the routing of
 incoming messages (input port) and the facility to send out messages or access
 infrastructure services (output ports, like notification or persistence if
 any). The **Application Core** encompasses the logic in the mxd library –
@@ -300,7 +300,7 @@ parsing command parameters into meaningful data, applying business rules,
 updating state, and deciding what responses or events are appropriate. The core
 should expose clear entry points (which `wireframe` calls via handlers) and
 consume abstracted services (which `wireframe` provides via adapters). By
-delineating these, we ensure that `wireframe` is a plug-in mechanism rather
+delineating these, `wireframe` remains a plug-in mechanism rather
 than a fundamental dependency tangled through the core code.
 
 ## Avoiding Hexagonal Violations and Addressing Risk Areas
@@ -382,7 +382,7 @@ concerns:
   data structures in the other.
 
 - **Handling of Compatibility Quirks:** The Hotline protocol has various
-  version-specific behaviors and encoding quirks. The plan addresses these by
+  version-specific behaviours and encoding quirks. The plan addresses these by
   gating them on the handshake metadata (sub-version) and performing
   adjustments at the
   edges([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L99-L103)
@@ -399,12 +399,12 @@ concerns:
   strip or translate that field on output. The roadmap explicitly says to
   *“detect clients that XOR-encode text fields and transparently decode or
   encode responses when required”*.[^roadmap-xor] – the word *“transparently”*
-  underscores that the domain use-case (say, setting a password) shouldn’t need
+  underscores that the domain use-case (say, setting a password) shouldn't need
   an `if client_version < X { ... }` inside it. The transparency is achieved by
   the adapter doing the encoding/decoding around the core. By following those
   guidelines, the implementation remains compliant with Hexagonal Architecture:
   new client variations are handled by adapter strategies, and the domain logic
-  stays consistent and focused on core behavior.
+  stays consistent and focused on core behaviour.
 
 - **Testing and Temporary Duality:** During migration, there may be a period
   where both the old path and new path exist (controlled by feature
@@ -422,7 +422,7 @@ concerns:
   unchanged against the new
   server([3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L75-L83))
    is a good indicator that the hexagonal boundaries are correct: the core
-  produces the same observable behavior no matter the adapter driving it.
+  produces the same observable behaviour no matter the adapter driving it.
 
 In conclusion, any area where the **domain starts to know too much about “how”
 things are done** (network protocol details, specific framework types, etc.) is
