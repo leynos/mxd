@@ -88,6 +88,14 @@ folder can have fine-grained ACL entries (linking to users or groups) in the
 shared permissions table. We include fields for metadata like size, timestamps,
 and comments. Below is the ER diagram in Mermaid notation:
 
+**Diagram description for screen readers:** The diagram shows main entities
+FileNode (representing files, folders, or aliases), User, Group, and Permission/ACL,
+with their key relationships. FileNode has a parent/child hierarchy (self-referential
+parent_id). FileNode links to Permission/ACL entries which reference User or Group
+as principals. Key metadata fields include size, timestamps (created_at, modified_at),
+comments, and object_key. The shared permissions table connects FileNodes to Users
+and Groups for access control.
+
 ```mermaid
 erDiagram
     User ||--o{ UserGroup : has
@@ -267,8 +275,8 @@ follows:
   any physical object in the store.
 - **Object Key Design:** For actual file content, an **object key** is generated
   for each file stored. A simple strategy is to use a path-like key mirroring
-  the file’s path (e.g., combine parent folder names and filename). However,
-  **we prefer using a unique identifier** (like the FileNode `id` or a UUID) as
+  the file's path (e.g., combine parent folder names and filename). However,
+  **the system prefers using a unique identifier** (like the FileNode `id` or a UUID) as
   the object key, decoupling it from the human-readable path. This approach
   avoids expensive renames or copies in storage when a file is moved or renamed
   in the hierarchy. For example, if file *"Manual.pdf"* (id 42) is stored with
@@ -293,8 +301,8 @@ follows:
   in the store** for it (consistent with object stores not needing a
   placeholder object for directories). Deleting a folder in the DB (if empty or
   via recursive delete) will involve deleting all descendant FileNode records
-  and all associated objects for files – object_store's delete capability can be used
-  functionality for each file’s object. Deletion of a folder in object storage
+  and all associated file objects; `object_store` delete operations are then executed
+  for each file object. Deletion of a folder in object storage
   is thus just deletion of the contained objects (since the folder itself is
   conceptual).
 - **Path Resolution:** Since clients and protocol refer to files by “path”
@@ -329,7 +337,7 @@ When the client requests a directory listing of a given path (or root), the
 server performs:
 
 1. **Path Resolution:** Determine which folder to list. If the request includes
-   a path, the system looks up the FileNode for that folder. If no path given, it uses the
+   a path, the system looks up the FileNode for that folder. If no path is given, it uses the
    root folder (by convention, the root might be a FileNode with parent_id =
    NULL).
 2. **Permission Check:** Ensure the user has rights to list/browse this folder.
@@ -569,10 +577,10 @@ interrupted. The steps:
    is efficient and can handle large files without memory bloat.
 
 5. **Resumable Upload:** If the client indicated a resume (Hotline uses a *File
-   resume data* field in the server’s reply to an upload request to tell the
+   resume data* field in the server's reply to an upload request to tell the
    client where to resume), our server needs to handle interrupted uploads. One
    approach: when an upload is interrupted, the system keeps the DB entry (marked
-   incomplete) and do not finalize the multipart upload. The object_store may
+   incomplete) and does not finalize the multipart upload. The object_store may
    have staged parts; the system stores the multipart upload ID and parts info somewhere
    (perhaps a temporary DB table or in-memory map). When the client reconnects
    to resume, it sends an UploadFile request with a flag indicating resume. We
@@ -706,11 +714,11 @@ and a move to a different folder via MoveFile. We handle both:
      restrictions.
 
   3. **DB Update:** Update the FileNode’s `parent_id` to the new folder’s ID
-     and/or update its `name` if it’s also a rename. This is an atomic update in
+     and/or update its `name` if it's also a rename. This is an atomic update in
      the DB. We must ensure no name collision in the destination (the
-     UNIQUE(parent_id,name) constraint provides protection – checking is still recommended and
-     fail if violated). For moving folders, all child FileNodes remain linked to
-     the same parent IDs (only the moved folder’s own parent changes), so the
+     UNIQUE(parent_id,name) constraint provides protection – checking is still recommended;
+     if a violation is detected, the operation should fail). For moving folders, all child FileNodes remain linked to
+     the same parent IDs (only the moved folder's own parent changes), so the
      tree is effectively spliced out and moved. **Important:** If we stored any
      kind of full path or had object keys tied to path, this is where complexity
      arises:
