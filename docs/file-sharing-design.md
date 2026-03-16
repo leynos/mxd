@@ -1296,13 +1296,13 @@ consistency is critical:
 
   - On **folder delete**: We should ideally wrap it in a transaction: delete all
     child records in DB (cascading) and then for each object, attempt deletion.
-    If an object deletion fails, we have already removed the corresponding DB entries. As above,
-    we log and maybe retry later. Perhaps do not commit DB transaction until all
+    If an object deletion fails, the corresponding DB entries will have already been removed. As above,
+    the system logs errors and may retry later. Perhaps do not commit the DB transaction until all
     object deletions have succeeded? But that might not be feasible if many
-    files (long transaction holding locks). It's often acceptable to commit DB
-    first, then do storage cleanup out-of-tx. In case of failure, at worst
+    files (long transaction holding locks). It is often acceptable to commit DB
+    first, then do storage cleanup out-of-transaction. In case of failure, at worst
     storage has some straggler files which are not listed anywhere (harmless
-    except cost). We can reclaim later. This trades strong immediate consistency
+    except cost). These can be reclaimed later. This trades strong immediate consistency
     for simplicity and performance.
 
 - **Transactional Integrity:** The DB operations themselves use transactions to
