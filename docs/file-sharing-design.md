@@ -238,7 +238,7 @@ access controls:
   in the implementation sections, but no additional static schema is needed.
 - File comments are stored in the `comment` field of FileNode. Both files and
   folders can have comments (Hotline had a separate privilege for setting
-  folder comments vs file comments, which can be enforced via privileges bits 28
+  folder comments vs file comments, which can be enforced via privilege bits 28
   and 29 respectively).
 
 All critical fields are indexed or constrained for performance and integrity
@@ -499,16 +499,16 @@ interrupted. The steps:
    - If no conflict, proceed to create.
 
 2. **Permission Check:** Verify the user can upload to this folder. This
-   requires the “Upload File (1)” permission either globally or on that folder.
+   requires the "Upload File (1)" permission either globally or on that folder.
    If the folder is a **dropbox**, typically all users have upload rights but
-   not view; in the system, we’d likely give the “everyone” group an upload
+   not view; in the system, the "everyone" group would likely be given an upload
    permission on that folder. So check accordingly. Also, if the folder is
    flagged read-only for the user, deny.
 
 3. **Create DB Record:** Insert a new FileNode for the file. We mark its
    `parent_id`, name, type='file', and set `size=0` initially. We can also
    store `created_by` = user’s ID and a timestamp. We generate a new
-   `object_key` for it. At this point, depending on strategy, we might not
+   `object_key` for it. At this point, depending on strategy, the implementation might not
    commit the DB transaction until the file content is fully received (to avoid
    a record for a file that fails to upload). However, not having a DB entry
    means nowhere to attach a partial state exists. A compromise is to insert
@@ -516,7 +516,7 @@ interrupted. The steps:
    update status when done. For simplicity, assume entry addition occurs after
    a successful upload, or remove it on failure. We must also decide how to
    handle the scenario of resuming an interrupted upload – the DB entry could
-   remain and appending to it later, or requirement the client to
+   remain and append to it later, or require the client to
    reinitiate and treat it as new (except where resume is explicitly
    supported). The Hotline protocol does have a resume for uploads, implied by
    *File transfer options* and *File resume data* fields, so striving to
@@ -534,10 +534,10 @@ interrupted. The steps:
 
      - Possibly a platform (Mac/Win) and file type/creator codes (we can ignore
        or store as part of metadata if needed).
-     - The create and modify timestamps – we can store these in FileNode (or
+     - The create and modify timestamps – these can be stored in FileNode (or
        just set `created_at` now and `updated_at` as modify time).
-     - Name and comment are included here: the name we already have from the
-       request; the comment (if any) extraction of and save to
+     - Name and comment are included here: the name is already available from the
+       request; the comment (if any) should be extracted and saved to
        FileNode.comment.
      - There may be other flags (we can ignore compression since none is used).
      - We continue reading until the end of the INFO fork (the format gives
@@ -548,7 +548,7 @@ interrupted. The steps:
      use that size for validation.
 
    - We then stream the incoming data bytes to storage. For efficiency and
-     memory safety, buffering does not occur everything. Instead, initiation of a
+     memory safety, we do not buffer the entire file. Instead, we initiate a
      multipart upload to the object store. Using `ObjectStore::put_multipart`
      provides a `WriteMultipart` handle that accepts bytes fed in chunks.
      For example:
@@ -580,16 +580,16 @@ interrupted. The steps:
    parts completed). We then respond with *File resume data* = number of bytes
    already stored (Hotline’s mechanism was to let server tell client how much
    it got, so client can send the rest). Then the client will send only the
-   remaining bytes. In the implementation, re-opening or continue the
+   remaining bytes. In this implementation, the server can re-open or continue the
    multipart upload:
 
    - If the object_store crate allows reusing the existing upload (some cloud
      APIs allow listing parts and continuing), we use the saved upload ID and
      continue writing new parts. If not easily possible, an alternative is to
      start a new upload and skip already received bytes of the file (but
-     skipping means we need the client to also skip sending them, which is what
-     the resume protocol does). So the client only sends what’s missing. We then
-     either append that to the existing object (not trivial in object store
+     skipping means the server requires the client to also skip sending them, which is what
+     the resume protocol does). So the client only sends what is missing. The server then
+     appends that to the existing object (not trivial in object store
      unless continuing multi-part) or it can be stored as a separate object and
      later merge – not ideal.
    - Ideally, we rely on the multi-part continuation: e.g., AWS S3 allows you to
@@ -640,8 +640,8 @@ interrupted. The steps:
 file size (108) if not resuming, which the client provides. We can use that to
 cross-check that we received the correct amount of data. Hotline also had the
 server send back a *Reference number (107)* and optionally *File resume data
-(203)* if resuming. In the implementation, we might generate an internal
-reference (not really needed if we handle on same connection) and use resume
+(203)* if resuming. In the implementation, an internal reference might be generated
+(not really needed if we handle on same connection) and use resume
 data if applicable.
 
 ### New Folder – *NewFolder (205)*
@@ -911,9 +911,9 @@ will follow the same general approach:
      either “Next file” (skip sending this file, move on), or “Resume file” with
      an offset if it already has part of it, or “Send file” to proceed with full
      download. This is quite low-level; essentially the client can choose to
-     skip or resume. For the implementation, we will:
+     skip or resume. For the implementation, the server will:
 
-     - Read the client’s request for each file. If it says skip, we just move
+     - Read the client's request for each file. If it says skip, the server just moves
        on. If resume, it will provide an offset. We then stream the file from
        that offset (similar to DownloadFile logic, using get_range). If full
        send, we stream from start.
@@ -1296,7 +1296,7 @@ consistency is critical:
 
   - On **folder delete**: We should ideally wrap it in a transaction: delete all
     child records in DB (cascading) and then for each object, attempt deletion.
-    If an object deletion fails, already exist removed DB entries. As above,
+    If an object deletion fails, we have already removed the corresponding DB entries. As above,
     we log and maybe retry later. Perhaps do not commit DB transaction until all
     object deletions have succeeded? But that might not be feasible if many
     files (long transaction holding locks). It's often acceptable to commit DB
