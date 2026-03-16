@@ -280,8 +280,8 @@ follows:
   handle renames purely in metadata.
 - **Folder Listing:** When a client requests a directory listing
   (GetFileNameList), the server queries the DB for FileNodes with `parent_id` =
-  that folder’s ID. The object store is not consulted at all for listing; thus,
-  immunity to object store listing consistency issues is achieved and inclusion of
+  that folder's ID. The object store is not consulted at all for listing,
+  achieving immunity to object store listing consistency issues and ensuring inclusion of
   additional info (file type, size, comments) directly from the DB. If using
   ID-based object keys, the server might on occasion verify the object exists
   (e.g., using a HEAD request via object_store for sanity), but that’s optional
@@ -469,11 +469,11 @@ range gets in a single HTTP Range request or equivalent, which is efficient. We
 also rely on the fact that object reads are atomic and consistent (once a file
 is uploaded and finalized, a consistent byte stream is provided).
 
-**Hotline Compatibility Note:** Hotline’s “Download File” was followed by a
+**Hotline Compatibility Note:** Hotline's "Download File" was followed by a
 "Download Info (211)" server transaction with a reference number, then the
-actual data on a new connection. Emulation occurs via the control-plane (main
-connection) sending a response that triggers the data-plane connection. The
-specifics of managing multiple sockets is beyond this guide’s scope, but the
+actual data on a new connection. The control-plane connection is used for emulation:
+the main connection sends a response that triggers the data-plane connection. The
+specifics of managing multiple sockets is beyond this guide's scope, but the
 idea is to separate metadata exchange from bulk data transfer, which matches
 our approach of streaming from object_store once the transfer is negotiated.
 
@@ -511,7 +511,7 @@ interrupted. The steps:
    `object_key` for it. At this point, depending on strategy, the implementation might not
    commit the DB transaction until the file content is fully received (to avoid
    a record for a file that fails to upload). However, not having a DB entry
-   means nowhere to attach a partial state exists. A compromise is to insert
+   means there is nowhere to attach partial state. A compromise is to insert
    it with a status flag "incomplete" (not shown in schema for brevity) and
    update status when done. For simplicity, assume entry addition occurs after
    a successful upload, or remove it on failure. We must also decide how to
@@ -722,9 +722,9 @@ and a move to a different folder via MoveFile. We handle both:
        size).
      - If we had used **path-based keys**, moving a file would require renaming
        its object in storage (which usually means copy+delete). Similarly moving
-       a folder would entail renaming every object under that folder’s path –
+       a folder would entail renaming every object under that folder's path –
        potentially thousands of operations and a lot of data movement. This is
-       exactly why we chose flat key mapping. In the design, *no object store
+       exactly why flat key mapping was chosen. In the design, *no object store
        operation is needed for a metadata move*.
 
   4. **Permissions:** If the item had specific ACL entries, we might consider
@@ -1111,7 +1111,7 @@ straightforward.
 ## Access Control Enforcement
 
 Security is crucial: the system must enforce **folder-level and per-file ACLs**
-on all operations. We have integrated the design with the shared permissions
+on all operations. The design has been integrated with the shared permissions
 schema to achieve this. Key points of ACL enforcement in the implementation:
 
 - **Privilege Model:** We adopt Hotline’s privilege bitmap scheme. Each user has
