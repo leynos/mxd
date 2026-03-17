@@ -1,17 +1,17 @@
-# Fix the AFL Docker build stage cycle
+# Fix the American Fuzzy Lop (AFL) Docker build stage cycle
 
 This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
-`Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
-`Outcomes & Retrospective` must be kept up to date as work proceeds.
+`Risks`, `Progress`, `Surprises and discoveries`, `Decision log`, and
+`Outcomes and retrospective` must be kept up to date as work proceeds.
 
 Status: BLOCKED
 
 ## Purpose / big picture
 
-Restore the nightly AFL++ container build so
-`docker build -t mxd-fuzz -f fuzz/Dockerfile .` succeeds again and the fuzzing
-workflow can run instead of failing during image creation. Success is visible
-in two places: the Docker image builds without the
+Restore the nightly AFL++ (the extended version of American Fuzzy Lop)
+container build so `docker build -t mxd-fuzz -f fuzz/Dockerfile .` succeeds
+again and the fuzzing workflow can run instead of failing during image
+creation. Success is visible in two places: the Docker image builds without the
 `circular dependency detected on stage: builder` error, and the resulting image
 contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
 
@@ -89,7 +89,7 @@ contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
   host with a running Docker daemon.
 - [ ] Confirm the nightly workflow can proceed past image build.
 
-## Surprises & Discoveries
+## Surprises and discoveries
 
 - Observation: the failing line in `fuzz/Dockerfile` is not the final-stage
   copy. It is a stray
@@ -119,10 +119,10 @@ contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
   `error: unknown start of token: \`` while probing a nightly toolchain, and
   `make test` fails during the postgres nextest path because
   `/root/.rustup/toolchains/nightly-2025-11-08-x86_64-unknown-linux-gnu/bin/rustc`
-  is missing. Impact: this change cannot be fully validated in the current
+   is missing. Impact: this change cannot be fully validated in the current
   workspace until those toolchain problems are repaired.
 
-## Decision Log
+## Decision log
 
 - Decision: plan a minimal repair that keeps the current debug-profile fuzz
   artefact convention. Rationale: the self-cycle bug is the immediate failure,
@@ -131,12 +131,13 @@ contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
   ambiguity. Date/Author: 2026-03-11 / Codex
 
 - Decision: include the release/debug artefact mismatch in the same fix even
-  though the reported CI failure stops earlier. Rationale: once the stage cycle
-  is removed, the build would otherwise fail or produce the wrong image
-  contents in the next step. Shipping only the first half of the repair would
-  be knowingly incomplete. Date/Author: 2026-03-11 / Codex
+  though the reported continuous integration (CI) failure stops earlier.
+  Rationale: once the stage cycle is removed, the build would otherwise fail or
+  produce the wrong image contents in the next step. Shipping only the first
+  half of the repair would be knowingly incomplete. Date/Author: 2026-03-11 /
+  Codex
 
-## Outcomes & Retrospective
+## Outcomes and retrospective
 
 The investigation is complete and the implementation plan is ready, but the
 repair is now applied in-repo. The main lesson is that the failure message
@@ -252,7 +253,7 @@ From the repository root:
 
    ```bash
    docker build -t mxd-fuzz -f fuzz/Dockerfile .
-   docker run --rm mxd-fuzz bash -lc 'test -x /usr/local/bin/fuzz'
+   docker run --rm --entrypoint bash mxd-fuzz -lc 'test -x /usr/local/bin/fuzz'
    ```
 
    Expected result:
@@ -262,9 +263,9 @@ From the repository root:
    docker run exits 0
    ```
 
-6. Optionally prove the GitHub Actions path by triggering the fuzz workflow or
-   pushing the change through pull-request CI, then confirm the "Build fuzzing
-   container" step passes.
+6. Prove the GitHub Actions path by triggering the fuzz workflow or pushing the
+   change through pull-request CI, then confirm the "Build fuzzing container"
+   step passes.
 
 ## Validation and acceptance
 
@@ -272,10 +273,11 @@ Acceptance criteria:
 
 - `fuzz/Dockerfile` no longer contains a self-referential stage copy.
 - The final image copies the same harness profile that the repository already
-  documents and expects, namely `fuzz/target/debug/fuzz`.
+  documents and expects, namely `/mxd/fuzz/target/debug/fuzz`.
 - `docker build -t mxd-fuzz -f fuzz/Dockerfile .` succeeds on a machine with
   Docker.
-- `docker run --rm mxd-fuzz bash -lc 'test -x /usr/local/bin/fuzz'` exits 0.
+- `docker run --rm --entrypoint bash mxd-fuzz -lc 'test -x /usr/local/bin/fuzz'`
+   exits 0.
 - `make fmt`, `make markdownlint`, and `make nixie` pass after any Markdown
   edits.
 - The GitHub Actions fuzz workflow clears the previous image-build failure.
@@ -296,7 +298,7 @@ copy path still points at `target/release/fuzz`; correcting that path is the
 first retry. If a documentation command reformats Markdown, rerun
 `make markdownlint` and `make nixie` after `make fmt`.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Current failing Dockerfile fragment:
 
@@ -338,4 +340,8 @@ final image: runs afl-fuzz with /usr/local/bin/fuzz
 Initial draft created after tracing the reported GitHub Actions failure to a
 self-referential `COPY --from=builder` in `fuzz/Dockerfile` and identifying a
 second debug-versus-release artefact mismatch that should be fixed in the same
-change. Remaining work is implementation and validation only.
+change. Implementation completed 2026-03-14; `fuzz/Dockerfile` and
+`docs/fuzzing.md` have been updated to remove the stage cycle and align the
+artefact path with the debug-profile convention. Full validation remains
+blocked by environment constraints (no Docker daemon available, nightly
+toolchain issues).

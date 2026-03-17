@@ -35,7 +35,7 @@ The harness panics on parsing errors so crashes will be detected. Refer to
 
 `fuzz/Dockerfile` builds the harness inside the official AFL++ container and
 copies the resulting debug binary to `/usr/local/bin/fuzz` in the final image.
-Use the container for a reproducible environment:
+The container provides a reproducible environment:
 
 ```bash
 # build the image
