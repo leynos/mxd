@@ -62,7 +62,7 @@ outlined in [roadmap.md](roadmap.md) and the storage notes in
 flowchart TD
     subgraph "Nightly CI Fuzzing Process (described in docs/fuzzing.md)"
         A[GitHub Actions Nightly Trigger] --> B[Build 'mxd-fuzz' Docker Image]
-        B -- "Includes project code, AFL++, and sanitizers" --> B
+        B -- "Builds harness in official AFL++ container, copies debug binary to /usr/local/bin/fuzz" --> B
         B --> C[Execute AFL++ in Docker Container]
         C -- "Targets 'parse_transaction' function" --> D[AFL++ Fuzzing Process]
         D -- "Runs for several hours" --> D
