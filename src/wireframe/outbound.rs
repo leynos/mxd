@@ -12,9 +12,8 @@ use std::sync::{
 use async_trait::async_trait;
 use tracing::warn;
 use wireframe::{
-    ConnectionId,
-    SessionRegistry,
     push::{PushError, PushHandle},
+    session::{ConnectionId, SessionRegistry},
 };
 
 use crate::{

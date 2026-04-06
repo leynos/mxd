@@ -27,6 +27,7 @@
 )]
 
 use std::{
+    fmt::Display,
     io::{self, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs},
     sync::Arc,
@@ -34,8 +35,9 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use argon2::Argon2;
+use thiserror::Error;
 use tokio::sync::Mutex as TokioMutex;
-use tracing::{error, warn};
+use tracing::warn;
 use wireframe::{
     app::{Envelope, Handler, WireframeApp},
     serializer::BincodeSerializer,
@@ -68,6 +70,18 @@ use crate::{
 };
 
 type HotlineApp = WireframeApp<BincodeSerializer, (), Envelope, HotlineFrameCodec>;
+
+#[derive(Debug, Error)]
+enum AppFactoryError {
+    #[error("missing handshake context in app factory")]
+    MissingHandshakeContext,
+    #[error("peer address missing in app factory")]
+    MissingPeerAddress,
+    #[error("failed to build wireframe application: {0}")]
+    BuildApplication(String),
+}
+
+fn anyhow_from_error(error: impl Display) -> anyhow::Error { anyhow!(error.to_string()) }
 
 /// Parse CLI arguments and start the Wireframe runtime.
 ///
@@ -163,46 +177,30 @@ fn build_app_for_connection(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
-) -> HotlineApp {
-    build_app_with_logging(pool, argon2, outbound_registry)
-}
-
-fn build_app_with_logging(
-    pool: &DbPool,
-    argon2: &Arc<Argon2<'static>>,
-    outbound_registry: &Arc<WireframeOutboundRegistry>,
-) -> HotlineApp {
-    match try_build_app(pool, argon2, outbound_registry) {
-        Ok(app) => app,
-        Err(err) => {
-            error!(error = %err, "failed to build wireframe application");
-            fallback_app()
-        }
-    }
+) -> std::result::Result<HotlineApp, AppFactoryError> {
+    try_build_app(pool, argon2, outbound_registry)
 }
 
 fn try_build_app(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
-) -> Result<HotlineApp> {
-    let build_context = build_app_context(pool, argon2, outbound_registry)
-        .context("failed to build wireframe app context")?;
-    build_app(build_context).context("failed to build wireframe application")
+) -> std::result::Result<HotlineApp, AppFactoryError> {
+    let build_context = build_app_context(pool, argon2, outbound_registry)?;
+    build_app(build_context).map_err(|error| AppFactoryError::BuildApplication(error.to_string()))
 }
 
 fn build_app_context<'a>(
     pool: &'a DbPool,
     argon2: &'a Arc<Argon2<'static>>,
     outbound_registry: &'a Arc<WireframeOutboundRegistry>,
-) -> Result<AppBuildContext<'a>> {
+) -> std::result::Result<AppBuildContext<'a>, AppFactoryError> {
     // Missing connection context indicates handshake setup failed; abort the
     // connection rather than running without routing state. Returning a
     // degraded app would accept traffic with broken routing and state.
-    let context = take_current_context()
-        .ok_or_else(|| anyhow!("missing handshake context in app factory"))?;
+    let context = take_current_context().ok_or(AppFactoryError::MissingHandshakeContext)?;
     let (handshake, peer) = context.into_parts();
-    let peer = peer.ok_or_else(|| anyhow!("peer address missing in app factory"))?;
+    let peer = peer.ok_or(AppFactoryError::MissingPeerAddress)?;
     let compat = Arc::new(XorCompatibility::from_handshake(&handshake));
     let client_compat = Arc::new(ClientCompatibility::from_handshake(&handshake));
     Ok(AppBuildContext {
@@ -282,11 +280,11 @@ fn validate_app_factory(
             &HandshakeMetadata::default(),
         )),
     };
-    build_app(build_context).context("failed to register routes or middleware")?;
+    build_app(build_context)
+        .map_err(anyhow_from_error)
+        .context("failed to register routes or middleware")?;
     Ok(())
 }
-
-fn fallback_app() -> HotlineApp { HotlineApp::default() }
 
 fn routing_placeholder_handler() -> Handler<Envelope> {
     // Wireframe requires a handler per route; transaction middleware owns replies.

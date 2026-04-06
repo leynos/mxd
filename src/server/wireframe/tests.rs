@@ -1,8 +1,23 @@
 //! Unit tests for the wireframe server bootstrap.
 
+use std::{
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    sync::Arc,
+};
+
+use argon2::Argon2;
 use rstest::{fixture, rstest};
 
 use super::*;
+use crate::wireframe::{
+    connection::{
+        ConnectionContext,
+        HandshakeMetadata,
+        store_current_context,
+        take_current_context,
+    },
+    test_helpers::dummy_pool,
+};
 
 #[fixture]
 fn bound_config() -> AppConfig {
@@ -43,4 +58,32 @@ fn bootstrap_captures_bind(bound_config: AppConfig) {
         "127.0.0.1:7777".parse().expect("valid socket address")
     );
     assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
+}
+
+#[rstest]
+fn app_factory_rejects_missing_handshake_context() {
+    let pool = dummy_pool();
+    let argon2 = Arc::new(Argon2::default());
+    let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
+
+    let Err(err) = build_app_for_connection(&pool, &argon2, &outbound_registry) else {
+        panic!("missing context must fail closed");
+    };
+
+    assert!(err.to_string().contains("missing handshake context"));
+}
+
+#[rstest]
+fn app_factory_builds_when_handshake_context_is_present() {
+    let pool = dummy_pool();
+    let argon2 = Arc::new(Argon2::default());
+    let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
+    let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5500));
+    let context = ConnectionContext::new(HandshakeMetadata::default()).with_peer(peer);
+    store_current_context(context);
+
+    let app = build_app_for_connection(&pool, &argon2, &outbound_registry);
+    let _ = take_current_context();
+
+    assert!(app.is_ok());
 }

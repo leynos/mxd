@@ -47,7 +47,10 @@ use std::sync::Arc;
 
 use argon2::Argon2;
 use tracing::info;
-use wireframe::{ConnectionContext, WireframeProtocol, push::PushHandle};
+use wireframe::{
+    hooks::{ConnectionContext, WireframeProtocol},
+    push::PushHandle,
+};
 
 use crate::{
     db::DbPool,
@@ -166,7 +169,7 @@ impl WireframeProtocol for HotlineProtocol {
 #[cfg(test)]
 mod tests {
     use rstest::{fixture, rstest};
-    use wireframe::ConnectionContext;
+    use wireframe::hooks::ConnectionContext;
 
     use super::*;
     use crate::wireframe::{

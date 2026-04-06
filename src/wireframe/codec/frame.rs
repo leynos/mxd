@@ -6,7 +6,7 @@
 
 use std::io;
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 use wireframe::{
     app::{Envelope, Packet},
@@ -82,7 +82,7 @@ impl Encoder<Vec<u8>> for HotlineFrameEncoder {
     fn encode(&mut self, item: Vec<u8>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let (envelope, _) = Envelope::from_bytes(&item)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let payload = envelope.into_parts().payload();
+        let payload = envelope.into_parts().into_payload();
         let parsed = parse_transaction(&payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         let tx = HotlineTransaction::try_from(parsed)
@@ -102,7 +102,7 @@ impl FrameCodec for HotlineFrameCodec {
 
     fn frame_payload(frame: &Self::Frame) -> &[u8] { frame.as_slice() }
 
-    fn wrap_payload(payload: Vec<u8>) -> Self::Frame { payload }
+    fn wrap_payload(&self, payload: Bytes) -> Self::Frame { payload.to_vec() }
 
     fn max_frame_length(&self) -> usize { HEADER_LEN + MAX_FRAME_DATA }
 }

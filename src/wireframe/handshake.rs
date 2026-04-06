@@ -13,10 +13,10 @@ use futures_util::{FutureExt, future::BoxFuture};
 use tokio::net::TcpStream;
 use tracing::warn;
 use wireframe::{
-    app::{Packet, WireframeApp},
+    app::Packet,
     codec::FrameCodec,
     serializer::Serializer,
-    server::{ServerState, WireframeServer},
+    server::{AppFactory, ServerState, WireframeServer},
 };
 
 use super::preamble::HotlinePreamble;
@@ -45,7 +45,7 @@ pub fn install<F, S, Ser, Ctx, E, Codec>(
     timeout: Duration,
 ) -> WireframeServer<F, HotlinePreamble, S, Ser, Ctx, E, Codec>
 where
-    F: Fn() -> WireframeApp<Ser, Ctx, E, Codec> + Send + Sync + Clone + 'static,
+    F: AppFactory<Ser, Ctx, E, Codec>,
     S: ServerState,
     Ser: Serializer + Send + Sync,
     Ctx: Send + 'static,
@@ -128,8 +128,8 @@ mod tests {
     use rstest::rstest;
     use tokio::{io::AsyncWriteExt, net::TcpStream, sync::oneshot, time::timeout};
     use wireframe::{
-        BincodeSerializer,
         app::{Envelope, WireframeApp},
+        serializer::BincodeSerializer,
         server::WireframeServer,
     };
 

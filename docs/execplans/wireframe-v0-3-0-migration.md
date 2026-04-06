@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -79,23 +79,32 @@ changing behaviour.
 ## Progress
 
 - [x] (2026-04-06) Review `docs/wireframe-v0-2-0-to-v0-3-0-migration-guide.md`
-      and `docs/wireframe-users-guide.md`.
+  and `docs/wireframe-users-guide.md`.
 - [x] (2026-04-06) Inventory current `wireframe` usage in `Cargo.toml`,
-      `src/server/wireframe/mod.rs`, `src/wireframe/protocol.rs`,
-      `src/wireframe/outbound.rs`, `src/wireframe/codec/frame.rs`,
-      `src/wireframe/handshake.rs`, and the wireframe-focused test files.
+  `src/server/wireframe/mod.rs`, `src/wireframe/protocol.rs`,
+  `src/wireframe/outbound.rs`, `src/wireframe/codec/frame.rs`,
+  `src/wireframe/handshake.rs`, and the wireframe-focused test files.
 - [x] (2026-04-06) Identify the highest-value v0.3.0 adoption points:
-      removed root re-exports, fallible app factories, and selective testkit
-      adoption.
-- [ ] Update the `wireframe` dependency to v0.3.0 and regenerate `Cargo.lock`.
-- [ ] Fix compile-time breakage from removed root re-exports and any changed
-      trait bounds.
-- [ ] Refactor the wireframe server bootstrap to use a fallible app factory
-      and remove the degraded fallback app path.
-- [ ] Evaluate and, if beneficial, adopt `wireframe::testkit` in one or two
-      low-level transport suites.
-- [ ] Run the full repository validation suite and capture the final outcome in
-      this ExecPlan.
+  removed root re-exports, fallible app factories, and selective testkit
+  adoption.
+- [x] (2026-04-06) Update the `wireframe` dependency to v0.3.0 and regenerate
+  `Cargo.lock`.
+- [x] (2026-04-06) Fix compile-time breakage from removed root re-exports and
+  changed trait bounds by moving imports to `wireframe::hooks`,
+  `wireframe::session`, and `wireframe::serializer`, and by adapting
+  `HotlineFrameCodec` to the v0.3.0 `FrameCodec::wrap_payload(&self, Bytes)`
+  signature.
+- [x] (2026-04-06) Refactor the wireframe server bootstrap to use a fallible
+  app factory and remove the degraded fallback app path. The factory now
+  returns a typed `AppFactoryError`, and unit tests assert that missing
+  handshake context fails closed while valid context still builds an app.
+- [x] (2026-04-06) Evaluate `wireframe::testkit` for targeted transport suites.
+  Conclusion: no adoption in this change because the migration completed with
+  focused compatibility fixes and the existing Hotline-specific helpers remain
+  the better fit for the current preamble and framing tests.
+- [x] (2026-04-06) Run the full repository validation suite and capture the
+  final outcome in this ExecPlan. `make check-fmt`, `make lint`, and
+  `make test` all pass after the migration.
 
 ## Surprises & discoveries
 
@@ -105,12 +114,12 @@ changing behaviour.
   `BackoffConfig::normalised`. Impact: the migration can stay focused on a
   narrow set of concrete changes.
 
-- Observation: `src/server/wireframe/mod.rs` currently validates app
-  construction at startup, then logs and falls back to `HotlineApp::default()`
-  when per-connection app setup fails. Evidence: `build_app_with_logging()`
-  catches `try_build_app()` errors and returns `fallback_app()`. Impact:
-  v0.3.0's fallible app factory directly addresses an existing workaround and
-  is the clearest capability win for `mxd`.
+- Observation: `src/server/wireframe/mod.rs` initially validated app
+  construction at startup, then logged and fell back to
+  `HotlineApp::default()` when per-connection app setup failed. Evidence:
+  `build_app_with_logging()` caught `try_build_app()` errors and returned
+  `fallback_app()`. Impact: v0.3.0's fallible app factory directly addressed
+  an existing workaround and was the clearest capability win for `mxd`.
 
 - Observation: Hotline transaction fragmentation is already implemented inside
   `HotlineCodec`, not by wireframe's transport fragmentation layer. Evidence:
@@ -125,6 +134,22 @@ changing behaviour.
   protocol hooks, codecs, and server-side tests. Impact: client pooling,
   streaming, tracing, and request hooks are presently informative but not
   applicable migration targets.
+
+- Observation: `wireframe` v0.3.0's fallible app factory fits the existing
+  handshake-context dependency cleanly.
+  Evidence: replacing `fallback_app()` with a
+  `Result<HotlineApp, AppFactoryError>` closure required only local changes in
+  `src/server/wireframe/mod.rs` plus targeted tests. Impact: the server now
+  fails closed when per-connection handshake context is missing, without
+  widening the migration into route or middleware redesign.
+
+- Observation: `wireframe::testkit` is not a clear win for the current Hotline
+  transport tests.
+  Evidence: the suites most relevant to the migration already depend on
+  Hotline-specific preamble bytes, frame reassembly, and bespoke helpers, and
+  the dependency bump plus app-factory refactor did not create painful test
+  boilerplate. Impact: the migration can stay smaller and lower risk by
+  keeping the existing test helpers for now.
 
 ## Decision log
 
@@ -149,20 +174,28 @@ changing behaviour.
   Hotline preamble means not every v0.3.0 test helper will fit. Date/Author:
   2026-04-06 / Assistant
 
+- Decision: keep the existing Hotline-specific transport helpers instead of
+  adopting `wireframe::testkit` in this migration. Rationale: after the
+  dependency bump and focused compatibility fixes, `testkit` did not offer a
+  meaningful simplification for the current preamble and codec suites.
+  Date/Author: 2026-04-06 / Assistant
+
 ## Outcomes & retrospective
 
-At draft time, the migration path is intentionally narrow: bump `wireframe` to
-v0.3.0, repair removed import paths, adopt fallible app construction where it
-eliminates a known workaround, and selectively use `wireframe::testkit` only
-where it clearly simplifies low-level tests. The largest uncertainty is not the
-dependency bump itself, but whether any test harnesses gain enough value from
-`testkit` to justify the extra churn.
+The migration landed as a narrow compatibility change: `wireframe` now resolves
+to v0.3.0, import-path and trait-signature breakage is repaired, and
+per-connection app construction now fails closed instead of silently falling
+back to `HotlineApp::default()`. Focused wireframe-only checks passed during
+development, and the full repository gates (`make check-fmt`, `make lint`, and
+`make test`) passed at the end. `wireframe::testkit` was evaluated but not
+adopted because the existing Hotline-specific helpers remain the better fit for
+the current preamble and framing suites.
 
 ## Context and orientation
 
 `mxd` is a Rust workspace whose wireframe integration lives under
 `src/server/wireframe/` and `src/wireframe/`. The manifest at `Cargo.toml`
-currently declares `wireframe = "0.2.0"` and builds the `mxd-wireframe-server`
+now declares `wireframe = "0.3.0"` and builds the `mxd-wireframe-server`
 binary from `src/bin/mxd_wireframe_server.rs`.
 
 The key runtime file is `src/server/wireframe/mod.rs`. It defines `HotlineApp`
@@ -173,29 +206,29 @@ a `WireframeServer`, installs Hotline preamble hooks from
 middleware.
 
 `src/wireframe/protocol.rs` implements wireframe protocol hooks for Hotline. It
-currently imports `ConnectionContext` and `WireframeProtocol` from the crate
-root, which v0.3.0 removes in favour of `wireframe::hooks`.
+now imports `ConnectionContext` and `WireframeProtocol` from
+`wireframe::hooks`.
 
 `src/wireframe/outbound.rs` stores and retrieves per-connection push handles.
-It currently imports `ConnectionId` and `SessionRegistry` from the crate root,
-which v0.3.0 moves under `wireframe::session`.
+It now imports `ConnectionId` and `SessionRegistry` from
+`wireframe::session`.
 
 `src/wireframe/codec/frame.rs` adapts the in-tree `HotlineCodec` to wireframe's
 `FrameCodec` trait. It is the bridge between Hotline transaction bytes and
 wireframe `Envelope` payloads.
 
 `src/wireframe/handshake.rs` attaches preamble success and failure handlers,
-stores handshake context, and contains tests that currently use
-`BincodeSerializer` through a root import in one test module.
+stores handshake context, and contains tests that now import
+`BincodeSerializer` from `wireframe::serializer`.
 
 The most relevant tests for this migration are:
 
 1. `tests/wireframe_handshake_metadata.rs`
-2. `tests/wireframe_transaction.rs`
-3. `tests/wireframe_xor_compat.rs`
-4. `src/wireframe/codec/tests.rs`
-5. `src/wireframe/codec/framed_tests.rs`
-6. `src/wireframe/handshake.rs` tests
+1. `tests/wireframe_transaction.rs`
+1. `tests/wireframe_xor_compat.rs`
+1. `src/wireframe/codec/tests.rs`
+1. `src/wireframe/codec/framed_tests.rs`
+1. `src/wireframe/handshake.rs` tests
 
 In this plan, a "fallible app factory" means a closure passed to
 `WireframeServer::new` that returns `Result<WireframeApp, E>` instead of always
@@ -222,9 +255,9 @@ Fix the removed root re-export usages first:
 
 1. In `src/wireframe/protocol.rs`, import
    `ConnectionContext` and `WireframeProtocol` from `wireframe::hooks`.
-2. In `src/wireframe/outbound.rs`, import `ConnectionId` and
+1. In `src/wireframe/outbound.rs`, import `ConnectionId` and
    `SessionRegistry` from `wireframe::session`.
-3. In `src/wireframe/handshake.rs` test code and any similar sites, import
+1. In `src/wireframe/handshake.rs` test code and any similar sites, import
    `BincodeSerializer` from `wireframe::serializer`.
 
 While doing this, inspect compile errors for any secondary breakage in tests,
@@ -234,8 +267,8 @@ other removed or renamed surfaces, this stage should remain small.
 ### Stage C: adopt the fallible factory path
 
 Refactor `src/server/wireframe/mod.rs` so the closure passed to
-`WireframeServer::new` returns `Result<HotlineApp, anyhow::Error>` (or a
-similarly typed error) rather than always returning `HotlineApp`.
+`WireframeServer::new` returns `Result<HotlineApp, AppFactoryError>` rather
+than always returning `HotlineApp`.
 
 The target shape is:
 
@@ -305,7 +338,7 @@ All commands run from:
    Updating wireframe v0.2.0 -> v0.3.0
    ```
 
-2. Run a focused wireframe-only compile or test pass to surface API errors
+1. Run a focused wireframe-only compile or test pass to surface API errors
    quickly.
 
    ```plaintext
@@ -317,7 +350,7 @@ All commands run from:
    moved imports such as `ConnectionContext`, `WireframeProtocol`,
    `ConnectionId`, `SessionRegistry`, or `BincodeSerializer`.
 
-3. After import fixes, re-run the focused wireframe-only suite.
+1. After import fixes, re-run the focused wireframe-only suite.
 
    ```plaintext
    make typecheck-wireframe-only
@@ -327,7 +360,7 @@ All commands run from:
    Expected outcome after fixes: the wireframe-only build succeeds and the
    focused tests pass.
 
-4. After the fallible factory refactor and any targeted test updates, run the
+1. After the fallible factory refactor and any targeted test updates, run the
    full repository gates.
 
    ```plaintext
@@ -346,7 +379,7 @@ All commands run from:
    test result: ok
    ```
 
-5. If implementation edits any Markdown beyond this ExecPlan, also run:
+1. If implementation edits any Markdown beyond this ExecPlan, also run:
 
    ```plaintext
    make fmt
@@ -438,8 +471,8 @@ impl WireframeProtocol for HotlineProtocol {
 The dependency plan is:
 
 1. Update the main dependency to `wireframe = "0.3.0"`.
-2. Add only the `testkit` feature if a migrated test proves it is useful.
-3. Do not add `wireframe_testing` without explicit approval.
+1. Add only the `testkit` feature if a migrated test proves it is useful.
+1. Do not add `wireframe_testing` without explicit approval.
 
 ## Revision note
 
