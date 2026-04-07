@@ -27,7 +27,6 @@
 )]
 
 use std::{
-    fmt::Display,
     io::{self, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs},
     sync::Arc,
@@ -77,11 +76,9 @@ enum AppFactoryError {
     MissingHandshakeContext,
     #[error("peer address missing in app factory")]
     MissingPeerAddress,
-    #[error("failed to build wireframe application: {0}")]
-    BuildApplication(String),
+    #[error("failed to build wireframe application")]
+    BuildApplication(#[source] anyhow::Error),
 }
-
-fn anyhow_from_error(error: impl Display) -> anyhow::Error { anyhow!(error.to_string()) }
 
 /// Parse CLI arguments and start the Wireframe runtime.
 ///
@@ -187,7 +184,8 @@ fn try_build_app(
     outbound_registry: &Arc<WireframeOutboundRegistry>,
 ) -> std::result::Result<HotlineApp, AppFactoryError> {
     let build_context = build_app_context(pool, argon2, outbound_registry)?;
-    build_app(build_context).map_err(|error| AppFactoryError::BuildApplication(error.to_string()))
+    build_app(build_context)
+        .map_err(|e| AppFactoryError::BuildApplication(anyhow!("wireframe error: {e}")))
 }
 
 fn build_app_context<'a>(
@@ -281,7 +279,7 @@ fn validate_app_factory(
         )),
     };
     build_app(build_context)
-        .map_err(anyhow_from_error)
+        .map_err(|e| anyhow!("failed to build wireframe application: {e}"))
         .context("failed to register routes or middleware")?;
     Ok(())
 }

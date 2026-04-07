@@ -16,7 +16,7 @@ mxd/
 ├── build.rs               # Build script for code generation
 ├── clippy.toml            # Clippy configuration
 ├── codecov.yml            # Code coverage configuration
-├── diesel.toml            # Diesel ORM configuration
+├── diesel.toml            # Diesel Object–relational mapping (ORM) configuration
 ├── migrations/            # Database schema migrations
 ├── rust-toolchain.toml    # Rust toolchain specification
 ├── src/                   # Source code

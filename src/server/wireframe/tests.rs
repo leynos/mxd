@@ -66,11 +66,11 @@ fn app_factory_rejects_missing_handshake_context() {
     let argon2 = Arc::new(Argon2::default());
     let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
 
-    let Err(err) = build_app_for_connection(&pool, &argon2, &outbound_registry) else {
-        panic!("missing context must fail closed");
+    let Err(AppFactoryError::MissingHandshakeContext) =
+        build_app_for_connection(&pool, &argon2, &outbound_registry)
+    else {
+        panic!("missing context must fail closed with the proper error variant");
     };
-
-    assert!(err.to_string().contains("missing handshake context"));
 }
 
 #[rstest]
@@ -83,7 +83,10 @@ fn app_factory_builds_when_handshake_context_is_present() {
     store_current_context(context);
 
     let app = build_app_for_connection(&pool, &argon2, &outbound_registry);
-    let _ = take_current_context();
 
     assert!(app.is_ok());
+    assert!(
+        take_current_context().is_none(),
+        "per-connection context must be consumed by the app factory"
+    );
 }

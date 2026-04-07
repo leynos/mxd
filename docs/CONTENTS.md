@@ -5,7 +5,7 @@ audience.
 
 ## Getting started
 
-Start here if you are new to the project.
+Start here for an introduction to the project.
 
 - [`../README.md`](../README.md) — Project overview, quick start, and basic
   usage.
