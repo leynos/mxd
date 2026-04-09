@@ -398,7 +398,7 @@ Two new types are exported from `wireframe::app`:
 Two new builder methods on `WireframeApp`:
 
 - `memory_budgets(MemoryBudgets)` – set explicit limits. When set, the runtime
-  enforces a soft read-pacing threshold at 75% of the limit and aborts the
+  enforces a soft read-pacing threshold at 80% of the limit and aborts the
   connection on breach.
 - `enable_fragmentation()` – enable fragmentation with codec-derived defaults,
   replacing the previous manual `fragmentation(Some(config))` call for common
@@ -1042,7 +1042,7 @@ classDiagram
     }
 
     class PooledClientLease {
-        <<Deref_to_WireframeClient>>
+        <<forwards_to_WireframeClient>>
         -client: WireframeClient
         +call(request: Envelope) Result~Response~
         +send(frame: Frame) Result~()~
@@ -1136,8 +1136,10 @@ in-flight limit. The lease delegates the call through to the underlying
 `WireframeClient`, which exchanges frames with the server. Dropping the lease
 returns the socket to the pool for reuse.*
 
-`PoolHandle` is cheaply cloneable. `PooledClientLease` implements `Deref` to
-`WireframeClient` for one-off calls via `call`, `send`, and `receive`.
+`PoolHandle` is cheaply cloneable. `PooledClientLease` forwards common request
+methods (`call`, `send`, `receive`) to the underlying `WireframeClient` for
+one-off calls. The lease is cheaply cloneable and does not expose a direct
+`WireframeClient` reference.
 
 ### Request hooks
 
