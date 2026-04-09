@@ -7,12 +7,14 @@ use std::{
 
 use argon2::Argon2;
 use rstest::{fixture, rstest};
+use tokio::runtime::Builder;
 
 use super::*;
 use crate::wireframe::{
     connection::{
         ConnectionContext,
         HandshakeMetadata,
+        scope_current_context,
         store_current_context,
         take_current_context,
     },
@@ -83,13 +85,20 @@ fn app_factory_builds_when_handshake_context_is_present() {
     let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
     let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5500));
     let context = ConnectionContext::new(HandshakeMetadata::default()).with_peer(peer);
-    store_current_context(context);
+    let runtime = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build current-thread runtime");
 
-    let app = build_app_for_connection(&pool, &argon2, &outbound_registry);
+    runtime.block_on(scope_current_context(None, async {
+        store_current_context(context);
 
-    assert!(app.is_ok());
-    assert!(
-        take_current_context().is_none(),
-        "per-connection context must be consumed by the app factory"
-    );
+        let app = build_app_for_connection(&pool, &argon2, &outbound_registry);
+
+        assert!(app.is_ok());
+        assert!(
+            take_current_context().is_none(),
+            "per-connection context must be consumed by the app factory"
+        );
+    }));
 }
