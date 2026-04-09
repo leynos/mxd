@@ -169,11 +169,9 @@ where
 /// task can still consume it after the handshake future completes.
 pub fn store_current_context(context: ConnectionContext) {
     store_registry_context(&context);
-    match CONNECTION_CONTEXT.try_with(|cell| {
+    let _ = CONNECTION_CONTEXT.try_with(|cell| {
         cell.borrow_mut().replace(context);
-    }) {
-        Ok(()) | Err(_) => {}
-    }
+    });
 }
 
 /// Retrieve connection context metadata for the current Tokio task, if present.
@@ -327,27 +325,36 @@ mod tests {
         let starting_registry_len = registry_len();
         let first = ConnectionContext::new(metadata(1, 1));
         let second = ConnectionContext::new(metadata(2, 2));
+        let registered_barrier = std::sync::Arc::new(Barrier::new(3));
+        let release_barrier = std::sync::Arc::new(Barrier::new(3));
 
+        let first_registered_barrier = registered_barrier.clone();
+        let first_release_barrier = release_barrier.clone();
         let first_task = task::spawn(async move {
             scope_current_context(None, async move {
                 store_current_context(first);
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                first_registered_barrier.wait().await;
+                first_release_barrier.wait().await;
                 let _ = take_current_context();
             })
             .await;
         });
 
+        let second_registered_barrier = registered_barrier.clone();
+        let second_release_barrier = release_barrier.clone();
         let second_task = task::spawn(async move {
             scope_current_context(None, async move {
                 store_current_context(second);
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                second_registered_barrier.wait().await;
+                second_release_barrier.wait().await;
                 let _ = take_current_context();
             })
             .await;
         });
 
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        registered_barrier.wait().await;
         assert_eq!(registry_len(), starting_registry_len + 2);
+        release_barrier.wait().await;
 
         first_task.await.expect("first task panicked");
         second_task.await.expect("second task panicked");
