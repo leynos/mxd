@@ -64,18 +64,23 @@ fn bootstrap_captures_bind(bound_config: AppConfig) {
 
 #[rstest]
 fn app_factory_rejects_missing_handshake_context() {
-    // Clear any leftover handshake context from previous tests
-    let _ = take_current_context();
-
     let pool = dummy_pool();
     let argon2 = Arc::new(Argon2::default());
     let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
+    let runtime = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build current-thread runtime");
 
-    let Err(AppFactoryError::MissingHandshakeContext) =
-        build_app_for_connection(&pool, &argon2, &outbound_registry)
-    else {
-        panic!("missing context must fail closed with the proper error variant");
-    };
+    runtime.block_on(scope_current_context(None, async {
+        let _ = take_current_context();
+
+        let Err(AppFactoryError::MissingHandshakeContext) =
+            build_app_for_connection(&pool, &argon2, &outbound_registry)
+        else {
+            panic!("missing context must fail closed with the proper error variant");
+        };
+    }));
 }
 
 #[rstest]

@@ -22,26 +22,33 @@ async fn perform_handshake(
     addr: SocketAddr,
     bytes: Option<Vec<u8>>,
 ) -> Result<[u8; REPLY_LEN], String> {
-    let mut stream = TcpStream::connect(addr).await.expect("connect");
-    send_handshake_bytes(&mut stream, bytes).await;
+    let mut stream = TcpStream::connect(addr)
+        .await
+        .map_err(|err| err.to_string())?;
+    send_handshake_bytes(&mut stream, bytes).await?;
     read_handshake_reply(&mut stream).await
 }
 
-async fn send_handshake_bytes(stream: &mut TcpStream, bytes: Option<Vec<u8>>) {
+async fn send_handshake_bytes(
+    stream: &mut TcpStream,
+    bytes: Option<Vec<u8>>,
+) -> Result<(), String> {
     if let Some(data) = bytes {
-        stream.write_all(&data).await.expect("write handshake");
+        stream
+            .write_all(&data)
+            .await
+            .map_err(|err| err.to_string())?;
     }
+    Ok(())
 }
 
 async fn read_handshake_reply(stream: &mut TcpStream) -> Result<[u8; REPLY_LEN], String> {
     let mut buf = [0u8; REPLY_LEN];
     timeout(Duration::from_secs(1), stream.read_exact(&mut buf))
         .await
-        .map(|res| {
-            res.expect("read reply");
-            buf
-        })
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?
+        .map_err(|err| err.to_string())?;
+    Ok(buf)
 }
 
 struct HandshakeWorld {
@@ -69,10 +76,16 @@ impl HandshakeWorld {
         self.shutdown.borrow_mut().replace(shutdown);
     }
 
-    fn connect_and_maybe_send(&self, bytes: Option<Vec<u8>>) {
-        let addr = self.addr.borrow().expect("server not started");
+    fn connect_and_maybe_send(&self, bytes: Option<Vec<u8>>) -> Result<(), String> {
+        let addr = self
+            .addr
+            .borrow()
+            .as_ref()
+            .copied()
+            .ok_or_else(|| "server not started".to_string())?;
         let reply = self.rt.block_on(perform_handshake(addr, bytes));
         self.reply.borrow_mut().replace(reply);
+        Ok(())
     }
 
     fn reply_code(&self) -> Result<u32, String> {
@@ -113,21 +126,21 @@ fn world() -> HandshakeWorld { HandshakeWorld::new() }
 fn given_server(world: &HandshakeWorld) { world.start_server(); }
 
 #[when("I send a valid Hotline handshake")]
-fn when_valid(world: &HandshakeWorld) {
+fn when_valid(world: &HandshakeWorld) -> Result<(), String> {
     let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 0);
-    world.connect_and_maybe_send(Some(bytes.to_vec()));
+    world.connect_and_maybe_send(Some(bytes.to_vec()))
 }
 
 #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
-fn when_custom(world: &HandshakeWorld, tag: String, version: u16) {
+fn when_custom(world: &HandshakeWorld, tag: String, version: u16) -> Result<(), String> {
     let mut protocol = [0u8; 4];
     protocol.copy_from_slice(tag.as_bytes());
     let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
-    world.connect_and_maybe_send(Some(bytes.to_vec()));
+    world.connect_and_maybe_send(Some(bytes.to_vec()))
 }
 
 #[when("I connect without sending a handshake")]
-fn when_idle(world: &HandshakeWorld) { world.connect_and_maybe_send(None); }
+fn when_idle(world: &HandshakeWorld) -> Result<(), String> { world.connect_and_maybe_send(None) }
 
 #[then("the handshake reply code is {code}")]
 fn then_code(world: &HandshakeWorld, code: u32) {

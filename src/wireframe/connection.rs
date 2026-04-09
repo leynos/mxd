@@ -201,9 +201,18 @@ pub fn take_current_context() -> Option<ConnectionContext> {
     })
 }
 
+/// Return the number of connection-context entries retained in the registry.
+#[must_use]
+pub fn registry_len() -> usize {
+    registry()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .len()
+}
+
 /// Report whether a stored connection context entry is visible to this task.
 #[must_use]
-pub fn can_see_registry() -> bool { current_context().is_some() }
+pub fn has_current_context() -> bool { current_context().is_some() }
 
 #[cfg(test)]
 mod tests {
@@ -231,7 +240,8 @@ mod tests {
             assert_eq!(context.handshake().sub_protocol_tag(), *b"CHAT");
             let _ = take_current_context();
             assert!(current_context().is_none());
-            assert!(!can_see_registry());
+            assert!(!has_current_context());
+            assert_eq!(registry_len(), 0);
         })
         .await;
     }
@@ -276,7 +286,8 @@ mod tests {
                 .map(|context| context.handshake),
             Some(metadata(2, 2))
         );
-        assert!(!can_see_registry());
+        assert!(!has_current_context());
+        assert_eq!(registry_len(), 0);
     }
 
     #[rstest]
@@ -307,6 +318,39 @@ mod tests {
                 seen.await.expect("context task panicked"),
                 Some(ConnectionContext::new(meta))
             );
+            assert_eq!(registry_len(), 0);
         });
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn reports_registry_entry_count() {
+        let first = ConnectionContext::new(metadata(1, 1));
+        let second = ConnectionContext::new(metadata(2, 2));
+
+        let first_task = task::spawn(async move {
+            scope_current_context(None, async move {
+                store_current_context(first);
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                let _ = take_current_context();
+            })
+            .await;
+        });
+
+        let second_task = task::spawn(async move {
+            scope_current_context(None, async move {
+                store_current_context(second);
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                let _ = take_current_context();
+            })
+            .await;
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        assert_eq!(registry_len(), 2);
+
+        first_task.await.expect("first task panicked");
+        second_task.await.expect("second task panicked");
+        assert_eq!(registry_len(), 0);
     }
 }
