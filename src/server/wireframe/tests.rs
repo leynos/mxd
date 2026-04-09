@@ -62,6 +62,9 @@ fn bootstrap_captures_bind(bound_config: AppConfig) {
 
 #[rstest]
 fn app_factory_rejects_missing_handshake_context() {
+    // Clear any leftover handshake context from previous tests
+    let _ = take_current_context();
+
     let pool = dummy_pool();
     let argon2 = Arc::new(Argon2::default());
     let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
