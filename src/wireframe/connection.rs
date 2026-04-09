@@ -169,8 +169,8 @@ where
 /// task can still consume it after the handshake future completes.
 pub fn store_current_context(context: ConnectionContext) {
     store_registry_context(&context);
-    let _ = CONNECTION_CONTEXT.try_with(|cell| {
-        cell.borrow_mut().replace(context);
+    _ = CONNECTION_CONTEXT.try_with(|cell| {
+        let _previous_context = cell.borrow_mut().replace(context);
     });
 }
 
