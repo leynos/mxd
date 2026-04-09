@@ -24,11 +24,8 @@ domain operations can be exercised in isolation from their environment.
   loop, the `wireframe` crate acts as the **port** for the Hotline binary
   protocol. It handles socket I/O with Tokio, decodes and encodes the
   Hotline-specific frames, and dispatches incoming messages to the appropriate
-  domain handler via a routing
-  table([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/README.md#L35-L43)
-   )(
-  [1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L140-L148)).
-   Each Hotline “transaction” type (a message or request identified by an ID)
+  domain handler via a routing table[^wireframe-routing-table][^mxd-routing-handlers].
+  Each Hotline “transaction” type (a message or request identified by an ID)
   is mapped to a handler function. For example, the Login transaction (Hotline
   ID 0x006B) is routed to a `handle_login` handler in the domain core. The
   Wireframe adapter thus plays the role of the **primary port** on the inbound
@@ -293,8 +290,8 @@ Actix-web-style API but for arbitrary binary
 protocols([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/README.md#L3-L12)
  )(
 [2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/README.md#L30-L38)).
- In MXD, we use Wireframe to handle all incoming TCP connections and route
-decoded messages to handler functions based on their **transaction ID**.
+ MXD uses Wireframe to handle all incoming TCP connections and route decoded
+messages to handler functions based on their **transaction ID**.
 
 **Protocol-Level Routing**: In a Hotline server, each client request is
 identified by a numeric transaction type (e.g. 107 for Login, 200 for file
@@ -866,7 +863,7 @@ Key aspects of configuration:
   `#[arg(default_value_t = "0.0.0.0:5500".to_string())]` which sets a default
   if not otherwise
   specified([4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L126-L134)).
-   The user can override these by passing arguments; e.g.
+   These values can be overridden by passing arguments; e.g.
   `mxd --bind 192.168.1.1:1234` to listen on a custom address.
 
 - **Environment Variables**: For each field, an env var is automatically
@@ -1111,13 +1108,12 @@ API([9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb
 example([4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L114-L122)
  )(
 [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L116-L124))).
- This ensures that whether you’re using SQLite or PG, the schema will be
-up-to-date. The migration version numbers (the timestamps in filenames) are
-kept identical between the two trees, so that Diesel’s migration tracking
-(which just uses a numeric identifier) stays
-consistent.[^diesel-migration-consistency] – this is important if a user
-switches from SQLite to PG or vice versa with existing data: we want version
-`00000000000003` to represent the same logical migration on both.
+ This ensures that the schema remains current for both SQLite and PG. The
+migration version numbers (the timestamps in filenames) are kept identical
+between the two trees, so that Diesel’s migration tracking (which just uses a
+numeric identifier) stays consistent.[^diesel-migration-consistency] This is
+important when switching existing data between SQLite and PG: version
+`00000000000003` represents the same logical migration on both.
 
 ### Schema Design for Key Domains
 
@@ -3585,4 +3581,10 @@ that adding those features will require minimal changes to existing components
 (thanks to clear module boundaries and use of standard crates for integration).
 
 [^diesel-migration-consistency]:
-  supporting-both-sqlite3-and-postgresql-in-diesel.md#L34-L37
+  [supporting-both-sqlite3-and-postgresql-in-diesel.md#L34-L37](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/supporting-both-sqlite3-and-postgresql-in-diesel.md#L34-L37)
+
+[^wireframe-routing-table]:
+  [https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/README.md#L35-L43](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/README.md#L35-L43)
+
+[^mxd-routing-handlers]:
+  [https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L140-L148](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L140-L148)

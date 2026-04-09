@@ -10,7 +10,7 @@ use std::{
 use mxd::{
     protocol::{PROTOCOL_ID, REPLY_LEN, VERSION},
     wireframe::{
-        connection::{HandshakeMetadata, registry_len, take_current_context},
+        connection::{HandshakeMetadata, can_see_registry, take_current_context},
         handshake,
         preamble::HotlinePreamble,
         test_helpers::preamble_bytes,
@@ -210,7 +210,10 @@ fn then_sub_version(world: &MetadataWorld, sub_version: u16) {
 
 #[then("the handshake registry is cleared after teardown")]
 fn then_registry_cleared(world: &MetadataWorld) {
-    assert_eq!(registry_len(), 0, "handshake registry should be empty");
+    assert!(
+        !can_see_registry(),
+        "handshake registry should not be visible"
+    );
     // Reset captured metadata to prevent cross-scenario leakage when the fixture is reused.
     world
         .recorded
@@ -222,7 +225,7 @@ fn then_registry_cleared(world: &MetadataWorld) {
 #[then("no handshake metadata is recorded")]
 fn then_no_metadata(world: &MetadataWorld) {
     assert!(world.recorded().is_none());
-    assert_eq!(registry_len(), 0);
+    assert!(!can_see_registry());
 }
 
 scenarios!(

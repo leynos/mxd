@@ -77,8 +77,8 @@ fn success_handler()
         }
 
         scope_current_context(Some(context.clone()), async move {
-            store_current_context(context);
             write_handshake_reply(stream, HANDSHAKE_OK).await?;
+            store_current_context(context);
             Ok(())
         })
         .boxed()

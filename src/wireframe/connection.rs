@@ -195,16 +195,15 @@ pub fn take_current_context() -> Option<ConnectionContext> {
         .try_with(|cell| cell.borrow_mut().take())
         .ok()
         .flatten();
-    let taken = from_task_local.or_else(take_registry_context);
-    if taken.is_some() {
+    from_task_local.map_or_else(take_registry_context, |context| {
         let _ = take_registry_context();
-    }
-    taken
+        Some(context)
+    })
 }
 
-/// Return the number of stored connection context entries visible to this task.
+/// Report whether a stored connection context entry is visible to this task.
 #[must_use]
-pub fn registry_len() -> usize { usize::from(current_context().is_some()) }
+pub fn can_see_registry() -> bool { current_context().is_some() }
 
 #[cfg(test)]
 mod tests {
@@ -232,7 +231,7 @@ mod tests {
             assert_eq!(context.handshake().sub_protocol_tag(), *b"CHAT");
             let _ = take_current_context();
             assert!(current_context().is_none());
-            assert_eq!(registry_len(), 0);
+            assert!(!can_see_registry());
         })
         .await;
     }
@@ -277,7 +276,7 @@ mod tests {
                 .map(|context| context.handshake),
             Some(metadata(2, 2))
         );
-        assert_eq!(registry_len(), 0);
+        assert!(!can_see_registry());
     }
 
     #[rstest]
