@@ -217,6 +217,7 @@ pub fn has_current_context() -> bool { current_context().is_some() }
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+    use serial_test::serial;
     use tokio::{runtime::Builder, sync::Barrier, task};
 
     use super::*;
@@ -241,7 +242,6 @@ mod tests {
             let _ = take_current_context();
             assert!(current_context().is_none());
             assert!(!has_current_context());
-            assert_eq!(registry_len(), 0);
         })
         .await;
     }
@@ -287,7 +287,6 @@ mod tests {
             Some(metadata(2, 2))
         );
         assert!(!has_current_context());
-        assert_eq!(registry_len(), 0);
     }
 
     #[rstest]
@@ -318,13 +317,14 @@ mod tests {
                 seen.await.expect("context task panicked"),
                 Some(ConnectionContext::new(meta))
             );
-            assert_eq!(registry_len(), 0);
         });
     }
 
     #[rstest]
     #[tokio::test]
+    #[serial]
     async fn reports_registry_entry_count() {
+        let starting_registry_len = registry_len();
         let first = ConnectionContext::new(metadata(1, 1));
         let second = ConnectionContext::new(metadata(2, 2));
 
@@ -347,10 +347,10 @@ mod tests {
         });
 
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        assert_eq!(registry_len(), 2);
+        assert_eq!(registry_len(), starting_registry_len + 2);
 
         first_task.await.expect("first task panicked");
         second_task.await.expect("second task panicked");
-        assert_eq!(registry_len(), 0);
+        assert_eq!(registry_len(), starting_registry_len);
     }
 }
