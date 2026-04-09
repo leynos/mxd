@@ -1,11 +1,11 @@
 # Documentation contents
 
-This file provides a guide to the mxd documentation, organised by purpose and
+This file provides a guide to the mxd documentation, organized by purpose and
 audience.
 
 ## Getting started
 
-Start here for an introduction to the project.
+Start here for newcomers to the project.
 
 - [`../README.md`](../README.md) — Project overview, quick start, and basic
   usage.
@@ -21,7 +21,7 @@ Documents that explain the system's design and structure.
 - [`design.md`](design.md) — Comprehensive architecture document covering the
   hexagonal (ports-and-adapters) design, runtime selection, and component
   boundaries.
-- [`repository-layout.md`](repository-layout.md) — Organisation of the codebase
+- [`repository-layout.md`](repository-layout.md) — Organization of the codebase
   and the purpose of each directory.
 - [`adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`](adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md)
   — Notes on adopting hexagonal architecture during the Wireframe migration.
@@ -112,7 +112,7 @@ Quick reference and miscellaneous documentation.
 - [`release-notes-qa-sign-off.md`](release-notes-qa-sign-off.md) — QA sign-off
   checklist for releases.
 - [`complexity-antipatterns-and-refactoring-strategies.md`](complexity-antipatterns-and-refactoring-strategies.md)
-  — Guidance on recognising and addressing code complexity.
+  — Guidance on recognizing and addressing code complexity.
 - [`mermaid-validation.md`](mermaid-validation.md) — Validating Mermaid
   diagrams in documentation.
 - [`codescene-cli.md`](codescene-cli.md) — CodeScene CLI notes.
