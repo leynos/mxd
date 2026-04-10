@@ -190,6 +190,67 @@ fn parse_login_params(payload: &[u8]) -> Result<LoginCredentials, TransactionErr
     })
 }
 
+/// Parse `NewsCategoryNameList` payload fields.
+fn parse_news_category_name_list_params(
+    payload: &[u8],
+    header: FrameHeader,
+) -> Result<Command, TransactionError> {
+    let params = decode_params_map(payload)?;
+    let path = first_param_string(&params, FieldId::NewsPath)?;
+    Ok(Command::GetNewsCategoryNameList { path, header })
+}
+
+/// Parse `NewsArticleNameList` payload fields.
+fn parse_news_article_name_list_params(
+    payload: &[u8],
+    header: FrameHeader,
+) -> Result<Command, TransactionError> {
+    let params = decode_params_map(payload)?;
+    let path = required_param_string(&params, FieldId::NewsPath)?;
+    Ok(Command::GetNewsArticleNameList { path, header })
+}
+
+/// Parse `NewsArticleData` payload fields.
+fn parse_news_article_data_params(
+    payload: &[u8],
+    header: FrameHeader,
+) -> Result<Command, TransactionError> {
+    let params = decode_params_map(payload)?;
+    let path = required_param_string(&params, FieldId::NewsPath)?;
+    let article_id = required_param_i32(&params, FieldId::NewsArticleId)?;
+    Ok(Command::GetNewsArticleData {
+        path,
+        article_id,
+        header,
+    })
+}
+
+/// Parse `PostNewsArticle` payload fields.
+///
+/// `NewsArticleFlags` (field 334): `0` = normal post; bit flags may indicate
+/// locked/announcement status per Hotline protocol.
+fn parse_post_news_article_params(
+    payload: &[u8],
+    header: FrameHeader,
+) -> Result<Command, TransactionError> {
+    let params = decode_params_map(payload)?;
+    let path = required_param_string(&params, FieldId::NewsPath)?;
+    let title = required_param_string(&params, FieldId::NewsTitle)?;
+    let flags = first_param_i32(&params, FieldId::NewsArticleFlags)?.unwrap_or(0);
+    let data_flavor = required_param_string(&params, FieldId::NewsDataFlavor)?;
+    let data = required_param_string(&params, FieldId::NewsArticleData)?;
+    Ok(Command::PostNewsArticle {
+        req: PostArticleRequest {
+            path,
+            title,
+            flags,
+            data_flavor,
+            data,
+        },
+        header,
+    })
+}
+
 impl Command {
     /// Convert a [`Transaction`] into a [`Command`].
     ///
@@ -213,50 +274,16 @@ impl Command {
             }
             TransactionType::GetFileNameList => Ok(Self::GetFileNameList { header: tx.header }),
             TransactionType::NewsCategoryNameList => {
-                let params = decode_params_map(&tx.payload)?;
-                let path = first_param_string(&params, FieldId::NewsPath)?;
-                Ok(Self::GetNewsCategoryNameList {
-                    path,
-                    header: tx.header,
-                })
+                parse_news_category_name_list_params(&tx.payload, tx.header)
             }
             TransactionType::NewsArticleNameList => {
-                let params = decode_params_map(&tx.payload)?;
-                let path = required_param_string(&params, FieldId::NewsPath)?;
-                Ok(Self::GetNewsArticleNameList {
-                    path,
-                    header: tx.header,
-                })
+                parse_news_article_name_list_params(&tx.payload, tx.header)
             }
             TransactionType::NewsArticleData => {
-                let params = decode_params_map(&tx.payload)?;
-                let path = required_param_string(&params, FieldId::NewsPath)?;
-                let id = required_param_i32(&params, FieldId::NewsArticleId)?;
-                Ok(Self::GetNewsArticleData {
-                    path,
-                    article_id: id,
-                    header: tx.header,
-                })
+                parse_news_article_data_params(&tx.payload, tx.header)
             }
             TransactionType::PostNewsArticle => {
-                let params = decode_params_map(&tx.payload)?;
-                let path = required_param_string(&params, FieldId::NewsPath)?;
-                let title = required_param_string(&params, FieldId::NewsTitle)?;
-                // NewsArticleFlags (field 334): 0 = normal post; bit flags may indicate
-                // locked/announcement status per Hotline protocol.
-                let flags = first_param_i32(&params, FieldId::NewsArticleFlags)?.unwrap_or(0);
-                let data_flavor = required_param_string(&params, FieldId::NewsDataFlavor)?;
-                let data = required_param_string(&params, FieldId::NewsArticleData)?;
-                Ok(Self::PostNewsArticle {
-                    req: PostArticleRequest {
-                        path,
-                        title,
-                        flags,
-                        data_flavor,
-                        data,
-                    },
-                    header: tx.header,
-                })
+                parse_post_news_article_params(&tx.payload, tx.header)
             }
             _ => Ok(Self::Unknown { header: tx.header }),
         }

@@ -1,0 +1,185 @@
+//! BDD coverage for Wireframe handshake hooks.
+
+use std::{cell::RefCell, net::SocketAddr, time::Duration};
+
+use rstest::fixture;
+use rstest_bdd::assert_step_ok;
+use rstest_bdd_macros::{given, scenario, then, when};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    runtime::Runtime,
+    sync::oneshot,
+    time::timeout,
+};
+
+use crate::{
+    protocol::{PROTOCOL_ID, REPLY_LEN, VERSION},
+    wireframe::test_helpers::preamble_bytes,
+};
+
+async fn perform_handshake(
+    addr: SocketAddr,
+    bytes: Option<Vec<u8>>,
+) -> Result<[u8; REPLY_LEN], String> {
+    let mut stream = TcpStream::connect(addr)
+        .await
+        .map_err(|err| err.to_string())?;
+    send_handshake_bytes(&mut stream, bytes).await?;
+    read_handshake_reply(&mut stream).await
+}
+
+async fn send_handshake_bytes(
+    stream: &mut TcpStream,
+    bytes: Option<Vec<u8>>,
+) -> Result<(), String> {
+    if let Some(data) = bytes {
+        stream
+            .write_all(&data)
+            .await
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
+async fn read_handshake_reply(stream: &mut TcpStream) -> Result<[u8; REPLY_LEN], String> {
+    let mut buf = [0u8; REPLY_LEN];
+    timeout(Duration::from_secs(1), stream.read_exact(&mut buf))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(|err| err.to_string())?;
+    Ok(buf)
+}
+
+struct HandshakeWorld {
+    rt: Runtime,
+    addr: RefCell<Option<SocketAddr>>,
+    shutdown: RefCell<Option<oneshot::Sender<()>>>,
+    reply: RefCell<Option<Result<[u8; REPLY_LEN], String>>>,
+}
+
+impl HandshakeWorld {
+    fn new() -> Self {
+        Self {
+            rt: Runtime::new().expect("runtime"),
+            addr: RefCell::new(None),
+            shutdown: RefCell::new(None),
+            reply: RefCell::new(None),
+        }
+    }
+
+    fn start_server(&self) {
+        let (addr, shutdown) = self
+            .rt
+            .block_on(async { super::tests::start_server(Duration::from_millis(100)) });
+        self.addr.borrow_mut().replace(addr);
+        self.shutdown.borrow_mut().replace(shutdown);
+    }
+
+    fn connect_and_maybe_send(&self, bytes: Option<Vec<u8>>) -> Result<(), String> {
+        let addr = self
+            .addr
+            .borrow()
+            .as_ref()
+            .copied()
+            .ok_or_else(|| "server not started".to_string())?;
+        let reply = self.rt.block_on(perform_handshake(addr, bytes));
+        self.reply.borrow_mut().replace(reply);
+        Ok(())
+    }
+
+    fn reply_code(&self) -> Result<u32, String> {
+        let reply = self.reply.borrow();
+        let Some(reply) = reply.as_ref() else {
+            return Err("missing reply".into());
+        };
+        reply
+            .as_ref()
+            .map(|buf| {
+                u32::from_be_bytes(
+                    buf[4..8]
+                        .try_into()
+                        .expect("convert reply slice to array (bdd reply)"),
+                )
+            })
+            .map_err(ToString::to_string)
+    }
+}
+
+impl Drop for HandshakeWorld {
+    fn drop(&mut self) {
+        if let Some(tx) = self.shutdown.borrow_mut().take() {
+            let _ = tx.send(());
+        }
+    }
+}
+
+#[expect(
+    clippy::allow_attributes,
+    reason = "rustc compiler does not emit expected lint"
+)]
+#[allow(unused_braces, reason = "rstest-bdd macro expansion produces braces")]
+#[fixture]
+fn world() -> HandshakeWorld { HandshakeWorld::new() }
+
+#[given("a wireframe server handling handshakes")]
+fn given_server(world: &HandshakeWorld) { world.start_server(); }
+
+#[when("I send a valid Hotline handshake")]
+fn when_valid(world: &HandshakeWorld) -> Result<(), String> {
+    let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 0);
+    world.connect_and_maybe_send(Some(bytes.to_vec()))
+}
+
+#[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
+fn when_custom(world: &HandshakeWorld, tag: String, version: u16) -> Result<(), String> {
+    let mut protocol = [0u8; 4];
+    if tag.len() != protocol.len() {
+        return Err(format!(
+            "protocol tag must be exactly {} bytes, got {}",
+            protocol.len(),
+            tag.len()
+        ));
+    }
+    protocol.copy_from_slice(tag.as_bytes());
+    let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
+    world.connect_and_maybe_send(Some(bytes.to_vec()))
+}
+
+#[when("I connect without sending a handshake")]
+fn when_idle(world: &HandshakeWorld) -> Result<(), String> { world.connect_and_maybe_send(None) }
+
+#[then("the handshake reply code is {code}")]
+fn then_code(world: &HandshakeWorld, code: u32) {
+    let reply = world.reply_code();
+    let value = assert_step_ok!(reply);
+    assert_eq!(value, code);
+}
+
+#[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 0)]
+fn replies_ok(world: HandshakeWorld) {
+    given_server(&world);
+    assert_step_ok!(when_valid(&world));
+    then_code(&world, 0);
+}
+
+#[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 1)]
+fn invalid_protocol(world: HandshakeWorld) {
+    given_server(&world);
+    assert_step_ok!(when_custom(&world, "WRNG".into(), 1));
+    then_code(&world, 1);
+}
+
+#[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 2)]
+fn unsupported_version(world: HandshakeWorld) {
+    given_server(&world);
+    assert_step_ok!(when_custom(&world, "TRTP".into(), 2));
+    then_code(&world, 2);
+}
+
+#[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 3)]
+fn handshake_timeout(world: HandshakeWorld) {
+    given_server(&world);
+    assert_step_ok!(when_idle(&world));
+    then_code(&world, 3);
+}

@@ -5833,9 +5833,9 @@ dependencies = [
 
 [[package]]
 name = "wireframe"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a74f8d429b888f695b9a5e3e0c322dc56abb5b103f59169c4370e35641d05bc"
+checksum = "ae7ba1b82771f0428551e3d19c8578521cc77c73dda66746e1e4ae5986d8a7c6"
 dependencies = [
  "async-trait",
  "bincode",

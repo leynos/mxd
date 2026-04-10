@@ -6,7 +6,7 @@
 
 use std::io;
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 use wireframe::{
     app::{Envelope, Packet},
@@ -82,7 +82,7 @@ impl Encoder<Vec<u8>> for HotlineFrameEncoder {
     fn encode(&mut self, item: Vec<u8>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let (envelope, _) = Envelope::from_bytes(&item)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let payload = envelope.into_parts().payload();
+        let payload = envelope.into_parts().into_payload();
         let parsed = parse_transaction(&payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         let tx = HotlineTransaction::try_from(parsed)
@@ -102,7 +102,67 @@ impl FrameCodec for HotlineFrameCodec {
 
     fn frame_payload(frame: &Self::Frame) -> &[u8] { frame.as_slice() }
 
-    fn wrap_payload(payload: Vec<u8>) -> Self::Frame { payload }
+    fn wrap_payload(&self, payload: Bytes) -> Self::Frame { payload.to_vec() }
 
     fn max_frame_length(&self) -> usize { HEADER_LEN + MAX_FRAME_DATA }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests cover `HotlineFrameCodec` payload wrapping, slice access, and frame
+    //! length invariants.
+
+    use bytes::Bytes;
+    use rstest::{fixture, rstest};
+    use wireframe::codec::FrameCodec;
+
+    use super::HotlineFrameCodec;
+    use crate::transaction::{HEADER_LEN, MAX_FRAME_DATA};
+
+    #[fixture]
+    fn codec() -> HotlineFrameCodec {
+        // Provide a fresh codec instance per rstest case.
+        HotlineFrameCodec::new()
+    }
+
+    #[rstest]
+    #[case(Bytes::from(vec![0u8, 1u8, 2u8, 3u8, 4u8]), vec![0u8, 1u8, 2u8, 3u8, 4u8])]
+    #[case(Bytes::new(), Vec::new())]
+    fn wrap_payload_cases(
+        codec: HotlineFrameCodec,
+        #[case] bytes: Bytes,
+        #[case] expected: Vec<u8>,
+    ) {
+        let frame = codec.wrap_payload(bytes);
+
+        assert_eq!(frame, expected);
+    }
+
+    #[rstest]
+    #[case(vec![10u8, 20u8, 30u8], vec![10u8, 20u8, 30u8])]
+    #[case(Vec::new(), Vec::new())]
+    fn frame_payload_cases(#[case] data: Vec<u8>, #[case] expected: Vec<u8>) {
+        let slice = HotlineFrameCodec::frame_payload(&data);
+
+        assert_eq!(slice, expected.as_slice());
+    }
+
+    #[test]
+    fn max_frame_length_matches_header_plus_max_data() {
+        let codec = HotlineFrameCodec::new();
+
+        assert_eq!(codec.max_frame_length(), HEADER_LEN + MAX_FRAME_DATA);
+    }
+
+    #[test]
+    fn codec_round_trip_payload_unchanged() {
+        let codec = HotlineFrameCodec::new();
+        let original = vec![0xabu8, 0xcdu8, 0xefu8];
+        let bytes = Bytes::from(original.clone());
+
+        let frame = codec.wrap_payload(bytes);
+        let extracted = HotlineFrameCodec::frame_payload(&frame);
+
+        assert_eq!(extracted, original);
+    }
 }

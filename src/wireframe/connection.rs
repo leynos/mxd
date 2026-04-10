@@ -4,12 +4,22 @@
 //! Tokio task. During the Hotline handshake we need to retain the negotiated
 //! metadata (sub-protocol ID and sub-version) so later routing and
 //! compatibility shims can branch on the client's capabilities. This module
-//! keeps a per-task/thread store of handshake metadata and peer information so
-//! connection setup can seed the app factory with the negotiated context.
+//! keeps handshake metadata and peer information in Tokio task-local storage so
+//! connection setup can seed the app factory with the negotiated context even
+//! when Tokio migrates the task across worker threads. Wireframe's synchronous
+//! app factory runs after the handshake future resolves, so this module also
+//! mirrors the scoped value in a task-ID keyed registry for that hand-off.
 
 #![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
-use std::net::SocketAddr;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    net::SocketAddr,
+    sync::{Mutex, OnceLock},
+};
+
+use tokio::task::{self, Id};
 
 use crate::protocol::{Handshake, VERSION};
 
@@ -99,61 +109,117 @@ impl ConnectionContext {
     }
 }
 
-#[expect(
-    clippy::missing_const_for_thread_local,
-    reason = "RefCell initialisation cannot be const for thread locals"
-)]
-mod handshake_local {
-    //! Thread-local storage for handshake metadata when task-local state is absent.
+tokio::task_local! {
+    static CONNECTION_CONTEXT: RefCell<Option<ConnectionContext>>;
+}
 
-    use std::cell::RefCell;
+fn registry() -> &'static Mutex<HashMap<Id, ConnectionContext>> {
+    static CONNECTION_CONTEXT_REGISTRY: OnceLock<Mutex<HashMap<Id, ConnectionContext>>> =
+        OnceLock::new();
+    CONNECTION_CONTEXT_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
-    thread_local! {
-        pub static CONNECTION_CONTEXT: RefCell<Option<super::ConnectionContext>> =
-            RefCell::new(None);
+fn current_task_id() -> Option<Id> { task::try_id() }
+
+fn store_registry_context(context: &ConnectionContext) {
+    if let Some(task_id) = current_task_id() {
+        registry()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(task_id, context.clone());
     }
+}
+
+fn registry_context() -> Option<ConnectionContext> {
+    let task_id = current_task_id()?;
+    registry()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&task_id)
+        .cloned()
+}
+
+fn take_registry_context() -> Option<ConnectionContext> {
+    let task_id = current_task_id()?;
+    registry()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&task_id)
+}
+
+/// Scope connection context metadata for the current Tokio task.
+///
+/// The returned future installs a task-local slot before the first poll and
+/// keeps it available for the lifetime of the scoped future.
+pub async fn scope_current_context<F>(context: Option<ConnectionContext>, future: F) -> F::Output
+where
+    F: std::future::Future,
+{
+    if let Some(seed_context) = context.as_ref() {
+        store_registry_context(seed_context);
+    }
+    CONNECTION_CONTEXT
+        .scope(RefCell::new(context), future)
+        .await
 }
 
 /// Store connection context metadata for the current Tokio task.
 ///
-/// When handshake handling runs outside a Tokio task context, the context is
-/// stored in a thread-local fallback so diagnostics and tests can still
-/// observe the negotiated values.
+/// When the current code is already running inside a scoped connection task,
+/// the task-local slot is updated immediately. The value is also mirrored into
+/// a task-ID keyed registry so synchronous app-factory code in the same Tokio
+/// task can still consume it after the handshake future completes.
 pub fn store_current_context(context: ConnectionContext) {
-    handshake_local::CONNECTION_CONTEXT.with(|cell| {
-        cell.borrow_mut().replace(context);
+    store_registry_context(&context);
+    _ = CONNECTION_CONTEXT.try_with(|cell| {
+        let _previous_context = cell.borrow_mut().replace(context);
     });
 }
 
 /// Retrieve connection context metadata for the current Tokio task, if present.
 ///
-/// Returns `None` if no metadata has been stored for this thread/task.
+/// Returns `None` if no metadata has been stored for this task.
 #[must_use]
 pub fn current_context() -> Option<ConnectionContext> {
-    handshake_local::CONNECTION_CONTEXT.with(|cell| cell.borrow().clone())
+    CONNECTION_CONTEXT
+        .try_with(|cell| cell.borrow().clone())
+        .ok()
+        .flatten()
+        .or_else(registry_context)
 }
 
 /// Take the connection context entry for the current Tokio task.
 #[must_use]
 pub fn take_current_context() -> Option<ConnectionContext> {
-    handshake_local::CONNECTION_CONTEXT.with(|cell| cell.borrow_mut().take())
+    let from_task_local = CONNECTION_CONTEXT
+        .try_with(|cell| cell.borrow_mut().take())
+        .ok()
+        .flatten();
+    from_task_local.map_or_else(take_registry_context, |context| {
+        let _ = take_registry_context();
+        Some(context)
+    })
 }
 
-/// Return the number of stored connection context entries visible to this
-/// thread.
-///
-/// This reflects only the thread-local store used by the current task/thread;
-/// entries placed in other threads are intentionally ignored, so this value is
-/// suitable for diagnostics rather than global accounting.
+/// Return the number of connection-context entries retained in the registry.
+#[cfg(test)]
 #[must_use]
-pub fn registry_len() -> usize {
-    handshake_local::CONNECTION_CONTEXT.with(|cell| usize::from(cell.borrow().is_some()))
+fn registry_len() -> usize {
+    registry()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .len()
 }
+
+/// Report whether a stored connection context entry is visible to this task.
+#[must_use]
+pub fn has_current_context() -> bool { current_context().is_some() }
 
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-    use tokio::task;
+    use serial_test::serial;
+    use tokio::{runtime::Builder, sync::Barrier, task};
 
     use super::*;
 
@@ -170,12 +236,15 @@ mod tests {
     async fn stores_and_reads_metadata_in_task() {
         let meta = metadata(u32::from_be_bytes(*b"CHAT"), 7);
         let context = ConnectionContext::new(meta.clone());
-        store_current_context(context.clone());
-        assert_eq!(current_context(), Some(context.clone()));
-        assert_eq!(context.handshake().sub_protocol_tag(), *b"CHAT");
-        let _ = take_current_context();
-        assert!(current_context().is_none());
-        assert_eq!(registry_len(), 0);
+        scope_current_context(None, async {
+            store_current_context(context.clone());
+            assert_eq!(current_context(), Some(context.clone()));
+            assert_eq!(context.handshake().sub_protocol_tag(), *b"CHAT");
+            let _ = take_current_context();
+            assert!(current_context().is_none());
+            assert!(!has_current_context());
+        })
+        .await;
     }
 
     #[rstest]
@@ -184,19 +253,25 @@ mod tests {
         let first = task::spawn(async {
             let meta = metadata(1, 1);
             let context = ConnectionContext::new(meta.clone());
-            store_current_context(context.clone());
-            let seen = current_context();
-            let _ = take_current_context();
-            seen
+            scope_current_context(None, async move {
+                store_current_context(context.clone());
+                let seen = current_context();
+                let _ = take_current_context();
+                seen
+            })
+            .await
         });
 
         let second = task::spawn(async {
             let meta = metadata(2, 2);
             let context = ConnectionContext::new(meta.clone());
-            store_current_context(context.clone());
-            let seen = current_context();
-            let _ = take_current_context();
-            seen
+            scope_current_context(None, async move {
+                store_current_context(context.clone());
+                let seen = current_context();
+                let _ = take_current_context();
+                seen
+            })
+            .await
         });
 
         let (first_seen, second_seen) = tokio::join!(first, second);
@@ -212,6 +287,96 @@ mod tests {
                 .map(|context| context.handshake),
             Some(metadata(2, 2))
         );
-        assert_eq!(registry_len(), 0);
+        assert!(!has_current_context());
+    }
+
+    #[rstest]
+    fn preserves_context_across_await_on_multi_worker_runtime() {
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build multi-worker runtime");
+        let barrier = std::sync::Arc::new(Barrier::new(2));
+
+        runtime.block_on(async {
+            let meta = metadata(u32::from_be_bytes(*b"CHAT"), 9);
+            let context = ConnectionContext::new(meta.clone());
+            let task_barrier = barrier.clone();
+
+            let seen = task::spawn(async move {
+                scope_current_context(Some(context.clone()), async move {
+                    task_barrier.wait().await;
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    take_current_context()
+                })
+                .await
+            });
+
+            barrier.wait().await;
+            assert_eq!(
+                seen.await.expect("context task panicked"),
+                Some(ConnectionContext::new(meta))
+            );
+        });
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn scopes_context_for_post_handshake_handoff() {
+        let context = ConnectionContext::new(metadata(u32::from_be_bytes(*b"CHAT"), 5));
+        let scoped_context = context.clone();
+
+        let handed_off = task::spawn(async move {
+            scope_current_context(Some(scoped_context), async {}).await;
+            take_current_context()
+        })
+        .await
+        .expect("handoff task panicked");
+
+        assert_eq!(handed_off, Some(context));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn reports_registry_entry_count() {
+        let starting_registry_len = registry_len();
+        let first = ConnectionContext::new(metadata(1, 1));
+        let second = ConnectionContext::new(metadata(2, 2));
+        let registered_barrier = std::sync::Arc::new(Barrier::new(3));
+        let release_barrier = std::sync::Arc::new(Barrier::new(3));
+
+        let first_registered_barrier = registered_barrier.clone();
+        let first_release_barrier = release_barrier.clone();
+        let first_task = task::spawn(async move {
+            scope_current_context(None, async move {
+                store_current_context(first);
+                first_registered_barrier.wait().await;
+                first_release_barrier.wait().await;
+                let _ = take_current_context();
+            })
+            .await;
+        });
+
+        let second_registered_barrier = registered_barrier.clone();
+        let second_release_barrier = release_barrier.clone();
+        let second_task = task::spawn(async move {
+            scope_current_context(None, async move {
+                store_current_context(second);
+                second_registered_barrier.wait().await;
+                second_release_barrier.wait().await;
+                let _ = take_current_context();
+            })
+            .await;
+        });
+
+        registered_barrier.wait().await;
+        assert_eq!(registry_len(), starting_registry_len + 2);
+        release_barrier.wait().await;
+
+        first_task.await.expect("first task panicked");
+        second_task.await.expect("second task panicked");
+        assert_eq!(registry_len(), starting_registry_len);
     }
 }

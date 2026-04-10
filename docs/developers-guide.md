@@ -81,6 +81,102 @@ The behavioural suite uses `rstest-bdd` v0.5.0 in both the root crate and
 - If a scenario needs a fallible return signature, use explicit
   `Result<(), E>` or `StepResult<(), E>` in the scenario function signature.
 
+## Wireframe adapter context handoff
+
+The Wireframe adapter carries Hotline handshake metadata from the asynchronous
+handshake hook into the synchronous app factory through task-local state plus a
+task-ID keyed registry in `src/wireframe/connection.rs`.
+
+- `scope_current_context(...)` seeds the per-task context for a future and
+  mirrors any initial context into the registry so post-handshake app-factory
+  code can retrieve it after the scoped future exits.
+- `store_current_context(...)` updates both the task-local slot and the
+  registry for the current Tokio task.
+- `take_current_context()` consumes the context for the current task. The app
+  factory uses this to fail closed once the per-connection state has been
+  handed off.
+- `has_current_context()` is the public visibility probe for code that needs
+  to ask whether the current Tokio task can see stored context.
+
+The Wireframe server bootstrap converts app-factory failures into the internal
+`AppFactoryError` enum in `src/server/wireframe/mod.rs`. Current variants are:
+
+- `MissingHandshakeContext` when no handshake metadata was stored for the
+  current task.
+- `MissingPeerAddress` when the handshake metadata exists, but no peer address
+  was attached.
+- `BuildApplication` when the underlying `WireframeApp` builder returns an
+  error while registering middleware or routes.
+
+Use the fallible app-factory pattern when per-connection setup can fail:
+
+```rust,no_run
+fn app_factory() -> Result<HotlineApp, AppFactoryError> {
+    build_app_for_connection(&pool, &argon2, &outbound_registry)
+}
+```
+
+Returning `Result` allows the adapter to preserve typed failure information and
+propagate setup errors without panicking. Keep these failures explicit in tests
+so missing handshake metadata, missing peer metadata, and builder failures all
+remain covered.
+
+WireframeServer construction now relies on the `AppFactory` trait rather than a
+plain `Fn() -> WireframeApp` assumption. Closures still work through blanket
+implementations, but migration work should make the return type explicit:
+
+```rust,no_run
+let server = WireframeServer::new(|| WireframeApp::default());
+```
+
+becomes:
+
+```rust,no_run
+let server = WireframeServer::new(|| -> Result<HotlineApp, AppFactoryError> {
+    build_app_for_connection(&pool, &argon2, &outbound_registry)
+});
+```
+
+Treat this as the preferred migration pattern whenever the adapter needs
+connection-scoped handshake state or any other fallible setup at factory time.
+
+Wireframe v0.3.0 also changed the codec and import surface that this adapter
+uses:
+
+- Add `wireframe = "0.3.0"` to `Cargo.toml`, enabling feature flags such as
+  `testkit` explicitly when the main crate APIs are needed during tests or
+  harness setup.
+- `FrameCodec::wrap_payload` now takes `Bytes` rather than `Vec<u8>`. Codecs
+  that still materialize owned frames can convert with `.to_vec()`, while
+  zero-copy codecs should store the `Bytes` directly and optionally override
+  `frame_payload_bytes(...)`.
+- Root-level re-exports are no longer the stable import path for most adapter
+  integrations. Prefer module paths such as `wireframe::app::WireframeApp`,
+  `wireframe::codec::FrameCodec`, `wireframe::server::WireframeServer`,
+  `wireframe::hooks::ConnectionContext`, and `wireframe::testkit::...`.
+- Migration from older imports is mostly mechanical:
+
+```rust,no_run
+use bytes::Bytes;
+use wireframe::{
+    app::{Envelope, WireframeApp},
+    codec::FrameCodec,
+    hooks::ConnectionContext,
+    server::WireframeServer,
+};
+
+impl FrameCodec for HotlineFrameCodec {
+    type Frame = Vec<u8>;
+    // ...
+
+    fn wrap_payload(&self, payload: Bytes) -> Self::Frame { payload.to_vec() }
+}
+```
+
+Keep these import-path changes explicit in migration patches so reviews can
+confirm whether a call site still depends on a compatibility re-export or has
+been moved onto the intended v0.3.0 module path.
+
 ## Quality gates
 
 Run the full suite from the repository root after making changes:
