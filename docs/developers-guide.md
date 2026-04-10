@@ -103,7 +103,7 @@ The Wireframe server bootstrap converts app-factory failures into the internal
 
 - `MissingHandshakeContext` when no handshake metadata was stored for the
   current task.
-- `MissingPeerAddress` when the handshake metadata exists but no peer address
+- `MissingPeerAddress` when the handshake metadata exists, but no peer address
   was attached.
 - `BuildApplication` when the underlying `WireframeApp` builder returns an
   error while registering middleware or routes.

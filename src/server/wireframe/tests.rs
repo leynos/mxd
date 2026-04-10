@@ -66,6 +66,16 @@ fn bootstrap_captures_bind(bound_config: AppConfig) {
 fn run_factory_with_stored_context(
     stored: Option<ConnectionContext>,
 ) -> std::result::Result<HotlineApp, AppFactoryError> {
+    run_factory_with_stored_context_and_assertions(stored, || {})
+}
+
+fn run_factory_with_stored_context_and_assertions<F>(
+    stored: Option<ConnectionContext>,
+    assertions: F,
+) -> std::result::Result<HotlineApp, AppFactoryError>
+where
+    F: FnOnce(),
+{
     let pool = dummy_pool();
     let argon2 = Arc::new(Argon2::default());
     let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
@@ -81,7 +91,9 @@ fn run_factory_with_stored_context(
                 let _ = take_current_context();
             }
         }
-        build_app_for_connection(&pool, &argon2, &outbound_registry)
+        let app = build_app_for_connection(&pool, &argon2, &outbound_registry);
+        assertions();
+        app
     }))
 }
 
@@ -95,27 +107,17 @@ fn app_factory_rejects_missing_handshake_context() {
 
 #[rstest]
 fn app_factory_builds_when_handshake_context_is_present() {
-    let pool = dummy_pool();
-    let argon2 = Arc::new(Argon2::default());
-    let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
     let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5500));
     let context = ConnectionContext::new(HandshakeMetadata::default()).with_peer(peer);
-    let runtime = Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("build current-thread runtime");
 
-    runtime.block_on(scope_current_context(None, async {
-        store_current_context(context);
-
-        let app = build_app_for_connection(&pool, &argon2, &outbound_registry);
-
-        assert!(app.is_ok());
+    let app = run_factory_with_stored_context_and_assertions(Some(context), || {
         assert!(
             take_current_context().is_none(),
             "per-connection context must be consumed by the app factory"
         );
-    }));
+    });
+
+    assert!(app.is_ok());
 }
 
 #[rstest]

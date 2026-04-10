@@ -797,7 +797,7 @@ When the `metrics` feature is enabled, codec errors increment the
 `wireframe_codec_errors_total` counter with `error_type` and `recovery_policy`
 labels:
 
-```text
+```plaintext
 wireframe_codec_errors_total{error_type="framing",recovery_policy="drop"} 5
 wireframe_codec_errors_total{error_type="eof",recovery_policy="disconnect"} 2
 ```
