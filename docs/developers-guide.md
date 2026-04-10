@@ -140,6 +140,43 @@ let server = WireframeServer::new(|| -> Result<HotlineApp, AppFactoryError> {
 Treat this as the preferred migration pattern whenever the adapter needs
 connection-scoped handshake state or any other fallible setup at factory time.
 
+Wireframe v0.3.0 also changed the codec and import surface that this adapter
+uses:
+
+- Add `wireframe = "0.3.0"` to `Cargo.toml`, enabling feature flags such as
+  `testkit` explicitly when the main crate APIs are needed during tests or
+  harness setup.
+- `FrameCodec::wrap_payload` now takes `Bytes` rather than `Vec<u8>`. Codecs
+  that still materialize owned frames can convert with `.to_vec()`, while
+  zero-copy codecs should store the `Bytes` directly and optionally override
+  `frame_payload_bytes(...)`.
+- Root-level re-exports are no longer the stable import path for most adapter
+  integrations. Prefer module paths such as `wireframe::app::WireframeApp`,
+  `wireframe::codec::FrameCodec`, `wireframe::server::WireframeServer`,
+  `wireframe::hooks::ConnectionContext`, and `wireframe::testkit::...`.
+- Migration from older imports is mostly mechanical:
+
+```rust,no_run
+use bytes::Bytes;
+use wireframe::{
+    app::{Envelope, WireframeApp},
+    codec::FrameCodec,
+    hooks::ConnectionContext,
+    server::WireframeServer,
+};
+
+impl FrameCodec for HotlineFrameCodec {
+    type Frame = Vec<u8>;
+    // ...
+
+    fn wrap_payload(&self, payload: Bytes) -> Self::Frame { payload.to_vec() }
+}
+```
+
+Keep these import-path changes explicit in migration patches so reviews can
+confirm whether a call site still depends on a compatibility re-export or has
+been moved onto the intended v0.3.0 module path.
+
 ## Quality gates
 
 Run the full suite from the repository root after making changes:

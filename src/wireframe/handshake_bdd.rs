@@ -150,13 +150,29 @@ fn then_code(world: &HandshakeWorld, code: u32) {
 }
 
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 0)]
-fn replies_ok(world: HandshakeWorld) { let _ = world; }
+fn replies_ok(world: HandshakeWorld) {
+    given_server(&world);
+    assert_step_ok!(when_valid(&world));
+    then_code(&world, 0);
+}
 
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 1)]
-fn invalid_protocol(world: HandshakeWorld) { let _ = world; }
+fn invalid_protocol(world: HandshakeWorld) {
+    given_server(&world);
+    assert_step_ok!(when_custom(&world, "WRNG".into(), 1));
+    then_code(&world, 1);
+}
 
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 2)]
-fn unsupported_version(world: HandshakeWorld) { let _ = world; }
+fn unsupported_version(world: HandshakeWorld) {
+    given_server(&world);
+    assert_step_ok!(when_custom(&world, "TRTP".into(), 2));
+    then_code(&world, 2);
+}
 
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 3)]
-fn handshake_timeout(world: HandshakeWorld) { let _ = world; }
+fn handshake_timeout(world: HandshakeWorld) {
+    given_server(&world);
+    assert_step_ok!(when_idle(&world));
+    then_code(&world, 3);
+}

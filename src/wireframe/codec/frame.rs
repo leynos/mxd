@@ -113,46 +113,38 @@ mod tests {
     //! length invariants.
 
     use bytes::Bytes;
+    use rstest::{fixture, rstest};
     use wireframe::codec::FrameCodec;
 
     use super::HotlineFrameCodec;
     use crate::transaction::{HEADER_LEN, MAX_FRAME_DATA};
 
-    #[test]
-    fn wrap_payload_converts_bytes_to_vec() {
-        let codec = HotlineFrameCodec::new();
-        let data = vec![0u8, 1u8, 2u8, 3u8, 4u8];
-        let bytes = Bytes::from(data.clone());
+    #[fixture]
+    fn codec() -> HotlineFrameCodec {
+        // Provide a fresh codec instance per rstest case.
+        HotlineFrameCodec::new()
+    }
 
+    #[rstest]
+    #[case(Bytes::from(vec![0u8, 1u8, 2u8, 3u8, 4u8]), vec![0u8, 1u8, 2u8, 3u8, 4u8])]
+    #[case(Bytes::new(), Vec::new())]
+    fn wrap_payload_cases(
+        codec: HotlineFrameCodec,
+        #[case] bytes: Bytes,
+        #[case] expected: Vec<u8>,
+    ) {
         let frame = codec.wrap_payload(bytes);
 
-        assert_eq!(frame, data);
+        assert_eq!(frame, expected);
     }
 
-    #[test]
-    fn wrap_payload_empty_bytes() {
-        let codec = HotlineFrameCodec::new();
-        let bytes = Bytes::new();
-
-        let frame = codec.wrap_payload(bytes);
-
-        assert!(frame.is_empty());
-    }
-
-    #[test]
-    fn frame_payload_returns_slice() {
-        let data = vec![10u8, 20u8, 30u8];
+    #[rstest]
+    #[case(vec![10u8, 20u8, 30u8], vec![10u8, 20u8, 30u8])]
+    #[case(Vec::new(), Vec::new())]
+    fn frame_payload_cases(#[case] data: Vec<u8>, #[case] expected: Vec<u8>) {
         let slice = HotlineFrameCodec::frame_payload(&data);
 
-        assert_eq!(slice, &[10u8, 20u8, 30u8]);
-    }
-
-    #[test]
-    fn frame_payload_empty_frame() {
-        let data: Vec<u8> = Vec::new();
-        let slice = HotlineFrameCodec::frame_payload(&data);
-
-        assert!(slice.is_empty());
+        assert_eq!(slice, expected.as_slice());
     }
 
     #[test]

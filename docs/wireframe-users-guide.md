@@ -2684,7 +2684,7 @@ call these helpers to maintain consistent telemetry.[^6][^7][^31][^20]
     `tests/features/client_request_hooks.feature`.
 
 [^53]: Implemented in `src/client/send_streaming.rs`. See
-    [ADR 0002](adr-002-streaming-requests-and-shared-message-assembly.md),
+    [ADR 0002][adr-0002-ref],
     Section 4, for design rationale.
 
-[adr-0002-ref]: adr/0002-streaming-requests-and-shared-message-assembly.md
+[adr-0002-ref]: docs/adr/0002-streaming-requests-and-shared-message-assembly.md
