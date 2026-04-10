@@ -8,6 +8,7 @@ use std::{
 use argon2::Argon2;
 use rstest::{fixture, rstest};
 use tokio::runtime::Builder;
+use wireframe::WireframeError;
 
 use super::*;
 use crate::wireframe::{
@@ -106,4 +107,48 @@ fn app_factory_builds_when_handshake_context_is_present() {
             "per-connection context must be consumed by the app factory"
         );
     }));
+}
+
+#[rstest]
+fn app_factory_rejects_missing_peer_address() {
+    let pool = dummy_pool();
+    let argon2 = Arc::new(Argon2::default());
+    let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
+    let context = ConnectionContext::new(HandshakeMetadata::default());
+    let runtime = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build current-thread runtime");
+
+    runtime.block_on(scope_current_context(None, async {
+        store_current_context(context);
+
+        let Err(AppFactoryError::MissingPeerAddress) =
+            build_app_for_connection(&pool, &argon2, &outbound_registry)
+        else {
+            panic!("missing peer address must fail closed with the proper error variant");
+        };
+    }));
+}
+
+#[rstest]
+fn app_factory_wraps_build_application_errors() {
+    let duplicate_route = FALLBACK_ROUTE_ID;
+    let result = map_build_application_result(Err(WireframeError::DuplicateRoute(duplicate_route)));
+
+    let Err(AppFactoryError::BuildApplication(error)) = result else {
+        panic!("wireframe builder errors must be wrapped in AppFactoryError::BuildApplication");
+    };
+
+    let message = error.to_string();
+    assert!(
+        message.contains("wireframe error:"),
+        "wrapped error should include the wireframe prefix"
+    );
+    assert!(
+        message.contains(&format!(
+            "route id {duplicate_route} was already registered"
+        )),
+        "wrapped error should preserve the wireframe failure details"
+    );
 }

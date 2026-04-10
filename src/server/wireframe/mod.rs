@@ -184,8 +184,7 @@ fn try_build_app(
     outbound_registry: &Arc<WireframeOutboundRegistry>,
 ) -> std::result::Result<HotlineApp, AppFactoryError> {
     let build_context = build_app_context(pool, argon2, outbound_registry)?;
-    build_app(build_context)
-        .map_err(|e| AppFactoryError::BuildApplication(anyhow!("wireframe error: {e}")))
+    map_build_application_result(build_app(build_context))
 }
 
 fn build_app_context<'a>(
@@ -260,6 +259,12 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
     ROUTE_IDS
         .iter()
         .try_fold(app, |app, id| app.route(*id, handler.clone()))
+}
+
+fn map_build_application_result(
+    result: wireframe::app::Result<HotlineApp>,
+) -> std::result::Result<HotlineApp, AppFactoryError> {
+    result.map_err(|e| AppFactoryError::BuildApplication(anyhow!("wireframe error: {e}")))
 }
 
 fn validate_app_factory(

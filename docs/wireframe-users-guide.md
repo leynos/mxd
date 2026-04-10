@@ -159,6 +159,64 @@ helpers `send_response` and `send_response_framed` (or
 variants when encoding or I/O fails, and the connection closes after ten
 consecutive deserialization errors.[^6][^7]
 
+### App factories
+
+`WireframeServer::new` accepts an app factory rather than a pre-built
+`WireframeApp`. The server calls that factory for each accepted connection so
+handlers, middleware state, and connection-scoped resources can be assembled
+at connection start.
+
+Wireframe models this through two traits:
+
+- `AppFactory<Ser, Ctx, E, Codec>` describes the callable factory.
+- `FactoryResult<App>` marks valid return types from the factory.
+
+An infallible factory returns a `WireframeApp` directly:
+
+```rust,no_run
+use wireframe::app::{Envelope, WireframeApp};
+use wireframe::server::WireframeServer;
+
+fn app_factory() -> WireframeApp<(), (), Envelope> {
+    WireframeApp::default()
+}
+
+let server = WireframeServer::new(app_factory);
+```
+
+A fallible factory returns `Result<WireframeApp, E>`, allowing setup failures
+to propagate without panicking:
+
+```rust,no_run
+use std::sync::Arc;
+
+use argon2::Argon2;
+use wireframe::app::{Envelope, WireframeApp};
+use wireframe::server::WireframeServer;
+
+#[derive(Debug, thiserror::Error)]
+enum AppFactoryError {
+    #[error("missing connection metadata")]
+    MissingMetadata,
+}
+
+fn app_factory(
+    argon2: Arc<Argon2<'static>>,
+) -> impl Fn() -> Result<WireframeApp<(), (), Envelope>, AppFactoryError> {
+    move || {
+        let _shared_hasher = Arc::clone(&argon2);
+        Ok(WireframeApp::default())
+    }
+}
+
+let server = WireframeServer::new(app_factory(Arc::new(Argon2::default())));
+```
+
+When a fallible factory returns `Err`, Wireframe surfaces that error through
+the server runtime instead of aborting via `panic!`. Use this pattern when app
+construction depends on connection metadata, negotiated protocol state, or
+other per-connection prerequisites that can legitimately fail.
+
 ### Custom frame codecs
 
 Custom protocols supply a `FrameCodec` implementation to describe their framing
