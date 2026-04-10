@@ -151,14 +151,16 @@ fn take_registry_context() -> Option<ConnectionContext> {
 ///
 /// The returned future installs a task-local slot before the first poll and
 /// keeps it available for the lifetime of the scoped future.
-pub fn scope_current_context<F>(
-    context: Option<ConnectionContext>,
-    future: F,
-) -> impl std::future::Future<Output = F::Output>
+pub async fn scope_current_context<F>(context: Option<ConnectionContext>, future: F) -> F::Output
 where
     F: std::future::Future,
 {
-    CONNECTION_CONTEXT.scope(RefCell::new(context), future)
+    if let Some(seed_context) = context.as_ref() {
+        store_registry_context(seed_context);
+    }
+    CONNECTION_CONTEXT
+        .scope(RefCell::new(context), future)
+        .await
 }
 
 /// Store connection context metadata for the current Tokio task.
@@ -200,8 +202,9 @@ pub fn take_current_context() -> Option<ConnectionContext> {
 }
 
 /// Return the number of connection-context entries retained in the registry.
+#[cfg(test)]
 #[must_use]
-pub fn registry_len() -> usize {
+fn registry_len() -> usize {
     registry()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -316,6 +319,22 @@ mod tests {
                 Some(ConnectionContext::new(meta))
             );
         });
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn scopes_context_for_post_handshake_handoff() {
+        let context = ConnectionContext::new(metadata(u32::from_be_bytes(*b"CHAT"), 5));
+        let scoped_context = context.clone();
+
+        let handed_off = task::spawn(async move {
+            scope_current_context(Some(scoped_context), async {}).await;
+            take_current_context()
+        })
+        .await
+        .expect("handoff task panicked");
+
+        assert_eq!(handed_off, Some(context));
     }
 
     #[rstest]
