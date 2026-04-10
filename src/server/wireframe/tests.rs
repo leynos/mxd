@@ -63,8 +63,9 @@ fn bootstrap_captures_bind(bound_config: AppConfig) {
     assert_eq!(bootstrap.config.bind, "127.0.0.1:7777");
 }
 
-#[rstest]
-fn app_factory_rejects_missing_handshake_context() {
+fn run_factory_with_stored_context(
+    stored: Option<ConnectionContext>,
+) -> std::result::Result<HotlineApp, AppFactoryError> {
     let pool = dummy_pool();
     let argon2 = Arc::new(Argon2::default());
     let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
@@ -74,14 +75,22 @@ fn app_factory_rejects_missing_handshake_context() {
         .expect("build current-thread runtime");
 
     runtime.block_on(scope_current_context(None, async {
-        let _ = take_current_context();
+        match stored {
+            Some(ctx) => store_current_context(ctx),
+            None => {
+                let _ = take_current_context();
+            }
+        }
+        build_app_for_connection(&pool, &argon2, &outbound_registry)
+    }))
+}
 
-        let Err(AppFactoryError::MissingHandshakeContext) =
-            build_app_for_connection(&pool, &argon2, &outbound_registry)
-        else {
-            panic!("missing context must fail closed with the proper error variant");
-        };
-    }));
+#[rstest]
+fn app_factory_rejects_missing_handshake_context() {
+    let Err(AppFactoryError::MissingHandshakeContext) = run_factory_with_stored_context(None)
+    else {
+        panic!("missing context must fail closed with the proper error variant");
+    };
 }
 
 #[rstest]
@@ -111,24 +120,11 @@ fn app_factory_builds_when_handshake_context_is_present() {
 
 #[rstest]
 fn app_factory_rejects_missing_peer_address() {
-    let pool = dummy_pool();
-    let argon2 = Arc::new(Argon2::default());
-    let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
     let context = ConnectionContext::new(HandshakeMetadata::default());
-    let runtime = Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("build current-thread runtime");
-
-    runtime.block_on(scope_current_context(None, async {
-        store_current_context(context);
-
-        let Err(AppFactoryError::MissingPeerAddress) =
-            build_app_for_connection(&pool, &argon2, &outbound_registry)
-        else {
-            panic!("missing peer address must fail closed with the proper error variant");
-        };
-    }));
+    let Err(AppFactoryError::MissingPeerAddress) = run_factory_with_stored_context(Some(context))
+    else {
+        panic!("missing peer address must fail closed with the proper error variant");
+    };
 }
 
 #[rstest]
