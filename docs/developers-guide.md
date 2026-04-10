@@ -121,6 +121,25 @@ propagate setup errors without panicking. Keep these failures explicit in tests
 so missing handshake metadata, missing peer metadata, and builder failures all
 remain covered.
 
+WireframeServer construction now relies on the `AppFactory` trait rather than a
+plain `Fn() -> WireframeApp` assumption. Closures still work through blanket
+implementations, but migration work should make the return type explicit:
+
+```rust,no_run
+let server = WireframeServer::new(|| WireframeApp::default());
+```
+
+becomes:
+
+```rust,no_run
+let server = WireframeServer::new(|| -> Result<HotlineApp, AppFactoryError> {
+    build_app_for_connection(&pool, &argon2, &outbound_registry)
+});
+```
+
+Treat this as the preferred migration pattern whenever the adapter needs
+connection-scoped handshake state or any other fallible setup at factory time.
+
 ## Quality gates
 
 Run the full suite from the repository root after making changes:

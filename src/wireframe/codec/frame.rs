@@ -109,6 +109,9 @@ impl FrameCodec for HotlineFrameCodec {
 
 #[cfg(test)]
 mod tests {
+    //! Tests cover HotlineFrameCodec payload wrapping, slice access, and frame
+    //! length invariants.
+
     use bytes::Bytes;
     use wireframe::codec::FrameCodec;
 

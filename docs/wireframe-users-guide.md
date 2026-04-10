@@ -217,6 +217,40 @@ the server runtime instead of aborting via `panic!`. Use this pattern when app
 construction depends on connection metadata, negotiated protocol state, or
 other per-connection prerequisites that can legitimately fail.
 
+#### Accessing handshake context inside a factory
+
+Adapters that negotiate connection metadata before app construction can fetch
+that state from the current task inside a fallible factory. In mxd, the
+Hotline handshake stores a `ConnectionContext` that the app factory retrieves
+with `take_current_context()`, failing closed when the handshake did not
+provide the expected metadata.
+
+```rust,no_run
+use wireframe::app::{Envelope, WireframeApp};
+
+use mxd::wireframe::connection::take_current_context;
+
+#[derive(Debug, thiserror::Error)]
+enum AppFactoryError {
+    #[error("missing handshake context")]
+    MissingHandshakeContext,
+    #[error("missing peer address")]
+    MissingPeerAddress,
+}
+
+fn app_factory() -> Result<WireframeApp<(), (), Envelope>, AppFactoryError> {
+    let context = take_current_context().ok_or(AppFactoryError::MissingHandshakeContext)?;
+    let (_handshake, peer) = context.into_parts();
+    let _peer = peer.ok_or(AppFactoryError::MissingPeerAddress)?;
+
+    Ok(WireframeApp::default())
+}
+```
+
+This pattern keeps connection-specific validation at the factory boundary and
+lets setup errors propagate through the server runtime as typed failures rather
+than panics.
+
 ### Custom frame codecs
 
 Custom protocols supply a `FrameCodec` implementation to describe their framing
