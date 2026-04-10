@@ -134,6 +134,13 @@ fn when_valid(world: &HandshakeWorld) -> Result<(), String> {
 #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
 fn when_custom(world: &HandshakeWorld, tag: String, version: u16) -> Result<(), String> {
     let mut protocol = [0u8; 4];
+    if tag.len() != protocol.len() {
+        return Err(format!(
+            "protocol tag must be exactly {} bytes, got {}",
+            protocol.len(),
+            tag.len()
+        ));
+    }
     protocol.copy_from_slice(tag.as_bytes());
     let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
     world.connect_and_maybe_send(Some(bytes.to_vec()))
