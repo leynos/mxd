@@ -98,10 +98,10 @@ this framing using `wireframe`’s customizable serialization layer.
   implementation that knows how to parse and format Hotline frames. This
   serializer’s `deserialize` method should:
 
-- Parse the 20-byte header of an incoming message to extract flags, request/reply marker, transaction type,
-  transaction ID, error code, total payload size, and fragment data size[^9].
-  The `mxd` `FrameHeader` struct and its parsing logic can be reused
-  here[^10][^11].
+- Parse the 20-byte header of an incoming message to extract flags,
+  request/reply marker, transaction type, transaction ID, error code, total
+  payload size, and fragment data size[^9]. The `mxd` `FrameHeader` struct and
+  its parsing logic can be reused here[^10][^11].
 
 - Determine if the message is fragmented. In Hotline, if
   `Data size < Total size`, the message is split across multiple TCP

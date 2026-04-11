@@ -189,9 +189,9 @@ logic”*(
 Under Hexagonal Architecture, a **"Port"** is an interface that defines how the
 outside world interacts with the core, while the **"Application Core"**
 contains the domain logic that implements those interactions. In the context of
-the mxd wireframe adoption, it is necessary to distinguish which parts of the system
-act as ports (interfaces or entry points) and which parts belong to the domain
-core.
+the mxd wireframe adoption, it is necessary to distinguish which parts of the
+system act as ports (interfaces or entry points) and which parts belong to the
+domain core.
 
 **Inbound Ports (Driving)**: For the Hotline server, the inbound port is
 essentially the set of operations the server can perform in response to client
@@ -246,8 +246,8 @@ handles([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d
  and a public `PushHandle` API to send outbound
 frames([2](https://github.com/leynos/wireframe/blob/fa6c62925443e6caed54866a95d3396eb8fa78a2/docs/wireframe-1-0-detailed-development-roadmap.md#L40-L43)).
  These will act as the **adapter** enabling outbound communication. The domain
-core should use them via an abstract interface. For instance, after processing a
-login, the core logic might call `Notifier.broadcastUserLogin(user)` – behind
+core should use them via an abstract interface. For instance, after processing
+a login, the core logic might call `Notifier.broadcastUserLogin(user)` – behind
 that, the adapter will use `wireframe` to send a "Notify New User" (transaction
 300) to all connected clients. By treating outbound messaging as a port, the
 domain remains unaware of *how* the broadcast is done (whether via `wireframe`
@@ -279,9 +279,9 @@ instead of manually managing sockets. In a Hexagonal model, the domain might
 not even know about `PushHandle` – it might call a method on a domain service,
 which internally uses the push adapter. In practice, since `wireframe` is
 tightly integrated, the domain might directly call something like
-`session.push(frame)` if not careful. To maintain the Hexagon structure, those calls
-should be wrapped or isolated. The new `WireframeProtocol` trait may help here:
-one of its responsibilities during connection setup is to attach any
+`session.push(frame)` if not careful. To maintain the Hexagon structure, those
+calls should be wrapped or isolated. The new `WireframeProtocol` trait may help
+here: one of its responsibilities during connection setup is to attach any
 per-connection state, which could include a handle or context that domain logic
 uses when
 needed([1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L176-L184)).
@@ -300,8 +300,8 @@ parsing command parameters into meaningful data, applying business rules,
 updating state, and deciding what responses or events are appropriate. The core
 should expose clear entry points (which `wireframe` calls via handlers) and
 consume abstracted services (which `wireframe` provides via adapters). By
-delineating these, `wireframe` remains a plug-in mechanism rather
-than a fundamental dependency tangled through the core code.
+delineating these, `wireframe` remains a plug-in mechanism rather than a
+fundamental dependency tangled through the core code.
 
 ## Avoiding Hexagonal Violations and Addressing Risk Areas
 
