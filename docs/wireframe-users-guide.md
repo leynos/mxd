@@ -163,8 +163,8 @@ consecutive deserialization errors.[^6][^7]
 
 `WireframeServer::new` accepts an app factory rather than a pre-built
 `WireframeApp`. The server calls that factory for each accepted connection so
-handlers, middleware state, and connection-scoped resources can be assembled
-at connection start.
+handlers, middleware state, and connection-scoped resources can be assembled at
+connection start.
 
 Wireframe models this through two traits:
 
@@ -220,10 +220,10 @@ other per-connection prerequisites that can legitimately fail.
 #### Accessing handshake context inside a factory
 
 Adapters that negotiate connection metadata before app construction can fetch
-that state from the current task inside a fallible factory. In mxd, the
-Hotline handshake stores a `ConnectionContext` that the app factory retrieves
-with `take_current_context()`, failing closed when the handshake did not
-provide the expected metadata.
+that state from the current task inside a fallible factory. In mxd, the Hotline
+handshake stores a `ConnectionContext` that the app factory retrieves with
+`take_current_context()`, failing closed when the handshake did not provide the
+expected metadata.
 
 ```rust,no_run
 use wireframe::app::{Envelope, WireframeApp};

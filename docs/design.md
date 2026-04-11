@@ -24,17 +24,18 @@ domain operations can be exercised in isolation from their environment.
   loop, the `wireframe` crate acts as the **port** for the Hotline binary
   protocol. It handles socket I/O with Tokio, decodes and encodes the
   Hotline-specific frames, and dispatches incoming messages to the appropriate
-  domain handler via a routing table[^wireframe-routing-table][^mxd-routing-handlers].
-  Each Hotline “transaction” type (a message or request identified by an ID)
-  is mapped to a handler function. For example, the Login transaction (Hotline
-  ID 0x006B) is routed to a `handle_login` handler in the domain core. The
-  Wireframe adapter thus plays the role of the **primary port** on the inbound
-  side: it translates raw TCP byte streams into high-level domain commands and
-  routes them. Likewise, it takes domain responses and frames them back into
-  Hotline protocol packets on the outbound side. This clean separation means
-  the domain core doesn’t need to know about sockets or byte order; it just
-  implements handlers for events like “user login request” or “post news
-  article,” and the wireframe layer delivers those events.
+  domain handler via a routing
+  table[^wireframe-routing-table][^mxd-routing-handlers]. Each Hotline
+  “transaction” type (a message or request identified by an ID) is mapped to a
+  handler function. For example, the Login transaction (Hotline ID 0x006B) is
+  routed to a `handle_login` handler in the domain core. The Wireframe adapter
+  thus plays the role of the **primary port** on the inbound side: it
+  translates raw TCP byte streams into high-level domain commands and routes
+  them. Likewise, it takes domain responses and frames them back into Hotline
+  protocol packets on the outbound side. This clean separation means the domain
+  core doesn’t need to know about sockets or byte order; it just implements
+  handlers for events like “user login request” or “post news article,” and the
+  wireframe layer delivers those events.
 
 - **Storage Adapter (Diesel ORM)**: Persistence is achieved via Diesel, serving
   as a database adapter. The domain defines repository-like functions (e.g.
