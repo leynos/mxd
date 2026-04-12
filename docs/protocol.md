@@ -399,23 +399,37 @@ all users connected to the server (for display in the client’s user list).
   server knows to return the full list).
 - **Response (Server→Client):** The server replies with one or more **User Name
   with Info** entries (field 300, repeated). Each such field is a data
-  structure containing a user’s information: typically their user ID, nickname,
-  icon, status flags (like admin or away), etc. (The protocol documentation
-  defines the exact structure of “User name with info”.) Essentially, the
-  server dumps the current user list.
+  structure containing a user’s information. SynHX-compatible clients parse the
+  field 300 payload as a packed record:
+
+  - **User ID** – 2 bytes, big-endian
+  - **Icon ID** – 2 bytes, big-endian
+  - **Colour / flags** – 2 bytes, big-endian. This carries the same status
+    information represented elsewhere by field 112.
+  - **Name length** – 2 bytes, big-endian
+  - **Name bytes** – `Name length` bytes
+
+  The enclosing field-300 parameter header therefore uses a length of
+  `8 + name_length`. This packed record is the compact equivalent of the
+  separate `uid` / `icon` / `colour` / `name` fields used by **Notify Change
+  User (301)**.
+
+  SynHX also accepts an optional **Chat Subject** field (115) in the same
+  transaction-300 reply, which it uses to seed the main chat subject while the
+  user list is loading.
 
 **Server behavior:** On `GetUserNameList`, the server compiles all connected
-users’ info. This includes the user IDs (each user gets a unique ID number for
-this session), their nickname, icon ID, and a flags field that indicates things
-like whether the user is an admin or has “do not disturb” enabled. It sends all
-that in a single reply. This snapshot is used by the client to populate the
-user list UI.
+users’ info. This includes the user IDs (encoded as 16-bit values in the packed
+field 300 record), their nickname, icon ID, and a colour / status field that
+indicates things like whether the user is an admin or away. It sends all that
+in a single reply. This snapshot is used by the client to populate the user
+list UI.
 
 **End-user experience:** The user sees the “user list” panel populate with all
 nicknames currently online. Icons or special markers may denote certain
-statuses (for example, an icon might show if a user is an admin or if they
-refuse private messages – the client uses the flags from the server to display
-such icons). At this point, the new user can see who else is online.
+statuses (for example, an icon might show if a user is an admin or away – the
+client uses the colour / flags field from the server to display such markers).
+At this point, the new user can see who else is online.
 
 ### User Appearance and Updates (Transaction 301 & 302) – Server Initiates
 
@@ -635,7 +649,8 @@ existing chat channel and retrieve its current state (participants and topic).
   subject** (field 115) – the topic/title of that chat room – and a list of
   current users in the chat. The user list is given by one or more **User name
   with info** entries (field 300, repeated) listing each user currently in that
-  chat. This is similar to the main user list but scoped to that chat room.
+  chat. Each field 300 entry uses the same packed `uid` / `icon` / `colour` /
+  `name_length` / `name` layout described above, scoped to that chat room.
 
 **Server behavior:** When a user requests to join a chat, the server checks if
 the chat exists and if the user is allowed (if it’s a private chat, perhaps an
