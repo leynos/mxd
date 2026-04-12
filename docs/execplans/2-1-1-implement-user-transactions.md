@@ -61,10 +61,10 @@ Success is observable when:
 
 ## Tolerances (exception triggers)
 
-- Protocol ambiguity: if the exact on-wire layout for field `300` ("User Name
-  with Info") cannot be found in repository sources or existing parity tests,
-  stop and resolve the wire format before implementation. Do not invent the
-  structure.
+- Wire-format drift: if implementation evidence conflicts with the
+  SynHX-derived field `300` layout (`uid:u16`, `icon:u16`, `colour:u16`,
+  `name_len:u16`, `name:name_len bytes`), stop and reconcile the wire format
+  before implementation. Do not silently ship a second shape.
 - Scope: if the work expands beyond presence transactions and agreement gating
   into private messaging or chat-room behaviour, stop and split the work.
 - Interface churn: if satisfying logout/disconnect notifications requires a
@@ -104,6 +104,9 @@ Success is observable when:
 - [x] (2026-04-10 00:00Z) Drafted ExecPlan for roadmap item 2.1.1 after
       reviewing `docs/roadmap.md`, `docs/protocol.md`, `docs/design.md`,
       testing guidance, and existing execplans.
+- [x] (2026-04-12 00:00Z) Derived the field `300` wire layout from the SynHX
+      client source (`hotline.h`, `hx_commands.c`), resolving the previous
+      protocol ambiguity for "User Name with Info".
 - [ ] Lock the exact protocol scope, including how roadmap wording
       "300-307 / agree-disagree flows" maps to documented transactions.
 - [ ] Introduce the missing transaction and field models for presence payloads.
@@ -131,6 +134,13 @@ Success is observable when:
 - The binary-backed BDD world in `test-util/src/wireframe_bdd_world.rs` is
   currently optimized for a single connected client and synchronous reply
   reads; unsolicited multi-client push assertions will need more machinery.
+- The SynHX client source resolves the field `300` payload shape. It defines a
+  packed `hl_userlist_hdr` containing `uid`, `icon`, `color`, `nlen`, then the
+  name bytes, all prefixed by the ordinary Hotline field header for type
+  `0x012c`.
+- The same SynHX user-list response parser also accepts `HTLS_DATA_CHAT_SUBJECT`
+  (field `115`) alongside repeated field `300` entries, so a compatible
+  transaction `300` reply may carry the main chat subject too.
 - `docs/protocol.md` clearly documents `300-304` and agreement flow `109/121`,
   but the roadmap shorthand says `300-307` and "agree/disagree flows". That
   wording must be reconciled explicitly rather than assumed.
@@ -163,6 +173,14 @@ Success is observable when:
   agreement is required. Rationale: this matches the lifecycle text in
   `docs/protocol.md` and prevents clients from seeing half-initialized sessions
   in the user list. Date/Author: 2026-04-10 / Codex.
+
+- Decision: encode and decode field `300` using the SynHX-observed
+  `hl_userlist_hdr` layout: `uid:u16`, `icon:u16`, `colour:u16`,
+  `name_len:u16`, followed by `name_len` bytes of nickname, with the enclosing
+  parameter length set to `8 + name_len`. Rationale: SynHX defines this exact
+  structure in `hotline.h` and parses it in `hx_commands.c` for both self-info
+  and user-list responses, giving concrete client-side wire evidence. Date/
+  Author: 2026-04-12 / Codex.
 
 ## Outcomes and retrospective
 
@@ -232,7 +250,8 @@ This stage must answer:
 
 - whether `2.1.1` means `300-304` plus agreement lifecycle handling, or whether
   repository evidence for `305-307` exists elsewhere;
-- what the exact byte layout is for field `300` ("User Name with Info");
+- how to codify the now-derived field `300` ("User Name with Info") layout in
+  MXD types and helpers;
 - which fields are required for `301`, `302`, `303`, and `304`;
 - when a session becomes visible to other clients.
 

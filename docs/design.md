@@ -2173,14 +2173,18 @@ Transactions 300 (request list) and the 301/302 (notifications) correspond to
 this. Our plan:
 
 - 300 GetUserNameList: client asks for the list, server replies with a list of
-  all usernames currently online. We can generate this from active sessions or
-  by querying `chat_participants` of the Lobby room.
+  all online users encoded as repeated field-300 records. SynHX parses each
+  field 300 payload as a packed structure of `uid:u16`, `icon:u16`,
+  `colour:u16`, `name_len:u16`, then `name_len` bytes of nickname. We can
+  generate this from active sessions or by querying `chat_participants` of the
+  Lobby room. SynHX also accepts an optional chat-subject field in the same
+  reply for the main lobby.
 
 - Server-initiated 301 (Notify Add User): when someone logs in, send others a
-  message with their username and maybe user ID. Similarly 302 (Notify Remove
-  User) on logout. The code to do this will likely live in the login/logout
-  flow, not in chat per se, but it’s part of the “presence” subsystem which is
-  closely tied to chat.
+  message with their user ID, icon, colour / flags, and username. Similarly 302
+  (Notify Remove User) on logout. The code to do this will likely live in the
+  login/logout flow, not in chat per se, but it’s part of the “presence”
+  subsystem which is closely tied to chat.
 
 **Idle/Away**: Hotline also had “idle” and “away” statuses (with transactions
 303 to update user flags). We foresee adding fields to Session like `is_away`
