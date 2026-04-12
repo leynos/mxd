@@ -20,6 +20,7 @@ use crate::{
 
 const SERVER_BINARY_ENV: &str = "CARGO_BIN_EXE_mxd-wireframe-server";
 const DEFAULT_EXPECT_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECT_EXPECT_TIMEOUT: Duration = Duration::from_secs(20);
 const DEFAULT_MANIFEST_PATH: &str = "../Cargo.toml";
 
 /// Prepared validator harness with explicit `hx` and server binary targeting.
@@ -122,10 +123,32 @@ pub fn expect_output(
     pattern: &'static str,
     context: &'static str,
 ) -> Result<(), AnyError> {
-    session
-        .expect(Regex(pattern))
-        .map(|_| ())
-        .map_err(|error| AnyError::msg(format!("{context}: {error}")))
+    expect_output_with_timeout(session, pattern, context, DEFAULT_EXPECT_TIMEOUT)
+}
+
+/// Assert that the current session output matches the provided regular
+/// expression, using a temporary expect timeout.
+///
+/// # Errors
+///
+/// Returns an error if the expected output is not observed before the PTY
+/// timeout expires.
+pub fn expect_output_with_timeout(
+    session: &mut Session,
+    pattern: &'static str,
+    context: &'static str,
+    timeout: Duration,
+) -> Result<(), AnyError> {
+    session.set_expect_timeout(Some(timeout));
+    let result = session.expect(Regex(pattern)).map(|_| ()).map_err(|error| {
+        AnyError::msg(format_expect_error(
+            context,
+            &error,
+            pending_output(session),
+        ))
+    });
+    session.set_expect_timeout(Some(DEFAULT_EXPECT_TIMEOUT));
+    result
 }
 
 /// Assert that the provided pattern does not appear in the current session
@@ -157,6 +180,32 @@ pub fn close_hx(session: &mut Session) {
     if let Err(error) = terminate_hx(session) {
         report_skip(&error.to_string());
     }
+}
+
+/// Timeout used when waiting for `hx` to authenticate against a test server.
+#[must_use]
+pub const fn connect_expect_timeout() -> Duration { CONNECT_EXPECT_TIMEOUT }
+
+fn pending_output(session: &mut Session) -> Option<String> {
+    session
+        .check(Regex("(?s).+"))
+        .ok()
+        .filter(|captures| !captures.is_empty())
+        .map(|captures| String::from_utf8_lossy(captures.as_bytes()).into_owned())
+}
+
+fn format_expect_error(
+    context: &str,
+    error: &expectrl::Error,
+    transcript: Option<String>,
+) -> String {
+    let Some(pending_transcript) = transcript.filter(|output| !output.trim().is_empty()) else {
+        return format!("{context}: {error}");
+    };
+    format!(
+        "{context}: {error}; pending output: {}",
+        pending_transcript.escape_default()
+    )
 }
 
 fn handle_prerequisite(
@@ -193,4 +242,40 @@ impl From<HxClientError> for PrerequisiteError {
 
 impl From<ServerBinaryError> for PrerequisiteError {
     fn from(value: ServerBinaryError) -> Self { Self::ServerBinary(value) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_expect_error;
+
+    #[test]
+    fn format_expect_error_omits_empty_transcript() {
+        let message = format_expect_error(
+            "context",
+            &expectrl::Error::ExpectTimeout,
+            Some(" \n\t".to_owned()),
+        );
+
+        assert_eq!(
+            message,
+            "context: Reached a timeout for expect type of command"
+        );
+    }
+
+    #[test]
+    fn format_expect_error_includes_transcript() {
+        let message = format_expect_error(
+            "context",
+            &expectrl::Error::ExpectTimeout,
+            Some("connected to host\nHX".to_owned()),
+        );
+
+        assert_eq!(
+            message,
+            concat!(
+                "context: Reached a timeout for expect type of command; pending output: ",
+                "connected to host\\nHX"
+            )
+        );
+    }
 }

@@ -5,7 +5,13 @@
 //! match the server's newer news transaction surface.
 
 use test_util::{AnyError, setup_login_db};
-use validator::{ValidatorHarness, close_hx, send_line_and_expect};
+use validator::{
+    ValidatorHarness,
+    close_hx,
+    connect_expect_timeout,
+    expect_output_with_timeout,
+    send_line_and_expect,
+};
 
 #[test]
 fn xor_compat_validation() -> Result<(), AnyError> {
@@ -23,15 +29,16 @@ fn xor_compat_validation() -> Result<(), AnyError> {
         "encode = 1|adding variable encode",
         "hx did not confirm XOR encode toggle",
     )?;
-    send_line_and_expect(
+    session.send_line(format!(
+        "/server -l alice -p secret {} {}",
+        bind_addr.ip(),
+        bind_addr.port()
+    ))?;
+    expect_output_with_timeout(
         &mut session,
-        format!(
-            "/server -l alice -p secret {} {}",
-            bind_addr.ip(),
-            bind_addr.port()
-        ),
         "(?i)connected",
         "hx did not connect to the wireframe server with XOR enabled",
+        connect_expect_timeout(),
     )?;
 
     close_hx(&mut session);

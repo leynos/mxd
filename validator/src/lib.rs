@@ -24,8 +24,10 @@ pub use config::{
 pub use harness::{
     ValidatorHarness,
     close_hx,
+    connect_expect_timeout,
     expect_no_match,
     expect_output,
+    expect_output_with_timeout,
     report_skip,
     send_line_and_expect,
 };
