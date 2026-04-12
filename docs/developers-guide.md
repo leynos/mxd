@@ -81,6 +81,58 @@ The behavioural suite uses `rstest-bdd` v0.5.0 in both the root crate and
 - If a scenario needs a fallible return signature, use explicit
   `Result<(), E>` or `StepResult<(), E>` in the scenario function signature.
 
+## Validator toggles for pending flows
+
+The `validator` crate now ships placeholder validators for wireframe flows that
+are still being implemented on parallel branches. This lets feature branches
+opt into the required validation early without forcing the main branch to fail
+before the corresponding server functionality lands.
+
+By default, the pending validators are disabled in
+`validator/validator.toml`:
+
+```toml
+[validators]
+chat = false
+file_download = false
+```
+
+Environment variables override the file:
+
+- `MXD_VALIDATOR_CONFIG` points at an alternate config file.
+- `MXD_VALIDATOR_ENABLE_CHAT=true|false` enables or disables the chat
+  validator.
+- `MXD_VALIDATOR_ENABLE_FILE_DOWNLOAD=true|false` enables or disables the
+  file-download validator.
+
+When a pending validator is disabled, the corresponding test prints a clear
+skip message and exits successfully. When it is enabled before the underlying
+feature has landed, the validator fails with an explicit "enabled but not
+implemented yet" error. That makes the opt-in suitable for parallel feature
+branches that want the validation to go red until the branch completes the
+flow.
+
+Examples:
+
+```sh
+# Enable the chat validator for the current shell only.
+export MXD_VALIDATOR_ENABLE_CHAT=true
+cargo test -p validator --test pending_validators
+
+# Use an alternate config file that enables both pending validators.
+cat > /tmp/validator.toml <<'EOF'
+[validators]
+chat = true
+file_download = true
+EOF
+export MXD_VALIDATOR_CONFIG=/tmp/validator.toml
+cargo test -p validator --test pending_validators
+```
+
+Keep implemented validators such as login and XOR/news coverage always on. The
+pending toggles exist only for flows whose server-side work is still in
+progress.
+
 ## Wireframe adapter context handoff
 
 The Wireframe adapter carries Hotline handshake metadata from the asynchronous

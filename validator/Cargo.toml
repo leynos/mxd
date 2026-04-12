@@ -8,6 +8,9 @@ expectrl = "0.7"
 tempfile = "3"
 which = "4"
 nix = { version = "0.27", optional = false, features = ["signal"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"
 
 [lints]
 workspace = true
@@ -24,3 +27,4 @@ argon2 = { version = "0.5", features = ["std"] }
 diesel = { version = "2.3", default-features = false, features = ["sqlite", "postgres"] }
 diesel-async = { version = "0.7", default-features = false, features = ["sqlite", "postgres", "sync-connection-wrapper"] }
 wait-timeout = "0.2"
+rstest = { workspace = true }

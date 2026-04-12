@@ -5,7 +5,7 @@ This ExecPlan is a living document. The sections `Constraints`,
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as
 work proceeds.
 
-Status: NOT STARTED
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -26,7 +26,8 @@ Success is observable when:
 - new harness helpers are covered with `rstest` unit tests, and
   `rstest-bdd` scenarios are added where they improve readability for
   higher-level validation behaviour;
-- CI provisions a real `hx` binary and fails closed when validator coverage
+- devboxer and CI both provision SynHX through a shared
+  `scripts/install-synhx.sh` script and fail closed when validator coverage
   cannot run;
 - `docs/design.md` records the final harness-targeting and CI decisions;
 - `docs/users-guide.md` is updated if the implementation changes user-visible
@@ -50,6 +51,8 @@ Success is observable when:
   `docs/reliable-testing-in-rust-via-dependency-injection.md`.
 - Use `pg-embedded-setup-unpriv` for documented local Postgres validator runs
   rather than bespoke cluster setup.
+- Use a repository-owned SynHX install script rather than inline CI shell
+  fragments, so devboxer and CI share the same provisioning path.
 - Keep documentation in en-GB-oxendict spelling and wrap prose at 80 columns.
 - Do not add a new third-party dependency unless escalation is explicitly
   approved. Reusing workspace crates such as `rstest-bdd` is allowed.
@@ -66,7 +69,8 @@ Success is observable when:
 - Acceptance mismatch: if file download or chat validation requires roadmap
   tasks that are still incomplete in phases 2.x or 3.x, stop and either obtain
   approval for scoped substitute coverage or re-sequence the dependency chain.
-- Client capability: if `hx` v0.2.4 cannot script one of the required flows in
+- Client capability: if SynHX `hx` v0.1.48.1 cannot script one of the required
+  flows in
   headless mode, stop after confirming the exact limitation from `hx` help or
   source and present options.
 - CI stability: if the `hx` install/provision path remains flaky after two
@@ -112,6 +116,15 @@ Success is observable when:
       validator, CI, and routing constraints captured.
 - [ ] Audit requested validator flows against the currently implemented
       wireframe transaction surface and recorded roadmap dependencies.
+- [x] (2026-04-12 00:00Z) Added `scripts/install-synhx.sh` as the shared
+      SynHX provisioning path for devboxer and CI.
+- [x] (2026-04-12 00:00Z) Added config-gated placeholder validators for the
+      pending `chat` and `file_download` flows, plus developer documentation
+      describing how branches can opt into them via file or environment.
+- [x] (2026-04-12 00:00Z) Added `validator/validator.toml`,
+      `validator/src/config.rs`, and `validator/tests/pending_validators.rs`
+      so pending validators default to disabled on `main`, can be enabled per
+      branch, and fail explicitly when enabled before the server flow exists.
 - [ ] Refactor validator support code into reusable, unit-testable helpers.
 - [ ] Add `rstest` unit coverage for harness helpers and `rstest-bdd`
       behavioural coverage where applicable.
@@ -148,6 +161,28 @@ Success is observable when:
   dependencies, `cargo-nextest`, and linters, but nothing for SynHX. Impact:
   validator tests currently rely on skip behaviour rather than CI enforcement.
 
+- Observation: the currently documented SynHX version in legacy design text is
+  stale for this task.
+  Evidence: the supplied install process pins `HX_VERSION=0.1.48.1` from
+  `leynos/synhx-client` releases, whereas older design prose mentions `0.2.4`.
+  Impact: the plan should standardize on a repository-owned install script and
+  the newer pinned version.
+
+- Observation: pending validators need to coexist with `main` while parallel
+  feature work is still incomplete.
+  Evidence: `validator/tests/pending_validators.rs` now carries opt-in checks
+  for `chat` and `file_download`, and `validator/validator.toml` keeps both
+  disabled by default. Impact: feature branches can enable only the validators
+  they are ready to satisfy without destabilizing unrelated work.
+
+- Observation: the existing `validator/tests/login.rs` suite currently fails in
+  this environment before reaching `hx`.
+  Evidence: `cargo test -p validator --features sqlite --test login` fails with
+  `server failed protocol readiness check` from `TestServer` startup. Impact:
+  final 1.6.2 validation still needs a stable server-launch path for the
+  pre-existing login validator, independent of the new pending-validator
+  scaffolding.
+
 - Observation: current wireframe routes do not include chat or file-download
   transactions.
   Evidence: `src/wireframe/route_ids.rs` exposes only routes `107`, `200`,
@@ -183,6 +218,26 @@ Success is observable when:
   relying on workspace defaults. Rationale: `validator` is not a default member
   and its runtime requirements differ from ordinary `cargo nextest` suites.
   Date/Author: 2026-04-10 / Assistant
+
+- Decision: provision SynHX via `scripts/install-synhx.sh`, defaulting to
+  `HX_VERSION=0.1.48.1`, with environment overrides for install directories.
+  Rationale: one script gives devboxer and CI the same installation behaviour
+  and removes fragile duplicated shell snippets. Date/Author: 2026-04-12 /
+  Assistant
+
+- Decision: keep pending validators default-disabled in
+  `validator/validator.toml` and allow environment variables to override the
+  file on a per-run basis.
+  Rationale: `main` should stay green while parallel branches opt into the
+  validators they need, and environment overrides are the least-friction path
+  for CI jobs and ad hoc branch validation. Date/Author: 2026-04-12 /
+  Assistant
+
+- Decision: enabled pending validators fail explicitly with an
+  "enabled but not implemented yet" error until the underlying flow lands.
+  Rationale: silent skips would hide missing coverage on branches that claim to
+  implement chat or file-download support. Date/Author: 2026-04-12 /
+  Assistant
 
 - Decision: document local Postgres validation via `pg-embedded-setup-unpriv`,
   but do not assume the first CI cut must run both backends unless explicitly
@@ -228,6 +283,7 @@ Primary files and modules in current state:
   `mxd-wireframe-server`.
 - `.github/workflows/ci.yml`: current CI workflow that lacks `hx` provisioning
   and validator execution.
+- `scripts/install-synhx.sh`: shared SynHX installer for devboxer and CI.
 - `Cargo.toml`: workspace/default-member settings that currently exclude the
   validator crate from default runs.
 - `Makefile`: current quality-gate entrypoints, which likewise omit explicit
@@ -245,7 +301,8 @@ Work items:
 - Inventory which requested flows are actually implemented in the wireframe
   server today.
 - Verify the exact `hx` commands and observable prompts for login, news, file
-  download, and chat using the pinned client version.
+  download, and chat using the pinned client version installed by
+  `scripts/install-synhx.sh`.
 - Produce a short support matrix:
   requested flow, server support status, `hx` support status, and whether the
   flow is unblockable within 1.6.2.
@@ -351,10 +408,13 @@ Work items:
 - Decide whether validator tests should use `cargo test` instead of
   `cargo nextest` because of PTY/process semantics, and document the reason.
 - Extend `.github/workflows/ci.yml` with a validator job or matrix leg that:
-  provisions a pinned SynHX `hx` binary,
+  runs `scripts/install-synhx.sh` to provision a pinned SynHX `hx` binary,
   verifies it is not Helix,
   runs the validator harness against the wireframe server, and
   preserves logs/artifacts useful for failure diagnosis.
+- Ensure the installer script works in both devboxer and CI by supporting
+  environment overrides for the binary install directory and source checkout
+  path, while defaulting to `/usr/local/bin` and `~/git`.
 - Keep local Postgres validator execution documented via
   `pg-embedded-setup-unpriv`, even if CI initially runs only the SQLite-backed
   validator job.
@@ -392,6 +452,7 @@ Validation tasks:
 Expected implementation-time commands, to be adjusted only if tooling changes:
 
 ```sh
+./scripts/install-synhx.sh
 make fmt
 make check-fmt
 make lint
@@ -406,6 +467,7 @@ Local Postgres enablement should follow `docs/pg-embed-setup-unpriv-users-guide.
 for example:
 
 ```sh
+./scripts/install-synhx.sh
 cargo install --locked pg-embed-setup-unpriv
 pg_embedded_setup_unpriv
 cargo test -p validator --no-default-features --features postgres
