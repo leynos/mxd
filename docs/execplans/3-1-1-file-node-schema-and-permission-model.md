@@ -1,0 +1,523 @@
+# Introduce the `FileNode` schema and permission model (roadmap 3.1.1)
+
+This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
+`Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
+`Outcomes & Retrospective` must be kept up to date as work proceeds.
+
+Status: DRAFT
+
+PLANS.md does not exist in this repository.
+
+## Purpose / big picture
+
+Roadmap item 3.1.1 replaces the current flat `files` and `file_acl` schema with
+the hierarchical `FileNode` model described in `docs/file-sharing-design.md`
+and connects file metadata to the project's shared permission model. The goal
+is to create a dual-backend Diesel schema that can represent folders, files,
+aliases, comments, and drop boxes without painting later file-service tasks
+into a corner.
+
+Success is observable when:
+
+- SQLite and PostgreSQL migrations create the `FileNode` hierarchy and the
+  shared permission structures required to express file ACLs.
+- The schema supports folders, files, aliases, comments, drop box metadata,
+  parent-child traversal, and principal-based ACL rows.
+- Diesel models, `schema.rs`, and minimal repository helpers compile for both
+  backends and are ready for roadmap items 3.1.2 and 3.2.
+- `diesel-cte-ext` is used for backend-neutral hierarchical relational logic
+  needed to resolve paths and parent/descendant relationships.
+- Unit tests written with `rstest` cover happy, unhappy, and edge cases for
+  schema invariants and repository helpers.
+- Behavioural tests written with `rstest-bdd` cover user-visible flows where
+  the new schema is already observable, chiefly the existing file-listing
+  transport path.
+- Local PostgreSQL validation uses `pg_embedded_setup_unpriv`.
+- `docs/design.md` records the final schema and permission decisions,
+  `docs/users-guide.md` reflects any user-visible changes, and
+  `docs/roadmap.md` marks 3.1.1 done only after all quality gates pass.
+
+## Constraints
+
+- Keep scope bounded to roadmap 3.1.1:
+  - schema, Diesel integration, minimal query helpers, and regression-safe
+    test updates are in scope;
+  - new user-facing file operations from roadmap 3.2 and 3.4 are out of scope.
+- Reconcile `docs/file-sharing-design.md` with the existing shared-permission
+  direction in `docs/news-schema.md` and `docs/design.md` before writing
+  migrations. The implementation must not create two incompatible permission
+  systems.
+- Preserve existing wireframe and legacy file-list behaviour unless a design
+  decision explicitly changes it and the change is documented.
+- Prefer additive migration steps in 3.1.1. Do not drop legacy `files` or
+  `file_acl` tables unless a verified backfill path for roadmap 3.1.2 exists.
+- Use `diesel-cte-ext` for hierarchical query helpers rather than ad hoc
+  backend-specific SQL branches.
+- Use `rstest` fixtures for unit and integration coverage and `rstest-bdd`
+  for behavioural scenarios where there is an observable protocol contract.
+- Use `pg_embedded_setup_unpriv` to validate PostgreSQL-backed test flows.
+- Keep documentation in en-GB-oxendict spelling and wrap Markdown prose at
+  80 columns.
+- Do not mark roadmap item 3.1.1 done until migrations, tests, docs, and gates
+  are all complete.
+
+## Tolerances (exception triggers)
+
+- Scope: if implementation expands beyond roughly 25 files or 900 net lines,
+  stop and re-check whether 3.1.2 or 3.2 work is being pulled in early.
+- Schema ambiguity: if the shared permission model cannot be reconciled across
+  `docs/file-sharing-design.md`, `docs/news-schema.md`, and current code
+  without a substantive architecture choice, pause and document the choice in
+  `docs/design.md` before continuing.
+- Data migration coupling: if removing or reshaping `files` / `file_acl` would
+  make roadmap 3.1.2 materially harder or risk data loss, stop and keep the old
+  tables in place for one more roadmap step.
+- Behavioural reach: if proving aliases or folders requires net-new protocol
+  behaviour not scheduled until 3.2, keep those cases at repository/integration
+  level and do not force premature transaction changes.
+- Dependency pressure: if this task appears to require a new crate beyond the
+  already-approved `diesel-cte-ext` and `pg-embed-setup-unpriv`, stop and
+  escalate.
+- Rework loop: if the full quality gates fail twice after targeted fixes, stop
+  and escalate with captured logs.
+
+## Risks
+
+- Risk: the repository currently has no shared permission tables in source
+  migrations, while the file-sharing design and news design assume one.
+  Severity: high. Likelihood: high. Mitigation: make schema reconciliation the
+  first implementation stage and record the chosen model in `docs/design.md`
+  before writing DDL.
+- Risk: replacing `files` / `file_acl` too early could block roadmap 3.1.2 data
+  migration or break the existing `GetFileNameList` handler. Severity: high.
+  Likelihood: medium. Mitigation: add new tables additively, switch helpers
+  carefully, and keep legacy structures until the backfill step lands.
+- Risk: cross-backend constraints for aliases and folders diverge between
+  PostgreSQL and SQLite. Severity: medium. Likelihood: medium. Mitigation: use
+  portable `TEXT` + `CHECK` modelling where possible and cover both backends in
+  migration and helper tests.
+- Risk: recursive path logic becomes backend-specific or duplicated.
+  Severity: medium. Likelihood: medium. Mitigation: limit 3.1.1 helper work to
+  a small set of `diesel-cte-ext` powered queries shared by both backends.
+- Risk: behavioural tests become flaky once PostgreSQL is added to the loop.
+  Severity: medium. Likelihood: low. Mitigation: bootstrap clusters through
+  `pg_embedded_setup_unpriv`, reuse deterministic fixtures, and keep transport
+  scenarios narrow.
+
+## Agent team and ownership
+
+Implementation should be split into explicit workstreams:
+
+- Schema agent:
+  reconciles the permission design, authors dual-backend migrations, and keeps
+  the DDL portable.
+- Persistence agent:
+  updates `src/schema.rs`, models, and minimal repository helpers, including
+  `diesel-cte-ext` path and hierarchy queries.
+- Verification agent:
+  owns `rstest` and `rstest-bdd` coverage, PostgreSQL setup, and quality-gate
+  execution with `tee`-captured logs.
+- Documentation agent:
+  updates `docs/design.md`, `docs/file-sharing-design.md` if the implemented
+  shape refines the earlier sketch, `docs/users-guide.md`, and
+  `docs/roadmap.md`.
+
+Handoff rule: each workstream must leave file-level evidence and test evidence
+before the next stage proceeds.
+
+## Context and orientation
+
+Current relevant state:
+
+- The current database schema still uses flat file metadata in
+  `migrations/postgres/00000000000004_create_files/up.sql`,
+  `migrations/sqlite/00000000000004_create_files/up.sql`,
+  [src/schema.rs](/home/user/project/src/schema.rs), and
+  [src/models.rs](/home/user/project/src/models.rs).
+- File persistence logic currently lives in
+  [src/db/files.rs](/home/user/project/src/db/files.rs) and only supports
+  `create_file`, `add_file_acl`, and `list_files_for_user`.
+- The existing file-list transaction handler in
+  [src/commands/handlers.rs](/home/user/project/src/commands/handlers.rs)
+  assumes a flat list of files filtered by `file_acl`.
+- Test fixtures in
+  [test-util/src/fixtures/mod.rs](/home/user/project/test-util/src/fixtures/mod.rs)
+   and transport tests in
+  [tests/file_list.rs](/home/user/project/tests/file_list.rs) currently seed
+  and validate the old schema.
+- `docs/file-sharing-design.md` defines the intended `FileNode` model with
+  folders, files, aliases, `is_dropbox`, comments, and principal-based ACLs.
+- `docs/news-schema.md` and `docs/design.md` describe a normalized shared
+  permission direction (`permissions`, `user_permissions`) that is not yet
+  present in migrations.
+- `docs/verification-strategy.md` explicitly calls out permission mapping and
+  predicate logic as Kani candidates later in roadmap 3.1.4, so 3.1.1 should
+  shape data and predicates to be verification-friendly.
+- `docs/protocol.md` defines the relevant privilege codes, especially file and
+  folder privileges 0-8, comment privileges 28-29, drop-box visibility 30, and
+  alias creation 31.
+
+Known design tension to resolve up front:
+
+- `docs/file-sharing-design.md` sketches a resource-oriented `Permission` ACL
+  table plus `User`, `Group`, and `UserGroup`.
+- `docs/news-schema.md` sketches a privilege catalogue
+  (`permissions`, `user_permissions`) for protocol privilege codes.
+- The implementation for 3.1.1 must either unify these into one coherent shared
+  model or document a clean split between global privilege assignment and
+  per-resource ACL rows.
+
+## Plan of work
+
+### Stage A: reconcile the permission architecture before writing migrations
+
+Audit the current repository state against:
+
+- `docs/file-sharing-design.md`
+- `docs/news-schema.md`
+- `docs/design.md`
+- `docs/protocol.md`
+
+Produce and record a concrete design decision covering:
+
+- whether global protocol privileges remain normalized in
+  `permissions` / `user_permissions`;
+- whether file and folder ACLs live in a dedicated shared resource-permission
+  table or a documented equivalent;
+- whether `groups` and `user_groups` are introduced now or deferred behind an
+  explicitly documented compatibility shim;
+- whether `users.global_access` is needed in addition to normalized
+  permissions, or whether current session privilege loading remains unchanged
+  in 3.1.1.
+
+Required outcome:
+
+- `docs/design.md` states the final permission architecture and how file ACLs
+  integrate with shared permissions.
+
+Validation gate for Stage A:
+
+- no unresolved contradiction remains between the file-sharing design and the
+  news/shared-permission direction.
+
+### Stage B: add dual-backend schema for `FileNode` and shared permissions
+
+Author new SQLite and PostgreSQL migrations that add the new structures without
+destroying current data needed for roadmap 3.1.2. The preferred shape is:
+
+- `file_nodes` table with:
+  - stable primary key;
+  - node kind (`file`, `folder`, `alias`);
+  - `name`;
+  - `parent_id`;
+  - `alias_target_id`;
+  - `object_key`;
+  - `size`;
+  - `comment`;
+  - `is_dropbox`;
+  - creation/update timestamps;
+  - creator reference.
+- the shared principal and permission tables chosen in Stage A.
+- indices and constraints for:
+  - unique sibling names;
+  - fast parent-child listing;
+  - alias lookup;
+  - resource-principal uniqueness in ACL rows;
+  - referential integrity for parents, creators, targets, and principals.
+
+Schema-level invariant checks should cover at least:
+
+- folders cannot carry an `object_key`;
+- aliases cannot carry stored file data of their own;
+- files cannot point at `alias_target_id`;
+- alias targets cannot create trivial self-reference;
+- name uniqueness is enforced per parent, not globally.
+
+Required outcome:
+
+- migrations apply cleanly on SQLite and PostgreSQL and Diesel schema
+  generation compiles.
+
+Validation gate for Stage B:
+
+- fresh databases on both backends can run all migrations with no manual
+  intervention;
+- legacy `files` / `file_acl` data remains available for the subsequent
+  backfill task unless the migration plan proves a safe in-place carry-forward.
+
+### Stage C: update Diesel schema, models, and minimal persistence helpers
+
+Update the Rust persistence surface so the new schema is representable and
+testable:
+
+- refresh `src/schema.rs`;
+- add/replace models for `FileNode`, alias metadata, groups, shared permission
+  rows, and any helper enums or newtypes required to keep code readable;
+- keep module-level `//!` comments and Rustdoc current;
+- replace file-helper functions that assume a flat file list with a minimal set
+  of repository APIs suited to 3.1.1.
+
+The helper surface should stay narrow. It should support only what 3.1.1 needs:
+
+- create seed folders, files, aliases, and ACL rows for tests;
+- resolve top-level or path-based nodes;
+- query children of a folder;
+- resolve alias targets;
+- answer "what nodes are visible to this principal?" for the current file-list
+  regression path.
+
+Do not implement the full 3.2 transaction surface here.
+
+Validation gate for Stage C:
+
+- all code compiles for SQLite, PostgreSQL, and wireframe-only feature sets;
+- repository helpers expose enough functionality to seed and query the new
+  schema without ad hoc SQL in tests.
+
+### Stage D: add hierarchical query helpers with `diesel-cte-ext`
+
+Use the published `diesel-cte-ext` crate to add backend-neutral recursive query
+helpers needed for file hierarchy logic. At minimum, implement and test:
+
+- path resolution from root to a node by parent/name traversal;
+- descendant or ancestor traversal needed for hierarchy-aware validation;
+- alias-target lookup that can be reused by future file operations.
+
+Keep the helper set deliberately small and aligned to future roadmap tasks. The
+purpose of 3.1.1 is to establish the relational foundation, not to build every
+future file command early.
+
+Validation gate for Stage D:
+
+- at least one repository helper that matters to `FileNode` hierarchy is backed
+  by `diesel-cte-ext` and exercised on both backends.
+
+### Stage E: migrate tests to the new schema with `rstest`
+
+Add focused unit and integration coverage using `rstest`. Cover happy, unhappy,
+and edge paths such as:
+
+- creating folder, file, and alias nodes with valid shapes;
+- rejecting invalid node-kind combinations;
+- enforcing unique sibling names while allowing the same name under different
+  parents;
+- resolving nested paths correctly;
+- joining ACL rows to users or groups according to the chosen shared model;
+- preserving drop-box metadata;
+- alias rows resolving to their targets;
+- idempotent or duplicate ACL insertion behaviour, if the repository API
+  preserves that contract.
+
+Update shared test fixtures so file data is seeded through `file_nodes` and the
+new permission tables rather than `files` / `file_acl`.
+
+PostgreSQL-backed tests should use `pg_embedded_setup_unpriv` or the crate's
+test-cluster API as documented in `docs/pg-embed-setup-unpriv-users-guide.md`.
+
+Validation gate for Stage E:
+
+- repository tests pass on both SQLite and PostgreSQL without backend-specific
+  skips other than documented environment limitations.
+
+### Stage F: add behavioural regression coverage with `rstest-bdd`
+
+Only add behavioural scenarios where the schema change is already observable
+through an existing server contract. The primary candidate is the current
+`GetFileNameList` flow:
+
+- happy: an authenticated user still lists accessible file nodes through the
+  existing transport path;
+- unhappy: unauthenticated or unauthorized access still fails as before;
+- edge: invalid file-list payload handling remains unchanged after the
+  persistence rewrite.
+
+Folders, aliases, comments, and drop-box semantics that do not yet have
+protocol support in the current branch should stay covered at repository or
+integration level until roadmap 3.2 exposes them.
+
+Validation gate for Stage F:
+
+- BDD scenarios prove the old user-visible contract still works when backed by
+  the new schema.
+
+### Stage G: documentation and roadmap synchronization
+
+Update:
+
+- `docs/design.md` with the implemented schema and permission decisions;
+- `docs/file-sharing-design.md` if the implementation sharpens or supersedes
+  the earlier conceptual sketch;
+- `docs/users-guide.md` with any user-visible changes, or an explicit note that
+  this step is schema-only and preserves current behaviour;
+- `docs/roadmap.md` to mark 3.1.1 done only after all implementation and
+  verification work is complete.
+
+Required outcome:
+
+- documentation matches the delivered schema, and the roadmap entry has a dated
+  completion note.
+
+### Stage H: verification and quality gates
+
+Run local PostgreSQL setup first, then all applicable gates with `tee` and
+`set -o pipefail`.
+
+Recommended sequence:
+
+1. Prepare PostgreSQL:
+
+   ```sh
+   set -o pipefail
+   pg_embedded_setup_unpriv \
+     | tee /tmp/pg-setup-$(basename "$PWD")-$(git branch --show-current).out
+   ```
+
+2. Format sources:
+
+   ```sh
+   set -o pipefail
+   make fmt \
+     | tee /tmp/fmt-$(basename "$PWD")-$(git branch --show-current).out
+   ```
+
+3. Verify Rust formatting:
+
+   ```sh
+   set -o pipefail
+   make check-fmt \
+     | tee /tmp/check-fmt-$(basename "$PWD")-$(git branch --show-current).out
+   ```
+
+4. Run type checks:
+
+   ```sh
+   set -o pipefail
+   make typecheck \
+     | tee /tmp/typecheck-$(basename "$PWD")-$(git branch --show-current).out
+   ```
+
+5. Run lint checks:
+
+   ```sh
+   set -o pipefail
+   make lint \
+     | tee /tmp/lint-$(basename "$PWD")-$(git branch --show-current).out
+   ```
+
+6. Run test suites:
+
+   ```sh
+   set -o pipefail
+   make test \
+     | tee /tmp/test-$(basename "$PWD")-$(git branch --show-current).out
+   ```
+
+7. Lint Markdown:
+
+   ```sh
+   set -o pipefail
+   make markdownlint \
+     | tee /tmp/markdownlint-$(basename "$PWD")-$(git branch --show-current).out
+   ```
+
+8. Validate Mermaid diagrams:
+
+   ```sh
+   set -o pipefail
+   make nixie \
+     | tee /tmp/nixie-$(basename "$PWD")-$(git branch --show-current).out
+   ```
+
+If a gate must be skipped, record the exact reason and the evidence in this
+ExecPlan before closing the task.
+
+## Concrete implementation checklist
+
+1. Reconcile the shared permission architecture and record the decision in
+   `docs/design.md`.
+2. Add dual-backend migrations for `file_nodes` and the selected shared
+   permission structures.
+3. Keep or bridge legacy `files` / `file_acl` tables so roadmap 3.1.2 can
+   migrate data safely.
+4. Refresh Diesel schema and Rust models.
+5. Add narrow repository helpers for hierarchy and ACL queries.
+6. Implement `diesel-cte-ext` powered path or hierarchy traversal helpers.
+7. Update fixtures and `rstest` coverage for happy, unhappy, and edge cases.
+8. Update `rstest-bdd` scenarios for existing observable file-list behaviour.
+9. Update `docs/file-sharing-design.md`, `docs/design.md`, and
+   `docs/users-guide.md` as required.
+10. Run PostgreSQL setup and all quality gates with captured logs.
+11. Mark roadmap item 3.1.1 done only after all gates pass.
+
+## Progress
+
+- [x] (2026-04-12 00:00Z) Reviewed roadmap item 3.1.1, the file-sharing design,
+  the current file schema, and the repository's existing ExecPlan structure.
+- [x] (2026-04-12 00:00Z) Confirmed the current implementation still uses flat
+  `files` and `file_acl` tables and that no shared permission tables exist in
+  source migrations yet.
+- [x] (2026-04-12 00:00Z) Confirmed `diesel-cte-ext` and
+  `pg_embedded_setup_unpriv` are the intended tools for hierarchical queries
+  and local PostgreSQL validation.
+- [x] (2026-04-12 00:00Z) Drafted this ExecPlan at the requested path.
+- [ ] Reconcile permission-model shape across docs and code.
+- [ ] Add dual-backend migrations and Diesel schema updates.
+- [ ] Add `diesel-cte-ext` hierarchy helpers and repository coverage.
+- [ ] Add behavioural regression coverage where applicable.
+- [ ] Update design and user documentation.
+- [ ] Mark roadmap item 3.1.1 done after verification evidence exists.
+
+## Surprises & Discoveries
+
+- The repository does not expose the project-memory MCP note tools in this
+  session, so planning had to rely on repository docs alone.
+- The current codebase still has only `files` and `file_acl`; no shared
+  `permissions`, `user_permissions`, `groups`, or `user_groups` migrations
+  exist yet.
+- The request referenced `docs/pg-embedded-setup-unpriv-users-guide.md`, while
+  the repository path is `docs/pg-embed-setup-unpriv-users-guide.md`.
+- The file-sharing design's resource-oriented ACL table and the news design's
+  normalized privilege catalogue are not yet reconciled in code, and 3.1.1 is
+  the first roadmap step that must resolve the mismatch.
+- Behavioural testing is only partially applicable to 3.1.1 because aliases,
+  comments, folder metadata, and drop-box semantics do not yet have full
+  protocol handlers in the current branch.
+
+## Decision Log
+
+- Decision: treat 3.1.1 as an additive schema step first and a destructive
+  replacement step later. Rationale: roadmap 3.1.2 explicitly requires a
+  migration of existing file metadata, so 3.1.1 should not destroy the source
+  tables needed for that move. Date/Author: 2026-04-12 / Codex.
+- Decision: keep `diesel-cte-ext` usage narrow and foundational in 3.1.1.
+  Rationale: the task is about schema and permission modelling, so only the
+  hierarchy helpers needed to validate that model should land now. More
+  user-facing file operations remain scheduled in roadmap 3.2 and 3.4.
+  Date/Author: 2026-04-12 / Codex.
+- Decision: require both `rstest` and `rstest-bdd` coverage, but only where the
+  latter maps to an existing observable transport contract. Rationale: the user
+  requested behavioural coverage where applicable, and forcing protocol work
+  ahead of roadmap 3.2 would widen scope unnecessarily. Date/Author: 2026-04-12
+  / Codex.
+
+## Outcomes & Retrospective
+
+Intended outcomes once implemented:
+
+- The project has a durable hierarchical file schema that can represent
+  folders, files, aliases, comments, and drop-box metadata on SQLite and
+  PostgreSQL.
+- File ACLs are expressed through the same shared permission architecture that
+  later roadmap steps can reuse, rather than through a one-off file-only
+  mechanism.
+- The current file-list behaviour continues to work while the persistence layer
+  is modernized underneath it.
+- Roadmap items 3.1.2 and 3.2 can build on repository helpers and schema
+  invariants established here instead of re-litigating table shape.
+
+Retrospective placeholder:
+
+- Implemented:
+- Verified:
+- Documentation updated:
+- Follow-up work pushed to later roadmap items:
