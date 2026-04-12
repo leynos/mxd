@@ -24,17 +24,18 @@ domain operations can be exercised in isolation from their environment.
   loop, the `wireframe` crate acts as the **port** for the Hotline binary
   protocol. It handles socket I/O with Tokio, decodes and encodes the
   Hotline-specific frames, and dispatches incoming messages to the appropriate
-  domain handler via a routing table[^wireframe-routing-table][^mxd-routing-handlers].
-  Each Hotline “transaction” type (a message or request identified by an ID)
-  is mapped to a handler function. For example, the Login transaction (Hotline
-  ID 0x006B) is routed to a `handle_login` handler in the domain core. The
-  Wireframe adapter thus plays the role of the **primary port** on the inbound
-  side: it translates raw TCP byte streams into high-level domain commands and
-  routes them. Likewise, it takes domain responses and frames them back into
-  Hotline protocol packets on the outbound side. This clean separation means
-  the domain core doesn’t need to know about sockets or byte order; it just
-  implements handlers for events like “user login request” or “post news
-  article,” and the wireframe layer delivers those events.
+  domain handler via a routing
+  table[^wireframe-routing-table][^mxd-routing-handlers]. Each Hotline
+  “transaction” type (a message or request identified by an ID) is mapped to a
+  handler function. For example, the Login transaction (Hotline ID 0x006B) is
+  routed to a `handle_login` handler in the domain core. The Wireframe adapter
+  thus plays the role of the **primary port** on the inbound side: it
+  translates raw TCP byte streams into high-level domain commands and routes
+  them. Likewise, it takes domain responses and frames them back into Hotline
+  protocol packets on the outbound side. This clean separation means the domain
+  core doesn’t need to know about sockets or byte order; it just implements
+  handlers for events like “user login request” or “post news article,” and the
+  wireframe layer delivers those events.
 
 - **Storage Adapter (Diesel ORM)**: Persistence is achieved via Diesel, serving
   as a database adapter. The domain defines repository-like functions (e.g.
@@ -3131,73 +3132,43 @@ integration test harness using an **external Hotline client** and the
 classic Expect for automating terminal interactions). Specifically:
 
 - We use the **Synapse Hotline X (SynHX)** client (an open-source Hotline
-  client) in a headless mode. The `hx` binary (v0.2.4) can run commands from
-  CLI or connect to a server if invoked
-  appropriately([15](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/README.md#L98-L105)).
+  client) in a headless mode. Validator runs provision the pinned `hx` binary
+  (`v0.1.48.1`) through `scripts/install-synhx.sh`, which is shared by devboxer
+  and CI.
 
-- In our `validator` test crate, we spawn the MXD server (perhaps on localhost
-  ephemeral port) and then spawn the `hx` client as a child process. We use
-  `expectrl` to interact with `hx` by sending it commands (like “open
-  connection”, “login”, “send message”) and expecting certain responses (like
-  specific text or success codes).
+- In our `validator` test crate, we spawn a **prebuilt**
+  `mxd-wireframe-server` binary on an ephemeral port and then spawn `hx` as a
+  child process. The harness resolves the server binary explicitly from
+  `MXD_VALIDATOR_SERVER_BINARY`, Cargo's `CARGO_BIN_EXE_mxd-wireframe-server`,
+  or the conventional target directory, rather than relying on an implicit
+  `cargo run` fallback.
 
-- For example, a test might start MXD, then do:
+- The harness applies a fail-closed policy in CI. Missing `hx`, a missing
+  prebuilt server binary, or the common "Helix editor is installed as `hx`"
+  mistake all fail CI immediately. Local runs default to informative skips
+  unless `MXD_VALIDATOR_FAIL_CLOSED=true` is set.
 
-- `hx /connect 127.0.0.1 5500` and expect some greeting or login prompt.
+- Current end-to-end coverage exercises the flows that the pinned client and
+  the current wireframe server can both speak today: login, failed-auth gating,
+  and XOR-obfuscated login fields.
 
-- `hx /login alice secret` and then expect a “Login successful” message or
-  absence of error.
+- The support matrix is intentionally narrower than the roadmap acceptance for
+  item 1.6.2. We confirmed the following gaps while wiring the harness into CI:
 
-- `hx /who` to list users and expect to see "alice".
+- SynHX file operations (`/ls`, `/get`) still use the legacy `DATA_DIR` and
+  file-list reply shapes. MXD now tolerates the request payload for root
+  listing, but the server does not yet emit the file-list response structure
+  that SynHX expects.
+- SynHX news commands (`/news`, `/post`) still target the legacy news-file
+  transactions (`0x65`/`0x67`), while the wireframe server exposes the newer
+  category/article transactions (`370`, `371`, `400`, `410`).
+- Chat and file download remain roadmap items outside the currently
+  implemented wireframe transaction surface.
 
-- Or to test news: `hx /news list` and expect the categories to match what MXD
-  has.
-
-- For chat: if hx supports sending chat messages, we could simulate two hx
-  instances to ensure messages broadcast.
-
-The harness essentially uses the **actual protocol implementation from a real
-client** to double-check our server. This catches any discrepancies in byte
-ordering, field encoding, XOR encoding (Hotline had an XOR obfuscation for text
-sometimes), etc. Our roadmap explicitly includes compatibility toggles like XOR
-decoding for clients that need
-it([16](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/roadmap.md#L93-L101)).
- In the validator tests, we likely verify that:
-
-- A SynHX client can login to MXD (meaning our handshake and login responses
-  are acceptable).
-
-- It can retrieve user list, see itself.
-
-- Possibly test sending a public chat message and ensure MXD echoes it back
-  properly (though with one client, maybe hx has a loopback test mode or we
-  might run two clients).
-
-- File downloads might be tested by having hx request a file (if hx has command
-  to download file to disk, we can create a small file on server and see if hx
-  gets it).
-
-- News might be tested by hx retrieving a news post.
-
-Because these tests involve actual I/O and an external binary, they are a bit
-more fragile and likely marked to run in certain environments (we need hx 0.2.4
-installed in PATH as
-noted([15](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/README.md#L98-L105))).
- They might not run in a typical `cargo test` unless the environment is
-prepared, but we have instructions and perhaps a CI job that sets up hx for
-these integration tests.
-
-Example from `README.md`:
-
-```bash
-cd validator
-cargo test
-```
-
-This will run the expect scripts. We probably have those scripts or direct
-expect code in `validator/tests/` or so. The output of these tests is a high
-confidence that MXD’s behavior matches an actual Hotline server as far as the
-client is concerned.
+The harness still uses the **actual protocol implementation from a real
+client** to double-check the server wherever the surfaces overlap. That keeps
+the login and XOR compatibility path honest, and the CI job ensures the
+repository can provision SynHX and drive the wireframe server end-to-end.
 
 ### Fuzzing and Property-Based Testing
 

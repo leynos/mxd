@@ -99,3 +99,23 @@ fn parse_login_params_rejects_malformed_payload() {
     let result = parse_login_params(malformed);
     assert!(matches!(result, Err(TransactionError::SizeMismatch)));
 }
+
+#[test]
+fn get_file_name_list_accepts_client_directory_payload() {
+    let transaction = Transaction {
+        header: FrameHeader {
+            flags: 0,
+            is_reply: 0,
+            ty: TransactionType::GetFileNameList.into(),
+            id: 7,
+            error: 0,
+            total_size: 5,
+            data_size: 5,
+        },
+        payload: vec![0xca, 0x00, 0x02, 0x00, 0x01],
+    };
+
+    let command = Command::from_transaction(transaction).expect("command should parse");
+
+    assert!(matches!(command, Command::GetFileNameList { .. }));
+}

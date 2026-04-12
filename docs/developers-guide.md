@@ -88,8 +88,7 @@ are still being implemented on parallel branches. This lets feature branches
 opt into the required validation early without forcing the main branch to fail
 before the corresponding server functionality lands.
 
-By default, the pending validators are disabled in
-`validator/validator.toml`:
+By default, the pending validators are disabled in `validator/validator.toml`:
 
 ```toml
 [validators]
@@ -109,12 +108,17 @@ When a pending validator is disabled, the corresponding test prints a clear
 skip message and exits successfully. When it is enabled before the underlying
 feature has landed, the validator fails with an explicit "enabled but not
 implemented yet" error. That makes the opt-in suitable for parallel feature
-branches that want the validation to go red until the branch completes the
-flow.
+branches that want the validation to go red until the branch completes the flow.
 
 Examples:
 
 ```sh
+# Install the pinned SynHX client once for local validator runs.
+HX_BIN_DIR="$HOME/.local/bin" ./scripts/install-synhx.sh
+
+# Run the supported sqlite validator suite against a prebuilt wireframe server.
+make test-validator-sqlite
+
 # Enable the chat validator for the current shell only.
 export MXD_VALIDATOR_ENABLE_CHAT=true
 cargo test -p validator --test pending_validators
@@ -129,9 +133,22 @@ export MXD_VALIDATOR_CONFIG=/tmp/validator.toml
 cargo test -p validator --test pending_validators
 ```
 
-Keep implemented validators such as login and XOR/news coverage always on. The
+The shared validator harness now resolves prerequisites explicitly:
+
+- `make validator-sqlite-server` builds `target/debug/mxd-wireframe-server`.
+- `make validator-postgres-server` builds
+  `target/postgres/debug/mxd-wireframe-server`.
+- `MXD_VALIDATOR_SERVER_BINARY` overrides the server binary path if the default
+  target location is not suitable.
+- `MXD_VALIDATOR_HX_BINARY` overrides the `hx` binary path.
+- `MXD_VALIDATOR_FAIL_CLOSED=true|false` forces missing prerequisites to fail
+  or skip regardless of whether `CI=true`.
+
+Keep implemented validators such as login and XOR login coverage always on. The
 pending toggles exist only for flows whose server-side work is still in
-progress.
+progress. At present, chat and file download remain pending, while SynHX file
+listing and news posting are still blocked by client/server protocol-shape
+differences rather than missing harness plumbing.
 
 ## Wireframe adapter context handoff
 

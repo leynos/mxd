@@ -258,7 +258,7 @@ impl Command {
     /// Returns an error if required parameters are missing or cannot be parsed.
     pub fn from_transaction(tx: Transaction) -> Result<Self, TransactionError> {
         let ty = TransactionType::from(tx.header.ty);
-        if !ty.allows_payload() && !tx.payload.is_empty() {
+        if ty.rejects_payload(tx.payload.is_empty()) {
             return Ok(Self::InvalidPayload { header: tx.header });
         }
         match ty {

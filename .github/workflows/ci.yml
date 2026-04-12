@@ -88,6 +88,39 @@ jobs:
             RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }}
           fi
 
+  validator-sqlite:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+      BUILD_PROFILE: debug
+      HX_BIN_DIR: ${{ github.workspace }}/.bin
+      HX_WORK_ROOT: ${{ github.workspace }}/.cache/hx
+      HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client
+      MXD_VALIDATOR_FAIL_CLOSED: "true"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
+        with:
+          install-sqlite-deps: true
+      - name: Cache Cargo directories
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Add validator bin directory to PATH
+        run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
+      - name: Install SynHX
+        run: ./scripts/install-synhx.sh
+      - name: Sanity-check hx does not report Helix
+        run: |
+          set -o pipefail
+          timeout 1 hx --version 2>&1 | tee /tmp/hx-version.log || true
+          if rg -qi 'helix' /tmp/hx-version.log; then
+            echo "hx resolves to Helix, not SynHX" >&2
+            exit 1
+          fi
+      - name: Build wireframe server for validator
+        run: make validator-sqlite-server
+      - name: Run validator harness
+        run: make test-validator-sqlite
+
   coverage:
     runs-on: ubuntu-latest
     services:

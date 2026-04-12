@@ -6,6 +6,10 @@
 //! still being implemented on parallel branches.
 
 mod config;
+mod harness;
+mod hx_client;
+mod policy;
+mod server_binary;
 
 pub use config::{
     PendingValidator,
@@ -17,3 +21,19 @@ pub use config::{
     pending_validator_disabled_message,
     pending_validator_unimplemented_message,
 };
+pub use harness::{
+    ValidatorHarness,
+    close_hx,
+    expect_no_match,
+    expect_output,
+    report_skip,
+    send_line_and_expect,
+};
+pub use hx_client::{HxClientError, VALIDATOR_HX_BINARY_ENV_VAR};
+pub use policy::{
+    PrerequisiteResolution,
+    VALIDATOR_FAIL_CLOSED_ENV_VAR,
+    ValidatorRunPolicy,
+    ValidatorRunPolicyError,
+};
+pub use server_binary::{ServerBinaryError, VALIDATOR_SERVER_BINARY_ENV_VAR, ValidatorBackend};

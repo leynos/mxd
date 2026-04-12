@@ -82,28 +82,35 @@ fn perform_login(stream: &mut TcpStream, username: &[u8], password: &[u8]) -> Re
 /// # }
 /// ```
 fn get_file_list(stream: &mut TcpStream) -> Result<Vec<String>, AnyError> {
+    request_file_list(stream, Vec::new(), 2)
+}
+
+fn request_file_list(
+    stream: &mut TcpStream,
+    payload: Vec<u8>,
+    transaction_id: u32,
+) -> Result<Vec<String>, AnyError> {
+    let payload_len =
+        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
         ty: TransactionType::GetFileNameList.into(),
-        id: 2,
+        id: transaction_id,
         error: 0,
-        total_size: 0,
-        data_size: 0,
+        total_size: payload_len,
+        data_size: payload_len,
     };
-    let tx = Transaction {
-        header,
-        payload: Vec::new(),
-    };
+    let tx = Transaction { header, payload };
     stream.write_all(&tx.to_bytes())?;
     let mut buf = [0u8; 20];
     stream.read_exact(&mut buf)?;
     let hdr = FrameHeader::from_bytes(&buf);
-    let mut payload = vec![0u8; hdr.data_size as usize];
-    stream.read_exact(&mut payload)?;
+    let mut reply_payload = vec![0u8; hdr.data_size as usize];
+    stream.read_exact(&mut reply_payload)?;
     let resp = Transaction {
         header: hdr,
-        payload,
+        payload: reply_payload,
     };
     if resp.header.error != 0 {
         return Err(anyhow::anyhow!(
@@ -143,13 +150,6 @@ fn test_stream(
     Ok(Some((server, stream)))
 }
 
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "Keep signature consistent with `SetupFn` so tests can swap in fallible setup \
-              routines."
-)]
-fn noop_setup(_: DatabaseUrl) -> TestResult<()> { Ok(()) }
-
 #[rstest]
 fn list_files_acl(test_stream: TestResult<Option<(TestServer, TcpStream)>>) -> TestResult<()> {
     let Some((server, mut stream)) = test_stream? else {
@@ -166,37 +166,18 @@ fn list_files_acl(test_stream: TestResult<Option<(TestServer, TcpStream)>>) -> T
 }
 
 #[rstest]
-fn list_files_reject_payload(
-    #[with(noop_setup)] test_stream: TestResult<Option<(TestServer, TcpStream)>>,
+fn list_files_ignores_request_payload(
+    test_stream: TestResult<Option<(TestServer, TcpStream)>>,
 ) -> TestResult<()> {
     let Some((server, mut stream)) = test_stream? else {
         return Ok(());
     };
     let _server = server;
-    debug!("sending invalid file list payload");
+    perform_login(&mut stream, b"alice", b"secret")?;
+    debug!("sending decorated file list payload");
     let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())])?;
-    let params_len =
-        u32::try_from(params.len()).expect("parameter block length fits within the header field");
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: TransactionType::GetFileNameList.into(),
-        id: 99,
-        error: 0,
-        total_size: params_len,
-        data_size: params_len,
-    };
-    let tx = Transaction {
-        header,
-        payload: params,
-    };
-    stream.write_all(&tx.to_bytes())?;
-    debug!("awaiting file list error reply");
-    let mut buf = [0u8; 20];
-    stream.read_exact(&mut buf)?;
-    let hdr = FrameHeader::from_bytes(&buf);
-    info!(error = hdr.error, "file list reply received");
-    assert_eq!(hdr.error, mxd::commands::ERR_INVALID_PAYLOAD);
-    assert_eq!(hdr.data_size, 0);
+    let names = request_file_list(&mut stream, params, 99)?;
+    info!(files = ?names, "file list reply received");
+    assert_eq!(names, vec!["fileA.txt", "fileC.txt"]);
     Ok(())
 }

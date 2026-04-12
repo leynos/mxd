@@ -49,6 +49,22 @@ impl TransactionType {
             Self::GetFileNameList | Self::DownloadBanner | Self::GetUserNameList
         )
     }
+
+    /// Return `true` when a non-empty payload should be rejected outright.
+    #[must_use]
+    pub const fn rejects_payload(self, payload_is_empty: bool) -> bool {
+        if payload_is_empty {
+            return false;
+        }
+        match self {
+            // SynHX sends a binary `DATA_DIR` block for `/ls`, even for the
+            // root listing flow that MXD currently treats as a single logical
+            // file-list command. Accept the payload and let the handler ignore
+            // it until directory-aware semantics land.
+            Self::GetFileNameList => false,
+            _ => !self.allows_payload(),
+        }
+    }
 }
 
 impl From<u16> for TransactionType {

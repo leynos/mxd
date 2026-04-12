@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only test-verification lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
+.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
 
 APP ?= mxd
 CARGO ?= cargo
@@ -99,6 +99,20 @@ test-wireframe-only: ## Run tests with legacy networking disabled
 
 test-verification: ## Run verification crate tests
 	RUSTFLAGS="-D warnings" $(CARGO) nextest run -p mxd-verification
+
+validator-sqlite-server: ## Build the sqlite wireframe server binary for validator runs
+	$(MAKE) APP=mxd-wireframe-server sqlite
+
+validator-postgres-server: ## Build the postgres wireframe server binary for validator runs
+	$(MAKE) APP=mxd-wireframe-server postgres
+
+test-validator-sqlite: validator-sqlite-server ## Run the hx validator against the sqlite wireframe server
+	MXD_VALIDATOR_SERVER_BINARY=$(CURDIR)/target/debug/mxd-wireframe-server \
+		RUSTFLAGS="-D warnings" $(CARGO) test -p validator --features sqlite
+
+test-validator-postgres: validator-postgres-server ## Run the hx validator against the postgres wireframe server
+	MXD_VALIDATOR_SERVER_BINARY=$(CURDIR)/$(POSTGRES_TARGET_DIR)/debug/mxd-wireframe-server \
+		RUSTFLAGS="-D warnings" $(CARGO) test -p validator --no-default-features --features postgres
 
 sqlite: target/debug/$(APP) ## Build debug sqlite binary
 

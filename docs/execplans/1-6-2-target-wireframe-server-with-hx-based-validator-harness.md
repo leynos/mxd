@@ -1,9 +1,8 @@
 # Extend the hx validator harness to target the wireframe server
 
-This ExecPlan is a living document. The sections `Constraints`,
-`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as
-work proceeds.
+This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
+`Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
+`Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: IN PROGRESS
 
@@ -57,9 +56,9 @@ Success is observable when:
 - Do not add a new third-party dependency unless escalation is explicitly
   approved. Reusing workspace crates such as `rstest-bdd` is allowed.
 - Before any implementation commit, run the repository quality gates plus any
-  new validator-specific gates introduced by this work:
-  `make check-fmt`, `make lint`, `make test`, `make markdownlint`, `make nixie`,
-  and explicit validator commands if they are not folded into `make test`.
+  new validator-specific gates introduced by this work: `make check-fmt`,
+  `make lint`, `make test`, `make markdownlint`, `make nixie`, and explicit
+  validator commands if they are not folded into `make test`.
 
 ## Tolerances (exception triggers)
 
@@ -70,9 +69,8 @@ Success is observable when:
   tasks that are still incomplete in phases 2.x or 3.x, stop and either obtain
   approval for scoped substitute coverage or re-sequence the dependency chain.
 - Client capability: if SynHX `hx` v0.1.48.1 cannot script one of the required
-  flows in
-  headless mode, stop after confirming the exact limitation from `hx` help or
-  source and present options.
+  flows in headless mode, stop after confirming the exact limitation from `hx`
+  help or source and present options.
 - CI stability: if the `hx` install/provision path remains flaky after two
   focused fixes, stop and review whether the binary should be cached, pinned,
   or supplied differently.
@@ -114,8 +112,10 @@ Success is observable when:
 
 - [x] (2026-04-10 00:00Z) Drafted ExecPlan for roadmap item 1.6.2 with current
       validator, CI, and routing constraints captured.
-- [ ] Audit requested validator flows against the currently implemented
-      wireframe transaction surface and recorded roadmap dependencies.
+- [x] (2026-04-12 12:28Z) Audited the requested validator flows against the
+      currently implemented wireframe transaction surface and recorded the
+      remaining protocol mismatches for file listing, file download, chat, and
+      news.
 - [x] (2026-04-12 00:00Z) Added `scripts/install-synhx.sh` as the shared
       SynHX provisioning path for devboxer and CI.
 - [x] (2026-04-12 00:00Z) Added config-gated placeholder validators for the
@@ -125,17 +125,26 @@ Success is observable when:
       `validator/src/config.rs`, and `validator/tests/pending_validators.rs`
       so pending validators default to disabled on `main`, can be enabled per
       branch, and fail explicitly when enabled before the server flow exists.
-- [ ] Refactor validator support code into reusable, unit-testable helpers.
-- [ ] Add `rstest` unit coverage for harness helpers and `rstest-bdd`
-      behavioural coverage where applicable.
-- [ ] Implement or extend validator end-to-end coverage for login, file
-      download, chat, and news flows against `mxd-wireframe-server`.
-- [ ] Add explicit CI execution for the validator harness with pinned `hx`
-      provisioning.
-- [ ] Document local Postgres validator execution using
-      `pg-embedded-setup-unpriv`.
-- [ ] Update `docs/design.md`, review `docs/users-guide.md`, and mark roadmap
-      item 1.6.2 done after acceptance evidence exists.
+- [x] (2026-04-12 12:28Z) Refactored validator support code into reusable,
+      unit-testable helpers under `validator/src/` for run policy, server
+      binary resolution, SynHX detection/spawn, and harness orchestration.
+- [x] (2026-04-12 12:28Z) Added `rstest` unit coverage for the new support
+      modules. No `rstest-bdd` scenarios were added because the remaining
+      unsupported flows are blocked by protocol overlap rather than
+      orchestration readability.
+- [x] (2026-04-12 12:28Z) Extended validator end-to-end coverage for the
+      currently supported SynHX-to-wireframe overlap: successful login, failed
+      authentication gating, and XOR login against `mxd-wireframe-server`.
+- [x] (2026-04-12 12:28Z) Added explicit CI execution for the sqlite validator
+      harness with pinned `hx` provisioning and fail-closed policy.
+- [x] (2026-04-12 12:28Z) Documented local Postgres validator execution via
+      `make test-validator-postgres`, which builds the Postgres wireframe
+      binary through the same Makefile path used for other local runs.
+- [x] (2026-04-12 12:28Z) Updated `docs/design.md` and
+      `docs/developers-guide.md`, and reviewed `docs/users-guide.md` with no
+      user-visible workflow change requiring documentation updates.
+- [ ] Keep roadmap item 1.6.2 open until real-client file/news/chat coverage
+      exists or the acceptance criteria are re-scoped.
 - [ ] Run full quality gates with tee-captured logs and commit the final
       implementation.
 
@@ -146,10 +155,12 @@ Success is observable when:
   Impact: "target the wireframe server" is partially true today, but only by
   convention and without explicit validator-level assertions.
 
-- Observation: current validator coverage is narrow.
-  Evidence: `validator/tests/login.rs` covers login only, and
-  `validator/tests/xor_compat.rs` covers XOR login plus news posting. There is
-  no validator coverage for file download, file listing, or chat.
+- Observation: validator coverage remains narrower than the roadmap target.
+  Evidence: the validator suite now covers successful login, failed-auth
+  gating, XOR login, and config-gated placeholders for `chat` and
+  `file_download`, but still lacks real-client coverage for file listing, file
+  download, chat, and news. Impact: implementation progress is real, but
+  roadmap acceptance is still blocked by unsupported flows.
 
 - Observation: the workspace default members exclude `validator`.
   Evidence: `Cargo.toml` declares `default-members = ["."]`. Impact:
@@ -162,38 +173,73 @@ Success is observable when:
   validator tests currently rely on skip behaviour rather than CI enforcement.
 
 - Observation: the currently documented SynHX version in legacy design text is
-  stale for this task.
-  Evidence: the supplied install process pins `HX_VERSION=0.1.48.1` from
-  `leynos/synhx-client` releases, whereas older design prose mentions `0.2.4`.
-  Impact: the plan should standardize on a repository-owned install script and
-  the newer pinned version.
+  stale for this task. Evidence: the supplied install process pins
+  `HX_VERSION=0.1.48.1` from `leynos/synhx-client` releases, whereas older
+  design prose mentions `0.2.4`. Impact: the plan should standardize on a
+  repository-owned install script and the newer pinned version.
 
 - Observation: pending validators need to coexist with `main` while parallel
-  feature work is still incomplete.
-  Evidence: `validator/tests/pending_validators.rs` now carries opt-in checks
-  for `chat` and `file_download`, and `validator/validator.toml` keeps both
-  disabled by default. Impact: feature branches can enable only the validators
-  they are ready to satisfy without destabilizing unrelated work.
+  feature work is still incomplete. Evidence:
+  `validator/tests/pending_validators.rs` now carries opt-in checks for `chat`
+  and `file_download`, and `validator/validator.toml` keeps both disabled by
+  default. Impact: feature branches can enable only the validators they are
+  ready to satisfy without destabilizing unrelated work.
 
-- Observation: the existing `validator/tests/login.rs` suite currently fails in
-  this environment before reaching `hx`.
-  Evidence: `cargo test -p validator --features sqlite --test login` fails with
+- Observation: the original `validator/tests/login.rs` suite failed in this
+  environment before reaching `hx`. Evidence: earlier runs of
+  `cargo test -p validator --features sqlite --test login` failed with
   `server failed protocol readiness check` from `TestServer` startup. Impact:
-  final 1.6.2 validation still needs a stable server-launch path for the
-  pre-existing login validator, independent of the new pending-validator
-  scaffolding.
+  the implementation needed a stable explicit server-launch path before the
+  pre-existing login validator could become reliable.
+
+- Observation: the login readiness failure was caused by implicit
+  `cargo run` server startup rather than a protocol defect. Evidence: wiring
+  the validator harness to a prebuilt `mxd-wireframe-server` binary resolved
+  the readiness failure and made the login and XOR validators pass
+  consistently. Impact: explicit binary resolution is required for stable
+  validator execution in CI and local runs.
+
+- Observation: root-container Postgres validation requires the external
+  `pg_worker` helper and still does not make the validator's Postgres suite
+  pass in this environment. Evidence: `make test` passed once
+  `PG_EMBEDDED_WORKER` pointed at an installed `pg_worker` binary, but
+  `make test-validator-postgres` still failed with
+  `PostgreSQL server unreachable` from `validator/tests/login.rs`. Impact: the
+  documented local Postgres validator path exists, but it is not yet a
+  validated gate in this root container.
 
 - Observation: current wireframe routes do not include chat or file-download
-  transactions.
-  Evidence: `src/wireframe/route_ids.rs` exposes only routes `107`, `200`,
-  `370`, `371`, `400`, and `410`. Impact: roadmap acceptance for chat and file
-  download is ahead of the currently implemented transaction surface.
+  transactions. Evidence: `src/wireframe/route_ids.rs` exposes only routes
+  `107`, `200`, `370`, `371`, `400`, and `410`. Impact: roadmap acceptance for
+  chat and file download is ahead of the currently implemented transaction
+  surface.
 
 - Observation: the current harness already detects the common "wrong hx"
-  failure mode.
-  Evidence: `validator/tests/xor_compat.rs` rejects the Helix editor by
-  checking `hx --version`. Impact: that logic should be extracted and reused,
-  not duplicated.
+  failure mode. Evidence: `validator/tests/xor_compat.rs` rejects the Helix
+  editor by checking `hx --version`. Impact: that logic should be extracted and
+  reused, not duplicated.
+
+- Observation: SynHX file-list requests and replies only partially overlap with
+  the current wireframe server behaviour. Evidence: SynHX sends `/ls` as
+  transaction `200` with a binary `DATA_DIR` payload, which the server can now
+  tolerate, but the SynHX client still expects a legacy file-list reply shape
+  rather than the server's current parameter-encoded reply. Impact: file-list
+  and file-download validators remain blocked even after request-side
+  compatibility work.
+
+- Observation: SynHX news commands target legacy transaction identifiers that
+  do not match the current server implementation. Evidence: pinned SynHX `hx`
+  uses legacy news transactions `0x65` and `0x67`, while the wireframe server
+  implements `370`, `371`, `400`, and `410`. Impact: real-client news
+  validation cannot be completed through SynHX without either compatibility
+  shims or a different client path.
+
+- Observation: the currently supportable always-on validator surface is smaller
+  than the roadmap text suggests. Evidence: stable end-to-end coverage exists
+  today for login, failed-auth gating, and XOR login only; chat and file
+  download remain placeholder validators, and news/file-list coverage is
+  blocked by client-server protocol mismatches. Impact: the roadmap item must
+  stay open until either the server or the client compatibility surface expands.
 
 ## Decision Log
 
@@ -204,9 +250,9 @@ Success is observable when:
 
 - Decision: treat the current chat/file-download gap as a first-class planning
   blocker, not something to paper over with partial "done" wording. Rationale:
-  roadmap phases 2.2, 2.3, and 3.x still own those transactions, so 1.6.2
-  needs an explicit sequencing decision before implementation claims
-  completion. Date/Author: 2026-04-10 / Assistant
+  roadmap phases 2.2, 2.3, and 3.x still own those transactions, so 1.6.2 needs
+  an explicit sequencing decision before implementation claims completion.
+  Date/Author: 2026-04-10 / Assistant
 
 - Decision: extract validator primitives into library modules under
   `validator/src/` and cover them with `rstest`, rather than growing ad hoc
@@ -227,37 +273,66 @@ Success is observable when:
 
 - Decision: keep pending validators default-disabled in
   `validator/validator.toml` and allow environment variables to override the
-  file on a per-run basis.
-  Rationale: `main` should stay green while parallel branches opt into the
-  validators they need, and environment overrides are the least-friction path
-  for CI jobs and ad hoc branch validation. Date/Author: 2026-04-12 /
-  Assistant
+  file on a per-run basis. Rationale: `main` should stay green while parallel
+  branches opt into the validators they need, and environment overrides are the
+  least-friction path for CI jobs and ad hoc branch validation. Date/Author:
+  2026-04-12 / Assistant
 
 - Decision: enabled pending validators fail explicitly with an
   "enabled but not implemented yet" error until the underlying flow lands.
   Rationale: silent skips would hide missing coverage on branches that claim to
-  implement chat or file-download support. Date/Author: 2026-04-12 /
-  Assistant
+  implement chat or file-download support. Date/Author: 2026-04-12 / Assistant
 
 - Decision: document local Postgres validation via `pg-embedded-setup-unpriv`,
   but do not assume the first CI cut must run both backends unless explicitly
   required during implementation. Rationale: the task acceptance says the
-  harness runs in CI; the request separately asks for local Postgres enablement.
-  Date/Author: 2026-04-10 / Assistant
+  harness runs in CI; the request separately asks for local Postgres
+  enablement. Date/Author: 2026-04-10 / Assistant
+
+- Decision: resolve `mxd-wireframe-server` explicitly from a prebuilt binary in
+  the validator harness before falling back to inherited cargo test binary
+  hints. Rationale: compile-time startup delays from implicit `cargo run`
+  exceeded the validator readiness window and produced misleading protocol
+  startup failures. Date/Author: 2026-04-12 / Assistant
+
+- Decision: make the first CI validator job sqlite-only while still documenting
+  and supporting local Postgres validator runs. Rationale: the immediate goal
+  is a fail-closed real-client validator path in CI, and sqlite reaches that
+  goal without requiring a second backend job before the protocol overlap is
+  sufficient to justify more matrix expansion. Date/Author: 2026-04-12 /
+  Assistant
+
+- Decision: narrow always-on SynHX validator coverage to the flows that the
+  pinned client and current wireframe server both actually support today:
+  successful login, failed-auth gating, and XOR login. Rationale: pretending
+  that file listing, file download, chat, or news are covered would obscure the
+  real protocol gaps. Date/Author: 2026-04-12 / Assistant
+
+- Decision: keep roadmap item 1.6.2 open after this implementation pass.
+  Rationale: the harness plumbing, CI fail-closed path, and supported login
+  coverage are now in place, but genuine real-client validation for file/news/
+  chat flows still depends on additional compatibility or server feature work.
+  Date/Author: 2026-04-12 / Assistant
 
 ## Outcomes & Retrospective
 
-Intended outcomes once implemented:
+- Implemented: shared SynHX installation for devboxer and CI, explicit
+  wireframe server binary resolution, reusable validator helper modules, stable
+  login and XOR-login coverage, validator Makefile targets, sqlite CI
+  execution, and design/developer documentation updates.
 
-- The validator harness becomes an explicit wireframe regression layer rather
-  than a skippable compatibility smoke test.
-- Validator helpers are testable in isolation, reducing PTY-flake debugging.
-- CI proves the repository can run a real `hx` client against
-  `mxd-wireframe-server`.
-- Documentation and roadmap status stay aligned with actual validator
-  capabilities.
+- Did not implement: genuine real-client coverage for file download, chat, or
+  news, and did not produce usable SynHX file-list validation beyond the
+  request-side compatibility tolerance.
 
-Retrospective placeholder:
+- Follow-up work: add compatibility for the legacy SynHX file-list and news
+  transaction shapes, or introduce a different real client that matches the
+  current wireframe protocol surface well enough to cover the remaining flows.
+
+- Lesson: harness plumbing and protocol overlap are separate delivery tracks.
+  The validator can now fail closed and target the right server explicitly, but
+  that does not by itself create coverage for flows the pinned client and
+  server still express differently.
 
 - Implemented:
 - Did not implement:
@@ -317,8 +392,8 @@ Validation gate for Stage A:
 
 ### Stage B: refactor the validator harness into testable primitives
 
-Move one-off helper logic out of individual validator tests and into
-small modules under `validator/src/`.
+Move one-off helper logic out of individual validator tests and into small
+modules under `validator/src/`.
 
 Target responsibilities:
 
@@ -409,9 +484,8 @@ Work items:
   `cargo nextest` because of PTY/process semantics, and document the reason.
 - Extend `.github/workflows/ci.yml` with a validator job or matrix leg that:
   runs `scripts/install-synhx.sh` to provision a pinned SynHX `hx` binary,
-  verifies it is not Helix,
-  runs the validator harness against the wireframe server, and
-  preserves logs/artifacts useful for failure diagnosis.
+  verifies it is not Helix, runs the validator harness against the wireframe
+  server, and preserves logs/artifacts useful for failure diagnosis.
 - Ensure the installer script works in both devboxer and CI by supporting
   environment overrides for the binary install directory and source checkout
   path, while defaulting to `/usr/local/bin` and `~/git`.
@@ -463,8 +537,8 @@ cargo test -p validator --features sqlite
 cargo test -p validator --no-default-features --features postgres
 ```
 
-Local Postgres enablement should follow `docs/pg-embed-setup-unpriv-users-guide.md`,
-for example:
+Local Postgres enablement should follow
+`docs/pg-embed-setup-unpriv-users-guide.md`, for example:
 
 ```sh
 ./scripts/install-synhx.sh
@@ -473,5 +547,5 @@ pg_embedded_setup_unpriv
 cargo test -p validator --no-default-features --features postgres
 ```
 
-All long-running quality-gate commands should be run with `set -o pipefail`
-and piped through `tee` to retain complete logs for review.
+All long-running quality-gate commands should be run with `set -o pipefail` and
+piped through `tee` to retain complete logs for review.
