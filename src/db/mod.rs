@@ -9,6 +9,7 @@ mod audit;
 mod bundles;
 mod categories;
 mod connection;
+mod file_nodes;
 mod files;
 mod insert;
 mod migrations;
@@ -27,6 +28,18 @@ pub use self::{
     bundles::{create_bundle, list_names_at_path},
     categories::create_category,
     connection::{Backend, DbConnection, DbPool, MIGRATIONS, establish_pool},
+    file_nodes::{
+        FILE_NODE_RESOURCE_TYPE,
+        FileNodeDescendant,
+        USER_PRINCIPAL_TYPE,
+        add_resource_permission,
+        create_file_node,
+        find_child_file_node,
+        get_root_file_node,
+        list_child_file_nodes,
+        list_descendant_file_nodes,
+        list_permitted_child_file_nodes_for_user,
+    },
     files::{add_file_acl, create_file, list_files_for_user},
     migrations::{apply_migrations, run_migrations},
     paths::PathLookupError,

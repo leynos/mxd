@@ -330,7 +330,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 3.1. Align file metadata and access control
 
-- [ ] 3.1.1. Introduce the `FileNode` schema and permission model described in
+- [x] 3.1.1. Introduce the `FileNode` schema and permission model described in
   `docs/file-sharing-design.md`. Acceptance: Diesel migrations produce tables
   with folder/file alias support and integrate with the shared permission
   tables. Dependencies: 1.

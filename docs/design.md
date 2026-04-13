@@ -2502,22 +2502,23 @@ how Hotline works:
    )(
   [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L124-L132)).
 
-- A `Permission` table for ACLs linking principals (user or group) to resources
-  (file or
+- A `resource_permissions` table for ACLs linking principals to resources (file
+  or
   folder)([17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L95-L99)
    )(
   [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L126-L135)).
-   The design suggests possibly reusing a common permissions table for files
-  similar to how news had one. The mermaid snippet shows `Permission` with
-  `resource_type` (like 'file'), `resource_id` (link to FileNode.id),
-  `principal_type` ('user' or 'group'), `principal_id`, and `privileges`
-  (bitmask)(
+   The canonical roadmap `3.1.1` cut keeps shared global privileges in
+  `permissions` and `user_permissions`, and uses additive
+  `resource_permissions` rows for file resources. Those rows carry
+  `resource_type` (currently `'file_node'`), `resource_id` (link to
+  FileNode.id), `principal_type` (currently `'user'` only), `principal_id`, and
+  `privileges` (bitmask)(
   [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L115-L123)
    )(
   [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L128-L136)).
    This is a flexible ACL that can grant different permission bits (like read,
-  write, delete) to either individual users or groups on specific files or
-  folders.
+  write, delete) to specific files or folders while leaving room for group
+  principals in a later schema step.
 
 - Additionally, `User` and `Group` and `UserGroup` tables to manage user
   groups(
@@ -2557,22 +2558,20 @@ model:
   to a folder, the server will list the target folder’s contents (Hotline alias
   could link to a folder or single file).
 
-- Each FileNode can have fine-grained permissions via the Permission table. For
-  example, a folder might have an entry granting group "Everyone" read-list
-  permission (so it’s public), but not write. A drop box folder might have
-  everyone write permission (upload) but not read, and only admins read. The
-  `is_dropbox` boolean is a convenient marker for UI or special-case logic: if
-  `is_dropbox=true` and the user is not an admin (or not the uploader), the
-  server might suppress listing its content (even if some permission might
-  allow, we add extra rule that dropbox = no listing for non-admin, only
-  uploading allowed).
+- Each FileNode can have fine-grained permissions via the
+  `resource_permissions` table. For example, a folder might have an entry
+  granting group "Everyone" read-list permission (so it’s public), but not
+  write. A drop box folder might have everyone write permission (upload) but
+  not read, and only admins read. The `is_dropbox` boolean is a convenient
+  marker for UI or special-case logic: if `is_dropbox=true` and the user is not
+  an admin (or not the uploader), the server might suppress listing its content
+  (even if some permission might allow, we add extra rule that dropbox = no
+  listing for non-admin, only uploading allowed).
 
-- Also, `global_access` bitmask in User (in design, user had a global_access
-  field(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L101-L109)))
-   could indicate overall privileges (like admin flag or ratio privileges,
-  etc.). We might interpret some high-level bits like “may upload anywhere
-  despite folder perms”.
+- The current roadmap `3.1.1` implementation also adds a sentinel root
+  FileNode row. All top-level files and folders become children of that row, so
+  `UNIQUE(parent_id, name)` remains portable across SQLite and PostgreSQL
+  without special handling for `NULL` parents.
 
 **Resumable Transfers**:
 

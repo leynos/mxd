@@ -83,21 +83,24 @@ component, including how it ties into the user/permission system.
 
 To model files, folders, and related features, the system defines a
 **FileNode** table representing an item in the hierarchy (which might be a
-folder, a file, or an alias pointer). We also integrate with existing **User**,
-**Group**, and **Permission/ACL** tables from the application for access
-control. Each file or folder can have fine-grained ACL entries (linking to
-users or groups) in the shared permissions table. We include fields for
-metadata like size, timestamps, and comments. Below is the ER diagram in
-Mermaid notation:
+folder, a file, or an alias pointer). The canonical MXD schema keeps shared
+global privileges in `permissions` and `user_permissions`, and stores
+resource-scoped file grants in a separate `resource_permissions` table keyed by
+`resource_type`, `resource_id`, `principal_type`, and `principal_id`. In
+roadmap item `3.1.1`, `resource_permissions.principal_type` is deliberately
+constrained to `user`; group principals are deferred until the repository has
+matching group tables. The file tree also uses a sentinel root FileNode row so
+top-level sibling uniqueness does not rely on `NULL` semantics. We include
+fields for metadata like size, timestamps, and comments. Below is the ER
+diagram in Mermaid notation:
 
 **Diagram description for screen readers:** The diagram shows main entities
-FileNode (representing files, folders, or aliases), User, Group, and
-Permission/ACL, with their key relationships. FileNode has a parent/child
-hierarchy (self-referential parent_id). FileNode links to Permission/ACL
-entries which reference User or Group as principals. Key metadata fields
-include size, timestamps (created_at, modified_at), comments, and object_key.
-The shared permissions table connects FileNodes to Users and Groups for access
-control.
+FileNode (representing files, folders, or aliases), User, the shared global
+permission catalogue, and resource-scoped permission grants. FileNode has a
+parent/child hierarchy (self-referential parent_id). FileNode links to resource
+permission entries which currently reference users as principals. Key metadata
+fields include size, timestamps (created_at, modified_at), comments, and
+object_key.
 
 ```mermaid
 erDiagram
@@ -160,24 +163,17 @@ In this model:
   `is_dropbox` marks a folder as a **drop box** (a special upload-only folder –
   explained later). We also record creation timestamps and the user who
   created/uploaded the file.
-- **Permission** is the shared ACL table (simplified for this design). It can
-  reference any resource in the system; for file sharing it is used to store
-  folder-level or file-level permissions. Each entry grants certain
-  `privileges` (bitmask flags) to a principal (which can be an individual User
-  or a Group). The privileges bits correspond to actions like download, upload,
-  delete, etc., as defined by the application (following Hotline’s privilege
-  definitions). For example, bit 2 might be “Download File”, bit 1 “Upload
-  File”, bit 0 “Delete File”, etc., matching Hotline’s Access Privileges. A
-  **folder-type privilege** in Hotline can be applied per folder via such
-  entries. If no specific Permission entry exists for a given file or folder,
-  the user’s global access rights (stored in `User.global_access` bitmask)
-  apply as default.
-- **User, Group, UserGroup** are part of the existing system to manage accounts
-  and group membership. They are included here to illustrate that permissions
-  can be granted to groups as well as users. The `Permission.principal_type`
-  and `principal_id` together refer to either a user or a group. For example,
-  one could give a "Guests" group download rights to a particular folder, or
-  assign an individual user upload rights.
+- **ResourcePermission** is the shared resource ACL table. For file sharing it
+  stores folder-level or file-level grants. Each entry carries a Hotline
+  privilege bitmask with the same bit positions already modelled in
+  `src/privileges.rs`.
+- **Permission/UserPermission** remain the shared global privilege catalogue.
+  If no specific resource grant exists for a file or folder, the user's global
+  privileges loaded through `permissions` and `user_permissions` are the
+  fallback decision input.
+- Group principals remain part of the long-term design, but roadmap item
+  `3.1.1` intentionally constrains resource grants to user principals until the
+  repository grows first-class group tables.
 
 Below is an example SQL DDL that implements this schema:
 
@@ -230,6 +226,17 @@ CREATE TABLE Permission (
 );
 -- (For file sharing, resource_type might be 'file' or 'folder'; both map to FileNode IDs.)
 ```
+
+Implementation note for roadmap item `3.1.1`:
+
+- The shipped schema keeps the shared global catalogue in `permissions` and
+  `user_permissions`.
+- File ACL rows live in `resource_permissions` with `resource_type='file_node'`
+  and a Hotline-compatible privilege bitmask.
+- `resource_permissions.principal_type` is currently limited to `user`; group
+  principals are deferred.
+- The migration inserts a sentinel root FileNode row so all top-level entries
+  share one non-`NULL` parent for uniqueness checks.
 
 This schema enables the representation of the complete file system hierarchy
 and access controls:

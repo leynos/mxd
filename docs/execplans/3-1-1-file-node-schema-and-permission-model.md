@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: NOT STARTED
+Status: DONE
 
 PLANS.md does not exist in this repository.
 
@@ -109,19 +109,27 @@ Success is observable when:
 - [x] (2026-04-11) Confirmed the current implementation still uses legacy
       `files` and `file_acl` tables, while `diesel-cte-ext` and
       `pg-embed-setup-unpriv` are already published workspace dependencies.
-- [ ] Reconcile the canonical shared-permission schema and record the decision
-      in `docs/file-sharing-design.md` and, if needed, `docs/design.md`.
-- [ ] Add additive migrations for `file_nodes` and related permission tables in
-      both `migrations/sqlite/` and `migrations/postgres/`.
-- [ ] Update Diesel schema/model code and introduce a focused file-tree query
-      module that uses `diesel-cte-ext`.
-- [ ] Add `rstest` coverage for schema invariants, recursive queries, and
-      invalid states on both backends.
-- [ ] Add `rstest-bdd` scenarios for repository/service behaviours where the
-      new schema is observable without waiting for roadmap 3.2 protocol work.
-- [ ] Update documentation and mark `docs/roadmap.md` item 3.1.1 done after all
-      gates pass.
-- [ ] Run the full quality gates with `tee` and `set -o pipefail`.
+- [x] (2026-04-13) Reconciled the canonical shared-permission schema:
+      `permissions`/`user_permissions` remain the global privilege catalogue,
+      additive `resource_permissions` rows carry file-node ACL grants, group
+      principals are deferred, and a sentinel root folder enforces top-level
+      uniqueness portably.
+- [x] (2026-04-13) Recorded the permission/root-node decision in
+      `docs/file-sharing-design.md` and `docs/design.md`.
+- [x] (2026-04-13) Added additive migrations for `file_nodes`,
+      `permissions`, `user_permissions`, and `resource_permissions` in both
+      `migrations/sqlite/` and `migrations/postgres/`.
+- [x] (2026-04-13) Updated Diesel schema/model code and introduced a focused
+      `src/db/file_nodes/` query module backed by `diesel-cte-ext`.
+- [x] (2026-04-13) Added `rstest` coverage for schema invariants, recursive
+      queries, and invalid states on both backends.
+- [x] (2026-04-13) Added `rstest-bdd` scenarios for repository behaviours where
+      the new schema is observable without waiting for roadmap 3.2 protocol
+      work.
+- [x] (2026-04-13) Updated documentation, reviewed `docs/users-guide.md` as
+      internal-only for this step, and marked `docs/roadmap.md` item 3.1.1
+      done after all gates passed.
+- [x] (2026-04-13) Ran the full quality gates with `tee` and `set -o pipefail`.
 
 ## Surprises & Discoveries
 
@@ -136,6 +144,16 @@ Success is observable when:
   deliberately.
 - Because roadmap item 3.1.2 performs data migration later, roadmap 3.1.1
   should not drop or rename the legacy file tables.
+- The runtime already models Hotline privileges as a `u64` bitflag set in
+  `src/privileges.rs`, so resource-scoped ACL rows should store privilege
+  bitmasks rather than introducing a second per-resource join table shape.
+- `mdformat-all` shells out to `fd`, and `make lint` shells out to
+  `whitaker`; both binaries were absent from the base environment and had to be
+  installed before the required repository gates would run cleanly.
+- PostgreSQL-backed validation required installing both
+  `pg_embedded_setup_unpriv` and the companion `pg_worker` binary, then
+  exporting `PG_EMBEDDED_WORKER` so the repository test harness could boot the
+  embedded server reliably.
 
 ## Decision Log
 
@@ -150,17 +168,22 @@ Success is observable when:
   behaviours rather than wire protocol flows unless a real user-visible
   behaviour is introduced in this step. Rationale: protocol transactions do not
   switch to the new schema until roadmap 3.2. Date/Author: 2026-04-11 / Codex.
-- Pending decision: choose the canonical shared-permission shape that file
-  services will integrate with:
-  - Option A: introduce `permissions` and `user_permissions` now, plus a
-    resource-scoped file-node ACL table.
-  - Option B: generalize directly to a single polymorphic resource-permission
-    table and update the broader design docs to match.
-  Rationale: the current documentation is not yet internally consistent. Owner:
-  implementation start of Stage A.
-- Pending decision: enforce top-level uniqueness via an explicit root node or
-  an equivalent cross-backend invariant. Rationale: `NULL` semantics differ
-  from the desired folder uniqueness rule. Owner: Stage A.
+- Decision: shared global privileges stay in `permissions` and
+  `user_permissions`, while file-resource grants live in an additive
+  `resource_permissions` table keyed by `resource_type`, `resource_id`,
+  `principal_type`, and `principal_id`, plus a privilege bitmask. Rationale:
+  this keeps the broader cross-domain permission catalogue while matching the
+  existing `Privileges` bit definitions used by the runtime. Date/Author:
+  2026-04-13 / Codex.
+- Decision: roadmap 3.1.1 constrains `resource_permissions.principal_type` to
+  `user` and defers group principals. Rationale: the repository does not yet
+  have `groups` or `user_groups` migrations, and adding them here would widen
+  the step beyond the file-node schema cut. Date/Author: 2026-04-13 / Codex.
+- Decision: enforce top-level uniqueness with a sentinel root `file_nodes`
+  folder inserted by migration. Rationale: routing all top-level children
+  through one parent avoids `NULL` uniqueness edge cases across SQLite and
+  PostgreSQL while simplifying recursive traversal. Date/Author: 2026-04-13 /
+  Codex.
 
 ## Outcomes & Retrospective
 
@@ -173,12 +196,24 @@ Intended outcomes once implemented:
 - Recursive ancestry and descendant queries have one supported implementation
   path based on `diesel-cte-ext`.
 
-Retrospective placeholder:
+Retrospective:
 
-- Implemented:
-- Verified:
-- Documentation updated:
-- Lessons:
+- Implemented: additive SQLite and PostgreSQL migrations for
+  `file_nodes`, `permissions`, `user_permissions`, and `resource_permissions`;
+  Diesel schema/models for the new tables; and a dedicated `src/db/file_nodes/`
+  repository module covering root lookup, child lookup, explicit grants, and
+  recursive descendant traversal.
+- Verified: targeted SQLite and PostgreSQL repository tests for the new module;
+  full repository gates via `make fmt`, `make check-fmt`, `make lint`,
+  `make test`, `make markdownlint`, and `make nixie`, all captured with `tee`
+  and `set -o pipefail`.
+- Documentation updated: `docs/file-sharing-design.md`,
+  `docs/design.md`, this ExecPlan, and `docs/roadmap.md`. `docs/users-guide.md`
+  was reviewed and left unchanged because the step is internal-only.
+- Lessons: keeping the legacy file tables in place while adding the sentinel
+  root node avoided accidental coupling with roadmap 3.1.2, and constraining
+  resource ACLs to user principals kept the schema cut aligned with current
+  domain boundaries instead of introducing premature group management.
 
 ## Context and orientation
 

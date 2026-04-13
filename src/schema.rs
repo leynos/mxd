@@ -36,6 +36,51 @@ diesel::table! {
 }
 
 diesel::table! {
+    permissions (id) {
+        id -> Integer,
+        code -> Integer,
+        name -> Text,
+        scope -> Text,
+    }
+}
+
+diesel::table! {
+    user_permissions (user_id, permission_id) {
+        user_id -> Integer,
+        permission_id -> Integer,
+    }
+}
+
+diesel::table! {
+    file_nodes (id) {
+        id -> Integer,
+        is_root -> Bool,
+        node_type -> Text,
+        name -> Text,
+        parent_id -> Nullable<Integer>,
+        alias_target_id -> Nullable<Integer>,
+        object_key -> Nullable<Text>,
+        size -> BigInt,
+        comment -> Nullable<Text>,
+        is_dropbox -> Bool,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+        created_by -> Nullable<Integer>,
+    }
+}
+
+diesel::table! {
+    resource_permissions (id) {
+        id -> Integer,
+        resource_type -> Text,
+        resource_id -> Integer,
+        principal_type -> Text,
+        principal_id -> Integer,
+        privileges -> BigInt,
+    }
+}
+
+diesel::table! {
     news_articles (id) {
         id -> Integer,
         category_id -> Integer,
@@ -59,4 +104,12 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(files, file_acl);
+diesel::allow_tables_to_appear_in_same_query!(
+    file_acl,
+    file_nodes,
+    files,
+    permissions,
+    resource_permissions,
+    user_permissions,
+    users
+);
