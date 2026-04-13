@@ -43,10 +43,18 @@ pub struct NewUser<'a> {
 pub struct Category {
     /// Unique category identifier.
     pub id: i32,
-    /// Category name.
-    pub name: String,
     /// Parent bundle identifier, if any.
     pub bundle_id: Option<i32>,
+    /// Category name.
+    pub name: String,
+    /// Category GUID.
+    pub guid: Option<String>,
+    /// Add serial number metadata.
+    pub add_sn: Option<i32>,
+    /// Delete serial number metadata.
+    pub delete_sn: Option<i32>,
+    /// Creation timestamp.
+    pub created_at: Option<NaiveDateTime>,
 }
 
 /// Parameters for creating a new news category.
@@ -68,6 +76,10 @@ pub struct Bundle {
     pub parent_bundle_id: Option<i32>,
     /// Bundle name.
     pub name: String,
+    /// Bundle GUID.
+    pub guid: Option<String>,
+    /// Creation timestamp.
+    pub created_at: Option<NaiveDateTime>,
 }
 
 /// Parameters for creating a new news bundle.
@@ -210,6 +222,15 @@ pub struct NewUserGroup {
     pub user_id: i32,
     /// Group receiving the user.
     pub group_id: i32,
+}
+
+/// Represents a user-to-permission assignment in the database.
+#[derive(Queryable, Serialize, Deserialize, Debug)]
+pub struct UserPermission {
+    /// User granted the permission.
+    pub user_id: i32,
+    /// Permission granted to the user.
+    pub permission_id: i32,
 }
 
 /// Parameters for granting a global permission to a user.

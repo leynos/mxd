@@ -16,6 +16,7 @@ use test_util::{
     collect_strings,
     ensure_server_binary_env,
     setup_files_db,
+    setup_news_categories_nested_db,
     setup_news_categories_root_db,
     setup_news_db,
 };
@@ -113,6 +114,13 @@ fn given_news_categories(world: &RoutingWorld) -> Result<(), AnyError> {
     Ok(())
 }
 
+#[given("a routing context with nested news categories")]
+fn given_nested_news_categories(world: &RoutingWorld) -> Result<(), AnyError> {
+    world.setup_db(setup_news_categories_nested_db)?;
+    world.authenticate();
+    Ok(())
+}
+
 #[given("a routing context with news articles")]
 fn given_news_articles(world: &RoutingWorld) -> Result<(), AnyError> {
     world.setup_db(setup_news_db)?;
@@ -159,6 +167,15 @@ fn when_file_list(world: &RoutingWorld) { world.send(TransactionType::GetFileNam
 #[when("I request the news category list")]
 fn when_news_categories(world: &RoutingWorld) {
     world.send(TransactionType::NewsCategoryNameList, 12, &[]);
+}
+
+#[when("I request the news category list for \"{path}\"")]
+fn when_news_categories_for_path(world: &RoutingWorld, path: String) {
+    world.send(
+        TransactionType::NewsCategoryNameList,
+        15,
+        &[(FieldId::NewsPath, path.as_bytes())],
+    );
 }
 
 #[when("I request the news article list for \"{path}\"")]
@@ -239,6 +256,20 @@ fn then_categories(world: &RoutingWorld, one: String, two: String, three: String
         let mut expected = vec![one.as_str(), two.as_str(), three.as_str()];
         expected.sort_unstable();
         assert_eq!(names, expected);
+    });
+}
+
+#[then("the reply lists the news category \"{name}\"")]
+fn then_single_category(world: &RoutingWorld, name: String) {
+    if world.is_skipped() {
+        return;
+    }
+    world.with_reply(|tx| {
+        let params = assert_step_ok!(decode_params(&tx.payload).map_err(|e| e.to_string()));
+        let names = assert_step_ok!(
+            collect_strings(&params, FieldId::NewsCategory).map_err(|e| e.to_string())
+        );
+        assert_eq!(names, vec![name]);
     });
 }
 

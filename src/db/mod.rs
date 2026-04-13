@@ -14,9 +14,8 @@ mod files;
 mod insert;
 mod migrations;
 mod paths;
+mod schema_alignment_tests;
 mod users;
-
-#[cfg(test)]
 mod tests;
 
 #[cfg(feature = "postgres")]
