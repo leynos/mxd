@@ -18,14 +18,20 @@ diesel::table! {
         id -> Integer,
         parent_bundle_id -> Nullable<Integer>,
         name -> Text,
+        guid -> Nullable<Text>,
+        created_at -> Nullable<Timestamp>,
     }
 }
 
 diesel::table! {
     news_categories (id) {
         id -> Integer,
-        name -> Text,
         bundle_id -> Nullable<Integer>,
+        name -> Text,
+        guid -> Nullable<Text>,
+        add_sn -> Nullable<Integer>,
+        delete_sn -> Nullable<Integer>,
+        created_at -> Nullable<Timestamp>,
     }
 }
 
@@ -126,6 +132,10 @@ diesel::table! {
 }
 
 diesel::joinable!(file_nodes -> users (creator_id));
+diesel::joinable!(file_acl -> files (file_id));
+diesel::joinable!(file_acl -> users (user_id));
+diesel::joinable!(news_articles -> news_categories (category_id));
+diesel::joinable!(news_categories -> news_bundles (bundle_id));
 diesel::joinable!(resource_permissions -> permissions (permission_id));
 diesel::joinable!(user_groups -> groups (group_id));
 diesel::joinable!(user_groups -> users (user_id));

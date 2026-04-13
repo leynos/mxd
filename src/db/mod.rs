@@ -14,10 +14,9 @@ mod files;
 mod insert;
 mod migrations;
 mod paths;
-mod users;
-
-#[cfg(test)]
+mod schema_alignment_tests;
 mod tests;
+mod users;
 
 #[cfg(feature = "postgres")]
 pub use self::audit::audit_postgres_features;

@@ -34,6 +34,11 @@ Feature: Wireframe transaction routing
     When I request the news category list
     Then the reply lists news categories "Bundle", "General", and "Updates"
 
+  Scenario: News categories are listed within a nested bundle
+    Given a routing context with nested news categories
+    When I request the news category list for "Bundle/Sub"
+    Then the reply lists the news category "Inside"
+
   Scenario: News articles are listed for a category
     Given a routing context with news articles
     When I request the news article list for "General"

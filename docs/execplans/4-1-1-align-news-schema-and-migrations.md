@@ -5,7 +5,7 @@ This ExecPlan is a living document. The sections `Constraints`,
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as
 work proceeds.
 
-Status: DRAFT
+Status: IN_PROGRESS
 
 PLANS.md does not exist in this repository.
 
@@ -128,13 +128,26 @@ Success is observable when:
       existing news data-access code, and the referenced testing and
       documentation guides.
 - [x] (2026-04-11 00:00Z) Drafted this ExecPlan in repository house style.
-- [ ] Finalize migration strategy and capture it in `docs/design.md`.
-- [ ] Add aligned SQLite and PostgreSQL migration pair.
-- [ ] Backfill historical news rows during upgrade.
-- [ ] Update Diesel schema, models, and news fixtures/helpers.
-- [ ] Add `rstest` coverage for schema invariants and migration behaviour.
-- [ ] Add or extend `rstest-bdd` coverage for schema-sensitive news behaviour.
-- [ ] Run PostgreSQL-backed validation via `pg-embed-setup-unpriv`.
+- [x] (2026-04-13 00:35Z) Confirmed the exact schema delta against
+      `docs/news-schema.md`, including the missing permission tables, bundle
+      metadata columns, category metadata columns, scoped category uniqueness,
+      and the missing article threading indices.
+- [x] (2026-04-13 02:35Z) Captured the finalized additive migration strategy
+      and backfill rationale in `docs/design.md`.
+- [x] (2026-04-13 02:10Z) Added aligned SQLite and PostgreSQL migration pair
+      under `00000000000006_align_news_schema`.
+- [x] (2026-04-13 02:10Z) Implemented historical backfill for legacy bundle and
+      category metadata during upgrade.
+- [x] (2026-04-13 02:12Z) Updated Diesel schema, models, and related helpers to
+      match the aligned schema, including the permission tables.
+- [x] (2026-04-13 02:28Z) Added `rstest`-style unit coverage for schema
+      invariants, fresh migration application, and upgrade backfill on both
+      backends.
+- [x] (2026-04-13 02:18Z) Extended `rstest-bdd` coverage with a nested news
+      category routing scenario that runs against migrated databases.
+- [x] (2026-04-13 02:33Z) Ran PostgreSQL-backed validation through the
+      repository test infrastructure, including the new migration alignment
+      tests against an embedded PostgreSQL instance.
 - [ ] Update `docs/developers-guide.md` or an ADR if the implementation
       introduces material internal guidance.
 - [ ] Update `docs/users-guide.md` only if behaviour changes.
@@ -166,6 +179,20 @@ Success is observable when:
 - The current schema only indexes `news_articles.category_id`, so adding
   explicit threading-link indices will be a real migration change rather than
   a no-op.
+- SQLite cannot safely reach the target bundle/category defaults with simple
+  `ALTER TABLE` statements because `ADD COLUMN ... DEFAULT CURRENT_TIMESTAMP`
+  is not supported for this use case. The SQLite path therefore needs full
+  table recreation for `news_bundles`, `news_categories`, and
+  `news_articles`, with copy-forward preserving IDs and relationships.
+- Backfilling `news_categories.add_sn` from the current article count per
+  category, while initializing `delete_sn` to `0`, is the narrowest data
+  repair that leaves legacy rows immediately usable without claiming historical
+  deletion knowledge the pre-4.1.1 schema never stored.
+- The formal repository lint and test Makefile targets are currently blocked by
+  missing tooling in this shell (`whitaker`, `cargo-nextest`) and by unrelated
+  pre-existing repository-wide Markdown lint findings outside 4.1.1. Targeted
+  backend validation still succeeded via `cargo check`, `cargo clippy`, and
+  direct `cargo test` runs for the new schema tests and routing BDD coverage.
 
 ## Decision Log
 
@@ -203,6 +230,20 @@ Success is observable when:
   the rationale is non-trivial. Rationale: separates operational/user
   guidance from implementation guidance cleanly. Date/Author: 2026-04-13 /
   User direction captured by Codex.
+- Decision: rebuild the three SQLite news tables in 4.1.1 instead of mixing
+  partial `ALTER TABLE` changes with schema drift. Rationale: it is the only
+  practical way to introduce the target defaults and scoped uniqueness while
+  preserving legacy rows and stable primary keys. Date/Author: 2026-04-13 /
+  Codex.
+- Decision: backfill `news_categories.add_sn` from the current per-category
+  article count and initialize `delete_sn` to `0`. Rationale: that preserves
+  a coherent starting point for later serial-number work without inventing
+  historical deletion data. Date/Author: 2026-04-13 / Codex.
+- Decision: satisfy the PostgreSQL validation requirement with direct embedded
+  PostgreSQL test runs when `make test` is unavailable because
+  `cargo-nextest` is missing. Rationale: this preserves behavioural and
+  migration verification in the current environment while still recording the
+  blocked formal gate explicitly. Date/Author: 2026-04-13 / Codex.
 
 ## Outcomes & Retrospective
 
@@ -218,8 +259,24 @@ Intended outcomes once implemented:
 Retrospective placeholder:
 
 - Implemented:
+  - additive migration pair `00000000000006_align_news_schema` for SQLite and
+    PostgreSQL;
+  - legacy-row backfill for bundle/category GUID and timestamp metadata, plus
+    category serial counters;
+  - Diesel schema/model alignment including `permissions` and
+    `user_permissions`;
+  - backend-specific migration verification tests and an added nested-category
+    routing BDD scenario.
 - Did not implement:
+  - runtime privilege loading or permission catalogue seeding;
+  - roadmap close-out in `docs/roadmap.md`, because the full repository gates
+    are currently blocked by missing external tools and unrelated pre-existing
+    Markdown lint failures.
 - Lesson:
+  - SQLite's migration limitations are best handled by explicit table rebuilds
+    when defaults and scoped uniqueness both change; trying to stage that work
+    through incremental `ALTER TABLE` statements would have produced more
+    brittle backend divergence.
 
 ## Context and orientation
 
