@@ -24,6 +24,8 @@ Success is observable when:
   with the required foreign keys and indices;
 - existing news functionality still works against the aligned schema on both
   backends;
+- historical news rows are backfilled during upgrade so GUID-bearing schema
+  fields are usable immediately after 4.1.1 lands;
 - `src/schema.rs`, models, fixtures, and news data-access helpers match the
   migrated schema;
 - `rstest` coverage proves happy, unhappy, and edge cases for migration
@@ -33,8 +35,10 @@ Success is observable when:
 - local PostgreSQL-backed validation runs via `pg-embed-setup-unpriv`;
 - `docs/design.md` records the design decisions taken for the migration
   strategy;
-- `docs/users-guide.md` is updated if any server behaviour or operator-facing
-  expectations change;
+- `docs/users-guide.md` is updated only for user-visible changes, while
+  material internal implementation or architectural decisions are recorded in
+  `docs/developers-guide.md` or an ADR with a call-out in the developer's
+  guide when the rationale is non-trivial;
 - `docs/roadmap.md` item 4.1.1 is marked done only after implementation and
   all quality gates pass.
 
@@ -48,6 +52,9 @@ Success is observable when:
 - Implement the schema in `docs/news-schema.md` as written for:
   `news_bundles`, `news_categories`, `news_articles`, `permissions`, and
   `user_permissions`.
+- 4.1.1 includes historical backfill for the newly introduced schema fields,
+  especially GUID-bearing rows needed to keep existing news content valid
+  immediately after upgrade.
 - Preserve existing news routing behaviour for category listing, article
   listing, article fetch, and posting while the storage layer is being
   realigned.
@@ -59,9 +66,13 @@ Success is observable when:
 - Use `pg-embed-setup-unpriv` for local PostgreSQL validation as described in
   `docs/pg-embed-setup-unpriv-users-guide.md`.
 - Record design decisions in `docs/design.md`.
+- Add explicit indices on every article threading link column as part of 4.1.1
+  and verify them with comprehensive unit and behavioural coverage.
 - Update `docs/users-guide.md` only for genuine user-visible or
-  operator-visible changes; if behaviour is unchanged, record that explicitly
-  in the implementation notes and keep the guide unchanged.
+  operator-visible changes.
+- Document material internal development-practice, architectural, or domain
+  decisions in `docs/developers-guide.md` or an ADR, with a developer-guide
+  call-out when the rationale is non-trivial.
 - Keep Markdown in en-GB-oxendict and wrap prose at 80 columns.
 - Run the applicable repository gates with `tee` and `set -o pipefail` before
   considering the work complete.
@@ -69,8 +80,9 @@ Success is observable when:
 ## Tolerances (exception triggers)
 
 - Scope: if the work expands beyond approximately 24 files or 900 net lines,
-  stop and reassess whether schema alignment is being conflated with roadmap
-  items 4.1.2 or 4.1.3.
+  stop and reassess whether schema alignment, historical backfill, and current
+  behaviour preservation are widening into later GUID-addressability or
+  permission-enforcement features.
 - Migration strategy: if SQLite cannot be aligned without destructive table
   replacement that risks data loss beyond controlled copy-forward, stop and
   document options before proceeding.
@@ -93,9 +105,10 @@ Success is observable when:
   copies data forward transactionally where possible, and recreates indices and
   constraints explicitly.
 - Risk: current fixtures and models assume the old, smaller column set and may
-  fail silently or produce partial rows after the schema expands. Severity:
-  high. Likelihood: medium. Mitigation: update fixtures and insert helpers in
-  the same atomic change as the schema update.
+  fail silently or produce partial rows after the schema expands or historical
+  rows are backfilled. Severity: high. Likelihood: medium. Mitigation: update
+  fixtures, insert helpers, and upgrade tests in the same atomic change as the
+  schema update.
 - Risk: permission persistence could get accidentally wired into runtime login
   behaviour, conflicting with roadmap item 4.1.3 and the current
   `Privileges::default_user()` fallback. Severity: high. Likelihood: medium.
@@ -117,11 +130,14 @@ Success is observable when:
 - [x] (2026-04-11 00:00Z) Drafted this ExecPlan in repository house style.
 - [ ] Finalize migration strategy and capture it in `docs/design.md`.
 - [ ] Add aligned SQLite and PostgreSQL migration pair.
+- [ ] Backfill historical news rows during upgrade.
 - [ ] Update Diesel schema, models, and news fixtures/helpers.
 - [ ] Add `rstest` coverage for schema invariants and migration behaviour.
-- [ ] Add or extend `rstest-bdd` coverage for unaffected news behaviour.
+- [ ] Add or extend `rstest-bdd` coverage for schema-sensitive news behaviour.
 - [ ] Run PostgreSQL-backed validation via `pg-embed-setup-unpriv`.
-- [ ] Update `docs/users-guide.md` if behaviour changes.
+- [ ] Update `docs/developers-guide.md` or an ADR if the implementation
+      introduces material internal guidance.
+- [ ] Update `docs/users-guide.md` only if behaviour changes.
 - [ ] Mark `docs/roadmap.md` item 4.1.1 done after all gates pass.
 
 ## Surprises & Discoveries
@@ -147,21 +163,33 @@ Success is observable when:
 - The existing news tests and fixtures are useful regression anchors, but they
   all assume the legacy `NewBundle`, `NewCategory`, and `NewArticle` shapes and
   therefore must be updated in lock-step with the schema.
+- The current schema only indexes `news_articles.category_id`, so adding
+  explicit threading-link indices will be a real migration change rather than
+  a no-op.
 
 ## Decision Log
 
 - Decision: implement 4.1.1 as a new additive migration pair rather than by
   editing old migrations in place. Rationale: preserves upgrade safety for
-  existing databases and gives roadmap item 4.1.2 a clean boundary for data
-  migration/backfill. Date/Author: 2026-04-11 / Codex.
+  existing databases while still allowing 4.1.1 to own the required
+  historical-row backfill during upgrade. Date/Author: 2026-04-11 / Codex.
 - Decision: create `permissions` and `user_permissions` now, but defer
   catalogue seeding and runtime privilege loading to roadmap item 4.1.3.
   Rationale: keeps 4.1.1 bounded to schema alignment while unblocking the
   later permission work. Date/Author: 2026-04-11 / Codex.
+- Decision: backfill historical GUID-bearing fields in 4.1.1 rather than
+  leaving legacy rows partially populated until 4.1.2. Rationale: the upgrade
+  should leave existing content structurally complete on first boot after the
+  schema change. Date/Author: 2026-04-13 / User direction captured by Codex.
 - Decision: keep `news_articles` self-referential links restrictive rather
   than cascading on delete. Rationale: threaded deletion semantics belong to
   explicit application logic and later invariants work, not implicit subtree
   deletion side effects. Date/Author: 2026-04-11 / Codex.
+- Decision: add explicit indices on `parent_article_id`, `prev_article_id`,
+  `next_article_id`, and `first_child_article_id` in 4.1.1. Rationale: the
+  task now explicitly requires threading-link index coverage rather than
+  deferring to later query-plan tuning. Date/Author: 2026-04-13 / User
+  direction captured by Codex.
 - Decision: treat 4.1.1 as storage-alignment work with no intentional
   user-visible protocol change. Rationale: browsing, reading, and posting news
   already exist; this step realigns persistence so later GUID and permission
@@ -169,6 +197,12 @@ Success is observable when:
 - Decision: preserve `diesel-cte-ext` as the only recursion abstraction for
   hierarchical news queries. Rationale: it is already the repo standard and is
   explicitly required by the task. Date/Author: 2026-04-11 / Codex.
+- Decision: keep user-facing notes in `docs/users-guide.md` strictly limited
+  to user-visible change, and document material internal changes in
+  `docs/developers-guide.md` or an ADR with a developer-guide call-out when
+  the rationale is non-trivial. Rationale: separates operational/user
+  guidance from implementation guidance cleanly. Date/Author: 2026-04-13 /
+  User direction captured by Codex.
 
 ## Outcomes & Retrospective
 
@@ -195,6 +229,8 @@ Primary files and modules in current state:
   dependencies 4.1.2 through 4.2.
 - `docs/news-schema.md`: target schema for bundles, categories, articles, and
   permissions.
+- `docs/developers-guide.md`: developer-facing guide to update if the change
+  introduces material implementation or workflow guidance.
 - `migrations/sqlite/` and `migrations/postgres/`: current split migration
   trees that must gain a new aligned migration pair.
 - `src/schema.rs`: Diesel table definitions that must be regenerated or updated
@@ -225,7 +261,8 @@ Primary files and modules in current state:
   - missing tables: `permissions`, `user_permissions`;
   - missing bundle/category/article columns;
   - missing unique constraints and secondary indices;
-  - any nullability/default changes needed to preserve existing data.
+  - historical-row backfill required during upgrade, especially for GUID fields
+    and any new metadata columns.
 - Decide the exact migration version to add in both trees, expected to be
   `00000000000006_align_news_schema`.
 - Write the migration strategy into `docs/design.md`, especially where SQLite
@@ -235,8 +272,8 @@ Exit criteria:
 
 - the migration plan is explicit enough to implement without revisiting schema
   intent;
-- the design document records the chosen additive strategy and scope boundary
-  versus 4.1.2/4.1.3.
+- the design document records the chosen additive strategy, historical
+  backfill approach, and scope boundary versus later permission enforcement.
 
 ### Stage B: implement aligned dual-backend migrations
 
@@ -263,7 +300,12 @@ Exit criteria:
   - all threading link columns exist and remain self-referential;
   - metadata columns match the design document;
   - category foreign key enforces referential integrity;
-  - article-category index exists.
+  - article-category index exists;
+  - explicit indices exist on `parent_article_id`, `prev_article_id`,
+    `next_article_id`, and `first_child_article_id`.
+- Backfill historical bundle/category/article rows during upgrade so newly
+  added GUID-bearing and metadata columns are populated immediately after the
+  migration completes.
 - For SQLite specifically, use copy-forward table recreation when constraint
   changes cannot be expressed safely with `ALTER TABLE`.
 
@@ -272,7 +314,7 @@ Exit criteria:
 - a fresh database built from migrations matches the target schema on both
   backends;
 - an existing database on the current schema upgrades successfully without
-  losing existing rows.
+  losing existing rows and with historical backfill applied.
 
 ### Stage C: realign Diesel schema and Rust models
 
@@ -304,7 +346,8 @@ Exit criteria:
 - Update `test-util` news fixtures so they populate any newly required data and
   keep current routing tests readable.
 - Keep current article insertion behaviour stable while the richer schema is
-  introduced; do not widen into GUID-based addressing yet.
+  introduced, even though stored rows are now backfilled with GUID-bearing
+  fields.
 
 Exit criteria:
 
@@ -320,6 +363,7 @@ Add `rstest` unit coverage for at least:
 - upgrade from the pre-4.1.1 schema to the aligned schema on both backends;
 - presence of expected foreign keys and indices, using backend-appropriate
   schema introspection;
+- correctness of historical backfill for existing bundle/category/article rows;
 - uniqueness and referential-integrity unhappy paths;
 - edge cases such as root-level categories (`bundle_id IS NULL`) and threaded
   articles with nullable link fields.
@@ -328,8 +372,12 @@ Add or extend `rstest-bdd` behavioural coverage where applicable:
 
 - happy: browsing root and nested news structures still works after the schema
   change;
+- happy: threaded article navigation still works with the newly indexed link
+  columns in place;
 - unhappy: invalid news path still returns the existing protocol error;
-- edge: empty or mixed bundle/category roots still behave as before.
+- edge: empty or mixed bundle/category roots still behave as before;
+- edge: historical data upgraded through the new migration still supports the
+  existing browse/read/post flows.
 
 Reuse existing binary-backed news and routing scenarios where that gives enough
 coverage; add a dedicated feature file only if the current scenarios cannot
@@ -338,16 +386,19 @@ express the migration-sensitive behaviour clearly.
 Exit criteria:
 
 - unit tests prove the storage contract directly;
-- behavioural tests prove the schema change did not regress observable news
-  flows.
+- behavioural tests prove the schema change and backfill did not regress
+  observable news flows.
 
 ### Stage F: documentation, roadmap close-out, and validation
 
 - Update `docs/design.md` with the migration approach, permission-table scope,
   and any backend-specific rationale.
+- Update `docs/developers-guide.md` if the implementation introduces material
+  internal guidance about migrations, schema maintenance, or testing practice.
+- If the rationale for those internal choices is non-trivial, write or update
+  an ADR and add a call-out in `docs/developers-guide.md`.
 - Update `docs/users-guide.md` only if there is a genuine behaviour or
-  operator-facing change. If behaviour remains unchanged, record that decision
-  in the change notes and leave the guide untouched.
+  operator-facing change.
 - Mark roadmap item 4.1.1 done in `docs/roadmap.md` only after every gate
   passes and the change is ready to land.
 
@@ -358,15 +409,17 @@ Exit criteria:
 2. Create `permissions` and `user_permissions` in both backends.
 3. Add the missing bundle/category/article columns and indices.
 4. Rebuild SQLite tables where constraint changes require it.
-5. Preserve or copy forward existing news rows during upgrade.
+5. Preserve and backfill existing news rows during upgrade.
 6. Update `src/schema.rs`.
 7. Update `src/models.rs` and any helper constructors.
 8. Update news fixtures and data-access helpers.
-9. Add `rstest` schema/migration coverage.
-10. Extend `rstest-bdd` news regression coverage where applicable.
-11. Update `docs/design.md`.
-12. Update `docs/users-guide.md` if needed.
-13. Mark `docs/roadmap.md` item 4.1.1 done only after validation succeeds.
+9. Add threading-link indices on all four article link columns.
+10. Add `rstest` schema, backfill, and migration coverage.
+11. Extend `rstest-bdd` news regression coverage where applicable.
+12. Update `docs/design.md`.
+13. Update `docs/developers-guide.md` or an ADR if needed.
+14. Update `docs/users-guide.md` only if needed.
+15. Mark `docs/roadmap.md` item 4.1.1 done only after validation succeeds.
 
 ## Verification and quality gates
 
@@ -429,17 +482,3 @@ BRANCH=$(git branch --show-current | tr '/ ' '__')
    ```sh
    make nixie | tee /tmp/nixie-$PROJECT-$BRANCH.log
    ```
-
-## Open questions to resolve during implementation
-
-- Should `guid` remain nullable in the aligned schema until 4.1.2 backfills
-  historical data, or should 4.1.1 generate placeholder GUIDs during upgrade?
-  Default position: keep the schema permissive enough that 4.1.2 owns the
-  historical backfill.
-- Do we need explicit indices on the article threading link columns now, or is
-  `category_id` the only index required by 4.1.1 acceptance? Default position:
-  implement the indices explicitly required by `docs/news-schema.md` first,
-  then add more only if tests or query plans justify them.
-- Should any behaviour-level user guide note be added if the change is purely
-  internal? Default position: no user-guide change unless operator-visible
-  setup or behaviour actually changes.
