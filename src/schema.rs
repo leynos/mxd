@@ -17,13 +17,19 @@ diesel::table! {
         id -> Integer,
         parent_bundle_id -> Nullable<Integer>,
         name -> Text,
+        guid -> Nullable<Text>,
+        created_at -> Nullable<Timestamp>,
     }
 }
 diesel::table! {
     news_categories (id) {
         id -> Integer,
-        name -> Text,
         bundle_id -> Nullable<Integer>,
+        name -> Text,
+        guid -> Nullable<Text>,
+        add_sn -> Nullable<Integer>,
+        delete_sn -> Nullable<Integer>,
+        created_at -> Nullable<Timestamp>,
     }
 }
 diesel::table! {
@@ -59,4 +65,36 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(files, file_acl);
+diesel::table! {
+    permissions (id) {
+        id -> Integer,
+        code -> Integer,
+        name -> Text,
+        scope -> Text,
+    }
+}
+
+diesel::table! {
+    user_permissions (user_id, permission_id) {
+        user_id -> Integer,
+        permission_id -> Integer,
+    }
+}
+
+diesel::joinable!(file_acl -> files (file_id));
+diesel::joinable!(file_acl -> users (user_id));
+diesel::joinable!(news_articles -> news_categories (category_id));
+diesel::joinable!(news_categories -> news_bundles (bundle_id));
+diesel::joinable!(user_permissions -> permissions (permission_id));
+diesel::joinable!(user_permissions -> users (user_id));
+
+diesel::allow_tables_to_appear_in_same_query!(
+    file_acl,
+    files,
+    news_articles,
+    news_bundles,
+    news_categories,
+    permissions,
+    user_permissions,
+    users,
+);

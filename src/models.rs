@@ -30,14 +30,22 @@ pub struct NewUser<'a> {
 }
 
 /// Represents a news category in the database.
-#[derive(Queryable, Serialize, Deserialize, Debug)]
+#[derive(Queryable, Debug)]
 pub struct Category {
     /// Unique category identifier.
     pub id: i32,
-    /// Category name.
-    pub name: String,
     /// Parent bundle identifier, if any.
     pub bundle_id: Option<i32>,
+    /// Category name.
+    pub name: String,
+    /// Category GUID.
+    pub guid: Option<String>,
+    /// Add serial number metadata.
+    pub add_sn: Option<i32>,
+    /// Delete serial number metadata.
+    pub delete_sn: Option<i32>,
+    /// Creation timestamp.
+    pub created_at: Option<NaiveDateTime>,
 }
 
 /// Parameters for creating a new news category.
@@ -51,7 +59,7 @@ pub struct NewCategory<'a> {
 }
 
 /// Represents a news bundle (grouping of categories) in the database.
-#[derive(Queryable, Serialize, Deserialize, Debug)]
+#[derive(Queryable, Debug)]
 pub struct Bundle {
     /// Unique bundle identifier.
     pub id: i32,
@@ -59,6 +67,10 @@ pub struct Bundle {
     pub parent_bundle_id: Option<i32>,
     /// Bundle name.
     pub name: String,
+    /// Bundle GUID.
+    pub guid: Option<String>,
+    /// Creation timestamp.
+    pub created_at: Option<NaiveDateTime>,
 }
 
 /// Parameters for creating a new news bundle.
@@ -139,6 +151,50 @@ pub struct FileEntry {
     pub object_key: String,
     /// File size in bytes.
     pub size: i64,
+}
+
+/// Represents a permission catalogue entry stored in the database.
+#[derive(Queryable, Serialize, Deserialize, Debug)]
+pub struct Permission {
+    /// Unique permission identifier.
+    pub id: i32,
+    /// Protocol privilege code.
+    pub code: i32,
+    /// Human-readable permission name.
+    pub name: String,
+    /// Permission scope.
+    pub scope: String,
+}
+
+/// Parameters for creating a permission catalogue entry.
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = crate::schema::permissions)]
+pub struct NewPermission<'a> {
+    /// Protocol privilege code.
+    pub code: i32,
+    /// Human-readable permission name.
+    pub name: &'a str,
+    /// Permission scope.
+    pub scope: &'a str,
+}
+
+/// Represents a user-to-permission assignment in the database.
+#[derive(Queryable, Serialize, Deserialize, Debug)]
+pub struct UserPermission {
+    /// User granted the permission.
+    pub user_id: i32,
+    /// Permission granted to the user.
+    pub permission_id: i32,
+}
+
+/// Parameters for creating a user-to-permission assignment.
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = crate::schema::user_permissions)]
+pub struct NewUserPermission {
+    /// User granted the permission.
+    pub user_id: i32,
+    /// Permission granted to the user.
+    pub permission_id: i32,
 }
 
 /// Parameters for creating a new file entry.
