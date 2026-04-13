@@ -28,6 +28,7 @@ pub mod connection;
 pub mod context;
 pub mod handshake;
 pub(crate) mod login_reply_augmenter;
+pub(crate) mod message_assembly;
 pub mod outbound;
 pub mod preamble;
 pub mod protocol;

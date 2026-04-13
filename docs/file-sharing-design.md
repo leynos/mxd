@@ -431,12 +431,11 @@ steps:
    offset (Hotline's *File resume data* field (203) in the request), the system
    will use it to start reading from that byte position.
 
-4. **Open Object Stream:** Using the `object_store` API, the object is fetched.
-   The system
-   can either request the entire object or a range. The `ObjectStore` trait
-   provides `get` for full object and `get_ranges` for byte ranges. For a
-   resumable download, we’ll do a range request starting at the resume offset
-   until end-of-file. For example:
+4. **Open Object Stream:** Using the `object_store` API, the object is
+   fetched. The system can either request the entire object or a range. The
+   `ObjectStore` trait provides `get` for full object and `get_ranges` for byte
+   ranges. For a resumable download, we’ll do a range request starting at the
+   resume offset until end-of-file. For example:
 
    ```rust
    let path = object_store::path::Path::from(file_node.object_key.clone());
@@ -504,8 +503,9 @@ interrupted. The steps:
 
    - If yes and protocol expects overwrite, we might delete or move the old file
      if the user has rights (e.g., "Any Name (26)" privilege in Hotline allowed
-     overriding files). Otherwise, refusal or renaming of the new file can occur (Hotline
-     had an “Any Name” privilege meaning user could upload a file with a name
+     overriding files). Otherwise, refusal or renaming of the new file can
+     occur (Hotline had an “Any Name” privilege meaning user could upload a file
+     with a name
      that already exists, possibly overwriting). Our implementation can allow
      overwrite if user has Delete rights on the existing file or a similar rule.
      If overwriting, the old FileNode and its object are deleted before
@@ -550,7 +550,8 @@ interrupted. The steps:
        or store as part of metadata if needed).
      - The create and modify timestamps – these can be stored in FileNode (or
        just set `created_at` now and `updated_at` as modify time).
-     - Name and comment are included here: the name is already available from the
+     - Name and comment are included here: the name is already available from
+       the
        request; the comment (if any) should be extracted and saved to
        FileNode.comment.
      - There may be other flags (we can ignore compression since none is used).
@@ -601,13 +602,14 @@ interrupted. The steps:
      APIs allow listing parts and continuing), we use the saved upload ID and
      continue writing new parts. If not easily possible, an alternative is to
      start a new upload and skip already received bytes of the file (but
-     skipping means the server requires the client to also skip sending them, which is what
-     the resume protocol does). So the client only sends what is missing. The server then
+     skipping means the server requires the client to also skip sending them,
+     which is what the resume protocol does). So the client only sends what is
+     missing. The server then
      appends that to the existing object (not trivial in object store
      unless continuing multi-part) or it can be stored as a separate object and
      later merge – not ideal.
-   - Ideally, we rely on the multi-part continuation: e.g., AWS S3 allows you to
-     resume a multipart upload if you have the upload ID and part numbers
+   - Ideally, we rely on the multi-part continuation: e.g., AWS S3 allows you
+     to resume a multipart upload if you have the upload ID and part numbers
      already uploaded. We would have to keep track of the next byte/part needed.
      Given our use of `WriteMultipart`, we might need a custom approach for
      resume (since `WriteMultipart` might not expose a mid-upload state easily).
@@ -711,19 +713,21 @@ and a move to a different folder via MoveFile. We handle both:
      strictly follow that, a user with those bits can move an item from any
      folder they can see to any other folder they can see. In practice, you
      might also require Create rights on destination and Delete on source, but
-     since Hotline explicitly lists Move as a privilege, we honor that: the user
-     must have the Move permission for that item's current folder (and perhaps
-     also for the destination folder). In the ACL model, enforcement can occur as follows: user
-     must have privilege 4 (move) on the source item’s parent, and privilege 5
+     since Hotline explicitly lists Move as a privilege, we honor that: the
+     user must have the Move permission for that item's current folder (and
+     perhaps also for the destination folder). In the ACL model, enforcement
+     can occur as follows: user must have privilege 4 (move) on the source
+     item’s parent, and privilege 5
      (create folder) or upload permission on the destination parent.
      Administrators with “Upload Anywhere (25)” could possibly override location
      restrictions.
 
   3. **DB Update:** Update the FileNode’s `parent_id` to the new folder’s ID
-     and/or update its `name` if it's also a rename. This is an atomic update in
-     the DB. We must ensure no name collision in the destination (the
-     UNIQUE(parent_id,name) constraint provides protection – checking is still recommended;
-     if a violation is detected, the operation should fail). For moving folders, all child FileNodes remain linked to
+     and/or update its `name` if it's also a rename. This is an atomic update
+     in the DB. We must ensure no name collision in the destination (the
+     `UNIQUE(parent_id,name)` constraint provides protection – checking is
+     still recommended; if a violation is detected, the operation should
+     fail). For moving folders, all child FileNodes remain linked to
      the same parent IDs (only the moved folder's own parent changes), so the
      tree is effectively spliced out and moved. **Important:** If we stored any
      kind of full path or had object keys tied to path, this is where complexity
@@ -927,8 +931,9 @@ will follow the same general approach:
      download. This is quite low-level; essentially the client can choose to
      skip or resume. For the implementation, the server will:
 
-     - Read the client's request for each file. If it says skip, the server just moves
-       on. If resume, it will provide an offset. We then stream the file from
+     - Read the client's request for each file. If it says skip, the server
+       just moves on. If resume, it will provide an offset. We then stream the
+       file from
        that offset (similar to DownloadFile logic, using get_range). If full
        send, we stream from start.
 
@@ -1311,8 +1316,9 @@ consistency is critical:
 
   - On **folder delete**: We should ideally wrap it in a transaction: delete all
     child records in DB (cascading) and then for each object, attempt deletion.
-    If an object deletion fails, the corresponding DB entries will have already been removed. As above,
-    the system logs errors and may retry later. Perhaps do not commit the DB transaction until all
+    If an object deletion fails, the corresponding DB entries will have already
+    been removed. As above, the system logs errors and may retry later. Perhaps
+    do not commit the DB transaction until all
     object deletions have succeeded? But that might not be feasible if many
     files (long transaction holding locks). It is often acceptable to commit DB
     first, then do storage cleanup out-of-transaction. In case of failure, at worst

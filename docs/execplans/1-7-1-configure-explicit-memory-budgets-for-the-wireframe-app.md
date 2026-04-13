@@ -1,11 +1,10 @@
 # Configure explicit memory budgets for the wireframe app
 
-This ExecPlan is a living document. The sections `Constraints`,
-`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as
-work proceeds.
+This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
+`Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
+`Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: NOT STARTED
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -64,9 +63,9 @@ Coordination rules:
 ## Constraints
 
 - Preserve the current Hotline wire contract: handshake semantics, 20-byte
-  transaction headers, reply ID echoing, XOR compatibility, and route
-  dispatch behaviour must remain unchanged except for the intended disconnect
-  behaviour on oversized or stalled fragmented input.
+  transaction headers, reply ID echoing, XOR compatibility, and route dispatch
+  behaviour must remain unchanged except for the intended disconnect behaviour
+  on oversized or stalled fragmented input.
 - Respect the hexagonal boundary from
   `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`:
   memory-budget enforcement belongs in the transport adapter and test harness,
@@ -75,8 +74,8 @@ Coordination rules:
   `MAX_FRAME_DATA`, `MAX_PAYLOAD_SIZE`, and the streaming-reader limits added
   in roadmap item 1.3.2.
 - Prefer explicit internal derivation over ad-hoc literals. If a new runtime
-  config knob is introduced, it must be justified, wired through `cli-defs`
-  and `ortho-config`, and documented in `docs/users-guide.md`.
+  config knob is introduced, it must be justified, wired through `cli-defs` and
+  `ortho-config`, and documented in `docs/users-guide.md`.
 - Reuse the binary-backed test path from roadmap item 1.6.1. Regression tests
   should continue to exercise `mxd-wireframe-server` through `test-util`
   helpers rather than through in-process route invocation.
@@ -87,9 +86,9 @@ Coordination rules:
   `pg_embedded_setup_unpriv` workflow from
   `docs/pg-embed-setup-unpriv-users-guide.md`.
 - Keep documentation in en-GB-oxendict spelling, wrap prose at 80 columns, and
-  follow repository quality gates before commit:
-  `make check-fmt`, `make lint`, `make test`, `make fmt`,
-  `make markdownlint`, and `make nixie` if Mermaid diagrams are touched.
+  follow repository quality gates before commit: `make check-fmt`, `make lint`,
+  `make test`, `make fmt`, `make markdownlint`, and `make nixie` if Mermaid
+  diagrams are touched.
 - Do not add new third-party crates unless explicitly approved.
 
 ## Tolerances (exception triggers)
@@ -117,8 +116,8 @@ Coordination rules:
 
 - Risk: the current transport seam may bypass Wireframe's budgeting path.
   Severity: high. Likelihood: high. Mitigation: start with a narrow design
-  spike that proves where budgeting hooks apply relative to
-  `HotlineFrameCodec` and the current `fragmentation(None)` setting.
+  spike that proves where budgeting hooks apply relative to `HotlineFrameCodec`
+  and the current `fragmentation(None)` setting.
 - Risk: budget formulas derived from Hotline limits could accidentally reject
   valid large flows or allow more buffering than intended. Severity: high.
   Likelihood: medium. Mitigation: centralize the formulas in one helper with
@@ -140,19 +139,26 @@ Coordination rules:
 
 - [x] (2026-04-10 00:00Z) Drafted ExecPlan for roadmap item 1.7.1 with
       architecture, testing, documentation, and roadmap-close criteria.
-- [ ] Prove the current budgeting seam with a focused adapter spike and record
-      the chosen approach in `docs/design.md`.
-- [ ] Implement explicit budget derivation and apply it in the Wireframe app
-      builder.
-- [ ] Add `rstest` unit coverage for budget formulas and helper logic.
-- [ ] Add binary-backed integration and behavioural coverage for soft-pressure,
-      hard-cap, and stalled-fragment disconnect behaviour.
-- [ ] Validate the feature locally on SQLite and PostgreSQL using
-      `pg_embedded_setup_unpriv`.
-- [ ] Update `docs/users-guide.md` if behaviour or configuration becomes
-      operator-visible.
-- [ ] Mark roadmap item 1.7.1 done in `docs/roadmap.md`.
-- [ ] Run repository quality gates with tee-captured logs before commit.
+- [x] (2026-04-13 00:00Z) Proved the budgeting seam and recorded the chosen
+      adapter shape in `docs/design.md`: keep `fragmentation(None)`, move
+      inbound Hotline reassembly to a Wireframe `MessageAssembler`, and size
+      budgets against a full logical Hotline request envelope.
+- [x] (2026-04-13 00:00Z) Implemented explicit budget derivation and applied
+      it in the Wireframe app builder.
+- [x] (2026-04-13 00:00Z) Added `rstest` unit coverage for budget formulas and
+      bootstrap helper logic.
+- [x] (2026-04-13 00:00Z) Added binary-backed integration coverage for an
+      in-budget near-cap fragmented request, a hard-cap oversize reject, and a
+      stalled-fragment disconnect on resumed continuation.
+- [x] (2026-04-13 00:00Z) Validated the feature locally on SQLite and
+      PostgreSQL using `pg_embedded_setup_unpriv` and `PG_EMBEDDED_WORKER`.
+- [x] (2026-04-13 00:00Z) Updated `docs/users-guide.md` to describe the new
+      disconnect behaviour for oversized and stalled fragmented requests.
+- [x] (2026-04-13 00:00Z) Marked roadmap item 1.7.1 done in
+      `docs/roadmap.md`.
+- [x] (2026-04-13 00:00Z) Ran repository quality gates with tee-captured logs:
+      `make fmt`, `make check-fmt`, `make lint`, `make test`, and
+      `make markdownlint`.
 
 ## Surprises & Discoveries
 
@@ -177,6 +183,21 @@ Coordination rules:
 - Existing integration tests already assert connection-level behaviour for
   malformed handshakes and invalid payloads, but there is no focused coverage
   yet for soft-pressure or aggregate budget caps.
+- Wireframe's protocol-level assembly state still derives a fragment ceiling
+  from `codec.max_frame_length()` even when `fragmentation(None)` remains in
+  place. Leaving `HotlineFrameCodec::max_frame_length()` at the physical
+  `20 + 32 KiB` size would have capped assembled Hotline requests far below the
+  existing 1 MiB protocol limit, so the adapter now reports the logical request
+  envelope there while physical frame validation remains unchanged.
+- With transport fragmentation disabled, Wireframe does not proactively reap an
+  idle partial Hotline request. To preserve the existing five-second fragment
+  gap semantics, the adapter tracks a continuation deadline in
+  `HotlineFrameDecoder` and rejects the series when the next fragment arrives
+  too late.
+- Local validation in this container also depended on bootstrapping two
+  external helper toolchains that the repository gates assume are present:
+  Whitaker for `make lint`, and `pg_worker` plus `PG_EMBEDDED_WORKER` for the
+  PostgreSQL-backed `make test` path.
 
 ## Decision Log
 
@@ -195,8 +216,26 @@ Coordination rules:
 - Decision: record the final budget formulas and the chosen fragmentation seam
   in `docs/design.md` as part of the implementation, even if no user-visible
   configuration is added. Rationale: this choice affects future transport work
-  in 1.7.2 and 1.7.3 and is not obvious from code alone.
-  Date/Author: 2026-04-10 / Codex.
+  in 1.7.2 and 1.7.3 and is not obvious from code alone. Date/Author:
+  2026-04-10 / Codex.
+- Decision: keep `fragmentation(None)` and introduce a Hotline-specific
+  `MessageAssembler` rather than switching to Wireframe transport
+  fragmentation. Rationale: this preserves the legacy Hotline wire contract and
+  keeps the fragmentation/budget boundary inside the transport adapter.
+  Date/Author: 2026-04-13 / Codex.
+- Decision: set `bytes_per_message`, `bytes_per_connection`, and
+  `bytes_in_flight` to the same value: `HEADER_LEN + MAX_PAYLOAD_SIZE`.
+  Rationale: Hotline still processes one fragmented logical request at a time
+  per connection, so widening the connection or in-flight budgets beyond one
+  request would add buffering without enabling a valid protocol behaviour.
+  Date/Author: 2026-04-13 / Codex.
+- Decision: treat the soft-pressure acceptance case as "near-cap fragmented
+  requests still complete" rather than trying to assert internal pacing from
+  the black-box binary harness. Rationale: Wireframe's soft-pressure pacing is
+  not externally observable in a stable way from today's raw-socket tests, but
+  an over-80%-budget fragmented request that still routes proves the server
+  accepts valid near-cap traffic while the hard-cap and timeout paths close
+  deterministically. Date/Author: 2026-04-13 / Codex.
 
 ## Outcomes & Retrospective
 
@@ -209,11 +248,19 @@ Intended outcomes once implemented:
 - Budget sizing, transport constraints, and operator-visible behaviour are
   documented consistently across the roadmap, design doc, and user guide.
 
-Retrospective placeholder:
-
 - Implemented:
+  explicit Wireframe memory budgets for the Hotline adapter, an internal
+  `HotlineMessageAssembler` seam that preserves legacy routing bytes, and
+  binary-backed regression coverage for near-cap success, oversize disconnect,
+  and resumed-after-timeout disconnect paths.
 - Did not implement:
+  a new operator-facing budget configuration surface, Wireframe transport
+  fragmentation, or `wireframe::testkit` adoption; those remain outside the
+  1.7.1 scope.
 - Lesson:
+  for Wireframe v0.3.0, budget sizing and `max_frame_length()` cannot be
+  treated independently. Even with `fragmentation(None)`, the codec's reported
+  logical frame ceiling still constrains protocol-level assembly.
 
 ## Context and orientation
 
@@ -279,9 +326,8 @@ Validation gate for Stage A:
 ### Stage B: implement explicit budget configuration in the adapter
 
 Once Stage A selects the seam, implement a small, named helper owned by the
-wireframe adapter. That helper should derive `BudgetBytes` and
-`MemoryBudgets` from Hotline constants rather than burying numbers inside the
-builder chain.
+wireframe adapter. That helper should derive `BudgetBytes` and `MemoryBudgets`
+from Hotline constants rather than burying numbers inside the builder chain.
 
 Implementation expectations:
 
@@ -376,8 +422,8 @@ Validation gate for Stage D:
 
 ### Stage E: run full validation and capture logs
 
-Before commit, run repository gates with tee-captured logs and `set -o
-pipefail` so failures are not masked by piping:
+Before commit, run repository gates with tee-captured logs and
+`set -o pipefail` so failures are not masked by piping:
 
 ```sh
 set -o pipefail && make check-fmt 2>&1 | tee /tmp/1-7-1-check-fmt.log
