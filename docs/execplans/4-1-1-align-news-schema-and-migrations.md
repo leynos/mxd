@@ -148,9 +148,13 @@ Success is observable when:
 - [x] (2026-04-13 02:33Z) Ran PostgreSQL-backed validation through the
       repository test infrastructure, including the new migration alignment
       tests against an embedded PostgreSQL instance.
-- [ ] Update `docs/developers-guide.md` or an ADR if the implementation
-      introduces material internal guidance.
-- [ ] Update `docs/users-guide.md` only if behaviour changes.
+- [x] (2026-04-16 00:20Z) Added developer-facing maintenance guidance to
+      `docs/developers-guide.md` covering dual-backend news schema alignment,
+      SQLite rebuild criteria, and the regression-test hooks for future
+      migration work.
+- [x] (2026-04-16 00:22Z) Reconfirmed that `docs/users-guide.md` does not need
+      a 4.1.1 update because the work intentionally introduced no user-visible
+      or operator-visible behaviour change.
 - [ ] Mark `docs/roadmap.md` item 4.1.1 done after all gates pass.
 
 ## Surprises & Discoveries

@@ -318,6 +318,31 @@ placeholder info text.
 - `close_hx()` demotes session-cleanup errors to stderr diagnostics rather than
   failing the test, consistent with best-effort teardown.
 
+
+## News schema alignment maintenance
+
+Roadmap item 4.1.1 aligned the implemented news storage schema with
+`docs/news-schema.md` using additive migrations rather than by rewriting
+historical migration directories.
+
+- Keep the SQLite and PostgreSQL migration trees in lock-step with the same
+  version number and equivalent semantics.
+- When a news schema change requires scoped uniqueness changes or defaulted
+  timestamp columns, prefer explicit SQLite table rebuilds with copy-forward
+  over incremental `ALTER TABLE` drift. The `00000000000006_align_news_schema`
+  migration is the reference pattern.
+- Preserve stable primary keys during copy-forward migrations so existing
+  threaded article links and bundle/category relationships survive upgrades.
+- Treat bundle/category GUID backfill and category serial-counter backfill as
+  migration concerns when legacy rows must become structurally complete
+  immediately after upgrade.
+- Keep `permissions` and `user_permissions` schema work separate from runtime
+  privilege loading and catalogue seeding. Schema alignment belongs to 4.1.1;
+  enforcement and seed data belong to later roadmap items.
+- Validate news schema changes with the backend-specific migration regression
+  tests in `src/db/schema_alignment_tests.rs` and with the routing behaviour
+  scenarios that exercise migrated databases.
+
 ## Wireframe adapter context handoff
 
 The Wireframe adapter carries Hotline handshake metadata from the asynchronous
