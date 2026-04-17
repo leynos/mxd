@@ -43,7 +43,6 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
-      MXD_VALIDATOR_FAIL_CLOSED: "false"
     steps:
       - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
@@ -84,9 +83,11 @@ jobs:
       - name: Test
         run: |
           if [[ "${{ matrix.rstest_timeout }}" == "true" ]]; then
-            RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }}
+            RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
+              --exclude validator
           else
-            RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }}
+            RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
+              --exclude validator
           fi
 
   validator-sqlite:
@@ -142,6 +143,12 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      HX_BIN_DIR: ${{ github.workspace }}/.bin
+      HX_WORK_ROOT: ${{ github.workspace }}/.cache/hx
+      HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client
+      MXD_VALIDATOR_FAIL_CLOSED: "true"
+      MXD_TEST_BIND_HOST: "127.0.0.1"
+      MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
     steps:
       - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
@@ -149,6 +156,20 @@ jobs:
           install-postgres-deps: true
       - name: Cache Cargo directories
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Add validator bin directory to PATH
+        run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
+      - name: Install SynHX
+        run: ./scripts/install-synhx.sh
+      - name: Sanity-check hx does not report Helix
+        run: |
+          set -o pipefail
+          timeout 1 hx --version 2>&1 | tee /tmp/hx-version.log || true
+          if rg -qi 'helix' /tmp/hx-version.log; then
+            echo "hx resolves to Helix, not SynHX" >&2
+            exit 1
+          fi
+      - name: Build wireframe server for coverage
+        run: make validator-sqlite-server
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
