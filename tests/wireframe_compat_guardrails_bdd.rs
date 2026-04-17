@@ -15,6 +15,7 @@ use mxd::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    presence::PresenceRegistry,
     server::outbound::NoopOutboundMessaging,
     transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
@@ -106,6 +107,7 @@ impl GuardrailWorld {
         let peer = self.peer;
         let mut session = self.session.borrow().clone();
         let messaging = NoopOutboundMessaging;
+        let presence = PresenceRegistry::default();
         let router = self.router.borrow();
         let reply = self.runtime.block_on(router.route(
             &frame,
@@ -114,6 +116,7 @@ impl GuardrailWorld {
                 pool,
                 session: &mut session,
                 messaging: &messaging,
+                presence: &presence,
             },
         ));
         self.session.replace(session);

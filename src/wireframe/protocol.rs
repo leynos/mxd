@@ -172,17 +172,24 @@ mod tests {
     use wireframe::hooks::ConnectionContext;
 
     use super::*;
-    use crate::wireframe::{
-        compat::XorCompatibility,
-        outbound::{WireframeOutboundConnection, WireframeOutboundRegistry},
-        test_helpers::{dummy_pool, xor_bytes},
+    use crate::{
+        presence::PresenceRegistry,
+        wireframe::{
+            compat::XorCompatibility,
+            outbound::{WireframeOutboundConnection, WireframeOutboundRegistry},
+            test_helpers::{dummy_pool, xor_bytes},
+        },
     };
 
     #[fixture]
     fn outbound_connection() -> Arc<WireframeOutboundConnection> {
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
-        Arc::new(WireframeOutboundConnection::new(id, registry))
+        Arc::new(WireframeOutboundConnection::new(
+            id,
+            registry,
+            Arc::new(PresenceRegistry::default()),
+        ))
     }
 
     #[fixture]

@@ -4,6 +4,8 @@
 //! 16-bit [`FieldId`]. This module validates and serialises that parameter
 //! structure.
 
+#![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+
 use std::collections::{HashMap, HashSet};
 
 use super::{FrameHeader, Transaction, errors::TransactionError, read_u16};
@@ -13,7 +15,10 @@ use crate::{field_id::FieldId, transaction_type::TransactionType};
 const fn duplicate_allowed(fid: FieldId) -> bool {
     matches!(
         fid,
-        FieldId::NewsCategory | FieldId::NewsArticle | FieldId::FileName
+        FieldId::NewsCategory
+            | FieldId::NewsArticle
+            | FieldId::FileName
+            | FieldId::UserNameWithInfo
     )
 }
 
@@ -315,4 +320,58 @@ pub fn first_param_i32<S: std::hash::BuildHasher>(
         }
         None => Ok(None),
     }
+}
+
+/// Decode the first value for `field` as a big-endian `u32`, accepting either
+/// 16-bit or 32-bit protocol encodings.
+///
+/// # Errors
+/// Returns [`TransactionError::MissingField`] if the field is absent, or
+/// [`TransactionError::InvalidParamValue`] if the value cannot be parsed as a
+/// 16-bit or 32-bit big-endian unsigned integer.
+#[must_use = "handle the result"]
+pub fn required_param_u32<S: std::hash::BuildHasher>(
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
+    field: FieldId,
+) -> Result<u32, TransactionError> {
+    first_param_u32(map, field)?.ok_or(TransactionError::MissingField(field))
+}
+
+/// Decode the first value for `field` as a `u32` if present, accepting either
+/// 16-bit or 32-bit protocol encodings.
+///
+/// # Errors
+/// Returns [`TransactionError::InvalidParamValue`] if the value length is not
+/// two or four bytes.
+#[must_use = "handle the result"]
+pub fn first_param_u32<S: std::hash::BuildHasher>(
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
+    field: FieldId,
+) -> Result<Option<u32>, TransactionError> {
+    match first_value(map, field) {
+        Some(bytes) => Ok(Some(parse_protocol_u32(bytes, field)?)),
+        None => Ok(None),
+    }
+}
+
+fn parse_protocol_u32(bytes: &[u8], field: FieldId) -> Result<u32, TransactionError> {
+    match bytes.len() {
+        2 => parse_protocol_u16(bytes, field).map(u32::from),
+        4 => parse_protocol_u32_exact(bytes, field),
+        _ => Err(TransactionError::InvalidParamValue(field)),
+    }
+}
+
+fn parse_protocol_u16(bytes: &[u8], field: FieldId) -> Result<u16, TransactionError> {
+    let arr: [u8; 2] = bytes
+        .try_into()
+        .map_err(|_| TransactionError::InvalidParamValue(field))?;
+    Ok(u16::from_be_bytes(arr))
+}
+
+fn parse_protocol_u32_exact(bytes: &[u8], field: FieldId) -> Result<u32, TransactionError> {
+    let arr: [u8; 4] = bytes
+        .try_into()
+        .map_err(|_| TransactionError::InvalidParamValue(field))?;
+    Ok(u32::from_be_bytes(arr))
 }

@@ -3,6 +3,7 @@
 use std::{cell::RefCell, sync::Arc};
 
 use mxd::{
+    presence::PresenceRegistry,
     server::outbound::{OutboundError, OutboundMessaging, OutboundPriority, OutboundTarget},
     transaction::{FrameHeader, Transaction, parse_transaction},
     wireframe::outbound::{
@@ -27,7 +28,11 @@ impl OutboundWorld {
     fn new() -> Self {
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
-        let connection = Arc::new(WireframeOutboundConnection::new(id, registry));
+        let connection = Arc::new(WireframeOutboundConnection::new(
+            id,
+            registry,
+            Arc::new(PresenceRegistry::default()),
+        ));
         let messaging = WireframeOutboundMessaging::new(Arc::clone(&connection));
         Self {
             connection,

@@ -11,6 +11,7 @@ use crate::{
     commands::{Command, CommandContext},
     db::DbPool,
     handler::Session,
+    presence::PresenceRegistry,
     server::outbound::{OutboundMessaging, ReplyBuffer},
     transaction::parse_transaction,
     transaction_type::TransactionType,
@@ -60,6 +61,7 @@ impl WireframeRouter {
             pool,
             session,
             messaging,
+            presence,
         } = context;
         let request_compat = compat_layer::RequestCompatibility::new(&self.xor, &self.client);
 
@@ -90,6 +92,7 @@ impl WireframeRouter {
             session,
             transport: &mut transport,
             messaging,
+            presence,
         };
         tracing::trace!(
             auth_strategy = auth_strategy_label(client_kind),
@@ -142,6 +145,8 @@ pub struct RouteContext<'a> {
     pub session: &'a mut Session,
     /// Outbound messaging adapter for push notifications.
     pub messaging: &'a dyn OutboundMessaging,
+    /// Shared online presence registry.
+    pub presence: &'a PresenceRegistry,
 }
 
 #[cfg(test)]

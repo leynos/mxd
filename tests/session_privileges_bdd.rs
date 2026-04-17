@@ -14,6 +14,7 @@ use mxd::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    presence::PresenceRegistry,
     privileges::Privileges,
     schema::users::dsl as users_dsl,
     server::outbound::NoopOutboundMessaging,
@@ -112,6 +113,7 @@ impl PrivilegeWorld {
         let peer = self.peer;
         let mut session = self.session.borrow().clone();
         let messaging = NoopOutboundMessaging;
+        let presence = PresenceRegistry::default();
         let reply = self.runtime.block_on(self.router.route(
             &frame,
             RouteContext {
@@ -119,6 +121,7 @@ impl PrivilegeWorld {
                 pool,
                 session: &mut session,
                 messaging: &messaging,
+                presence: &presence,
             },
         ));
         self.session.replace(session);
@@ -197,6 +200,7 @@ fn given_authenticated_but_unprivileged(world: &PrivilegeWorld) {
         user_id: Some(user_id),
         privileges: Privileges::empty(),
         connection_flags: ConnectionFlags::default(),
+        ..Session::default()
     });
 }
 

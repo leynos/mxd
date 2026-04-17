@@ -175,6 +175,7 @@ mod tests {
     use crate::{
         commands::{Command, CommandContext},
         handler::Session,
+        presence::PresenceRegistry,
         server::outbound::{NoopOutboundMessaging, ReplyBuffer},
         transaction::{FrameHeader, Transaction},
         transaction_type::TransactionType,
@@ -244,12 +245,14 @@ mod tests {
         let mut session = Session::default();
         let mut transport = ReplyBuffer::new();
         let messaging = NoopOutboundMessaging;
+        let presence = PresenceRegistry::default();
         let context = CommandContext {
             peer: "127.0.0.1:12345".parse().expect("valid loopback socket"),
             pool: dummy_pool(),
             session: &mut session,
             transport: &mut transport,
             messaging: &messaging,
+            presence: &presence,
         };
         let command = Command::Unknown {
             header: header(tx_type),

@@ -2,8 +2,11 @@
 
 use rstest::rstest;
 
-use super::*;
-use crate::transaction::encode_params;
+use super::{
+    parsing::{LoginCredentials, parse_login_params},
+    *,
+};
+use crate::{field_id::FieldId, transaction::encode_params};
 
 /// Returns valid login parameters for testing.
 fn valid_login_payload() -> Vec<u8> {

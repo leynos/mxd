@@ -46,6 +46,7 @@ pub mod login;
 pub mod models;
 pub mod news_handlers;
 pub(crate) mod news_path;
+pub mod presence;
 pub mod privileges;
 pub mod protocol;
 pub mod schema;

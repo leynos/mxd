@@ -11,7 +11,9 @@ use crate::{
     commands::{Command, CommandError},
     connection_flags::ConnectionFlags,
     db::DbPool,
+    presence::{PresenceSnapshot, SessionPhase},
     privileges::Privileges,
+    server::outbound::OutboundConnectionId,
     transaction::{Transaction, parse_transaction},
 };
 
@@ -39,10 +41,20 @@ pub struct Session {
     ///
     /// Populated on successful login; empty until authenticated.
     pub privileges: Privileges,
+    /// Connection lifecycle state for protocol visibility.
+    pub phase: SessionPhase,
+    /// Session-visible nickname.
+    pub display_name: String,
+    /// Session-visible icon identifier.
+    pub icon_id: u16,
     /// Connection-level preference flags (refuse messages, auto-response, etc.).
     ///
     /// Set during login/agreement and can be updated via `SetClientUserInfo`.
     pub connection_flags: ConnectionFlags,
+    /// Automatic response text associated with the current session.
+    pub auto_response: Option<String>,
+    /// Outbound identifier for presence notifications.
+    pub outbound_connection_id: Option<OutboundConnectionId>,
 }
 
 /// Error returned when a privilege check fails.
@@ -84,6 +96,10 @@ impl Session {
     #[must_use]
     pub const fn is_authenticated(&self) -> bool { self.user_id.is_some() }
 
+    /// Check whether the session is fully online.
+    #[must_use]
+    pub const fn is_online(&self) -> bool { matches!(self.phase, SessionPhase::Online) }
+
     /// Check whether the session has a specific privilege.
     ///
     /// Returns `false` if the user is not authenticated or lacks the privilege.
@@ -119,6 +135,65 @@ impl Session {
             Some(_) => Ok(()),
             None => Err(PrivilegeError::NotAuthenticated),
         }
+    }
+
+    /// Update the authenticated account details after a successful login.
+    pub fn apply_login(&mut self, user_id: i32, username: &str, privileges: Privileges) {
+        self.user_id = Some(user_id);
+        self.privileges = privileges;
+        username.clone_into(&mut self.display_name);
+        self.icon_id = 0;
+        self.auto_response = None;
+        self.connection_flags = ConnectionFlags::default();
+        self.phase = if self.requires_agreement() {
+            SessionPhase::PendingAgreement
+        } else {
+            SessionPhase::Online
+        };
+    }
+
+    /// Return whether the account must complete agreement before going online.
+    #[must_use]
+    pub const fn requires_agreement(&self) -> bool {
+        !self.privileges.contains(Privileges::NO_AGREEMENT)
+    }
+
+    /// Return whether the session should appear in the public user list.
+    #[must_use]
+    pub const fn shows_in_user_list(&self) -> bool {
+        self.is_online() && self.privileges.contains(Privileges::SHOW_IN_LIST)
+    }
+
+    /// Return the packed user-list colour/status flags for this session.
+    #[must_use]
+    pub fn presence_flags(&self) -> u16 { if self.is_presence_admin() { 2 } else { 0 } }
+
+    /// Build a public presence snapshot when the session is online and visible.
+    #[must_use]
+    pub fn presence_snapshot(&self) -> Option<PresenceSnapshot> {
+        let user_id = self.user_id?;
+        let connection_id = self.outbound_connection_id?;
+        if !self.shows_in_user_list() {
+            return None;
+        }
+        Some(PresenceSnapshot {
+            connection_id,
+            user_id,
+            display_name: self.display_name.clone(),
+            icon_id: self.icon_id,
+            status_flags: self.presence_flags(),
+        })
+    }
+
+    fn is_presence_admin(&self) -> bool {
+        self.privileges.intersects(
+            Privileges::CREATE_USER
+                | Privileges::DELETE_USER
+                | Privileges::OPEN_USER
+                | Privileges::MODIFY_USER
+                | Privileges::DISCONNECT_USER
+                | Privileges::BROADCAST,
+        )
     }
 }
 
@@ -198,7 +273,12 @@ mod tests {
         let session = Session::default();
         assert!(!session.is_authenticated());
         assert!(session.privileges.is_empty());
+        assert_eq!(session.phase, SessionPhase::Unauthenticated);
+        assert!(session.display_name.is_empty());
+        assert_eq!(session.icon_id, 0);
         assert!(session.connection_flags.is_empty());
+        assert!(session.auto_response.is_none());
+        assert!(session.outbound_connection_id.is_none());
     }
 
     #[test]
@@ -208,6 +288,7 @@ mod tests {
             ..Default::default()
         };
         assert!(session.is_authenticated());
+        assert!(!session.is_online());
     }
 
     #[test]

@@ -22,6 +22,23 @@ pub async fn get_user_by_name(
         .optional()
 }
 
+/// Look up a user record by identifier.
+///
+/// # Errors
+/// Returns any error produced by the underlying database query.
+#[must_use = "handle the result"]
+pub async fn get_user_by_id(
+    conn: &mut DbConnection,
+    user_id_value: i32,
+) -> QueryResult<Option<crate::models::User>> {
+    use crate::schema::users::dsl::{id, users};
+    users
+        .filter(id.eq(user_id_value))
+        .first::<crate::models::User>(conn)
+        .await
+        .optional()
+}
+
 /// Insert a new user record.
 ///
 /// # Errors
