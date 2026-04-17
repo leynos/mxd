@@ -36,6 +36,26 @@ async fn seed_user(conn: &mut DbConnection, username: &'static str) -> i32 {
         .id
 }
 
+fn new_child_node(
+    parent_id: i32,
+    node_type: &'static str,
+    name: &'static str,
+    user_id: i32,
+) -> NewFileNode<'static> {
+    NewFileNode {
+        is_root: false,
+        node_type,
+        name,
+        parent_id: Some(parent_id),
+        alias_target_id: None,
+        object_key: None,
+        size: 0,
+        comment: None,
+        is_dropbox: false,
+        created_by: Some(user_id),
+    }
+}
+
 #[rstest]
 #[tokio::test]
 async fn root_file_node_is_seeded() {
@@ -53,18 +73,7 @@ async fn duplicate_top_level_names_are_rejected() {
     let mut conn = migrated_conn().await.expect("connection");
     let root = get_root_file_node(&mut conn).await.expect("root node");
     let user_id = seed_user(&mut conn, "alice").await;
-    let folder = NewFileNode {
-        is_root: false,
-        node_type: "folder",
-        name: "docs",
-        parent_id: Some(root.id),
-        alias_target_id: None,
-        object_key: None,
-        size: 0,
-        comment: None,
-        is_dropbox: false,
-        created_by: Some(user_id),
-    };
+    let folder = new_child_node(root.id, "folder", "docs", user_id);
 
     create_file_node(&mut conn, &folder)
         .await
@@ -85,18 +94,7 @@ async fn alias_requires_target() {
     let mut conn = migrated_conn().await.expect("connection");
     let root = get_root_file_node(&mut conn).await.expect("root node");
     let user_id = seed_user(&mut conn, "alice").await;
-    let alias = NewFileNode {
-        is_root: false,
-        node_type: "alias",
-        name: "link",
-        parent_id: Some(root.id),
-        alias_target_id: None,
-        object_key: None,
-        size: 0,
-        comment: None,
-        is_dropbox: false,
-        created_by: Some(user_id),
-    };
+    let alias = new_child_node(root.id, "alias", "link", user_id);
 
     let err = create_file_node(&mut conn, &alias)
         .await
@@ -116,18 +114,7 @@ async fn descendant_listing_uses_recursive_tree() {
     let user_id = seed_user(&mut conn, "alice").await;
     let folder_id = create_file_node(
         &mut conn,
-        &NewFileNode {
-            is_root: false,
-            node_type: "folder",
-            name: "docs",
-            parent_id: Some(root.id),
-            alias_target_id: None,
-            object_key: None,
-            size: 0,
-            comment: None,
-            is_dropbox: false,
-            created_by: Some(user_id),
-        },
+        &new_child_node(root.id, "folder", "docs", user_id),
     )
     .await
     .expect("folder insert");

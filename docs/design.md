@@ -2528,6 +2528,78 @@ how Hotline works:
    This way you can assign an entire group access to a folder by one entry in
   `Permission`, instead of listing every user.
 
+Figure 9 shows the conceptual file-sharing entity relationships. `FileNode`
+rows form a hierarchy through `parent_id` and may also point at alias targets.
+Users and groups can receive global permissions and file-node-specific grants.
+The current roadmap `3.1.1` implementation realises the user-scoped subset of
+this model and defers group principals to a later schema step.
+
+```mermaid
+erDiagram
+    FileNode {
+      int id
+      int parent_id
+      varchar name
+      varchar kind
+      varchar object_key
+      boolean is_dropbox
+      int alias_target_id
+      int created_by
+      datetime created_at
+      datetime updated_at
+    }
+
+    User {
+      int id
+      varchar username
+    }
+
+    Group {
+      int id
+      varchar name
+    }
+
+    Permission {
+      int id
+      varchar code
+      varchar description
+    }
+
+    UserPermission {
+      int id
+      int user_id
+      int permission_id
+    }
+
+    GroupPermission {
+      int id
+      int group_id
+      int permission_id
+    }
+
+    FileNodePermission {
+      int id
+      int file_node_id
+      varchar principal_type
+      int principal_id
+      int permission_id
+    }
+
+    FileNode ||--o{ FileNode : parent_of
+    FileNode }o--|| FileNode : alias_target
+
+    User ||--o{ UserPermission : has
+    Permission ||--o{ UserPermission : assigned_to_user
+
+    Group ||--o{ GroupPermission : has
+    Permission ||--o{ GroupPermission : assigned_to_group
+
+    FileNode ||--o{ FileNodePermission : protected_by
+    Permission ||--o{ FileNodePermission : grants
+    User ||--o{ FileNodePermission : may_be_principal
+    Group ||--o{ FileNodePermission : may_be_principal
+```
+
 Our current implementation hasn’t introduced groups or the unified Permission
 table yet – it only has `file_acl` which is effectively a specific case of
 permission linking user->file. Going forward, we would migrate to the richer

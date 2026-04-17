@@ -104,11 +104,14 @@ pub async fn get_root_file_node(conn: &mut DbConnection) -> QueryResult<FileNode
         .await
 }
 
+/// Insert a new file tree node.
+///
+/// # Errors
+///
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
 #[cfg(any(feature = "postgres", feature = "returning_clauses_for_sqlite_3_35"))]
-async fn create_file_node_inner(
-    conn: &mut DbConnection,
-    node: &NewFileNode<'_>,
-) -> QueryResult<i32> {
+pub async fn create_file_node(conn: &mut DbConnection, node: &NewFileNode<'_>) -> QueryResult<i32> {
     use crate::schema::file_nodes::dsl::{file_nodes, id};
 
     diesel::insert_into(file_nodes)
@@ -118,11 +121,14 @@ async fn create_file_node_inner(
         .await
 }
 
+/// Insert a new file tree node.
+///
+/// # Errors
+///
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
 #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
-async fn create_file_node_inner(
-    conn: &mut DbConnection,
-    node: &NewFileNode<'_>,
-) -> QueryResult<i32> {
+pub async fn create_file_node(conn: &mut DbConnection, node: &NewFileNode<'_>) -> QueryResult<i32> {
     use crate::schema::file_nodes::dsl::file_nodes;
 
     diesel::insert_into(file_nodes)
@@ -130,16 +136,6 @@ async fn create_file_node_inner(
         .execute(conn)
         .await?;
     fetch_last_insert_rowid(conn).await
-}
-
-/// Insert a new file tree node.
-///
-/// # Errors
-///
-/// Returns any error produced by the database.
-#[must_use = "handle the result"]
-pub async fn create_file_node(conn: &mut DbConnection, node: &NewFileNode<'_>) -> QueryResult<i32> {
-    create_file_node_inner(conn, node).await
 }
 
 /// Add a resource-scoped permission grant.
@@ -162,6 +158,14 @@ pub async fn add_resource_permission(
         .map(|rows| rows > 0)
 }
 
+fn children_of_parent(parent_id: i32) -> crate::schema::file_nodes::BoxedQuery<'static, Backend> {
+    use crate::schema::file_nodes::dsl as f;
+
+    f::file_nodes
+        .filter(f::parent_id.eq(parent_id))
+        .into_boxed()
+}
+
 /// Find a direct child node by parent and name.
 ///
 /// # Errors
@@ -175,9 +179,8 @@ pub async fn find_child_file_node(
 ) -> QueryResult<Option<FileNode>> {
     use crate::schema::file_nodes::dsl as f;
 
-    f::file_nodes
-        .filter(f::parent_id.eq(parent_id))
-        .filter(f::name.eq(name))
+    children_of_parent(parent_id)
+        .filter(f::name.eq(name.to_owned()))
         .get_result(conn)
         .await
         .optional()
@@ -195,8 +198,7 @@ pub async fn list_child_file_nodes(
 ) -> QueryResult<Vec<FileNode>> {
     use crate::schema::file_nodes::dsl as f;
 
-    f::file_nodes
-        .filter(f::parent_id.eq(parent_id))
+    children_of_parent(parent_id)
         .order((f::node_type.asc(), f::name.asc()))
         .load(conn)
         .await

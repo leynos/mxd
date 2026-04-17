@@ -76,6 +76,53 @@ fn world() -> FileNodeWorld {
     world
 }
 
+fn resolve_user_and_root(world: &FileNodeWorld, username: &str) -> (i32, i32) {
+    let user_id = *world
+        .users
+        .borrow()
+        .get(username)
+        .expect("user should exist in the world");
+    let root_id = world.root_id.get().expect("root id should be stored");
+    (user_id, root_id)
+}
+
+struct ChildNodeSpec {
+    node_type: &'static str,
+    name: String,
+    object_key: Option<String>,
+    size: i64,
+}
+
+async fn create_child_file_node(
+    pool: mxd::db::DbPool,
+    root_id: i32,
+    user_id: i32,
+    spec: ChildNodeSpec,
+) -> Result<(), String> {
+    let mut conn = pool
+        .get()
+        .await
+        .expect("pool connection should be available");
+    create_file_node(
+        &mut conn,
+        &NewFileNode {
+            is_root: false,
+            node_type: spec.node_type,
+            name: &spec.name,
+            parent_id: Some(root_id),
+            alias_target_id: None,
+            object_key: spec.object_key.as_deref(),
+            size: spec.size,
+            comment: None,
+            is_dropbox: false,
+            created_by: Some(user_id),
+        },
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
 #[given("a migrated file-node repository")]
 fn given_repository(world: &FileNodeWorld) {
     let db = match build_test_db(&world.runtime, setup_login_db as SetupFn) {
@@ -104,17 +151,16 @@ fn given_repository(world: &FileNodeWorld) {
 }
 
 #[given("a user \"{username}\" exists")]
-fn given_user(world: &FileNodeWorld, username: String) {
+fn given_user(world: &FileNodeWorld, username: &str) {
     if world.is_skipped() {
         return;
     }
-    let username_key = username.clone();
     let user_id = world.block_on_with_pool(|pool| async move {
         let mut conn = pool
             .get()
             .await
             .expect("pool connection should be available");
-        if let Some(user) = get_user_by_name(&mut conn, &username)
+        if let Some(user) = get_user_by_name(&mut conn, username)
             .await
             .expect("user lookup should succeed")
         {
@@ -123,19 +169,22 @@ fn given_user(world: &FileNodeWorld, username: String) {
         create_user(
             &mut conn,
             &NewUser {
-                username: &username,
+                username,
                 password: "hash",
             },
         )
         .await
         .expect("user creation should succeed");
-        get_user_by_name(&mut conn, &username)
+        get_user_by_name(&mut conn, username)
             .await
             .expect("user lookup should succeed")
             .expect("created user should exist")
             .id
     });
-    world.users.borrow_mut().insert(username_key, user_id);
+    world
+        .users
+        .borrow_mut()
+        .insert(username.to_owned(), user_id);
 }
 
 #[when("I create the root child folder \"{name}\" as \"{username}\"")]
@@ -143,43 +192,50 @@ fn when_create_root_child_folder(world: &FileNodeWorld, name: String, username: 
     if world.is_skipped() {
         return;
     }
-    let user_id = *world
-        .users
-        .borrow()
-        .get(&username)
-        .expect("user should exist in the world");
-    let root_id = world.root_id.get().expect("root id should be stored");
+    let (user_id, root_id) = resolve_user_and_root(world, &username);
     world.last_error.borrow_mut().take();
-    world.block_on_with_pool(|pool| async move {
-        let mut conn = pool
-            .get()
-            .await
-            .expect("pool connection should be available");
-        let result = create_file_node(
-            &mut conn,
-            &NewFileNode {
-                is_root: false,
+    let result = world.block_on_with_pool(|pool| async move {
+        create_child_file_node(
+            pool,
+            root_id,
+            user_id,
+            ChildNodeSpec {
                 node_type: "folder",
-                name: &name,
-                parent_id: Some(root_id),
-                alias_target_id: None,
+                name,
                 object_key: None,
                 size: 0,
-                comment: None,
-                is_dropbox: false,
-                created_by: Some(user_id),
             },
         )
-        .await;
-        if let Err(err) = result {
-            world.last_error.borrow_mut().replace(err.to_string());
-        }
+        .await
     });
+    if let Err(err) = result {
+        world.last_error.borrow_mut().replace(err);
+    }
 }
 
 #[when("I try to create the root child folder \"{name}\" as \"{username}\"")]
-fn when_try_duplicate_folder(world: &FileNodeWorld, name: String, username: String) {
-    when_create_root_child_folder(world, name, username);
+fn when_try_duplicate_folder(world: &FileNodeWorld, name: &str, username: &str) {
+    if world.is_skipped() {
+        return;
+    }
+    let (user_id, root_id) = resolve_user_and_root(world, username);
+    let result = world.block_on_with_pool(|pool| async move {
+        create_child_file_node(
+            pool,
+            root_id,
+            user_id,
+            ChildNodeSpec {
+                node_type: "folder",
+                name: name.to_owned(),
+                object_key: None,
+                size: 0,
+            },
+        )
+        .await
+    });
+    if let Err(err) = result {
+        world.last_error.borrow_mut().replace(err);
+    }
 }
 
 #[given("a root file \"{name}\" created by \"{username}\"")]
@@ -187,30 +243,17 @@ fn given_root_file(world: &FileNodeWorld, name: String, username: String) {
     if world.is_skipped() {
         return;
     }
-    let user_id = *world
-        .users
-        .borrow()
-        .get(&username)
-        .expect("user should exist in the world");
-    let root_id = world.root_id.get().expect("root id should be stored");
+    let (user_id, root_id) = resolve_user_and_root(world, &username);
     world.block_on_with_pool(|pool| async move {
-        let mut conn = pool
-            .get()
-            .await
-            .expect("pool connection should be available");
-        create_file_node(
-            &mut conn,
-            &NewFileNode {
-                is_root: false,
+        create_child_file_node(
+            pool,
+            root_id,
+            user_id,
+            ChildNodeSpec {
                 node_type: "file",
-                name: &name,
-                parent_id: Some(root_id),
-                alias_target_id: None,
-                object_key: Some(&format!("objects/{name}")),
+                object_key: Some(format!("objects/{name}")),
+                name,
                 size: 1,
-                comment: None,
-                is_dropbox: false,
-                created_by: Some(user_id),
             },
         )
         .await
@@ -219,14 +262,14 @@ fn given_root_file(world: &FileNodeWorld, name: String, username: String) {
 }
 
 #[given("\"{username}\" has download access to \"{name}\"")]
-fn given_download_access(world: &FileNodeWorld, username: String, name: String) {
+fn given_download_access(world: &FileNodeWorld, username: &str, name: &str) {
     if world.is_skipped() {
         return;
     }
     let user_id = *world
         .users
         .borrow()
-        .get(&username)
+        .get(username)
         .expect("user should exist in the world");
     let root_id = world.root_id.get().expect("root id should be stored");
     world.block_on_with_pool(|pool| async move {
@@ -234,7 +277,7 @@ fn given_download_access(world: &FileNodeWorld, username: String, name: String) 
             .get()
             .await
             .expect("pool connection should be available");
-        let shared = mxd::db::find_child_file_node(&mut conn, root_id, &name)
+        let shared = mxd::db::find_child_file_node(&mut conn, root_id, name)
             .await
             .expect("file lookup should succeed")
             .expect("file should exist");
@@ -255,14 +298,14 @@ fn given_download_access(world: &FileNodeWorld, username: String, name: String) 
 }
 
 #[when("I list root children permitted for \"{username}\"")]
-fn when_list_permitted_children(world: &FileNodeWorld, username: String) {
+fn when_list_permitted_children(world: &FileNodeWorld, username: &str) {
     if world.is_skipped() {
         return;
     }
     let user_id = *world
         .users
         .borrow()
-        .get(&username)
+        .get(username)
         .expect("user should exist in the world");
     let root_id = world.root_id.get().expect("root id should be stored");
     let names = world.block_on_with_pool(|pool| async move {
@@ -297,7 +340,7 @@ fn then_duplicate_rejected(world: &FileNodeWorld) {
 }
 
 #[then("the permitted child names equal \"{name}\"")]
-fn then_permitted_names(world: &FileNodeWorld, name: String) {
+fn then_permitted_names(world: &FileNodeWorld, name: &str) {
     if world.is_skipped() {
         return;
     }
@@ -307,20 +350,20 @@ fn then_permitted_names(world: &FileNodeWorld, name: String) {
 #[scenario(path = "tests/features/file_nodes_repository.feature", index = 0)]
 fn duplicate_top_level_names_are_rejected(#[from(world)] world: FileNodeWorld) {
     given_repository(&world);
-    given_user(&world, "alice".to_owned());
+    given_user(&world, "alice");
     when_create_root_child_folder(&world, "docs".to_owned(), "alice".to_owned());
-    when_try_duplicate_folder(&world, "docs".to_owned(), "alice".to_owned());
+    when_try_duplicate_folder(&world, "docs", "alice");
     then_duplicate_rejected(&world);
 }
 
 #[scenario(path = "tests/features/file_nodes_repository.feature", index = 1)]
 fn explicit_resource_grants_filter_visible_children(#[from(world)] world: FileNodeWorld) {
     given_repository(&world);
-    given_user(&world, "alice".to_owned());
-    given_user(&world, "bob".to_owned());
+    given_user(&world, "alice");
+    given_user(&world, "bob");
     given_root_file(&world, "shared.txt".to_owned(), "alice".to_owned());
     given_root_file(&world, "private.txt".to_owned(), "alice".to_owned());
-    given_download_access(&world, "bob".to_owned(), "shared.txt".to_owned());
-    when_list_permitted_children(&world, "bob".to_owned());
-    then_permitted_names(&world, "shared.txt".to_owned());
+    given_download_access(&world, "bob", "shared.txt");
+    when_list_permitted_children(&world, "bob");
+    then_permitted_names(&world, "shared.txt");
 }
