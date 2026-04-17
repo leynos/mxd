@@ -56,49 +56,77 @@ async fn sqlite_conn() -> TestResult<DbConnection> {
     Ok(conn)
 }
 
-#[cfg(feature = "sqlite")]
-async fn setup_sqlite_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
-    for statement in [
-        "CREATE TABLE __diesel_schema_migrations (version VARCHAR(50) PRIMARY KEY NOT NULL, \
-         run_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
-        "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, \
-         password TEXT NOT NULL)",
-        "CREATE TABLE news_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL \
-         UNIQUE, bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE)",
-        "CREATE TABLE news_bundles (id INTEGER PRIMARY KEY AUTOINCREMENT, parent_bundle_id \
-         INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE, name TEXT NOT NULL, UNIQUE(name, \
-         parent_bundle_id))",
-        "CREATE INDEX idx_bundles_parent ON news_bundles(parent_bundle_id)",
-        "CREATE INDEX idx_categories_bundle ON news_categories(bundle_id)",
-        "CREATE TABLE news_articles (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER \
-         NOT NULL REFERENCES news_categories(id) ON DELETE CASCADE, parent_article_id INTEGER \
-         REFERENCES news_articles(id), prev_article_id INTEGER REFERENCES news_articles(id), \
-         next_article_id INTEGER REFERENCES news_articles(id), first_child_article_id INTEGER \
-         REFERENCES news_articles(id), title TEXT NOT NULL, poster TEXT, posted_at DATETIME NOT \
-         NULL, flags INTEGER DEFAULT 0, data_flavor TEXT DEFAULT 'text/plain', data TEXT, CHECK \
-         (category_id IS NOT NULL))",
-        "CREATE INDEX idx_articles_category ON news_articles(category_id)",
-        "CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, \
-         object_key TEXT NOT NULL, size INTEGER NOT NULL DEFAULT 0)",
-        "CREATE TABLE file_acl (file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE, \
-         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, PRIMARY KEY (file_id, \
-         user_id))",
-        "CREATE INDEX idx_file_acl_user_file ON file_acl (user_id, file_id)",
-        "CREATE INDEX idx_bundles_name_parent ON news_bundles(name, parent_bundle_id)",
-        "INSERT INTO __diesel_schema_migrations (version) VALUES ('00000000000000'), \
-         ('00000000000001'), ('00000000000002'), ('00000000000003'), ('00000000000004'), \
-         ('00000000000005')",
-        "INSERT INTO users (id, username, password) VALUES (1, 'alice', 'hash')",
-        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'Bundle')",
-        "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'General', 1)",
-        "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
-         next_article_id, first_child_article_id, title, poster, posted_at, flags, data_flavor, \
-         data) VALUES (1, 1, NULL, NULL, NULL, NULL, 'First', 'alice', '2026-04-13 00:00:00', 0, \
-         'text/plain', 'hello')",
-    ] {
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn run_statements(conn: &mut DbConnection, statements: &[&str]) -> TestResult<()> {
+    for &statement in statements {
         sql_query(statement).execute(conn).await?;
     }
     Ok(())
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
+    let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
+        .get_result::<BundleBackfillRow>(conn)
+        .await?;
+    assert!(bundle.guid.is_some());
+    assert!(bundle.created_at.is_some());
+
+    let category =
+        sql_query("SELECT guid, add_sn, delete_sn, created_at FROM news_categories WHERE id = 1")
+            .get_result::<CategoryBackfillRow>(conn)
+            .await?;
+    assert!(category.guid.is_some());
+    assert_eq!(category.add_sn, Some(1));
+    assert_eq!(category.delete_sn, Some(0));
+    assert!(category.created_at.is_some());
+    Ok(())
+}
+
+#[cfg(feature = "sqlite")]
+async fn setup_sqlite_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
+    run_statements(
+        conn,
+        &[
+            "CREATE TABLE __diesel_schema_migrations (version VARCHAR(50) PRIMARY KEY NOT NULL, \
+             run_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL \
+             UNIQUE, password TEXT NOT NULL)",
+            "CREATE TABLE news_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT \
+             NULL UNIQUE, bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE)",
+            "CREATE TABLE news_bundles (id INTEGER PRIMARY KEY AUTOINCREMENT, parent_bundle_id \
+             INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE, name TEXT NOT NULL, \
+             UNIQUE(name, parent_bundle_id))",
+            "CREATE INDEX idx_bundles_parent ON news_bundles(parent_bundle_id)",
+            "CREATE INDEX idx_categories_bundle ON news_categories(bundle_id)",
+            "CREATE TABLE news_articles (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id \
+             INTEGER NOT NULL REFERENCES news_categories(id) ON DELETE CASCADE, parent_article_id \
+             INTEGER REFERENCES news_articles(id), prev_article_id INTEGER REFERENCES \
+             news_articles(id), next_article_id INTEGER REFERENCES news_articles(id), \
+             first_child_article_id INTEGER REFERENCES news_articles(id), title TEXT NOT NULL, \
+             poster TEXT, posted_at DATETIME NOT NULL, flags INTEGER DEFAULT 0, data_flavor TEXT \
+             DEFAULT 'text/plain', data TEXT, CHECK (category_id IS NOT NULL))",
+            "CREATE INDEX idx_articles_category ON news_articles(category_id)",
+            "CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, \
+             object_key TEXT NOT NULL, size INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE file_acl (file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE \
+             CASCADE, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, PRIMARY \
+             KEY (file_id, user_id))",
+            "CREATE INDEX idx_file_acl_user_file ON file_acl (user_id, file_id)",
+            "CREATE INDEX idx_bundles_name_parent ON news_bundles(name, parent_bundle_id)",
+            "INSERT INTO __diesel_schema_migrations (version) VALUES ('00000000000000'), \
+             ('00000000000001'), ('00000000000002'), ('00000000000003'), ('00000000000004'), \
+             ('00000000000005')",
+            "INSERT INTO users (id, username, password) VALUES (1, 'alice', 'hash')",
+            "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'Bundle')",
+            "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'General', 1)",
+            "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
+             next_article_id, first_child_article_id, title, poster, posted_at, flags, \
+             data_flavor, data) VALUES (1, 1, NULL, NULL, NULL, NULL, 'First', 'alice', \
+             '2026-04-13 00:00:00', 0, 'text/plain', 'hello')",
+        ],
+    )
+    .await
 }
 
 #[cfg(feature = "sqlite")]
@@ -166,67 +194,54 @@ async fn sqlite_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     setup_sqlite_legacy_schema(&mut conn).await?;
     apply_migrations(&mut conn, "").await?;
 
-    let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
-        .get_result::<BundleBackfillRow>(&mut conn)
-        .await?;
-    assert!(bundle.guid.is_some());
-    assert!(bundle.created_at.is_some());
-
-    let category =
-        sql_query("SELECT guid, add_sn, delete_sn, created_at FROM news_categories WHERE id = 1")
-            .get_result::<CategoryBackfillRow>(&mut conn)
-            .await?;
-    assert!(category.guid.is_some());
-    assert_eq!(category.add_sn, Some(1));
-    assert_eq!(category.delete_sn, Some(0));
-    assert!(category.created_at.is_some());
-    Ok(())
+    assert_upgrade_backfills(&mut conn).await
 }
 
 #[cfg(feature = "postgres")]
 async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
-    for statement in [
-        "CREATE TABLE __diesel_schema_migrations (version VARCHAR(50) PRIMARY KEY NOT NULL, \
-         run_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
-        "CREATE TABLE users (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, username \
-         TEXT NOT NULL UNIQUE, password TEXT NOT NULL)",
-        "CREATE TABLE news_categories (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
-         name TEXT NOT NULL UNIQUE, bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE \
-         CASCADE)",
-        "CREATE TABLE news_bundles (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
-         parent_bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE, name TEXT NOT \
-         NULL, UNIQUE(name, parent_bundle_id))",
-        "CREATE INDEX idx_bundles_parent ON news_bundles(parent_bundle_id)",
-        "CREATE INDEX idx_categories_bundle ON news_categories(bundle_id)",
-        "CREATE TABLE news_articles (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
-         category_id INTEGER NOT NULL REFERENCES news_categories(id) ON DELETE CASCADE, \
-         parent_article_id INTEGER REFERENCES news_articles(id), prev_article_id INTEGER \
-         REFERENCES news_articles(id), next_article_id INTEGER REFERENCES news_articles(id), \
-         first_child_article_id INTEGER REFERENCES news_articles(id), title TEXT NOT NULL, poster \
-         TEXT, posted_at TIMESTAMP NOT NULL, flags INTEGER DEFAULT 0, data_flavor TEXT DEFAULT \
-         'text/plain', data TEXT, CHECK (category_id IS NOT NULL))",
-        "CREATE INDEX idx_articles_category ON news_articles(category_id)",
-        "CREATE TABLE files (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, name TEXT \
-         NOT NULL UNIQUE, object_key TEXT NOT NULL, size BIGINT NOT NULL DEFAULT 0)",
-        "CREATE TABLE file_acl (file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE, \
-         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, PRIMARY KEY (file_id, \
-         user_id))",
-        "CREATE INDEX idx_file_acl_user_file ON file_acl (user_id, file_id)",
-        "CREATE INDEX idx_bundles_name_parent ON news_bundles(name, parent_bundle_id)",
-        "INSERT INTO __diesel_schema_migrations (version) VALUES ('00000000000000'), \
-         ('00000000000001'), ('00000000000002'), ('00000000000003'), ('00000000000004'), \
-         ('00000000000005')",
-        "INSERT INTO users (id, username, password) VALUES (1, 'alice', 'hash')",
-        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'Bundle')",
-        "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'General', 1)",
-        "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
-         next_article_id, first_child_article_id, title, poster, posted_at, flags, data_flavor, \
-         data) VALUES (1, 1, NULL, NULL, NULL, NULL, 'First', 'alice', '2026-04-13 00:00:00', 0, \
-         'text/plain', 'hello')",
-    ] {
-        sql_query(statement).execute(conn).await?;
-    }
-    Ok(())
+    run_statements(
+        conn,
+        &[
+            "CREATE TABLE __diesel_schema_migrations (version VARCHAR(50) PRIMARY KEY NOT NULL, \
+             run_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE users (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
+             username TEXT NOT NULL UNIQUE, password TEXT NOT NULL)",
+            "CREATE TABLE news_categories (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS \
+             IDENTITY, name TEXT NOT NULL UNIQUE, bundle_id INTEGER REFERENCES news_bundles(id) \
+             ON DELETE CASCADE)",
+            "CREATE TABLE news_bundles (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
+             parent_bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE, name TEXT \
+             NOT NULL, UNIQUE(name, parent_bundle_id))",
+            "CREATE INDEX idx_bundles_parent ON news_bundles(parent_bundle_id)",
+            "CREATE INDEX idx_categories_bundle ON news_categories(bundle_id)",
+            "CREATE TABLE news_articles (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
+             category_id INTEGER NOT NULL REFERENCES news_categories(id) ON DELETE CASCADE, \
+             parent_article_id INTEGER REFERENCES news_articles(id), prev_article_id INTEGER \
+             REFERENCES news_articles(id), next_article_id INTEGER REFERENCES news_articles(id), \
+             first_child_article_id INTEGER REFERENCES news_articles(id), title TEXT NOT NULL, \
+             poster TEXT, posted_at TIMESTAMP NOT NULL, flags INTEGER DEFAULT 0, data_flavor TEXT \
+             DEFAULT 'text/plain', data TEXT, CHECK (category_id IS NOT NULL))",
+            "CREATE INDEX idx_articles_category ON news_articles(category_id)",
+            "CREATE TABLE files (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, name \
+             TEXT NOT NULL UNIQUE, object_key TEXT NOT NULL, size BIGINT NOT NULL DEFAULT 0)",
+            "CREATE TABLE file_acl (file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE \
+             CASCADE, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, PRIMARY \
+             KEY (file_id, user_id))",
+            "CREATE INDEX idx_file_acl_user_file ON file_acl (user_id, file_id)",
+            "CREATE INDEX idx_bundles_name_parent ON news_bundles(name, parent_bundle_id)",
+            "INSERT INTO __diesel_schema_migrations (version) VALUES ('00000000000000'), \
+             ('00000000000001'), ('00000000000002'), ('00000000000003'), ('00000000000004'), \
+             ('00000000000005')",
+            "INSERT INTO users (id, username, password) VALUES (1, 'alice', 'hash')",
+            "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'Bundle')",
+            "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'General', 1)",
+            "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
+             next_article_id, first_child_article_id, title, poster, posted_at, flags, \
+             data_flavor, data) VALUES (1, 1, NULL, NULL, NULL, NULL, 'First', 'alice', \
+             '2026-04-13 00:00:00', 0, 'text/plain', 'hello')",
+        ],
+    )
+    .await
 }
 
 #[cfg(feature = "postgres")]
@@ -337,22 +352,7 @@ fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
         setup_postgres_legacy_schema(&mut conn).await?;
         apply_migrations(&mut conn, &url).await?;
 
-        let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
-            .get_result::<BundleBackfillRow>(&mut conn)
-            .await?;
-        assert!(bundle.guid.is_some());
-        assert!(bundle.created_at.is_some());
-
-        let category = sql_query(
-            "SELECT guid, add_sn, delete_sn, created_at FROM news_categories WHERE id = 1",
-        )
-        .get_result::<CategoryBackfillRow>(&mut conn)
-        .await?;
-        assert!(category.guid.is_some());
-        assert_eq!(category.add_sn, Some(1));
-        assert_eq!(category.delete_sn, Some(0));
-        assert!(category.created_at.is_some());
-        Ok(())
+        assert_upgrade_backfills(&mut conn).await
     })
 }
 
