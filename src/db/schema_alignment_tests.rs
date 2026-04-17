@@ -260,7 +260,6 @@ fn start_embedded_postgres_db() -> TestResult<Option<PostgresTestDb>> {
     }
 }
 
-
 #[cfg(feature = "postgres")]
 fn with_postgres_test_db<F, Fut>(test: F) -> TestResult<()>
 where
