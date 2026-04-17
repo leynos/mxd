@@ -5,33 +5,37 @@
 //! the connection handler to drive database operations and build reply
 //! transactions.
 
-use std::{future::Future, net::SocketAddr};
+use std::net::SocketAddr;
 
 mod handlers;
+mod parsing;
+mod support;
 
 use diesel_async::pooled_connection::bb8::RunError;
+use handlers::{
+    ClientInfoContext,
+    LoginContext,
+    PresenceContext,
+    SessionPresenceContext,
+    UserListContext,
+};
+use parsing::parse_command;
+pub(crate) use support::{
+    CommandContext,
+    UserInfoUpdate,
+    check_privilege_and_run,
+    privilege_error_reply,
+};
 use thiserror::Error;
 
 use crate::{
     db::DbPool,
-    field_id::FieldId,
     handler::PrivilegeError,
-    header_util::reply_header,
     login::LoginRequest,
     news_handlers::{self, ArticleDataRequest, PostArticleRequest},
-    privileges::Privileges,
-    server::outbound::{OutboundError, OutboundMessaging, OutboundTransport},
-    transaction::{
-        FrameHeader,
-        Transaction,
-        TransactionError,
-        decode_params_map,
-        first_param_i32,
-        first_param_string,
-        required_param_i32,
-        required_param_string,
-    },
-    transaction_type::TransactionType,
+    presence::PresenceRegistry,
+    server::outbound::OutboundError,
+    transaction::{FrameHeader, Transaction, TransactionError},
 };
 
 /// Error code used when authentication is required but not present.
@@ -70,49 +74,6 @@ pub enum CommandError {
     Outbound(#[from] OutboundError),
 }
 
-/// Execution context for command processing with outbound adapters.
-pub(crate) struct CommandContext<'a> {
-    /// Remote peer address.
-    pub peer: SocketAddr,
-    /// Database connection pool.
-    pub pool: DbPool,
-    /// Mutable session state for the connection.
-    pub session: &'a mut crate::handler::Session,
-    /// Outbound transport for replies.
-    pub transport: &'a mut dyn OutboundTransport,
-    /// Outbound messaging adapter for pushes.
-    pub messaging: &'a dyn OutboundMessaging,
-}
-
-/// Build an error reply for a privilege check failure.
-pub(crate) fn privilege_error_reply(header: &FrameHeader, err: PrivilegeError) -> Transaction {
-    let error_code = match err {
-        PrivilegeError::NotAuthenticated => ERR_NOT_AUTHENTICATED,
-        PrivilegeError::InsufficientPrivileges(_) => ERR_INSUFFICIENT_PRIVILEGES,
-    };
-    Transaction {
-        header: reply_header(header, error_code, 0),
-        payload: Vec::new(),
-    }
-}
-
-/// Check privileges and run a handler, mapping failures to error replies.
-pub(crate) async fn check_privilege_and_run<F, Fut>(
-    session: &crate::handler::Session,
-    header: &FrameHeader,
-    privilege: Privileges,
-    handler: F,
-) -> Result<Transaction, CommandError>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = Result<Transaction, CommandError>>,
-{
-    if let Err(e) = session.require_privilege(privilege) {
-        return Ok(privilege_error_reply(header, e));
-    }
-    handler().await
-}
-
 /// High-level command representation parsed from incoming transactions.
 ///
 /// Commands encapsulate the parameters and type information needed to
@@ -123,6 +84,25 @@ pub enum Command {
     Login {
         /// Login request containing credentials and header.
         req: LoginRequest,
+    },
+    /// Request for the list of online users.
+    GetUserNameList {
+        /// Transaction frame header.
+        header: FrameHeader,
+    },
+    /// Request for a user's info text by user id.
+    GetClientInfoText {
+        /// Transaction frame header.
+        header: FrameHeader,
+        /// Target user id.
+        target_user_id: i32,
+    },
+    /// Update the current session's visible user metadata.
+    SetClientUserInfo {
+        /// Transaction frame header.
+        header: FrameHeader,
+        /// Requested metadata changes.
+        update: UserInfoUpdate,
     },
     /// Request for the list of available files.
     GetFileNameList {
@@ -172,122 +152,12 @@ pub enum Command {
     },
 }
 
-/// Parsed login credentials extracted from transaction parameters.
-#[derive(Debug, PartialEq, Eq)]
-struct LoginCredentials {
-    /// Username for authentication.
-    username: String,
-    /// Password for authentication.
-    password: String,
-}
-
-/// Extract username and password from login payload parameters.
-fn parse_login_params(payload: &[u8]) -> Result<LoginCredentials, TransactionError> {
-    let params = decode_params_map(payload)?;
-    Ok(LoginCredentials {
-        username: required_param_string(&params, FieldId::Login)?,
-        password: required_param_string(&params, FieldId::Password)?,
-    })
-}
-
-/// Parse `NewsCategoryNameList` payload fields.
-fn parse_news_category_name_list_params(
-    payload: &[u8],
-    header: FrameHeader,
-) -> Result<Command, TransactionError> {
-    let params = decode_params_map(payload)?;
-    let path = first_param_string(&params, FieldId::NewsPath)?;
-    Ok(Command::GetNewsCategoryNameList { path, header })
-}
-
-/// Parse `NewsArticleNameList` payload fields.
-fn parse_news_article_name_list_params(
-    payload: &[u8],
-    header: FrameHeader,
-) -> Result<Command, TransactionError> {
-    let params = decode_params_map(payload)?;
-    let path = required_param_string(&params, FieldId::NewsPath)?;
-    Ok(Command::GetNewsArticleNameList { path, header })
-}
-
-/// Parse `NewsArticleData` payload fields.
-fn parse_news_article_data_params(
-    payload: &[u8],
-    header: FrameHeader,
-) -> Result<Command, TransactionError> {
-    let params = decode_params_map(payload)?;
-    let path = required_param_string(&params, FieldId::NewsPath)?;
-    let article_id = required_param_i32(&params, FieldId::NewsArticleId)?;
-    Ok(Command::GetNewsArticleData {
-        path,
-        article_id,
-        header,
-    })
-}
-
-/// Parse `PostNewsArticle` payload fields.
-///
-/// `NewsArticleFlags` (field 334): `0` = normal post; bit flags may indicate
-/// locked/announcement status per Hotline protocol.
-fn parse_post_news_article_params(
-    payload: &[u8],
-    header: FrameHeader,
-) -> Result<Command, TransactionError> {
-    let params = decode_params_map(payload)?;
-    let path = required_param_string(&params, FieldId::NewsPath)?;
-    let title = required_param_string(&params, FieldId::NewsTitle)?;
-    let flags = first_param_i32(&params, FieldId::NewsArticleFlags)?.unwrap_or(0);
-    let data_flavor = required_param_string(&params, FieldId::NewsDataFlavor)?;
-    let data = required_param_string(&params, FieldId::NewsArticleData)?;
-    Ok(Command::PostNewsArticle {
-        req: PostArticleRequest {
-            path,
-            title,
-            flags,
-            data_flavor,
-            data,
-        },
-        header,
-    })
-}
-
 impl Command {
     /// Convert a [`Transaction`] into a [`Command`].
     ///
     /// # Errors
     /// Returns an error if required parameters are missing or cannot be parsed.
-    pub fn from_transaction(tx: Transaction) -> Result<Self, TransactionError> {
-        let ty = TransactionType::from(tx.header.ty);
-        if ty.rejects_payload(tx.payload.is_empty()) {
-            return Ok(Self::InvalidPayload { header: tx.header });
-        }
-        match ty {
-            TransactionType::Login => {
-                let creds = parse_login_params(&tx.payload)?;
-                Ok(Self::Login {
-                    req: LoginRequest {
-                        username: creds.username,
-                        password: creds.password,
-                        header: tx.header,
-                    },
-                })
-            }
-            TransactionType::GetFileNameList => Ok(Self::GetFileNameList { header: tx.header }),
-            TransactionType::NewsCategoryNameList => {
-                parse_news_category_name_list_params(&tx.payload, tx.header)
-            }
-            TransactionType::NewsArticleNameList => {
-                parse_news_article_name_list_params(&tx.payload, tx.header)
-            }
-            TransactionType::NewsArticleData => {
-                parse_news_article_data_params(&tx.payload, tx.header)
-            }
-            TransactionType::PostNewsArticle => {
-                parse_post_news_article_params(&tx.payload, tx.header)
-            }
-            _ => Ok(Self::Unknown { header: tx.header }),
-        }
-    }
+    pub fn from_transaction(tx: Transaction) -> Result<Self, TransactionError> { parse_command(tx) }
 
     /// Execute the command using the provided context.
     ///
@@ -302,12 +172,14 @@ impl Command {
     ) -> Result<Transaction, CommandError> {
         let mut transport = crate::server::outbound::ReplyBuffer::new();
         let messaging = crate::server::outbound::NoopOutboundMessaging;
+        let presence = PresenceRegistry::default();
         self.process_with_outbound(CommandContext {
             peer,
             pool,
             session,
             transport: &mut transport,
             messaging: &messaging,
+            presence: &presence,
         })
         .await?;
         transport
@@ -324,18 +196,98 @@ impl Command {
         self,
         context: CommandContext<'_>,
     ) -> Result<(), CommandError> {
+        match self {
+            Self::Login { .. }
+            | Self::GetUserNameList { .. }
+            | Self::GetClientInfoText { .. }
+            | Self::SetClientUserInfo { .. } => self.process_presence_command(context).await,
+            command => {
+                let CommandContext {
+                    peer,
+                    pool,
+                    session,
+                    transport,
+                    ..
+                } = context;
+                let reply = command.execute(peer, pool, session).await?;
+                transport.send_reply(reply)?;
+                Ok(())
+            }
+        }
+    }
+
+    async fn process_presence_command(
+        self,
+        context: CommandContext<'_>,
+    ) -> Result<(), CommandError> {
         let CommandContext {
             peer,
             pool,
             session,
             transport,
             messaging,
+            presence,
         } = context;
-        let reply = self.execute(peer, pool, session).await?;
-        // TODO: use `messaging` for server-initiated notifications.
-        let _ = messaging;
-        transport.send_reply(reply)?;
-        Ok(())
+        match self {
+            Self::Login { req } => {
+                Self::process_login_with_presence(
+                    LoginContext {
+                        peer,
+                        pool,
+                        session,
+                        presence: PresenceContext {
+                            transport,
+                            messaging,
+                            presence,
+                        },
+                    },
+                    req,
+                )
+                .await
+            }
+            Self::GetUserNameList { header } => Self::process_get_user_name_list(
+                UserListContext {
+                    session,
+                    transport,
+                    presence,
+                },
+                &header,
+            ),
+            Self::GetClientInfoText {
+                header,
+                target_user_id,
+            } => {
+                Self::process_get_client_info_text(
+                    ClientInfoContext {
+                        pool,
+                        session,
+                        transport,
+                        presence,
+                    },
+                    header,
+                    target_user_id,
+                )
+                .await
+            }
+            Self::SetClientUserInfo { header, update } => {
+                Self::process_set_client_user_info(
+                    SessionPresenceContext {
+                        session,
+                        presence: PresenceContext {
+                            transport,
+                            messaging,
+                            presence,
+                        },
+                    },
+                    header,
+                    update,
+                )
+                .await
+            }
+            _ => Err(CommandError::Invariant(
+                "non-presence command passed to presence dispatcher",
+            )),
+        }
     }
 
     async fn execute(
@@ -366,6 +318,11 @@ impl Command {
             Self::PostNewsArticle { header, req } => {
                 news_handlers::process_post_article(pool, session, header, req).await
             }
+            Self::GetUserNameList { .. }
+            | Self::GetClientInfoText { .. }
+            | Self::SetClientUserInfo { .. } => Err(CommandError::Invariant(
+                "presence command should be handled before execute",
+            )),
             Self::InvalidPayload { header } => Ok(Self::process_invalid_payload(header)),
             Self::Unknown { header } => Ok(Self::process_unknown(peer, header)),
         }

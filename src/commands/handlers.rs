@@ -5,21 +5,65 @@
 
 use std::net::SocketAddr;
 
+use tokio::time::{Duration, sleep};
+use tracing::warn;
+
 use super::{
     Command,
     CommandError,
     ERR_INTERNAL_SERVER,
     ERR_INVALID_PAYLOAD,
+    UserInfoUpdate,
     check_privilege_and_run,
+    privilege_error_reply,
 };
 use crate::{
-    db::DbPool,
+    db::{DbPool, get_user_by_id},
     field_id::FieldId,
+    handler::PrivilegeError,
     header_util::reply_header,
     login::{LoginRequest, handle_login},
+    presence::{
+        PresenceRegistry,
+        build_client_info_text_reply,
+        build_notify_change_user,
+        build_user_name_list_reply,
+    },
     privileges::Privileges,
+    server::outbound::{OutboundMessaging, OutboundPriority, OutboundTarget, OutboundTransport},
     transaction::{FrameHeader, Transaction, encode_params},
 };
+
+pub(super) struct PresenceContext<'a> {
+    pub(super) transport: &'a mut dyn OutboundTransport,
+    pub(super) messaging: &'a dyn OutboundMessaging,
+    pub(super) presence: &'a PresenceRegistry,
+}
+
+pub(super) struct LoginContext<'a> {
+    pub(super) peer: SocketAddr,
+    pub(super) pool: DbPool,
+    pub(super) session: &'a mut crate::handler::Session,
+    pub(super) presence: PresenceContext<'a>,
+}
+
+pub(super) struct SessionPresenceContext<'a> {
+    pub(super) session: &'a mut crate::handler::Session,
+    pub(super) presence: PresenceContext<'a>,
+}
+
+pub(super) struct UserListContext<'a> {
+    pub(super) session: &'a crate::handler::Session,
+    pub(super) transport: &'a mut dyn OutboundTransport,
+    pub(super) presence: &'a PresenceRegistry,
+}
+
+pub(super) struct ClientInfoContext<'a> {
+    pub(super) pool: DbPool,
+    pub(super) session: &'a crate::handler::Session,
+    pub(super) transport: &'a mut dyn OutboundTransport,
+    pub(super) presence: &'a PresenceRegistry,
+}
 
 impl Command {
     pub(super) async fn process_login(
@@ -65,6 +109,118 @@ impl Command {
         .await
     }
 
+    pub(super) async fn process_login_with_presence(
+        context: LoginContext<'_>,
+        req: LoginRequest,
+    ) -> Result<(), CommandError> {
+        let LoginContext {
+            peer,
+            pool,
+            session,
+            presence,
+        } = context;
+        let reply = handle_login(peer, session, pool, req).await?;
+        presence.transport.send_reply(reply)?;
+        let Some(snapshot) = session.presence_snapshot() else {
+            return Ok(());
+        };
+        let peer_ids = presence.presence.upsert(snapshot.clone());
+        if peer_ids.is_empty() {
+            return Ok(());
+        }
+        let notification = build_notify_change_user(&snapshot)?;
+        push_to_connections(presence.messaging, &peer_ids, notification).await;
+        Ok(())
+    }
+
+    pub(super) fn process_get_user_name_list(
+        context: UserListContext<'_>,
+        header: &FrameHeader,
+    ) -> Result<(), CommandError> {
+        let UserListContext {
+            session,
+            transport,
+            presence,
+        } = context;
+        if !session.is_online() {
+            transport.send_reply(privilege_error_reply(
+                header,
+                PrivilegeError::NotAuthenticated,
+            ))?;
+            return Ok(());
+        }
+        let reply = build_user_name_list_reply(header, &presence.online_snapshots())?;
+        transport.send_reply(reply)?;
+        Ok(())
+    }
+
+    pub(super) async fn process_get_client_info_text(
+        context: ClientInfoContext<'_>,
+        header: FrameHeader,
+        target_user_id: i32,
+    ) -> Result<(), CommandError> {
+        let ClientInfoContext {
+            pool,
+            session,
+            transport,
+            presence,
+        } = context;
+        let header_reply = header.clone();
+        let reply = check_privilege_and_run(
+            session,
+            &header,
+            Privileges::GET_CLIENT_INFO,
+            || async move {
+                if let Some(snapshot) = presence.snapshot_for_user_id(target_user_id) {
+                    return build_client_info_text_reply(&header_reply, &snapshot.display_name, "")
+                        .map_err(CommandError::from);
+                }
+                let mut conn = pool.get().await?;
+                match get_user_by_id(&mut conn, target_user_id).await? {
+                    Some(user) => build_client_info_text_reply(&header_reply, &user.username, "")
+                        .map_err(CommandError::from),
+                    None => Ok(Transaction {
+                        header: reply_header(&header_reply, ERR_INTERNAL_SERVER, 0),
+                        payload: Vec::new(),
+                    }),
+                }
+            },
+        )
+        .await?;
+        transport.send_reply(reply)?;
+        Ok(())
+    }
+
+    pub(super) async fn process_set_client_user_info(
+        context: SessionPresenceContext<'_>,
+        header: FrameHeader,
+        update: UserInfoUpdate,
+    ) -> Result<(), CommandError> {
+        let SessionPresenceContext { session, presence } = context;
+        if let Err(error) = session.require_authenticated() {
+            presence
+                .transport
+                .send_reply(privilege_error_reply(&header, error))?;
+            return Ok(());
+        }
+
+        apply_user_info_update(session, update);
+        presence
+            .transport
+            .send_reply(empty_success_reply(&header))?;
+
+        let Some(snapshot) = session.presence_snapshot() else {
+            return Ok(());
+        };
+        let peer_ids = presence.presence.upsert(snapshot.clone());
+        if peer_ids.is_empty() {
+            return Ok(());
+        }
+        let notification = build_notify_change_user(&snapshot)?;
+        push_to_connections(presence.messaging, &peer_ids, notification).await;
+        Ok(())
+    }
+
     #[expect(
         clippy::needless_pass_by_value,
         reason = "signature required by Command.process dispatch"
@@ -91,4 +247,83 @@ fn handle_unknown(peer: SocketAddr, header: &FrameHeader) -> Transaction {
         header: reply_header(header, ERR_INTERNAL_SERVER, 0),
         payload: Vec::new(),
     }
+}
+
+fn empty_success_reply(header: &FrameHeader) -> Transaction {
+    Transaction {
+        header: reply_header(header, 0, 0),
+        payload: Vec::new(),
+    }
+}
+
+fn apply_user_info_update(session: &mut crate::handler::Session, update: UserInfoUpdate) {
+    if let Some(display_name) = update.display_name {
+        session.display_name = display_name;
+    }
+    if let Some(icon_id) = update.icon_id {
+        session.icon_id = icon_id;
+    }
+    if let Some(options) = update.options {
+        session.connection_flags = options;
+        if !options.has_auto_response() {
+            session.auto_response = None;
+        }
+    }
+    if let Some(auto_response) = update.auto_response {
+        session.auto_response = Some(auto_response);
+    }
+}
+
+async fn push_to_connections(
+    messaging: &dyn OutboundMessaging,
+    connection_ids: &[crate::server::outbound::OutboundConnectionId],
+    message: Transaction,
+) {
+    for connection_id in connection_ids {
+        push_to_connection(messaging, *connection_id, message.clone()).await;
+    }
+}
+
+async fn push_to_connection(
+    messaging: &dyn OutboundMessaging,
+    connection_id: crate::server::outbound::OutboundConnectionId,
+    message: Transaction,
+) {
+    if let Err(error) = push_with_retry(messaging, connection_id, message).await {
+        warn!(
+            ?error,
+            target = connection_id.as_u64(),
+            "presence notification delivery failed"
+        );
+    }
+}
+
+async fn push_with_retry(
+    messaging: &dyn OutboundMessaging,
+    connection_id: crate::server::outbound::OutboundConnectionId,
+    message: Transaction,
+) -> Result<(), crate::server::outbound::OutboundError> {
+    const RETRY_ATTEMPTS: usize = 5;
+    const RETRY_DELAY: Duration = Duration::from_millis(50);
+
+    for attempt in 0..RETRY_ATTEMPTS {
+        match messaging
+            .push(
+                OutboundTarget::Connection(connection_id),
+                message.clone(),
+                OutboundPriority::High,
+            )
+            .await
+        {
+            Ok(()) => return Ok(()),
+            Err(crate::server::outbound::OutboundError::TargetUnavailable)
+                if attempt + 1 < RETRY_ATTEMPTS =>
+            {
+                sleep(RETRY_DELAY).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(crate::server::outbound::OutboundError::TargetUnavailable)
 }

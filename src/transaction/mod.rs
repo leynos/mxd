@@ -32,8 +32,10 @@ pub use params::{
     encode_params,
     first_param_i32,
     first_param_string,
+    first_param_u32,
     required_param_i32,
     required_param_string,
+    required_param_u32,
     validate_payload,
     validate_payload_parts,
 };

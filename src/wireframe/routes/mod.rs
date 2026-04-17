@@ -37,6 +37,7 @@ use crate::transaction::Transaction;
 use crate::wireframe::codec::HotlineTransaction;
 use crate::{
     db::DbPool,
+    presence::PresenceRegistry,
     server::outbound::OutboundMessaging,
     transaction::FrameHeader,
     wireframe::router::{RouteContext as RouterRouteContext, WireframeRouter},
@@ -164,6 +165,7 @@ pub(crate) struct TransactionMiddleware {
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
+    presence: Arc<PresenceRegistry>,
 }
 
 /// Construction parameters for [`TransactionMiddleware`].
@@ -178,6 +180,8 @@ pub(crate) struct TransactionMiddlewareConfig {
     pub(crate) peer: SocketAddr,
     /// Outbound messaging adapter for push notifications.
     pub(crate) messaging: Arc<dyn OutboundMessaging>,
+    /// Shared online presence registry.
+    pub(crate) presence: Arc<PresenceRegistry>,
 }
 
 impl TransactionMiddleware {
@@ -190,6 +194,7 @@ impl TransactionMiddleware {
             session: config.session,
             peer: config.peer,
             messaging: config.messaging,
+            presence: config.presence,
         }
     }
 }
@@ -202,6 +207,7 @@ struct TransactionHandler {
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
+    presence: Arc<PresenceRegistry>,
 }
 
 #[async_trait]
@@ -219,6 +225,7 @@ impl Service for TransactionHandler {
                         pool: self.pool.clone(),
                         session: &mut session_guard,
                         messaging: self.messaging.as_ref(),
+                        presence: self.presence.as_ref(),
                     },
                 )
                 .await
@@ -245,6 +252,7 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
             session: Arc::clone(&self.session),
             peer: self.peer,
             messaging: Arc::clone(&self.messaging),
+            presence: Arc::clone(&self.presence),
         };
         HandlerService::from_service(id, wrapped)
     }

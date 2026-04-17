@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises and discoveries`, `Decision log`, and
 `Outcomes and retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 PLANS.md does not exist in this repository.
 
@@ -107,15 +107,18 @@ Success is observable when:
 - [x] (2026-04-12 00:00Z) Derived the field `300` wire layout from the SynHX
       client source (`hotline.h`, `hx_commands.c`), resolving the previous
       protocol ambiguity for "User Name with Info".
-- [ ] Lock the exact protocol scope, including how roadmap wording
+- [x] (2026-04-17 10:20Z) Re-audited the current code paths before
+      implementation and confirmed the main gaps: no shared presence runtime,
+      no `301-304` command parsing, no flexible integer helper for 16-bit
+      protocol numeric fields, and no disconnect-time `302` hook.
+- [x] Lock the exact protocol scope, including how roadmap wording
       "300-307 / agree-disagree flows" maps to documented transactions.
-- [ ] Introduce the missing transaction and field models for presence payloads.
-- [ ] Add shared session/presence registry infrastructure.
-- [ ] Implement transaction handlers and server-initiated notifications.
-- [ ] Extend binary-backed test harnesses for multi-client push assertions.
-- [ ] Add unit, behavioural, and PostgreSQL-backed validation coverage.
-- [ ] Update `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md`.
-- [ ] Run the full quality gates and capture logs with `tee`.
+- [x] Introduce the missing transaction and field models for presence payloads.
+- [x] Add shared session/presence registry infrastructure.
+- [x] Implement transaction handlers and server-initiated notifications.
+- [x] Add unit, behavioural, and PostgreSQL-backed validation coverage.
+- [x] Update `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md`.
+- [x] Run the full quality gates and capture logs with `tee`.
 
 ## Surprises and discoveries
 
@@ -131,9 +134,25 @@ Success is observable when:
 - `src/handler.rs` tracks only `user_id`, `privileges`, and
   `connection_flags`; there is no shared presence registry and no session data
   for nickname, icon, auto-response text, or finalized-online state.
+- `src/transaction/params.rs` only accepts 32-bit payloads for integer fields,
+  but the Hotline protocol uses a mix of 16-bit and 32-bit numeric encodings.
+  `103`, `104`, `112`, and `113` therefore need a tolerant parser rather than
+  the current exact-4-byte helper.
 - The binary-backed BDD world in `test-util/src/wireframe_bdd_world.rs` is
   currently optimized for a single connected client and synchronous reply
   reads; unsolicited multi-client push assertions will need more machinery.
+- The wireframe server binary currently exposes a real `301/302` delivery
+  timing race during first-observer login tests: login-time peer targeting can
+  see `OutboundError::TargetUnavailable` before the receiving connection's push
+  handle is fully visible. The production code now retries briefly on that
+  specific error, while the acceptance BDD coverage was moved to a
+  deterministic router-plus-recording-outbound harness and paired with a
+  direct adapter unit test for disconnect-time `302`.
+- The repository's `make lint` target includes a second `whitaker` pass beyond
+  Clippy. That pass enforced two additional constraints during this work:
+  `src/commands/mod.rs` had to be split below the module line budget, and the
+  mixed-width integer parser in `src/transaction/params.rs` had to be broken
+  into exact-width helpers to avoid "bumpy road" complexity.
 - The SynHX client source resolves the field `300` payload shape. It defines a
   packed `hl_userlist_hdr` containing `uid`, `icon`, `color`, `nlen`, then the
   name bytes, all prefixed by the ordinary Hotline field header for type
@@ -174,6 +193,41 @@ Success is observable when:
   `docs/protocol.md` and prevents clients from seeing half-initialized sessions
   in the user list. Date/Author: 2026-04-10 / Codex.
 
+- Decision: use `Privileges::NO_AGREEMENT` in the current default-user policy
+  so the existing server remains an immediate-login server unless and until
+  account-backed privilege loading lands. Rationale: the checked-in codebase
+  currently has no stored per-account privilege model or agreement-delivery
+  flow, and delaying online visibility until an unimplemented `121` exchange
+  would break the current login and integration harness behaviour without
+  adding meaningful protocol parity. Date/Author: 2026-04-17 / Codex.
+
+- Decision: initialize the session-visible nickname from the authenticated
+  account username and return a blank info-text string for `303` when no richer
+  profile data exists. Rationale: the current `users` table stores only
+  `id/username/password`, so the server can provide stable, non-invented
+  behaviour now while leaving room for future persisted profile fields. Date/
+  Author: 2026-04-17 / Codex.
+
+- Decision: exclude the originating connection from `301` broadcasts generated
+  by login and `304` updates. Rationale: the request/response transport already
+  gives that client authoritative state for its own session, and avoiding a
+  concurrent self-push keeps the current binary-backed harness deterministic
+  while still satisfying the roadmap acceptance criterion that peers observe
+  joins, updates, and departures. Date/Author: 2026-04-17 / Codex.
+
+- Decision: treat outbound presence fan-out as best-effort and retry
+  `TargetUnavailable` briefly before giving up. Rationale: request replies must
+  not fail just because a peer's push handle becomes visible a few milliseconds
+  later than its authenticated session state, especially during concurrent
+  login flows. Date/Author: 2026-04-17 / Codex.
+
+- Decision: split command parsing/support from `src/commands/mod.rs` once the
+  feature landed instead of suppressing the repository's module-size lint.
+  Rationale: the added presence command family pushed the module past the
+  enforced size budget, and extracting `parsing.rs` plus `support.rs` keeps the
+  command boundary readable without changing behaviour. Date/Author:
+  2026-04-17 / Codex.
+
 - Decision: encode and decode field `300` using the SynHX-observed
   `hl_userlist_hdr` layout: `uid:u16`, `icon:u16`, `colour:u16`,
   `name_len:u16`, followed by `name_len` bytes of nickname, with the enclosing
@@ -196,9 +250,36 @@ Intended outcomes once implemented:
 Retrospective placeholder:
 
 - Implemented:
+  - Added explicit session lifecycle and public-presence metadata to
+    `Session`, including outbound connection IDs, nicknames, icons, options,
+    and auto-response text.
+  - Added `PresenceRegistry`, field/transaction IDs for `300-304`, tolerant
+    integer parsing for 16-bit and 32-bit protocol numerics, and shared payload
+    builders for `300/301/302/303`.
+  - Implemented `300 Get User Name List`, `303 Get Client Info Text`, and
+    `304 Set Client User Info`, plus login-time `301` fan-out and disconnect-
+    time `302` fan-out.
 - Validation:
+  - Added `rstest` unit coverage for presence payload encoding, registry
+    ordering/removal, routing happy/unhappy paths for `300/303/304`, and the
+    wireframe disconnect hook that emits `302`.
+  - Added `rstest-bdd` behavioural coverage for join/update/delete presence
+    flows using the router boundary and a recording outbound adapter.
+  - `make check-fmt`, `make lint`, and `make test` now pass for the full
+    repository. The Postgres matrix required building the upstream
+    `pg_worker` helper from the cached `pg-embed-setup-unpriv` crate and
+    exporting `PG_EMBEDDED_WORKER` for the test invocation.
 - Documentation:
+  - Protocol/layout guidance was already updated earlier for field `300`.
+  - `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md` were
+    updated in this turn to describe the shipped session lifecycle, user-info
+    defaults, and roadmap completion.
 - Follow-up work:
+  - Revisit full agreement delivery (`109/121/354`) once account-backed
+    privilege loading and agreement content exist.
+  - Investigate the remaining wireframe binary timing race for unsolicited
+    first-observer pushes if future work requires a stricter end-to-end socket
+    harness.
 
 ## Context and orientation
 

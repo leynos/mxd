@@ -24,6 +24,7 @@ use crate::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    presence::PresenceRegistry,
     server::outbound::NoopOutboundMessaging,
     transaction::parse_transaction,
     transaction_type::TransactionType,
@@ -49,6 +50,7 @@ fn setup_middleware_test(
         .parse()
         .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
     let messaging = Arc::new(NoopOutboundMessaging);
+    let presence = Arc::new(PresenceRegistry::default());
     let router = WireframeRouter::new(
         Arc::new(XorCompatibility::disabled()),
         Arc::new(ClientCompatibility::from_handshake(
@@ -61,6 +63,7 @@ fn setup_middleware_test(
         session,
         peer,
         messaging,
+        presence,
     });
 
     let calls = Arc::new(AtomicUsize::new(0));

@@ -2178,13 +2178,27 @@ this. Our plan:
   `colour:u16`, `name_len:u16`, then `name_len` bytes of nickname. We can
   generate this from active sessions or by querying `chat_participants` of the
   Lobby room. SynHX also accepts an optional chat-subject field in the same
-  reply for the main lobby.
+  reply for the main lobby. MXD now generates the roster from a shared runtime
+  `PresenceRegistry` keyed by outbound connection ID rather than from database
+  state.
 
-- Server-initiated 301 (Notify Add User): when someone logs in, send others a
-  message with their user ID, icon, colour / flags, and username. Similarly 302
-  (Notify Remove User) on logout. The code to do this will likely live in the
-  login/logout flow, not in chat per se, but it’s part of the “presence”
-  subsystem which is closely tied to chat.
+- Server-initiated 301 (Notify Change User): when someone logs in, send the
+  other online clients a message with their user ID, icon, colour / flags, and
+  username. The same transaction is reused for later session-visible changes
+  from `304 Set Client User Info`. 302 (Notify Remove User) is emitted after a
+  connection is removed from the presence registry on disconnect, so recipients
+  see the post-removal roster.
+
+- Session lifecycle: MXD now models `Unauthenticated`, `PendingAgreement`, and
+  `Online` phases explicitly. The current default-user privilege set includes
+  `NO_AGREEMENT`, so authenticated users become publicly online immediately
+  after login unless future account-backed privilege loading says otherwise.
+
+- User-visible defaults: until richer account metadata exists, login seeds the
+  session nickname from the account username, icon `0`, and blank info text for
+  `303 Get Client Info Text`. `304 Set Client User Info` updates only in-memory
+  session state; it does not persist nickname, icon, options, or auto-response
+  text back to the `users` table.
 
 **Idle/Away**: Hotline also had “idle” and “away” statuses (with transactions
 303 to update user flags). We foresee adding fields to Session like `is_away`

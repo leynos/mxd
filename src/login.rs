@@ -50,10 +50,10 @@ pub(crate) async fn handle_login(
     let user = get_user_by_name(&mut conn, &req.username).await?;
     let (error, payload) = if let Some(u) = user {
         if verify_password(&u.password, &req.password) {
-            session.user_id = Some(u.id);
             // Grant default user privileges on successful authentication.
             // TODO(task 5.1): Load privileges from user account in database.
-            session.privileges = Privileges::default_user();
+            let privileges = Privileges::default_user();
+            session.apply_login(u.id, &u.username, privileges);
             let params = encode_params(&[(
                 FieldId::Version,
                 &crate::protocol::CLIENT_VERSION.to_be_bytes(),
@@ -141,6 +141,9 @@ mod tests {
         }
         if session.user_id.is_some() {
             return Err(anyhow!("session should remain unauthenticated"));
+        }
+        if session.is_online() {
+            return Err(anyhow!("session should not become online"));
         }
         Ok(())
     }

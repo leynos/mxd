@@ -8,6 +8,14 @@ pub const FILE_NAME_LIST_ID: u16 = 200;
 pub const DOWNLOAD_BANNER_ID: u16 = 212;
 /// Transaction type identifier for user name list requests.
 pub const USER_NAME_LIST_ID: u16 = 300;
+/// Transaction type identifier for notify-change-user transactions.
+pub const NOTIFY_CHANGE_USER_ID: u16 = 301;
+/// Transaction type identifier for notify-delete-user transactions.
+pub const NOTIFY_DELETE_USER_ID: u16 = 302;
+/// Transaction type identifier for get-client-info transactions.
+pub const GET_CLIENT_INFO_TEXT_ID: u16 = 303;
+/// Transaction type identifier for set-client-user-info transactions.
+pub const SET_CLIENT_USER_INFO_ID: u16 = 304;
 
 /// Transaction types supported by the Hotline protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +34,14 @@ pub enum TransactionType {
     DownloadBanner,
     /// Request the list of logged-in users.
     GetUserNameList,
+    /// Server notification that a user's public data changed.
+    NotifyChangeUser,
+    /// Server notification that a user left the online roster.
+    NotifyDeleteUser,
+    /// Request another user's public info text.
+    GetClientInfoText,
+    /// Update the current session's public user info.
+    SetClientUserInfo,
     /// User access privileges response.
     UserAccess,
     /// Request for news category names.
@@ -83,6 +99,10 @@ impl From<u16> for TransactionType {
             FILE_NAME_LIST_ID => Self::GetFileNameList,
             DOWNLOAD_BANNER_ID => Self::DownloadBanner,
             USER_NAME_LIST_ID => Self::GetUserNameList,
+            NOTIFY_CHANGE_USER_ID => Self::NotifyChangeUser,
+            NOTIFY_DELETE_USER_ID => Self::NotifyDeleteUser,
+            GET_CLIENT_INFO_TEXT_ID => Self::GetClientInfoText,
+            SET_CLIENT_USER_INFO_ID => Self::SetClientUserInfo,
             354 => Self::UserAccess,
             370 => Self::NewsCategoryNameList,
             371 => Self::NewsArticleNameList,
@@ -103,6 +123,10 @@ impl From<TransactionType> for u16 {
             TransactionType::GetFileNameList => FILE_NAME_LIST_ID,
             TransactionType::DownloadBanner => DOWNLOAD_BANNER_ID,
             TransactionType::GetUserNameList => USER_NAME_LIST_ID,
+            TransactionType::NotifyChangeUser => NOTIFY_CHANGE_USER_ID,
+            TransactionType::NotifyDeleteUser => NOTIFY_DELETE_USER_ID,
+            TransactionType::GetClientInfoText => GET_CLIENT_INFO_TEXT_ID,
+            TransactionType::SetClientUserInfo => SET_CLIENT_USER_INFO_ID,
             TransactionType::UserAccess => 354,
             TransactionType::NewsCategoryNameList => 370,
             TransactionType::NewsArticleNameList => 371,
@@ -123,6 +147,10 @@ impl std::fmt::Display for TransactionType {
             Self::GetFileNameList => f.write_str("GetFileNameList"),
             Self::DownloadBanner => f.write_str("DownloadBanner"),
             Self::GetUserNameList => f.write_str("GetUserNameList"),
+            Self::NotifyChangeUser => f.write_str("NotifyChangeUser"),
+            Self::NotifyDeleteUser => f.write_str("NotifyDeleteUser"),
+            Self::GetClientInfoText => f.write_str("GetClientInfoText"),
+            Self::SetClientUserInfo => f.write_str("SetClientUserInfo"),
             Self::UserAccess => f.write_str("UserAccess"),
             Self::NewsCategoryNameList => f.write_str("NewsCategoryNameList"),
             Self::NewsArticleNameList => f.write_str("NewsArticleNameList"),

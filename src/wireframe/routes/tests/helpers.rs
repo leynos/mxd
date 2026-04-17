@@ -10,8 +10,9 @@ use crate::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    presence::{PresenceRegistry, SessionPhase},
     privileges::Privileges,
-    server::outbound::NoopOutboundMessaging,
+    server::outbound::{NoopOutboundMessaging, OutboundConnectionId},
     transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{
@@ -31,6 +32,8 @@ pub(super) struct RouteTestContext {
     peer: SocketAddr,
     /// Wireframe router owning compatibility state.
     router: WireframeRouter,
+    /// Shared presence registry used during routing tests.
+    presence: PresenceRegistry,
 }
 
 impl RouteTestContext {
@@ -53,9 +56,13 @@ impl RouteTestContext {
         );
         Ok(Self {
             pool,
-            session: Session::default(),
+            session: Session {
+                outbound_connection_id: Some(OutboundConnectionId::new(1)),
+                ..Session::default()
+            },
             peer,
             router,
+            presence: PresenceRegistry::default(),
         })
     }
 
@@ -65,16 +72,28 @@ impl RouteTestContext {
     /// handlers requiring authentication will succeed. Use this before testing
     /// privileged operations without going through the full login flow.
     pub(super) fn authenticate(&mut self, user_id: i32) {
+        let Ok(connection_id) = u64::try_from(user_id) else {
+            panic!("test user id must be non-negative");
+        };
         self.session.user_id = Some(user_id);
         self.session.privileges = Privileges::default_user();
+        self.session.phase = SessionPhase::Online;
+        self.session.display_name = format!("user-{user_id}");
+        self.session.outbound_connection_id = Some(OutboundConnectionId::new(connection_id));
     }
 
     /// Authenticate with custom privileges.
     ///
     /// Sets the session's user ID and grants the specified privileges.
     pub(super) fn authenticate_with_privileges(&mut self, user_id: i32, privileges: Privileges) {
+        let Ok(connection_id) = u64::try_from(user_id) else {
+            panic!("test user id must be non-negative");
+        };
         self.session.user_id = Some(user_id);
         self.session.privileges = privileges;
+        self.session.phase = SessionPhase::Online;
+        self.session.display_name = format!("user-{user_id}");
+        self.session.outbound_connection_id = Some(OutboundConnectionId::new(connection_id));
     }
 
     /// Send a transaction through routing and parse the reply.
@@ -106,6 +125,7 @@ impl RouteTestContext {
                     pool: self.pool.clone(),
                     session: &mut self.session,
                     messaging: &messaging,
+                    presence: &self.presence,
                 },
             )
             .await;
