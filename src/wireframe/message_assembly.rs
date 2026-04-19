@@ -69,6 +69,39 @@ pub(crate) fn message_key_for(header: &FrameHeader) -> MessageKey {
     MessageKey(key)
 }
 
+/// Shared frame-payload builder used by [`first_frame_payload`] and
+/// [`continuation_frame_payload`].
+///
+/// Layout: `tag(1) | message_key(8) | middle | body_len(4) | metadata | body`
+#[expect(
+    clippy::big_endian_bytes,
+    reason = "internal Hotline transport metadata uses network byte order"
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "frame assembly varies over explicit transport segments and error context"
+)]
+fn assemble_frame_payload(
+    tag: u8,
+    message_key: MessageKey,
+    middle: &[u8],
+    body: &[u8],
+    metadata: &[u8],
+    body_len_err: &'static str,
+) -> Result<Vec<u8>, io::Error> {
+    let body_len = u32::try_from(body.len())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, body_len_err))?;
+    let capacity = 1 + 8 + middle.len() + 4 + metadata.len() + body.len();
+    let mut payload = Vec::with_capacity(capacity);
+    payload.push(tag);
+    payload.extend_from_slice(&u64::from(message_key).to_be_bytes());
+    payload.extend_from_slice(middle);
+    payload.extend_from_slice(&body_len.to_be_bytes());
+    payload.extend_from_slice(metadata);
+    payload.extend_from_slice(body);
+    Ok(payload)
+}
+
 /// Build the internal payload representation for the first physical fragment.
 ///
 /// The metadata bytes are the normalized 20-byte logical transaction header
@@ -83,20 +116,14 @@ pub(crate) fn first_frame_payload(
     header: &FrameHeader,
     body: &[u8],
 ) -> Result<Vec<u8>, io::Error> {
-    let body_len = u32::try_from(body.len()).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Hotline first-frame body length exceeds u32",
-        )
-    })?;
-    let mut payload = Vec::with_capacity(FIRST_FRAME_HEADER_LEN + HEADER_LEN + body.len());
-    payload.push(FIRST_FRAME_TAG);
-    payload.extend_from_slice(&u64::from(message_key).to_be_bytes());
-    payload.extend_from_slice(&header.total_size.to_be_bytes());
-    payload.extend_from_slice(&body_len.to_be_bytes());
-    payload.extend_from_slice(&logical_header_bytes(header));
-    payload.extend_from_slice(body);
-    Ok(payload)
+    assemble_frame_payload(
+        FIRST_FRAME_TAG,
+        message_key,
+        &header.total_size.to_be_bytes(),
+        body,
+        &logical_header_bytes(header),
+        "Hotline first-frame body length exceeds u32",
+    )
 }
 
 /// Build the internal payload representation for a continuation fragment.
@@ -110,20 +137,17 @@ pub(crate) fn continuation_frame_payload(
     is_last: bool,
     body: &[u8],
 ) -> Result<Vec<u8>, io::Error> {
-    let body_len = u32::try_from(body.len()).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Hotline continuation body length exceeds u32",
-        )
-    })?;
-    let mut payload = Vec::with_capacity(CONTINUATION_FRAME_HEADER_LEN + body.len());
-    payload.push(CONTINUATION_FRAME_TAG);
-    payload.extend_from_slice(&u64::from(message_key).to_be_bytes());
-    payload.extend_from_slice(&u32::from(sequence).to_be_bytes());
-    payload.push(u8::from(is_last));
-    payload.extend_from_slice(&body_len.to_be_bytes());
-    payload.extend_from_slice(body);
-    Ok(payload)
+    let mut middle = [0u8; 5];
+    middle[..4].copy_from_slice(&u32::from(sequence).to_be_bytes());
+    middle[4] = u8::from(is_last);
+    assemble_frame_payload(
+        CONTINUATION_FRAME_TAG,
+        message_key,
+        &middle,
+        body,
+        &[],
+        "Hotline continuation body length exceeds u32",
+    )
 }
 
 fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Error> {
