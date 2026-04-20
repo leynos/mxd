@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: IN PROGRESS
 
 PLANS.md does not exist in this repository.
 
@@ -570,7 +570,12 @@ Architecture-specific checks to include during review:
   outbound-adapter work.
 - [x] (2026-04-20 08:40Z) Added signposts to the repository documentation and
   session-available skills that are most relevant to implementing 3.1.1.
-- [ ] Reconcile permission-model shape across docs and code.
+- [x] (2026-04-20 11:20Z) Reconciled the immediate 3.1.1 permission-model
+  shape against the current codebase and selected an additive implementation
+  path: introduce `permissions`, `user_permissions`, `groups`, `user_groups`,
+  `resource_permissions`, and `file_nodes`, while leaving session privilege
+  loading on `Privileges::default_user()` until the later auth-focused roadmap
+  item lands.
 - [ ] Add dual-backend migrations and Diesel schema updates.
 - [ ] Add `diesel-cte-ext` hierarchy helpers and repository coverage.
 - [ ] Add behavioural regression coverage where applicable.
@@ -595,6 +600,11 @@ Architecture-specific checks to include during review:
 - The earlier draft implicitly assumed the persistence boundary, but it did not
   state port ownership or adapter isolation explicitly enough for a
   hexagonal-architecture audit.
+- A polymorphic ACL row shape (`resource_type` plus `resource_id`,
+  `principal_type` plus `principal_id`) stays portable across SQLite and
+  PostgreSQL, but portable conditional foreign keys for those polymorphic
+  references do not. A strict fully-normalized alternative would require split
+  ACL tables or backend-specific trigger logic, which is wider than 3.1.1.
 
 ## Decision Log
 
@@ -617,6 +627,26 @@ Architecture-specific checks to include during review:
   handlers. Rationale: this keeps all dependencies pointing inward, prevents
   recursive SQL and backend-specific types from leaking past the adapter
   boundary, and matches the repository's hexagonal architecture guidance.
+  Date/Author: 2026-04-20 / Codex.
+- Decision: keep global protocol permissions normalized in `permissions` and
+  `user_permissions`, introduce `groups` and `user_groups` now, and store
+  file-resource ACLs in a separate `resource_permissions` table keyed by
+  `permission_id`. Rationale: this keeps one shared privilege catalogue,
+  preserves room for group-based ACLs, and lets the existing file-list flow
+  move to `file_nodes` without pulling per-session privilege loading or later
+  news handlers into 3.1.1. Date/Author: 2026-04-20 / Codex.
+- Decision: do not add `users.global_access` in 3.1.1 and do not switch login
+  to load `user_permissions` yet. Rationale: session privilege loading is
+  already tracked as later work in the auth roadmap, and changing it here would
+  widen the blast radius beyond the schema-and-persistence scope of 3.1.1.
+  Date/Author: 2026-04-20 / Codex.
+- Decision: keep `resource_permissions` polymorphic for this roadmap step even
+  though that means principal and resource referential integrity cannot be
+  enforced with portable conditional foreign keys on both backends. Rationale:
+  it preserves the shared-ACL shape described in the design docs and keeps the
+  migration additive; repository helpers and tests will enforce the existence
+  and legal combinations of principals and resources until a later roadmap step
+  decides whether to split the ACL table or add trigger-backed validation.
   Date/Author: 2026-04-20 / Codex.
 
 ## Outcomes & Retrospective
