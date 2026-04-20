@@ -15,15 +15,29 @@ use helpers::{insert_article, insert_root_bundle};
 use mxd::{
     db::{
         DbConnection,
-        add_file_acl,
+        add_user_to_group,
         apply_migrations,
         create_bundle,
         create_category,
-        create_file,
+        create_file_node,
+        create_group,
         create_user,
+        grant_resource_permission,
+        seed_permission,
     },
-    models::{NewArticle, NewBundle, NewCategory, NewFileAcl, NewFileEntry, NewUser},
-    schema::{files::dsl as files_dsl, users::dsl as users_dsl},
+    models::{
+        FileNodeKind,
+        NewArticle,
+        NewBundle,
+        NewCategory,
+        NewFileNode,
+        NewGroup,
+        NewPermission,
+        NewResourcePermission,
+        NewUser,
+        NewUserGroup,
+    },
+    schema::{file_nodes::dsl as file_nodes_dsl, users::dsl as users_dsl},
     users::hash_password,
 };
 
@@ -62,12 +76,122 @@ impl AsRef<str> for DatabaseUrl {
     fn as_ref(&self) -> &str { self.as_str() }
 }
 
-/// Resolve a file name to its ID from the lookup map.
-fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, AnyError> {
-    file_ids
+/// Resolve a file name to its file-node ID from the lookup map.
+fn resolve_file_node_id(file_node_ids: &HashMap<String, i32>, name: &str) -> Result<i32, AnyError> {
+    file_node_ids
         .get(name)
         .copied()
-        .ok_or_else(|| anyhow::anyhow!("missing file id for {name}"))
+        .ok_or_else(|| anyhow::anyhow!("missing file-node id for {name}"))
+}
+
+async fn fetch_test_user_id(conn: &mut DbConnection) -> Result<i32, AnyError> {
+    users_dsl::users
+        .filter(users_dsl::username.eq("alice"))
+        .select(users_dsl::id)
+        .first(conn)
+        .await
+        .map_err(Into::into)
+}
+
+async fn seed_download_file_permission(conn: &mut DbConnection) -> Result<i32, AnyError> {
+    seed_permission(
+        conn,
+        &NewPermission {
+            code: 2,
+            name: "download_file",
+            description: "List or download a file node",
+        },
+    )
+    .await
+    .map_err(Into::into)
+}
+
+async fn ensure_everyone_group_membership(
+    conn: &mut DbConnection,
+    user_id: i32,
+) -> Result<(), AnyError> {
+    let everyone_group_id = create_group(conn, &NewGroup { name: "everyone" }).await?;
+    let _group_added = add_user_to_group(
+        conn,
+        &NewUserGroup {
+            user_id,
+            group_id: everyone_group_id,
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+async fn seed_root_file_nodes(
+    conn: &mut DbConnection,
+    creator_id: i32,
+) -> Result<HashMap<String, i32>, AnyError> {
+    let file_nodes = [
+        NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "fileA.txt",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some("1"),
+            size: Some(1),
+            comment: None,
+            is_dropbox: false,
+            creator_id,
+        },
+        NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "fileB.txt",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some("2"),
+            size: Some(1),
+            comment: None,
+            is_dropbox: false,
+            creator_id,
+        },
+        NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "fileC.txt",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some("3"),
+            size: Some(1),
+            comment: None,
+            is_dropbox: false,
+            creator_id,
+        },
+    ];
+    for file_node in &file_nodes {
+        create_file_node(conn, file_node).await?;
+    }
+    let file_rows = file_nodes_dsl::file_nodes
+        .select((file_nodes_dsl::name, file_nodes_dsl::id))
+        .load::<(String, i32)>(conn)
+        .await?;
+    Ok(file_rows.into_iter().collect())
+}
+
+async fn grant_fixture_download_visibility(
+    conn: &mut DbConnection,
+    user_id: i32,
+    permission_id: i32,
+    file_node_ids: &HashMap<String, i32>,
+) -> Result<(), AnyError> {
+    for name in ["fileA.txt", "fileC.txt"] {
+        let resource_id = resolve_file_node_id(file_node_ids, name)?;
+        grant_resource_permission(
+            conn,
+            &NewResourcePermission {
+                resource_type: "file_node",
+                resource_id,
+                principal_type: "user",
+                principal_id: user_id,
+                permission_id,
+            },
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// Ensure the test user 'alice' exists in the database.
@@ -144,40 +268,11 @@ pub fn setup_files_db(db: DatabaseUrl) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
             ensure_test_user(conn).await?;
-            let user_id: i32 = users_dsl::users
-                .filter(users_dsl::username.eq("alice"))
-                .select(users_dsl::id)
-                .first(conn)
-                .await?;
-            let files = [
-                NewFileEntry {
-                    name: "fileA.txt",
-                    object_key: "1",
-                    size: 1,
-                },
-                NewFileEntry {
-                    name: "fileB.txt",
-                    object_key: "2",
-                    size: 1,
-                },
-                NewFileEntry {
-                    name: "fileC.txt",
-                    object_key: "3",
-                    size: 1,
-                },
-            ];
-            for file in &files {
-                create_file(conn, file).await?;
-            }
-            let file_rows = files_dsl::files
-                .select((files_dsl::name, files_dsl::id))
-                .load::<(String, i32)>(conn)
-                .await?;
-            let file_ids: HashMap<_, _> = file_rows.into_iter().collect();
-            for name in ["fileA.txt", "fileC.txt"] {
-                let file_id = resolve_file_id(&file_ids, name)?;
-                add_file_acl(conn, &NewFileAcl { file_id, user_id }).await?;
-            }
+            let user_id = fetch_test_user_id(conn).await?;
+            let permission_id = seed_download_file_permission(conn).await?;
+            ensure_everyone_group_membership(conn, user_id).await?;
+            let file_node_ids = seed_root_file_nodes(conn, user_id).await?;
+            grant_fixture_download_visibility(conn, user_id, permission_id, &file_node_ids).await?;
             Ok(())
         })
     })

@@ -83,74 +83,95 @@ component, including how it ties into the user/permission system.
 
 To model files, folders, and related features, the system defines a
 **FileNode** table representing an item in the hierarchy (which might be a
-folder, a file, or an alias pointer). The design integrates with the existing
-**User**, **Group**, and **Permission/ACL** tables from the application for
-access control. Each file or folder can have fine-grained ACL entries linking
-to users or groups in the shared permissions table. The schema includes fields
-for metadata such as size, timestamps, and comments. The ER diagram below is
-shown in Mermaid notation:
+folder, a file, or an alias pointer). Roadmap item 3.1.1 implements this as a
+shared-permission design: a normalised `permissions` catalogue stores Hotline
+privilege codes, `user_permissions` stores global grants, `groups` and
+`user_groups` provide shared principals, and `resource_permissions` stores
+per-file or per-folder ACL rows. The legacy `files` and `file_acl` tables are
+kept temporarily so roadmap item 3.1.2 can backfill existing data without
+losing source records.
 
-**Diagram description for screen readers:** The diagram shows main entities
-FileNode (representing files, folders, or aliases), User, Group, and
-Permission/ACL, with their key relationships. FileNode has a parent/child
-hierarchy (self-referential parent_id). FileNode links to Permission/ACL
-entries which reference User or Group as principals. Key metadata fields
-include size, timestamps (created_at, modified_at), comments, and object_key.
-The shared permissions table connects FileNodes to Users and Groups for access
-control.
+Below is the E-R diagram for the implemented relational model:
+
+**Diagram description for screen readers:** The diagram shows `FileNode` as the
+hierarchical file metadata table, `User` as the account table, `Group` and
+`UserGroup` for shared principals, `Permission` and `UserPermission` for the
+global Hotline privilege catalogue, and `ResourcePermission` for per-resource
+ACLs. `FileNode` has self-referential parent and alias-target relationships,
+users create file nodes, and ACL rows connect file nodes to either users or
+groups through a permission code.
 
 ```mermaid
 erDiagram
-    User ||--o{ UserGroup : has
-    Group ||--o{ UserGroup : includes
-    User ||--o{ Permission : "principal (can be user or group)"
-    Group ||--o{ Permission : "principal (can be user or group)"
-    FileNode ||--o{ FileNode : "contains > Children"
-    FileNode ||--|{ Permission : "resource"
-    FileNode ||--|| FileNode : "alias target > Alias"
-    
-    User {
-        int id
-        string username
-        bitmask global_access "global privilege bits"
-        %% ... other fields ...
-    }
-    Group {
-        int id
-        string name
-    }
-    UserGroup {
-        int user_id FK "-> User.id"
-        int group_id FK "-> Group.id"
-    }
     FileNode {
-        int id
-        enum type "file | folder | alias"
+        bigint id
+        enum kind
         varchar name
-        int parent_id FK "-> FileNode.id (null for root)"
-        int alias_target_id FK "-> FileNode.id if type='alias'"
-        varchar object_key "storage key (for files only)"
-        bigint size "file size in bytes (0 for folders)"
-        text comment "file/folder comment/description"
-        bool is_dropbox "flag if this folder is a dropbox"
-        timestamp created_at
-        timestamp updated_at
-        int created_by FK "-> User.id"
+        bigint parent_id
+        bigint alias_target_id
+        varchar object_key
+        bigint size
+        text comment
+        boolean is_dropbox
+        bigint creator_id
+        timestamptz created_at
+        timestamptz updated_at
     }
+
+    User {
+        bigint id
+        varchar username
+        varchar email
+        boolean active
+    }
+
+    Group {
+        bigint id
+        varchar name
+    }
+
+    UserGroup {
+        bigint user_id
+        bigint group_id
+    }
+
     Permission {
         int id
-        varchar resource_type "e.g. 'file' or 'folder'"
-        int resource_id FK "-> FileNode.id"
-        varchar principal_type "'user' or 'group'"
-        int principal_id "FK -> User.id or Group.id"
-        bitmask privileges "permission bits allowed"
+        int code
+        varchar name
+        text description
     }
+
+    UserPermission {
+        bigint user_id
+        int permission_id
+    }
+
+    ResourcePermission {
+        varchar resource_type
+        bigint resource_id
+        varchar principal_type
+        bigint principal_id
+        int permission_id
+    }
+
+    FileNode ||--o| FileNode : parent
+    FileNode ||--o| FileNode : alias_target
+    User ||--o{ FileNode : creates
+    User ||--o{ UserGroup : member
+    Group ||--o{ UserGroup : membership
+    Permission ||--o{ UserPermission : grants
+    User ||--o{ UserPermission : holds
+    Permission ||--o{ ResourcePermission : grants
+    User ||--o{ ResourcePermission : principal_user
+    Group ||--o{ ResourcePermission : principal_group
+    FileNode ||--o{ ResourcePermission : protected_resource
 ```
 
 In this model:
 
 - **FileNode** is a unified table for files, folders, and aliases. Each entry
-  has a `type` indicating what it is. Every node (except the root) has a
+  has a `kind` indicating what it is. Every node (except the root) has a
   `parent_id` linking to a folder. File entries have an `object_key` pointing
   to data in object storage, a `size`, and perhaps MIME/type info (not shown
   here). Folder entries have no `object_key` (since they contain no data
@@ -160,75 +181,97 @@ In this model:
   `is_dropbox` marks a folder as a **drop box** (a special upload-only folder –
   explained later). We also record creation timestamps and the user who
   created/uploaded the file.
-- **Permission** is the shared ACL table (simplified for this design). It can
-  reference any resource in the system; for file sharing it is used to store
-  folder-level or file-level permissions. Each entry grants certain
-  `privileges` (bitmask flags) to a principal (which can be an individual User
-  or a Group). The privileges bits correspond to actions like download, upload,
-  delete, etc., as defined by the application (following Hotline’s privilege
-  definitions). For example, bit 2 might be “Download File”, bit 1 “Upload
-  File”, bit 0 “Delete File”, etc., matching Hotline’s Access Privileges. A
-  **folder-type privilege** in Hotline can be applied per folder via such
-  entries. If no specific Permission entry exists for a given file or folder,
-  the user’s global access rights (stored in `User.global_access` bitmask)
-  apply as default.
+- **Permission**, **UserPermission**, and **ResourcePermission** split the
+  shared privilege model into three layers. `Permission` stores the Hotline
+  privilege catalogue (`code`, `name`, and `description`). `UserPermission`
+  assigns those privileges globally to users. `ResourcePermission` grants one
+  permission code to either a user or a group for a specific file resource.
+  This keeps one shared permission catalogue while still allowing per-resource
+  ACL rows.
 - **User, Group, UserGroup** are part of the existing system to manage accounts
   and group membership. They are included here to illustrate that permissions
-  can be granted to groups as well as users. The `Permission.principal_type`
-  and `principal_id` together refer to either a user or a group. For example,
-  one could give a "Guests" group download rights to a particular folder, or
-  assign an individual user upload rights.
+  can be granted to groups as well as users. The
+  `ResourcePermission.principal_type` and `principal_id` pair refer to either a
+  user or a group. For example, one could give a "Guests" group download rights
+  to a particular folder, or assign an individual user upload rights.
 
-Below is an example SQL DDL that implements this schema:
+Below is a representative SQL DDL sketch matching the implemented shape. The
+exact identity syntax differs slightly between SQLite and PostgreSQL, but the
+table layout and constraints are shared:
 
 ```sql
--- Users and Groups (from shared schema)
-CREATE TABLE User (
-    id             SERIAL PRIMARY KEY,
-    username       VARCHAR(50) UNIQUE NOT NULL,
-    global_access  BIGINT NOT NULL DEFAULT 0,   -- 64-bit access privileges bitmap
-    -- ... other user fields (password hash, etc) ...
+CREATE TABLE permissions (
+    id INTEGER PRIMARY KEY,
+    code INTEGER NOT NULL UNIQUE,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL
 );
-CREATE TABLE "Group" (
-    id    SERIAL PRIMARY KEY,
-    name  VARCHAR(50) UNIQUE NOT NULL
+
+CREATE TABLE user_permissions (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, permission_id)
 );
-CREATE TABLE UserGroup (
-    user_id  INT REFERENCES User(id) ON DELETE CASCADE,
-    group_id INT REFERENCES "Group"(id) ON DELETE CASCADE,
+
+CREATE TABLE groups (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE user_groups (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     PRIMARY KEY (user_id, group_id)
 );
 
--- File and Folder metadata
-CREATE TABLE FileNode (
-    id               SERIAL PRIMARY KEY,
-    type             VARCHAR(10) NOT NULL CHECK(type IN ('file','folder','alias')),
-    name             VARCHAR(255) NOT NULL,
-    parent_id        INT REFERENCES FileNode(id) ON DELETE CASCADE,
-    alias_target_id  INT REFERENCES FileNode(id) ON DELETE CASCADE,
-    object_key       TEXT,               -- NULL for folders and aliases
-    size             BIGINT NOT NULL DEFAULT 0,
-    comment          TEXT,
-    is_dropbox       BOOLEAN NOT NULL DEFAULT false,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_by       INT REFERENCES User(id),
-    -- Ensure uniqueness of name within a folder:
-    UNIQUE(parent_id, name)
+CREATE TABLE file_nodes (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('file', 'folder', 'alias')),
+    name TEXT NOT NULL,
+    parent_id INTEGER REFERENCES file_nodes(id) ON DELETE CASCADE,
+    alias_target_id INTEGER REFERENCES file_nodes(id) ON DELETE RESTRICT,
+    object_key TEXT,
+    size BIGINT,
+    comment TEXT,
+    is_dropbox BOOLEAN NOT NULL DEFAULT FALSE,
+    creator_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (alias_target_id IS NULL OR alias_target_id <> id),
+    CHECK (
+        (kind = 'file'
+         AND object_key IS NOT NULL
+         AND alias_target_id IS NULL
+         AND size IS NOT NULL
+         AND is_dropbox = FALSE)
+        OR
+        (kind = 'folder'
+         AND object_key IS NULL
+         AND alias_target_id IS NULL
+         AND size IS NULL)
+        OR
+        (kind = 'alias'
+         AND object_key IS NULL
+         AND alias_target_id IS NOT NULL
+         AND size IS NULL
+         AND is_dropbox = FALSE)
+    )
 );
--- (Optionally, create a root folder entry with id=1 and parent_id NULL to represent the root directory.)
 
--- Permissions/ACL (shared across app)
-CREATE TABLE Permission (
-    id             SERIAL PRIMARY KEY,
-    resource_type  VARCHAR(20) NOT NULL,   -- e.g. 'file' or 'folder'
-    resource_id    INT NOT NULL,          -- references FileNode(id)
-    principal_type VARCHAR(10) NOT NULL,  -- 'user' or 'group'
-    principal_id   INT NOT NULL,          -- User.id or Group.id
-    privileges     BIGINT NOT NULL,       -- bitmask of allowed actions
-    UNIQUE(resource_type, resource_id, principal_type, principal_id)
+CREATE TABLE resource_permissions (
+    resource_type TEXT NOT NULL CHECK (resource_type = 'file_node'),
+    resource_id INTEGER NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,
+    principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
+    principal_id INTEGER NOT NULL,
+    permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    PRIMARY KEY (
+        resource_type,
+        resource_id,
+        principal_type,
+        principal_id,
+        permission_id
+    )
 );
--- (For file sharing, resource_type might be 'file' or 'folder'; both map to FileNode IDs.)
 ```
 
 This schema enables the representation of the complete file system hierarchy
@@ -237,7 +280,7 @@ and access controls:
 - A folder’s contents are FileNode entries with that folder’s ID as their
   parent_id. We can traverse parent_id links to resolve full paths or to
   enforce inherited rules.
-- An alias is simply a FileNode of type 'alias' pointing to another FileNode
+- An alias is simply a FileNode of kind 'alias' pointing to another FileNode
   (its target). It has its own name and parent (so it appears in a directory),
   but no object_key or size of its own – it uses the target’s data.
 - A dropbox is indicated by `is_dropbox=true` on a folder (and likely also by

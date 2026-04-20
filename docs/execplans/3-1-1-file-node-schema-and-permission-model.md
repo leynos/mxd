@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETED
 
 PLANS.md does not exist in this repository.
 
@@ -576,11 +576,27 @@ Architecture-specific checks to include during review:
   `resource_permissions`, and `file_nodes`, while leaving session privilege
   loading on `Privileges::default_user()` until the later auth-focused roadmap
   item lands.
-- [ ] Add dual-backend migrations and Diesel schema updates.
-- [ ] Add `diesel-cte-ext` hierarchy helpers and repository coverage.
-- [ ] Add behavioural regression coverage where applicable.
-- [ ] Update design and user documentation.
-- [ ] Mark roadmap item 3.1.1 done after verification evidence exists.
+- [x] (2026-04-20 16:05Z) Added dual-backend additive migrations for
+  `permissions`, `user_permissions`, `groups`, `user_groups`,
+  `resource_permissions`, and `file_nodes`, keeping legacy `files` and
+  `file_acl` in place for roadmap item 3.1.2.
+- [x] (2026-04-20 16:05Z) Refreshed Diesel schema and models, introduced the
+  `mxd::file_path` recursive CTE helper, and narrowed the new persistence
+  surface in `mxd::db::files` to path resolution, child listing, alias
+  resolution, and visible-root listing.
+- [x] (2026-04-20 16:05Z) Updated test fixtures, repository coverage, and the
+  existing file-list transport path to seed and query `file_nodes` through the
+  new ACL model.
+- [x] (2026-04-20 16:05Z) Verified the Rust-focused quality gates after the
+  schema rewrite: `pg_embedded_setup_unpriv`, `make fmt`, `make check-fmt`,
+  `make typecheck`, `make lint`, and `make test`.
+- [x] (2026-04-20 18:10Z) Synchronized `docs/design.md`,
+  `docs/file-sharing-design.md`, and `docs/users-guide.md` with the delivered
+  additive `file_nodes` plus shared-permission schema.
+- [x] (2026-04-20 18:10Z) Marked roadmap item 3.1.1 complete after the
+  implementation, verification, and documentation work landed together.
+- [x] (2026-04-20 18:10Z) Verified the documentation gates:
+  `make markdownlint` and `make nixie`.
 
 ## Surprises & Discoveries
 
@@ -605,6 +621,10 @@ Architecture-specific checks to include during review:
   PostgreSQL, but portable conditional foreign keys for those polymorphic
   references do not. A strict fully-normalized alternative would require split
   ACL tables or backend-specific trigger logic, which is wider than 3.1.1.
+- The additive migration set made the SQLite test bootstrap slower under
+  `cargo nextest` than the earlier schema, so the migration timeout in
+  `src/db/migrations.rs` needed to increase from five seconds to fifteen
+  seconds to keep parallel test-database setup stable.
 
 ## Decision Log
 
@@ -664,9 +684,21 @@ Intended outcomes once implemented:
 - Roadmap items 3.1.2 and 3.2 can build on repository helpers and schema
   invariants established here instead of re-litigating table shape.
 
-Retrospective placeholder:
-
-- Implemented:
-- Verified:
-- Documentation updated:
-- Follow-up work pushed to later roadmap items:
+- Implemented: additive dual-backend file-sharing schema, recursive path
+  helpers built on `diesel-cte-ext`, repository helpers for `file_nodes` and
+  ACL lookups, and fixture plus transport wiring so the current file-list flow
+  reads from the new tables.
+- Verified: `pg_embedded_setup_unpriv`, `make fmt`, `make check-fmt`,
+  `make typecheck`, `make lint`, `make test`, `make markdownlint`, and
+  `make nixie` all passed for the delivered change set.
+- Documentation updated: `docs/design.md`,
+  `docs/file-sharing-design.md`, `docs/users-guide.md`, and `docs/roadmap.md`
+  now describe the shipped additive schema, the shared-permission split, the
+  unchanged user-facing file-list contract, and the roadmap completion state.
+- Behavioural coverage: the existing file-list transport regression coverage
+  remained intact while fixtures were moved to `file_nodes`, so the observable
+  contract stayed exercised without widening 3.1.1 into new protocol work.
+- Follow-up work pushed to later roadmap items: session privilege loading from
+  `user_permissions`, the `files`/`file_acl` backfill and retirement step in
+  3.1.2, drop-box and alias protocol operations in 3.2+, and any stricter
+  polymorphic ACL referential integrity beyond portable foreign keys.

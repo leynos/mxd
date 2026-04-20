@@ -68,7 +68,11 @@ impl fmt::Display for MigrationTimeoutError {
 
 impl StdError for MigrationTimeoutError {}
 
-const MIGRATION_TIMEOUT: Duration = Duration::from_secs(5);
+// The additive file-node migration increases setup cost enough that the old
+// five-second cap becomes flaky under nextest's parallel SQLite database
+// creation. Keep the watchdog, but give embedded migrations enough headroom to
+// finish deterministically on loaded CI and developer machines.
+const MIGRATION_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Wrap a migration harness error in a Diesel error.
 fn wrap_harness_error(e: Box<dyn StdError + Send + Sync>) -> DieselError {

@@ -2526,76 +2526,33 @@ table([18](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d
   public-by-default), but it might have been a starting point or a temporary
   measure until the more complex permission system is built.
 
-However, the **intended design (per design doc)** is more advanced and matches
-how Hotline works:
+Roadmap item 3.1.1 now implements that richer design as an additive schema
+step. The new outbound adapter state lives in `mxd::db::files` and
+`mxd::file_path`, while the transport and command layers still consume a narrow
+query surface instead of Diesel models or recursive SQL directly. The schema is
+split into:
 
-- A single `FileNode` table to represent both files and folders (and aliases as
-  a special
-  type)([17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L83-L91)
-   )(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L115-L123)).
-   It would have columns like:
+- `file_nodes` for folders, files, and aliases, with `kind`, `parent_id`,
+  `alias_target_id`, `object_key`, `size`, `comment`, `is_dropbox`,
+  `creator_id`, and timestamps.
+- `permissions` and `user_permissions` for the shared global privilege
+  catalogue already described elsewhere in this design.
+- `groups` and `user_groups` so later file-sharing and news features can grant
+  privileges to principals wider than a single user.
+- `resource_permissions` for per-resource ACL rows keyed by permission ID,
+  resource identity, and principal identity.
 
-- `id`,
+The migrations keep the legacy `files` and `file_acl` tables in place so
+roadmap item 3.1.2 can backfill existing metadata safely. Only the current
+file-listing path is switched to the new adapter in 3.1.1.
 
-- `type` (enum: file, folder, alias),
-
-- `name` (text),
-
-- `parent_id` (int, self-FK, null for root-level items),
-
-- `alias_target_id` (int, self-FK if this is an alias pointing to another
-  FileNode),
-
-- `object_key` (text for actual storage key, only meaningful for files since
-  folders/aliases have no data),
-
-- `size` (bigint, size in bytes for files),
-
-- `comment` (text, description or comment on the file/folder, since Hotline
-  allowed leaving comments on files),
-
-- `is_dropbox` (bool, true if the folder is a drop box where users can upload
-  but not list files),
-
-- timestamps and `created_by` to record who created
-  it(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L115-L123)
-   )(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L124-L132)).
-
-- A `Permission` table for ACLs linking principals (user or group) to resources
-  (file or
-  folder)([17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L95-L99)
-   )(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L126-L135)).
-   The design suggests possibly reusing a common permissions table for files
-  similar to how news had one. The mermaid snippet shows `Permission` with
-  `resource_type` (like 'file'), `resource_id` (link to FileNode.id),
-  `principal_type` ('user' or 'group'), `principal_id`, and `privileges`
-  (bitmask)(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L115-L123)
-   )(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L128-L136)).
-   This is a flexible ACL that can grant different permission bits (like read,
-  write, delete) to either individual users or groups on specific files or
-  folders.
-
-- Additionally, `User` and `Group` and `UserGroup` tables to manage user
-  groups(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L91-L99)
-   )(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L93-L101)).
-   This way you can assign an entire group access to a folder by one entry in
-  `Permission`, instead of listing every user.
-
-For screen readers: the following E-R diagram shows the intended file-sharing
-metadata model. `FileNode` is the central hierarchical resource, with optional
-links to a parent node and an alias target node. Users create file nodes, users
-and groups are related through `UserGroup`, global privileges flow from
-`Permission` to users through `UserPermission`, and per-resource ACL entries
-flow from `Permission` to `FileNode` resources through `ResourcePermission`,
-whose principal may be either a user or a group.
+For screen readers: the following E-R diagram shows the implemented
+file-sharing metadata model. `FileNode` is the central hierarchical resource,
+with optional links to a parent node and an alias target node. Users create
+file nodes, users and groups are related through `UserGroup`, global privileges
+flow from `Permission` to users through `UserPermission`, and per-resource ACL
+entries flow from `Permission` to `FileNode` resources through
+`ResourcePermission`, whose principal may be either a user or a group.
 
 ```mermaid
 erDiagram
@@ -2633,18 +2590,17 @@ erDiagram
 
   Permission {
     int id
-    varchar code
+    int code
+    varchar name
     varchar description
   }
 
   UserPermission {
-    bigint id
     bigint user_id
     int permission_id
   }
 
   ResourcePermission {
-    bigint id
     varchar resource_type
     bigint resource_id
     varchar principal_type
@@ -2674,29 +2630,30 @@ erDiagram
   FileNode ||--o{ ResourcePermission : protected_resource
 ```
 
-Our current implementation hasn’t introduced groups or the unified Permission
-table yet – it only has `file_acl` which is effectively a specific case of
-permission linking user->file. Going forward, we would migrate to the richer
-model:
+Roadmap item 3.1.1 implements the tables in that E-R diagram with two important
+clarifications:
 
-- Possibly deprecate `file_acl` for a more general `permissions` usage, or map
-  `file_acl` entries into the Permission table with `principal_type='user'` and
-  `privileges` a default (like read access).
-
-- Also introduce `groups` for easier management.
+- Global protocol privileges stay normalised in `permissions` and
+  `user_permissions`; the login flow still seeds `Session.privileges` from
+  `Privileges::default_user()` until the later auth-focused roadmap item lands.
+- File ACLs live in `resource_permissions`, which stores one permission code per
+  row. The table remains polymorphic (`resource_type` / `resource_id`,
+  `principal_type` / `principal_id`) so the design stays portable across SQLite
+  and PostgreSQL, even though portable conditional foreign keys for the
+  polymorphic principal side are deferred to later work.
 
 **How file operations map to this model**:
 
-- A folder is a FileNode with `type='folder'`. It has no object_key (or
+- A folder is a FileNode with `kind='folder'`. It has no object_key (or
   object_key might be used to store a directory marker but likely not needed).
   Listing a folder means querying `FileNode` for all entries where
   `parent_id = that folder’s id`.
 
-- A file is a FileNode with `type='file'`. It has an `object_key` that points
+- A file is a FileNode with `kind='file'`. It has an `object_key` that points
   to the actual file data in storage, and a `size`. Downloading means using the
   object_key to fetch data.
 
-- An alias is a FileNode with `type='alias'`. The `alias_target_id` points to
+- An alias is a FileNode with `kind='alias'`. The `alias_target_id` points to
   another FileNode (target). Clients treat alias like a file or folder that
   forwards to another location. On server side, listing a folder will include
   aliases. If a user tries to download an alias to a file, the server will
@@ -2704,22 +2661,15 @@ model:
   to a folder, the server will list the target folder’s contents (Hotline alias
   could link to a folder or single file).
 
-- Each FileNode can have fine-grained permissions via the Permission table. For
-  example, a folder might have an entry granting group "Everyone" read-list
-  permission (so it’s public), but not write. A drop box folder might have
-  everyone write permission (upload) but not read, and only admins read. The
-  `is_dropbox` boolean is a convenient marker for UI or special-case logic: if
-  `is_dropbox=true` and the user is not an admin (or not the uploader), the
-  server might suppress listing its content (even if some permission might
-  allow, we add extra rule that dropbox = no listing for non-admin, only
-  uploading allowed).
+- Each FileNode can have fine-grained permissions via `resource_permissions`.
+  For example, a folder can grant the `Download File` permission to a group
+  while withholding upload or delete privileges. The current 3.1.1 file-list
+  regression path treats permission code `2` (`Download File`) as the minimal
+  visibility requirement for top-level nodes.
 
-- Also, `global_access` bitmask in User (in design, user had a global_access
-  field(
-  [17](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/file-sharing-design.md#L101-L109)))
-   could indicate overall privileges (like admin flag or ratio privileges,
-  etc.). We might interpret some high-level bits like “may upload anywhere
-  despite folder perms”.
+- `is_dropbox` is persisted now so later file operations can apply the special
+  Hotline drop-box rules without another schema change. The current milestone
+  does not yet expose drop-box-specific behaviour at the protocol layer.
 
 **Resumable Transfers**:
 

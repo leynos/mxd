@@ -40,6 +40,7 @@ pub mod commands;
 pub mod connection_flags;
 pub mod db;
 pub mod field_id;
+pub(crate) mod file_path;
 pub mod handler;
 pub mod header_util;
 pub mod login;

@@ -9,8 +9,18 @@ use rstest::{fixture, rstest};
 use super::*;
 #[cfg(feature = "sqlite")]
 use crate::{
-    models::{NewBundle, NewCategory, NewFileAcl, NewFileEntry, NewUser},
-    schema::files::dsl as files,
+    models::{
+        FileNodeKind,
+        NewBundle,
+        NewCategory,
+        NewFileNode,
+        NewGroup,
+        NewPermission,
+        NewResourcePermission,
+        NewUser,
+        NewUserGroup,
+    },
+    schema::file_nodes::dsl as file_nodes,
 };
 
 #[cfg(feature = "sqlite")]
@@ -82,13 +92,27 @@ async fn seed_root_category(conn: &mut DbConnection, name: &'static str) {
 }
 
 #[cfg(feature = "sqlite")]
-async fn fetch_file_id(conn: &mut DbConnection, name: &str) -> i32 {
-    files::files
-        .filter(files::name.eq(name))
-        .select(files::id)
+async fn fetch_file_node_id(conn: &mut DbConnection, name: &str) -> i32 {
+    file_nodes::file_nodes
+        .filter(file_nodes::name.eq(name))
+        .select(file_nodes::id)
         .first::<i32>(conn)
         .await
-        .expect("file id")
+        .expect("file-node id")
+}
+
+#[cfg(feature = "sqlite")]
+async fn seed_download_permission(conn: &mut DbConnection) -> i32 {
+    seed_permission(
+        conn,
+        &NewPermission {
+            code: 2,
+            name: "download_file",
+            description: "List or download a file node",
+        },
+    )
+    .await
+    .expect("failed to seed download permission")
 }
 
 #[cfg(feature = "sqlite")]
@@ -159,18 +183,8 @@ async fn test_create_root_article_invalid_path(#[future] migrated_conn: DbConnec
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_file_acl_flow(#[future] migrated_conn: DbConnection) {
+async fn test_file_node_acl_flow(#[future] migrated_conn: DbConnection) {
     let mut conn = migrated_conn.await;
-    let file = NewFileEntry {
-        name: "report.txt",
-        object_key: "objects/report.txt",
-        size: 42,
-    };
-    create_file(&mut conn, &file)
-        .await
-        .expect("failed to create file");
-    let file_id = fetch_file_id(&mut conn, "report.txt").await;
-
     let user = NewUser {
         username: "carol",
         password: "hash",
@@ -183,27 +197,208 @@ async fn test_file_acl_flow(#[future] migrated_conn: DbConnection) {
         .expect("lookup failed")
         .expect("user missing");
 
-    let acl = NewFileAcl {
-        file_id,
-        user_id: carol.id,
+    let file = NewFileNode {
+        kind: FileNodeKind::File.as_str(),
+        name: "report.txt",
+        parent_id: None,
+        alias_target_id: None,
+        object_key: Some("objects/report.txt"),
+        size: Some(42),
+        comment: None,
+        is_dropbox: false,
+        creator_id: carol.id,
+    };
+    create_file_node(&mut conn, &file)
+        .await
+        .expect("failed to create file node");
+    let file_id = fetch_file_node_id(&mut conn, "report.txt").await;
+    let permission_id = seed_download_permission(&mut conn).await;
+
+    let acl = NewResourcePermission {
+        resource_type: "file_node",
+        resource_id: file_id,
+        principal_type: "user",
+        principal_id: carol.id,
+        permission_id,
     };
     assert!(
-        add_file_acl(&mut conn, &acl)
+        grant_resource_permission(&mut conn, &acl)
             .await
             .expect("failed to add acl")
     );
     // second insert is a no-op
     assert!(
-        !add_file_acl(&mut conn, &acl)
+        !grant_resource_permission(&mut conn, &acl)
             .await
             .expect("idempotent acl add")
     );
 
-    let files = list_files_for_user(&mut conn, carol.id)
+    let files = list_visible_root_file_nodes_for_user(&mut conn, carol.id)
         .await
         .expect("failed to list files");
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].name, "report.txt");
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_resolve_file_node_path_and_alias(#[future] migrated_conn: DbConnection) {
+    let mut conn = migrated_conn.await;
+    let user = NewUser {
+        username: "dora",
+        password: "hash",
+    };
+    create_user(&mut conn, &user)
+        .await
+        .expect("failed to create user");
+    let dora = get_user_by_name(&mut conn, "dora")
+        .await
+        .expect("lookup failed")
+        .expect("user missing");
+
+    let folder_id = create_file_node(
+        &mut conn,
+        &NewFileNode {
+            kind: FileNodeKind::Folder.as_str(),
+            name: "Docs",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: None,
+            size: None,
+            comment: Some("folder"),
+            is_dropbox: false,
+            creator_id: dora.id,
+        },
+    )
+    .await
+    .expect("failed to create folder");
+
+    let file_id = create_file_node(
+        &mut conn,
+        &NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "guide.txt",
+            parent_id: Some(folder_id),
+            alias_target_id: None,
+            object_key: Some("objects/guide.txt"),
+            size: Some(7),
+            comment: None,
+            is_dropbox: false,
+            creator_id: dora.id,
+        },
+    )
+    .await
+    .expect("failed to create file");
+
+    let alias_id = create_file_node(
+        &mut conn,
+        &NewFileNode {
+            kind: FileNodeKind::Alias.as_str(),
+            name: "guide-alias",
+            parent_id: None,
+            alias_target_id: Some(file_id),
+            object_key: None,
+            size: None,
+            comment: None,
+            is_dropbox: false,
+            creator_id: dora.id,
+        },
+    )
+    .await
+    .expect("failed to create alias");
+
+    let resolved = resolve_file_node_path(&mut conn, "/Docs/guide.txt")
+        .await
+        .expect("path lookup should succeed")
+        .expect("path should resolve");
+    assert_eq!(resolved.id, file_id);
+
+    let children = list_child_file_nodes(&mut conn, Some(folder_id))
+        .await
+        .expect("child listing should succeed");
+    assert_eq!(children.len(), 1);
+    assert_eq!(children[0].name, "guide.txt");
+
+    let target = resolve_alias_target(&mut conn, alias_id)
+        .await
+        .expect("alias lookup should succeed")
+        .expect("alias should resolve");
+    assert_eq!(target.id, file_id);
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) {
+    let mut conn = migrated_conn.await;
+    create_user(
+        &mut conn,
+        &NewUser {
+            username: "erin",
+            password: "hash",
+        },
+    )
+    .await
+    .expect("failed to create user");
+    let erin = get_user_by_name(&mut conn, "erin")
+        .await
+        .expect("lookup failed")
+        .expect("user missing");
+
+    let group_id = create_group(&mut conn, &NewGroup { name: "reviewers" })
+        .await
+        .expect("failed to create group");
+    assert!(
+        add_user_to_group(
+            &mut conn,
+            &NewUserGroup {
+                user_id: erin.id,
+                group_id,
+            },
+        )
+        .await
+        .expect("failed to add membership")
+    );
+
+    let node_id = create_file_node(
+        &mut conn,
+        &NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "shared.txt",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some("objects/shared.txt"),
+            size: Some(11),
+            comment: None,
+            is_dropbox: false,
+            creator_id: erin.id,
+        },
+    )
+    .await
+    .expect("failed to create file");
+    let permission_id = seed_download_permission(&mut conn).await;
+
+    assert!(
+        grant_resource_permission(
+            &mut conn,
+            &NewResourcePermission {
+                resource_type: "file_node",
+                resource_id: node_id,
+                principal_type: "group",
+                principal_id: group_id,
+                permission_id,
+            },
+        )
+        .await
+        .expect("failed to grant group acl")
+    );
+
+    let visible = list_visible_root_file_nodes_for_user(&mut conn, erin.id)
+        .await
+        .expect("visibility query should succeed");
+    assert_eq!(visible.len(), 1);
+    assert_eq!(visible[0].name, "shared.txt");
 }
 
 #[cfg(feature = "sqlite")]

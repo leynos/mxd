@@ -82,6 +82,22 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
 - `make test-wireframe-only` exercises the Wireframe-first configuration and
   runs the behaviour scenarios that assert the feature gate.
 
+
+## File metadata baseline
+
+Roadmap item 3.1.1 is an internal schema milestone rather than a new protocol
+feature. Fresh databases now create the additive `file_nodes`, `permissions`,
+`user_permissions`, `groups`, `user_groups`, and `resource_permissions` tables
+used by the new file-sharing adapter, while the legacy `files` and `file_acl`
+tables remain in place until roadmap item 3.1.2 backfills existing metadata.
+
+There is no user-visible command change at this milestone:
+`Get File Name List (200)` still behaves as before, but it now resolves visible
+top-level entries from `file_nodes` and `resource_permissions`. Folder
+traversal, alias operations, file comments, and drop-box-specific transport
+behaviour remain scheduled for later roadmap items. For the full schema and
+permission split, refer to `docs/design.md` and `docs/file-sharing-design.md`.
+
 ## Creating users
 
 The `create-user` subcommand now runs entirely inside the library so that it is
