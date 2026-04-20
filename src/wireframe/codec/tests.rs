@@ -69,6 +69,32 @@ async fn decodes_valid_single_frame(#[case] total: u32, #[case] data: u32) {
     assert_eq!(tx.payload().len(), total as usize);
 }
 
+#[tokio::test]
+async fn decodes_opaque_file_list_request_payload() {
+    let payload = b"\x00\xffnot-a-param-block".to_vec();
+    let payload_len = u32::try_from(payload.len()).expect("payload length fits in u32");
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 200,
+        id: 99,
+        error: 0,
+        total_size: payload_len,
+        data_size: payload_len,
+    };
+    let bytes = transaction_bytes(&header, &payload);
+    let mut reader = BufReader::new(Cursor::new(bytes));
+
+    let (tx, leftover) = read_preamble::<_, HotlineTransaction>(&mut reader)
+        .await
+        .expect("file-list request should decode");
+
+    assert!(leftover.is_empty());
+    assert_eq!(tx.header().ty, header.ty);
+    assert_eq!(tx.header().id, header.id);
+    assert_eq!(tx.payload(), payload.as_slice());
+}
+
 #[rstest]
 #[case(10, 20, "data size exceeds total")]
 #[case(100, 0, "data size is zero but total size is non-zero")]
@@ -283,4 +309,25 @@ fn encoding_rejects_invalid_transactions(
 ) {
     let tx = HotlineTransaction { header, payload };
     assert_encode_error(&tx, expected_msg);
+}
+
+#[test]
+fn try_from_rejects_invalid_file_list_reply_payload() {
+    let payload = b"\x00\xffnot-a-param-block".to_vec();
+    let payload_len = u32::try_from(payload.len()).expect("payload length fits in u32");
+    let tx = Transaction {
+        header: FrameHeader {
+            flags: 0,
+            is_reply: 1,
+            ty: 200,
+            id: 99,
+            error: 0,
+            total_size: payload_len,
+            data_size: payload_len,
+        },
+        payload,
+    };
+
+    let err = HotlineTransaction::try_from(tx).expect_err("invalid reply payload must be rejected");
+    assert!(err.to_string().contains("size mismatch"));
 }

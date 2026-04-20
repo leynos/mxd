@@ -175,8 +175,7 @@ fn list_files_ignores_request_payload(
     let _server = server;
     perform_login(&mut stream, b"alice", b"secret")?;
     debug!("sending decorated file list payload");
-    let params = encode_params(&[(FieldId::Other(999), b"bogus".as_ref())])?;
-    let names = request_file_list(&mut stream, params, 99)?;
+    let names = request_file_list(&mut stream, b"\x00\xffnot-a-param-block".to_vec(), 99)?;
     info!(files = ?names, "file list reply received");
     assert_eq!(names, vec!["fileA.txt", "fileC.txt"]);
     Ok(())

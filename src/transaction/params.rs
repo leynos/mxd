@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{FrameHeader, Transaction, errors::TransactionError, read_u16};
-use crate::field_id::FieldId;
+use crate::{field_id::FieldId, transaction_type::TransactionType};
 
 /// Determine whether duplicate instances of the given field id are permitted.
 const fn duplicate_allowed(fid: FieldId) -> bool {
@@ -150,6 +150,9 @@ pub fn validate_payload_parts(
         return Err(TransactionError::SizeMismatch);
     }
     if payload.is_empty() {
+        return Ok(());
+    }
+    if header.is_reply == 0 && TransactionType::from(header.ty).bypass_payload_decode() {
         return Ok(());
     }
     let mut iter = iter_params(payload)?;
