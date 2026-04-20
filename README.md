@@ -100,7 +100,12 @@ pinned SynHX client with the shared helper script and run the validator from
 the repository root:
 
 ```bash
-HX_BIN_DIR="$HOME/.local/bin" ./scripts/install-synhx.sh
+export HX_BIN_DIR="$HOME/.local/bin"
+./scripts/install-synhx.sh
+# Choose one way to expose the installed `hx` binary to later commands.
+export PATH="$HX_BIN_DIR:$PATH"
+# or
+export MXD_VALIDATOR_HX_BINARY="$HX_BIN_DIR/hx"
 make test-validator-sqlite
 ```
 

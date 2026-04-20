@@ -21,8 +21,8 @@ pub struct ValidatorRunPolicy {
 impl ValidatorRunPolicy {
     /// Load the effective policy from the environment.
     ///
-    /// `MXD_VALIDATOR_FAIL_CLOSED` takes precedence when set. Otherwise the
-    /// presence of `CI=true` enables fail-closed behaviour.
+    /// `MXD_VALIDATOR_FAIL_CLOSED` takes precedence when set. Otherwise common
+    /// truthy `CI` values enable fail-closed behaviour.
     ///
     /// # Errors
     ///
@@ -56,7 +56,7 @@ impl ValidatorRunPolicy {
         }
 
         Ok(Self {
-            fail_closed: env_source.var("CI").as_deref() == Some("true"),
+            fail_closed: ci_env_enables_fail_closed(env_source.var("CI").as_deref()),
         })
     }
 }
@@ -103,9 +103,18 @@ fn parse_bool_env(env_var: &'static str, value: &str) -> Result<bool, ValidatorR
         })
 }
 
+fn ci_env_enables_fail_closed(value: Option<&str>) -> bool {
+    matches!(
+        value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+
+    use rstest::rstest;
 
     use super::*;
 
@@ -135,6 +144,18 @@ mod tests {
     #[test]
     fn ci_defaults_to_fail_closed() {
         let policy = ValidatorRunPolicy::load_with_env(&FakeEnv::default().with("CI", "true"))
+            .expect("load policy");
+
+        assert!(policy.should_fail_closed());
+    }
+
+    #[rstest]
+    #[case("1")]
+    #[case(" true ")]
+    #[case("YES")]
+    #[case("on")]
+    fn common_truthy_ci_values_enable_fail_closed(#[case] value: &str) {
+        let policy = ValidatorRunPolicy::load_with_env(&FakeEnv::default().with("CI", value))
             .expect("load policy");
 
         assert!(policy.should_fail_closed());

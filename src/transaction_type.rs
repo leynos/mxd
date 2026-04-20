@@ -65,6 +65,12 @@ impl TransactionType {
             _ => !self.allows_payload(),
         }
     }
+
+    /// Return `true` when request payload bytes should bypass decode attempts.
+    #[must_use]
+    pub const fn bypass_payload_decode(self) -> bool {
+        matches!(self, Self::GetFileNameList) || !self.allows_payload()
+    }
 }
 
 impl From<u16> for TransactionType {
@@ -124,5 +130,27 @@ impl std::fmt::Display for TransactionType {
             Self::PostNewsArticle => f.write_str("PostNewsArticle"),
             Self::Other(v) => write!(f, "Other({v})"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::TransactionType;
+
+    #[rstest]
+    #[case::file_list_empty(TransactionType::GetFileNameList, true, false)]
+    #[case::file_list_non_empty(TransactionType::GetFileNameList, false, false)]
+    #[case::banner_empty(TransactionType::DownloadBanner, true, false)]
+    #[case::banner_non_empty(TransactionType::DownloadBanner, false, true)]
+    #[case::news_article_empty(TransactionType::NewsArticleData, true, false)]
+    #[case::news_article_non_empty(TransactionType::NewsArticleData, false, false)]
+    fn rejects_payload_matches_expected_policy(
+        #[case] transaction_type: TransactionType,
+        #[case] payload_is_empty: bool,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(transaction_type.rejects_payload(payload_is_empty), expected);
     }
 }

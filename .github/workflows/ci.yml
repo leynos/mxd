@@ -60,7 +60,7 @@ jobs:
         if: matrix.name == 'postgres'
         uses: ./.github/actions/export-postgres-url
         with:
-          url: postgres://postgres:password@localhost/test
+          url: postgres://postgres:password@127.0.0.1/test
       - name: Format
         run: make check-fmt
       - name: Lint with Clippy

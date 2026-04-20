@@ -114,7 +114,13 @@ Examples:
 
 ```sh
 # Install the pinned SynHX client once for local validator runs.
-HX_BIN_DIR="$HOME/.local/bin" ./scripts/install-synhx.sh
+export HX_BIN_DIR="$HOME/.local/bin"
+./scripts/install-synhx.sh
+
+# Choose one way to expose the installed `hx` binary to later commands.
+export PATH="$HX_BIN_DIR:$PATH"
+# or
+export MXD_VALIDATOR_HX_BINARY="$HX_BIN_DIR/hx"
 
 # Run the supported sqlite validator suite against a prebuilt wireframe server.
 make test-validator-sqlite

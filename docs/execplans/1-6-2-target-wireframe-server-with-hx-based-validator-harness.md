@@ -339,11 +339,6 @@ Success is observable when:
   that does not by itself create coverage for flows the pinned client and
   server still express differently.
 
-- Implemented:
-- Did not implement:
-- Follow-up work:
-- Lesson:
-
 ## Context and orientation
 
 Primary files and modules in current state:

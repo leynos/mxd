@@ -63,6 +63,12 @@ fn login_validation_rejects_invalid_credentials() -> Result<(), AnyError> {
         bind_addr.ip(),
         bind_addr.port()
     ))?;
+    expect_output_with_timeout(
+        &mut session,
+        "(?i)login failed\\?",
+        "hx did not report failed authentication",
+        connect_expect_timeout(),
+    )?;
     session.send_line("/ls")?;
     expect_no_match(
         &mut session,

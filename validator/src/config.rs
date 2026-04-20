@@ -227,14 +227,22 @@ fn parse_bool_env(env_var: &'static str, value: &str) -> Result<bool, ValidatorC
 mod tests {
     use std::collections::BTreeMap;
 
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use tempfile::TempDir;
 
     use super::*;
 
-    #[derive(Default)]
+    #[derive(Debug, Default, Clone)]
     struct FakeEnv {
         values: BTreeMap<String, String>,
+    }
+
+    #[derive(Debug)]
+    struct EnablementCase {
+        config_contents: Option<&'static str>,
+        env: FakeEnv,
+        validator: PendingValidator,
+        expected_enabled: bool,
     }
 
     impl FakeEnv {
@@ -256,46 +264,63 @@ mod tests {
         path
     }
 
-    #[test]
-    fn defaults_disable_pending_validators() {
-        let config =
-            ValidatorConfig::load_from_sources(None, &FakeEnv::default()).expect("load config");
-        assert!(!config.is_enabled(PendingValidator::Chat));
-        assert!(!config.is_enabled(PendingValidator::FileDownload));
-    }
-
-    #[test]
-    fn file_config_enables_pending_validator() {
-        let temp_dir = TempDir::new().expect("create temp dir");
-        let path = write_config(
-            &temp_dir,
-            "[validators]\nchat = true\nfile_download = false\n",
-        );
-
-        let config = ValidatorConfig::load_from_sources(Some(&path), &FakeEnv::default())
-            .expect("load config");
-
-        assert!(config.is_enabled(PendingValidator::Chat));
-        assert!(!config.is_enabled(PendingValidator::FileDownload));
+    #[fixture]
+    fn temp_config_dir() -> TempDir {
+        match TempDir::new() {
+            Ok(temp_dir) => temp_dir,
+            Err(error) => panic!("create temp dir: {error}"),
+        }
     }
 
     #[rstest]
-    #[case::chat(VALIDATOR_ENABLE_CHAT_ENV_VAR, PendingValidator::Chat)]
-    #[case::file_download(VALIDATOR_ENABLE_FILE_DOWNLOAD_ENV_VAR, PendingValidator::FileDownload)]
-    fn env_override_enables_pending_validator(
-        #[case] env_var: &'static str,
-        #[case] validator: PendingValidator,
+    #[case::defaults_chat(EnablementCase {
+        config_contents: None,
+        env: FakeEnv::default(),
+        validator: PendingValidator::Chat,
+        expected_enabled: false,
+    })]
+    #[case::defaults_file_download(EnablementCase {
+        config_contents: None,
+        env: FakeEnv::default(),
+        validator: PendingValidator::FileDownload,
+        expected_enabled: false,
+    })]
+    #[case::file_config_chat(EnablementCase {
+        config_contents: Some("[validators]\nchat = true\nfile_download = false\n"),
+        env: FakeEnv::default(),
+        validator: PendingValidator::Chat,
+        expected_enabled: true,
+    })]
+    #[case::file_config_file_download(EnablementCase {
+        config_contents: Some("[validators]\nchat = true\nfile_download = false\n"),
+        env: FakeEnv::default(),
+        validator: PendingValidator::FileDownload,
+        expected_enabled: false,
+    })]
+    #[case::env_override_chat(EnablementCase {
+        config_contents: Some("[validators]\nchat = false\nfile_download = false\n"),
+        env: FakeEnv::default().with(VALIDATOR_ENABLE_CHAT_ENV_VAR, "true"),
+        validator: PendingValidator::Chat,
+        expected_enabled: true,
+    })]
+    #[case::env_override_file_download(EnablementCase {
+        config_contents: Some("[validators]\nchat = false\nfile_download = false\n"),
+        env: FakeEnv::default().with(VALIDATOR_ENABLE_FILE_DOWNLOAD_ENV_VAR, "true"),
+        validator: PendingValidator::FileDownload,
+        expected_enabled: true,
+    })]
+    fn validator_enablement_follows_sources(
+        temp_config_dir: TempDir,
+        #[case] case: EnablementCase,
     ) {
-        let temp_dir = TempDir::new().expect("create temp dir");
-        let path = write_config(
-            &temp_dir,
-            "[validators]\nchat = false\nfile_download = false\n",
-        );
-        let env = FakeEnv::default().with(env_var, "true");
+        let path = case
+            .config_contents
+            .map(|contents| write_config(&temp_config_dir, contents));
 
-        let config = ValidatorConfig::load_from_sources(Some(&path), &env).expect("load config");
+        let config =
+            ValidatorConfig::load_from_sources(path.as_deref(), &case.env).expect("load config");
 
-        assert!(config.is_enabled(validator));
+        assert_eq!(config.is_enabled(case.validator), case.expected_enabled);
     }
 
     #[test]

@@ -156,6 +156,10 @@ fn candidate_binary_paths(workspace_root: &Path, backend: ValidatorBackend) -> V
                 .join("target")
                 .join("debug")
                 .join(SERVER_BINARY_NAME),
+            workspace_root
+                .join("target")
+                .join("release")
+                .join(SERVER_BINARY_NAME),
         ],
     }
 }

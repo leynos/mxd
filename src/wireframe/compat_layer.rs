@@ -108,7 +108,7 @@ fn decode_payload_for_request(
     tx_type: TransactionType,
     transaction: Transaction,
 ) -> Result<Transaction, Vec<u8>> {
-    if !tx_type.allows_payload() || tx_type == TransactionType::GetFileNameList {
+    if tx_type.bypass_payload_decode() {
         return Ok(transaction);
     }
     let decoded_payload = match xor.decode_payload(&transaction.payload) {

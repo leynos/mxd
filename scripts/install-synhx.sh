@@ -19,6 +19,8 @@ HX_VERSION="${HX_VERSION:-0.1.48.1}"
 HX_WORK_ROOT="${HX_WORK_ROOT:-$HOME/git}"
 HX_BIN_DIR="${HX_BIN_DIR:-/usr/local/bin}"
 HX_SRC_LINK="${HX_SRC_LINK:-$HX_WORK_ROOT/synhx-client}"
+HX_BINARY_SHA256="${HX_BINARY_SHA256:-}"
+HX_SOURCE_SHA256="${HX_SOURCE_SHA256:-}"
 HX_PLATFORM_ARCHIVE=""
 
 fail() {
@@ -100,6 +102,60 @@ require_command ln
 require_command rm
 require_command mv
 
+set_expected_checksums() {
+    if [[ -n "$HX_BINARY_SHA256" && -n "$HX_SOURCE_SHA256" ]]; then
+        return
+    fi
+
+    case "$HX_VERSION" in
+        0.1.48.1)
+            : "${HX_BINARY_SHA256:=fcef7e2bff84bce4c42cab577e480a3bf788d4cca063f6ebda9df5b200c96b36}"
+            : "${HX_SOURCE_SHA256:=65964cac332146214ed945f290e26bce5fcefa21ac6fea6f9edd4fdff906d965}"
+            ;;
+        *)
+            fail "no built-in checksums for SynHX v$HX_VERSION; set HX_BINARY_SHA256 and HX_SOURCE_SHA256 explicitly"
+            ;;
+    esac
+}
+
+sha256_file() {
+    local path checksum
+    path="$1"
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        read -r checksum _ < <(sha256sum "$path")
+        printf '%s\n' "$checksum"
+        return
+    fi
+
+    if command -v shasum >/dev/null 2>&1; then
+        read -r checksum _ < <(shasum -a 256 "$path")
+        printf '%s\n' "$checksum"
+        return
+    fi
+
+    fail "required command not found: sha256sum or shasum"
+}
+
+verify_archive_checksum() {
+    local archive expected actual
+    archive="$1"
+    expected="$2"
+
+    if [[ -z "$expected" ]]; then
+        fail "missing expected checksum for $archive"
+    fi
+
+    actual="$(sha256_file "$archive")"
+    if [[ "$actual" == "$expected" ]]; then
+        return
+    fi
+
+    rm -f "$archive"
+    fail "checksum verification failed for $archive (expected $expected, got $actual)"
+}
+
+set_expected_checksums
 ensure_dir "$HX_WORK_ROOT"
 ensure_dir "$HX_BIN_DIR"
 ensure_dir "$(dirname "$HX_SRC_LINK")"
@@ -114,6 +170,7 @@ pushd "$HX_WORK_ROOT" >/dev/null
 rm -f "$binary_archive" "$source_archive" hx
 
 wget -O "$binary_archive" "$binary_url"
+verify_archive_checksum "$binary_archive" "$HX_BINARY_SHA256"
 tar xvf "$binary_archive"
 rm -f "$binary_archive"
 
@@ -124,6 +181,7 @@ fi
 install_file hx "$HX_BIN_DIR"
 
 wget -O "$source_archive" "$source_url"
+verify_archive_checksum "$source_archive" "$HX_SOURCE_SHA256"
 archive_listing="$(tar -tzf "$source_archive")"
 source_dir="$(printf '%s\n' "$archive_listing" | sed -n '1s#/.*##p')"
 

@@ -104,12 +104,12 @@ mod tests {
 
     use rstest::{fixture, rstest};
 
-    use super::{wait_for_listening, wait_for_server};
+    use super::{super::DEFAULT_BIND_HOST, wait_for_listening, wait_for_server};
     use crate::AnyError;
 
     #[fixture]
     fn listening_socket() -> TcpListener {
-        TcpListener::bind("localhost:0").expect("listen socket should bind")
+        TcpListener::bind(format!("{DEFAULT_BIND_HOST}:0")).expect("listen socket should bind")
     }
 
     #[rstest]
