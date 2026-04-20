@@ -84,10 +84,10 @@ jobs:
         run: |
           if [[ "${{ matrix.rstest_timeout }}" == "true" ]]; then
             RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
-              --exclude validator
+              --filter-expr 'not package(=validator)'
           else
             RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
-              --exclude validator
+              --filter-expr 'not package(=validator)'
           fi
 
   validator-sqlite:
@@ -148,7 +148,6 @@ jobs:
       HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client
       MXD_VALIDATOR_FAIL_CLOSED: "true"
       MXD_TEST_BIND_HOST: "127.0.0.1"
-      MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
     steps:
       - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
@@ -169,21 +168,25 @@ jobs:
             exit 1
           fi
       - name: Build wireframe server for coverage
-        run: make validator-sqlite-server
+        run: make validator-sqlite-server validator-postgres-server
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
       - uses: ./.github/actions/export-postgres-url
         with:
-          url: postgres://postgres:password@localhost/test
+          url: postgres://postgres:password@127.0.0.1/test
       - name: Generate coverage for SQLite
         uses: ./.github/actions/generate-coverage
+        env:
+          MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
           features: sqlite test-support
           output-path: lcov-sqlite.info
       - name: Generate coverage for Postgres
         uses: ./.github/actions/generate-coverage
+        env:
+          MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
         with:
           with-default-features: false
           features: postgres test-support
