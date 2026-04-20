@@ -164,12 +164,9 @@ pub fn expect_no_match(
     context: &'static str,
 ) -> Result<(), AnyError> {
     session.set_expect_timeout(Some(Duration::from_millis(250)));
-    let result = session.expect(Regex(pattern));
+    let result = session.expect(Regex(pattern)).map(|_| ());
     session.set_expect_timeout(Some(DEFAULT_EXPECT_TIMEOUT));
-    if result.is_ok() {
-        return Err(AnyError::msg(context));
-    }
-    Ok(())
+    interpret_no_match_result(result, context, pending_output(session))
 }
 
 /// Close a `SynHX` session, reporting cleanup failures as skipped diagnostics.
@@ -206,6 +203,20 @@ fn format_expect_error(
         "{context}: {error}; pending output: {}",
         pending_transcript.escape_default()
     )
+}
+
+fn interpret_no_match_result(
+    result: Result<(), expectrl::Error>,
+    context: &str,
+    transcript: Option<String>,
+) -> Result<(), AnyError> {
+    match result {
+        Ok(()) => Err(AnyError::msg(context.to_owned())),
+        Err(expectrl::Error::ExpectTimeout) => Ok(()),
+        Err(error) => Err(AnyError::msg(format_expect_error(
+            context, &error, transcript,
+        ))),
+    }
 }
 
 fn handle_prerequisite(
@@ -246,7 +257,7 @@ impl From<ServerBinaryError> for PrerequisiteError {
 
 #[cfg(test)]
 mod tests {
-    use super::format_expect_error;
+    use super::{format_expect_error, interpret_no_match_result};
 
     #[test]
     fn format_expect_error_omits_empty_transcript() {
@@ -276,6 +287,33 @@ mod tests {
                 "context: Reached a timeout for expect type of command; pending output: ",
                 "connected to host\\nHX"
             )
+        );
+    }
+
+    #[test]
+    fn no_match_timeout_is_treated_as_success() {
+        let result = interpret_no_match_result(
+            Err(expectrl::Error::ExpectTimeout),
+            "context",
+            Some("HX".to_owned()),
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn no_match_eof_is_reported_as_failure() {
+        let error = interpret_no_match_result(
+            Err(expectrl::Error::Eof),
+            "context",
+            Some("pending output".to_owned()),
+        )
+        .expect_err("EOF must fail the no-match assertion");
+
+        assert_eq!(
+            error.to_string(),
+            "context: EOF was reached; the read may successed later; pending output: pending \
+             output"
         );
     }
 }
