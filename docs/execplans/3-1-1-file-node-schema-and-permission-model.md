@@ -17,6 +17,12 @@ is to create a dual-backend Diesel schema that can represent folders, files,
 aliases, comments, and drop boxes without painting later file-service tasks
 into a corner.
 
+From a hexagonal-architecture perspective, this roadmap step must also define
+the persistence-side driven port for file hierarchy and access-control data so
+that Diesel, SQL, and recursive query mechanics stay in the outbound adapter
+layer instead of leaking into command handlers, protocol routing, or future
+application services.
+
 Success is observable when:
 
 - SQLite and PostgreSQL migrations create the `FileNode` hierarchy and the
@@ -47,12 +53,18 @@ Success is observable when:
   direction in `docs/news-schema.md` and `docs/design.md` before writing
   migrations. The implementation must not create two incompatible permission
   systems.
+- Treat file hierarchy persistence and ACL lookup as an outbound-adapter
+  concern. Domain or application-facing interfaces must own the data shapes and
+  semantics; Diesel-specific models and SQL details stay behind that boundary.
 - Preserve existing wireframe and legacy file-list behaviour unless a design
   decision explicitly changes it and the change is documented.
 - Prefer additive migration steps in 3.1.1. Do not drop legacy `files` or
   `file_acl` tables unless a verified backfill path for roadmap 3.1.2 exists.
 - Use `diesel-cte-ext` for hierarchical query helpers rather than ad hoc
   backend-specific SQL branches.
+- Do not let protocol or transport details leak into the persistence design.
+  Hotline privilege codes may inform ACL semantics, but protocol field parsing,
+  transaction framing, and reply shaping remain inbound-adapter concerns.
 - Use `rstest` fixtures for unit and integration coverage and `rstest-bdd`
   for behavioural scenarios where there is an observable protocol contract.
 - Use `pg_embedded_setup_unpriv` to validate PostgreSQL-backed test flows.
@@ -125,6 +137,23 @@ Implementation should be split into explicit workstreams:
 Handoff rule: each workstream must leave file-level evidence and test evidence
 before the next stage proceeds.
 
+## Hexagonal architecture audit
+
+Audit summary against the `hexagonal-architecture` skill:
+
+- The original plan already scoped the storage work narrowly, but it needed a
+  more explicit statement that `FileNode` persistence is a driven port with
+  Diesel as the outbound adapter.
+- File hierarchy invariants such as node kind legality, alias resolution,
+  sibling uniqueness, and ACL semantics should be expressible in
+  domain-facing/application-facing terms even when enforced in SQL.
+- Command handlers and wireframe routing must consume a narrow file access
+  interface or application service rather than reach for Diesel models,
+  backend-specific queries, or recursive SQL directly.
+- Adapter isolation matters here: object storage, Diesel persistence, and
+  protocol handling should coordinate through the core rather than growing
+  point-to-point dependencies as roadmap items 3.1.2 and 3.2 land.
+
 ## Context and orientation
 
 Current relevant state:
@@ -167,6 +196,53 @@ Known design tension to resolve up front:
   model or document a clean split between global privilege assignment and
   per-resource ACL rows.
 
+## Relevant references and skills
+
+Repository documentation to keep in view while implementing this plan:
+
+- `docs/design.md`: authoritative architecture notes, including current
+  hexagonal boundaries and the normalized permission direction.
+- `docs/adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md`:
+  repository-specific interpretation of dependency direction, port ownership,
+  and adapter isolation.
+- `docs/file-sharing-design.md`: target `FileNode` hierarchy, file metadata,
+  alias, drop box, and ACL concepts for roadmap item 3.1.1.
+- `docs/news-schema.md`: existing shared-permission catalogue direction that
+  must be reconciled with file ACLs.
+- `docs/protocol.md`: Hotline privilege codes and file or folder semantics that
+  inform the ACL model without dictating adapter internals.
+- `docs/verification-strategy.md`: verification boundary guidance, including
+  why permission predicates and mapping logic should stay pure and
+  verification-friendly.
+- `docs/cte-extension-design.md`: recursive-CTE rationale for backend-neutral
+  hierarchy traversal using `diesel-cte-ext`.
+- `docs/rust-testing-with-rstest-fixtures.md`: fixture and `rstest` patterns
+  expected for repository and integration coverage.
+- `docs/rstest-bdd-users-guide.md`: behavioural-test structure for scenarios
+  that stay observable at the protocol boundary.
+- `docs/pg-embed-setup-unpriv-users-guide.md`: local PostgreSQL setup and test
+  cluster guidance.
+- `docs/developers-guide.md`: current project structure and import guidance for
+  adapter-facing modules.
+- `docs/documentation-style-guide.md`: documentation update conventions for the
+  follow-on `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md`
+  edits required by this roadmap step.
+
+Skills available in this session that are relevant to this work:
+
+- `hexagonal-architecture`: use for dependency-rule checks, port placement,
+  adapter isolation, and drift detection.
+- `leta`: use first for code exploration and symbol-level navigation before
+  changing Rust modules.
+- `rust-router`: use to route Rust design or implementation questions to the
+  smallest relevant Rust skill.
+- `rust-types-and-apis`: use when designing repository traits, newtypes, and
+  domain-facing interfaces for `FileNode` and permission access.
+- `rust-errors`: use when shaping semantic repository or application errors at
+  the port boundary.
+- `nextest`: use when working through the test strategy and execution model for
+  `make test`.
+
 ## Plan of work
 
 ### Stage A: reconcile the permission architecture before writing migrations
@@ -180,6 +256,8 @@ Audit the current repository state against:
 
 Produce and record a concrete design decision covering:
 
+- which domain or application module owns the driven port for file-node
+  persistence and ACL lookup, and which adapter module implements it;
 - whether global protocol privileges remain normalized in
   `permissions` / `user_permissions`;
 - whether file and folder ACLs live in a dedicated shared resource-permission
@@ -189,11 +267,16 @@ Produce and record a concrete design decision covering:
 - whether `users.global_access` is needed in addition to normalized
   permissions, or whether current session privilege loading remains unchanged
   in 3.1.1.
+- how protocol privilege codes map into storage predicates and ACL semantics
+  without forcing protocol-specific types into the persistence layer.
 
 Required outcome:
 
 - `docs/design.md` states the final permission architecture and how file ACLs
   integrate with shared permissions.
+- The plan identifies a stable port boundary that later roadmap items can reuse
+  without exposing Diesel types or backend-specific recursion details outside
+  the adapter layer.
 
 Validation gate for Stage A:
 
@@ -251,8 +334,11 @@ Update the Rust persistence surface so the new schema is representable and
 testable:
 
 - refresh `src/schema.rs`;
-- add/replace models for `FileNode`, alias metadata, groups, shared permission
-  rows, and any helper enums or newtypes required to keep code readable;
+- add or replace adapter-layer models for `FileNode`, alias metadata, groups,
+  shared permission rows, and any helper enums or newtypes required to keep
+  code readable;
+- define or refine the domain-facing/application-facing repository interface
+  that owns file hierarchy and ACL queries;
 - keep module-level `//!` comments and Rustdoc current;
 - replace file-helper functions that assume a flat file list with a minimal set
   of repository APIs suited to 3.1.1.
@@ -273,6 +359,9 @@ Validation gate for Stage C:
 - all code compiles for SQLite, PostgreSQL, and wireframe-only feature sets;
 - repository helpers expose enough functionality to seed and query the new
   schema without ad hoc SQL in tests.
+- no Diesel-specific types, backend-specific SQL strings, or recursive-query
+  implementation details leak into command handlers, wireframe routing, or
+  other non-adapter modules.
 
 ### Stage D: add hierarchical query helpers with `diesel-cte-ext`
 
@@ -431,23 +520,38 @@ Recommended sequence:
 If a gate must be skipped, record the exact reason and the evidence in this
 ExecPlan before closing the task.
 
+Architecture-specific checks to include during review:
+
+1. Check dependency direction:
+
+   ```sh
+   rg -n "wireframe::|tokio::net|object_store::|diesel::" src
+   ```
+
+   Expectation: any new persistence-specific `diesel::*` usage introduced by
+   3.1.1 stays inside adapter-facing modules rather than spreading into command
+   handlers or protocol routing.
+
 ## Concrete implementation checklist
 
 1. Reconcile the shared permission architecture and record the decision in
    `docs/design.md`.
-2. Add dual-backend migrations for `file_nodes` and the selected shared
+2. Record the file-hierarchy driven-port boundary and the adapter module that
+   implements it.
+3. Add dual-backend migrations for `file_nodes` and the selected shared
    permission structures.
-3. Keep or bridge legacy `files` / `file_acl` tables so roadmap 3.1.2 can
+4. Keep or bridge legacy `files` / `file_acl` tables so roadmap 3.1.2 can
    migrate data safely.
-4. Refresh Diesel schema and Rust models.
-5. Add narrow repository helpers for hierarchy and ACL queries.
-6. Implement `diesel-cte-ext` powered path or hierarchy traversal helpers.
-7. Update fixtures and `rstest` coverage for happy, unhappy, and edge cases.
-8. Update `rstest-bdd` scenarios for existing observable file-list behaviour.
-9. Update `docs/file-sharing-design.md`, `docs/design.md`, and
+5. Refresh Diesel schema and Rust models.
+6. Add or refine narrow repository helpers and port interfaces for hierarchy
+   and ACL queries.
+7. Implement `diesel-cte-ext` powered path or hierarchy traversal helpers.
+8. Update fixtures and `rstest` coverage for happy, unhappy, and edge cases.
+9. Update `rstest-bdd` scenarios for existing observable file-list behaviour.
+10. Update `docs/file-sharing-design.md`, `docs/design.md`, and
    `docs/users-guide.md` as required.
-10. Run PostgreSQL setup and all quality gates with captured logs.
-11. Mark roadmap item 3.1.1 done only after all gates pass.
+11. Run PostgreSQL setup and all quality gates with captured logs.
+12. Mark roadmap item 3.1.1 done only after all gates pass.
 
 ## Progress
 
@@ -460,6 +564,12 @@ ExecPlan before closing the task.
   `pg_embedded_setup_unpriv` are the intended tools for hierarchical queries
   and local PostgreSQL validation.
 - [x] (2026-04-12 00:00Z) Drafted this ExecPlan at the requested path.
+- [x] (2026-04-20 08:40Z) Audited the plan against the
+  `hexagonal-architecture` skill and tightened the persistence boundary so
+  `FileNode` and ACL work is explicitly treated as driven-port plus
+  outbound-adapter work.
+- [x] (2026-04-20 08:40Z) Added signposts to the repository documentation and
+  session-available skills that are most relevant to implementing 3.1.1.
 - [ ] Reconcile permission-model shape across docs and code.
 - [ ] Add dual-backend migrations and Diesel schema updates.
 - [ ] Add `diesel-cte-ext` hierarchy helpers and repository coverage.
@@ -482,6 +592,9 @@ ExecPlan before closing the task.
 - Behavioural testing is only partially applicable to 3.1.1 because aliases,
   comments, folder metadata, and drop-box semantics do not yet have full
   protocol handlers in the current branch.
+- The earlier draft implicitly assumed the persistence boundary, but it did not
+  state port ownership or adapter isolation explicitly enough for a
+  hexagonal-architecture audit.
 
 ## Decision Log
 
@@ -499,6 +612,12 @@ ExecPlan before closing the task.
   requested behavioural coverage where applicable, and forcing protocol work
   ahead of roadmap 3.2 would widen scope unnecessarily. Date/Author: 2026-04-12
   / Codex.
+- Decision: treat file hierarchy persistence and ACL lookup as a driven port
+  implemented by the Diesel adapter rather than as an extension of command
+  handlers. Rationale: this keeps all dependencies pointing inward, prevents
+  recursive SQL and backend-specific types from leaking past the adapter
+  boundary, and matches the repository's hexagonal architecture guidance.
+  Date/Author: 2026-04-20 / Codex.
 
 ## Outcomes & Retrospective
 
