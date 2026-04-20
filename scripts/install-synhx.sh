@@ -155,6 +155,23 @@ verify_archive_checksum() {
     fail "checksum verification failed for $archive (expected $expected, got $actual)"
 }
 
+validate_source_dir() {
+    local directory
+    directory="$1"
+
+    if [[ -z "$directory" ]]; then
+        fail "unable to determine extracted source directory"
+    fi
+
+    if [[ "$directory" == .* || "$directory" == -* || "$directory" == */* ]]; then
+        fail "refusing unsafe extracted source directory name: $directory"
+    fi
+
+    if [[ ! "$directory" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        fail "refusing extracted source directory with unexpected characters: $directory"
+    fi
+}
+
 set_expected_checksums
 ensure_dir "$HX_WORK_ROOT"
 ensure_dir "$HX_BIN_DIR"
@@ -182,16 +199,18 @@ install_file hx "$HX_BIN_DIR"
 
 wget -O "$source_archive" "$source_url"
 verify_archive_checksum "$source_archive" "$HX_SOURCE_SHA256"
-archive_listing="$(tar -tzf "$source_archive")"
+archive_listing="$(tar -tzf -- "$source_archive")"
 source_dir="$(printf '%s\n' "$archive_listing" | sed -n '1s#/.*##p')"
+source_dir="$(basename -- "$source_dir")"
+validate_source_dir "$source_dir"
 
-if [[ -z "$source_dir" ]]; then
-    fail "unable to determine extracted source directory"
-fi
-
-rm -rf "$source_dir"
-tar xzf "$source_archive"
+rm -rf -- "./$source_dir"
+tar xzf -- "$source_archive"
 rm -f "$source_archive"
+
+if [[ ! -d "./$source_dir" ]]; then
+    fail "expected extracted source directory '$HX_WORK_ROOT/$source_dir'"
+fi
 
 ln -sfn "$HX_WORK_ROOT/$source_dir" "$HX_SRC_LINK"
 

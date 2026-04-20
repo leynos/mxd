@@ -40,6 +40,14 @@ pub enum HxClientError {
     /// The discovered `hx` binary appears to be the Helix editor.
     #[error("hx appears to be the Helix editor, not SynHX")]
     HelixBinary,
+    /// Inspecting the `hx` binary failed before a session could be started.
+    #[error("failed to inspect hx from {path}: {source}")]
+    Probe {
+        /// Binary path used for inspection.
+        path: PathBuf,
+        /// Underlying spawn error.
+        source: std::io::Error,
+    },
     /// Spawning the `hx` client failed.
     #[error("failed to spawn hx from {path}: {source}")]
     Spawn {
@@ -79,7 +87,7 @@ fn resolve_hx_binary_with_env(
         None => discovered_path.ok_or(HxClientError::MissingBinary)?,
     };
 
-    if hx_is_helix(&path) {
+    if hx_is_helix(&path)? {
         return Err(HxClientError::HelixBinary);
     }
 
@@ -137,24 +145,25 @@ pub fn terminate_hx(session: &mut Session) -> Result<(), HxClientError> {
         .map_err(|error| HxClientError::Cleanup(error.to_string()))
 }
 
-fn hx_is_helix(path: &PathBuf) -> bool {
-    let Ok(mut child) = Command::new(path)
+fn hx_is_helix(path: &PathBuf) -> Result<bool, HxClientError> {
+    let mut child = Command::new(path)
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-    else {
-        return false;
-    };
+        .map_err(|source| HxClientError::Probe {
+            path: path.clone(),
+            source,
+        })?;
 
     if let Ok(Some(_)) = child.wait_timeout(HELIX_DETECTION_TIMEOUT) {
         let stdout = read_stream(child.stdout.take());
         let stderr = read_stream(child.stderr.take());
         let combined = format!("{stdout}{stderr}");
-        output_looks_like_helix(&combined)
+        Ok(output_looks_like_helix(&combined))
     } else {
         terminate_child(&mut child);
-        false
+        Ok(false)
     }
 }
 
