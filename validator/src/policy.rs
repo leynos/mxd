@@ -72,6 +72,7 @@ pub enum PrerequisiteResolution {
 
 /// Error raised when the execution policy environment is invalid.
 #[derive(Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ValidatorRunPolicyError {
     /// An environment variable contained an invalid boolean string.
     #[error("environment variable {env_var} must be 'true' or 'false', got '{value}'")]

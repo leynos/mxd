@@ -141,6 +141,7 @@ impl ValidatorConfig {
 
 /// An error raised while loading validator configuration.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ValidatorConfigError {
     /// The explicitly requested config file does not exist.
     #[error("validator config file does not exist: {0}")]

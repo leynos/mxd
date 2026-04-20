@@ -25,9 +25,9 @@ Success is observable when:
 - new harness helpers are covered with `rstest` unit tests, and
   `rstest-bdd` scenarios are added where they improve readability for
   higher-level validation behaviour;
-- devboxer and CI both provision SynHX through a shared
-  `scripts/install-synhx.sh` script and fail closed when validator coverage
-  cannot run;
+- devboxer and continuous integration (CI) both provision SynHX through a
+  shared `scripts/install-synhx.sh` script and fail closed when validator
+  coverage cannot run;
 - `docs/design.md` records the final harness-targeting and CI decisions;
 - `docs/users-guide.md` is updated if the implementation changes user-visible
   runtime behaviour or supported validation workflows;
@@ -43,12 +43,12 @@ Success is observable when:
 - Extract reusable harness logic into unit-testable helpers and cover that
   logic with `rstest`.
 - Add `rstest-bdd` behavioural coverage where it clarifies multi-step harness
-  orchestration or validation contracts; do not force BDD onto low-level PTY
-  details that are better expressed as ordinary tests.
+  orchestration or validation contracts; do not force BDD onto low-level
+  pseudo-terminal (PTY) details that are better expressed as ordinary tests.
 - Use dependency injection for process-launch, filesystem, and environment
   seams where that materially improves deterministic testing, following
   `docs/reliable-testing-in-rust-via-dependency-injection.md`.
-- Use `pg-embedded-setup-unpriv` for documented local Postgres validator runs
+- Use `pg-embed-setup-unpriv` for documented local Postgres validator runs
   rather than bespoke cluster setup.
 - Use a repository-owned SynHX install script rather than inline CI shell
   fragments, so devboxer and CI share the same provisioning path.
@@ -143,6 +143,11 @@ Success is observable when:
 - [x] (2026-04-12 12:28Z) Updated `docs/design.md` and
       `docs/developers-guide.md`, and reviewed `docs/users-guide.md` with no
       user-visible workflow change requiring documentation updates.
+- [x] (2026-04-20 00:00Z) Addressed review follow-up by reusing the shared
+      validator skip helper, marking exported validator error enums as
+      non-exhaustive, hardening `scripts/install-synhx.sh` for unsupported
+      platforms and missing `sudo`, and normalizing `pg-embed-setup-unpriv`
+      command and guide references in the touched documentation.
 - [ ] Keep roadmap item 1.6.2 open until real-client file/news/chat coverage
       exists or the acceptance criteria are re-scoped.
 - [ ] Run full quality gates with tee-captured logs and commit the final
@@ -283,7 +288,7 @@ Success is observable when:
   Rationale: silent skips would hide missing coverage on branches that claim to
   implement chat or file-download support. Date/Author: 2026-04-12 / Assistant
 
-- Decision: document local Postgres validation via `pg-embedded-setup-unpriv`,
+- Decision: document local Postgres validation via `pg-embed-setup-unpriv`,
   but do not assume the first CI cut must run both backends unless explicitly
   required during implementation. Rationale: the task acceptance says the
   harness runs in CI; the request separately asks for local Postgres
@@ -490,7 +495,7 @@ Work items:
   environment overrides for the binary install directory and source checkout
   path, while defaulting to `/usr/local/bin` and `~/git`.
 - Keep local Postgres validator execution documented via
-  `pg-embedded-setup-unpriv`, even if CI initially runs only the SQLite-backed
+  `pg-embed-setup-unpriv`, even if CI initially runs only the SQLite-backed
   validator job.
 
 Validation gate for Stage E:

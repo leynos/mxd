@@ -136,7 +136,7 @@ Verification guidance and tooling expectations are in
 `docs/verification-strategy.md`. Documentation and testing conventions are
 described in `docs/rust-testing-with-rstest-fixtures.md`,
 `docs/rstest-bdd-users-guide.md`, `docs/rust-doctest-dry-guide.md`, and
-`docs/pg-embedded-setup-unpriv-users-guide.md`.
+`docs/pg-embed-setup-unpriv-users-guide.md`.
 
 ## Plan of Work
 

@@ -19,13 +19,37 @@ HX_VERSION="${HX_VERSION:-0.1.48.1}"
 HX_WORK_ROOT="${HX_WORK_ROOT:-$HOME/git}"
 HX_BIN_DIR="${HX_BIN_DIR:-/usr/local/bin}"
 HX_SRC_LINK="${HX_SRC_LINK:-$HX_WORK_ROOT/synhx-client}"
+HX_PLATFORM_ARCHIVE=""
+
+fail() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
+require_supported_platform() {
+    local os arch
+    os="$(uname -s)"
+    arch="$(uname -m)"
+
+    if [[ "$os" != "Linux" ]]; then
+        fail "SynHX auto-install currently supports Linux only; set HX_BIN_DIR and HX_SRC_LINK manually on $os."
+    fi
+
+    case "$arch" in
+        x86_64|amd64)
+            HX_PLATFORM_ARCHIVE="hx-ubuntu-latest-v${HX_VERSION}.tar.gz"
+            ;;
+        *)
+            fail "SynHX auto-install currently supports Linux x86_64 only; unsupported architecture: $arch."
+            ;;
+    esac
+}
 
 require_command() {
     local name
     name="$1"
     if ! command -v "$name" >/dev/null 2>&1; then
-        echo "Error: required command not found: $name" >&2
-        exit 1
+        fail "required command not found: $name"
     fi
 }
 
@@ -46,8 +70,7 @@ ensure_dir() {
         return
     fi
 
-    echo "Error: cannot create directory $directory and sudo is unavailable" >&2
-    exit 1
+    fail "cannot create directory $directory and sudo is unavailable; choose a writable path or install sudo"
 }
 
 install_file() {
@@ -66,11 +89,10 @@ install_file() {
         return
     fi
 
-    echo "Error: cannot write to $destination_dir and sudo is unavailable" >&2
-    echo "Set HX_BIN_DIR to a writable directory or provide sudo access." >&2
-    exit 1
+    fail "cannot write to $destination_dir and sudo is unavailable; set HX_BIN_DIR to a writable directory or provide sudo access"
 }
 
+require_supported_platform
 require_command tar
 require_command wget
 require_command install
@@ -82,7 +104,7 @@ ensure_dir "$HX_WORK_ROOT"
 ensure_dir "$HX_BIN_DIR"
 ensure_dir "$(dirname "$HX_SRC_LINK")"
 
-binary_archive="hx-ubuntu-latest-v${HX_VERSION}.tar.gz"
+binary_archive="$HX_PLATFORM_ARCHIVE"
 binary_url="https://github.com/leynos/synhx-client/releases/download/v${HX_VERSION}/${binary_archive}"
 source_archive="synhx-client-v${HX_VERSION}.tar.gz"
 source_url="https://github.com/leynos/synhx-client/archive/refs/tags/v${HX_VERSION}.tar.gz"
@@ -96,8 +118,7 @@ tar xvf "$binary_archive"
 rm -f "$binary_archive"
 
 if [[ ! -f hx ]]; then
-    echo "Error: expected extracted binary '$HX_WORK_ROOT/hx'" >&2
-    exit 1
+    fail "expected extracted binary '$HX_WORK_ROOT/hx'"
 fi
 
 install_file hx "$HX_BIN_DIR"
@@ -107,8 +128,7 @@ archive_listing="$(tar -tzf "$source_archive")"
 source_dir="$(printf '%s\n' "$archive_listing" | sed -n '1s#/.*##p')"
 
 if [[ -z "$source_dir" ]]; then
-    echo "Error: unable to determine extracted source directory" >&2
-    exit 1
+    fail "unable to determine extracted source directory"
 fi
 
 rm -rf "$source_dir"

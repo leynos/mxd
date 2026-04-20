@@ -46,6 +46,7 @@ impl ValidatorBackend {
 
 /// Error raised while resolving the explicit wireframe server binary.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ServerBinaryError {
     /// An explicitly requested server binary path does not exist.
     #[error("validator server binary does not exist: {path}")]

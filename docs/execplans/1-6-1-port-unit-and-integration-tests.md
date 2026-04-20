@@ -108,7 +108,7 @@ Success is observable when:
   `tests/news_categories.rs`, and `tests/news_articles.rs` already start the
   `mxd-wireframe-server` binary through `tests/common.rs` and `TestServer`.
 - The referenced Postgres setup guide path in the request uses
-  `pg-embedded-setup-unpriv`, while the repository document path is
+  `pg-embed-setup-unpriv`, while the repository document path is
   `docs/pg-embed-setup-unpriv-users-guide.md`.
 - Server-only routing scenarios (unknown transaction type) still need an
   active TCP connection and therefore must start `TestServer` with a no-op DB

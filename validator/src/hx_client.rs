@@ -23,6 +23,7 @@ const HELIX_DETECTION_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Error raised while resolving or launching the `hx` client.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum HxClientError {
     /// The `hx` binary could not be found.
     #[error("hx binary not found; install SynHX or set MXD_VALIDATOR_HX_BINARY")]

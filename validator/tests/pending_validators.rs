@@ -12,6 +12,7 @@ use validator::{
     ValidatorConfig,
     pending_validator_disabled_message,
     pending_validator_unimplemented_message,
+    report_skip,
 };
 
 #[rstest]
@@ -27,14 +28,4 @@ fn pending_validator_requires_opt_in(#[case] validator: PendingValidator) -> Res
     Err(AnyError::msg(pending_validator_unimplemented_message(
         validator,
     )))
-}
-
-fn report_skip(message: &str) {
-    #[expect(
-        clippy::print_stderr,
-        reason = "skip message: inform user why test is being skipped"
-    )]
-    {
-        eprintln!("{message}");
-    }
 }
