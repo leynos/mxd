@@ -5,6 +5,7 @@
 //! cleanly when `SynHX` is absent.
 
 use std::{
+    ffi::OsStr,
     io::Read,
     path::PathBuf,
     process::{Child, Command, Stdio},
@@ -28,6 +29,14 @@ pub enum HxClientError {
     /// The `hx` binary could not be found.
     #[error("hx binary not found; install SynHX or set MXD_VALIDATOR_HX_BINARY")]
     MissingBinary,
+    /// The explicitly requested `hx` binary path does not exist.
+    #[error("hx binary from {env_var} does not exist: {path}")]
+    MissingExplicitBinary {
+        /// Environment variable that provided the path.
+        env_var: &'static str,
+        /// Requested path.
+        path: PathBuf,
+    },
     /// The discovered `hx` binary appears to be the Helix editor.
     #[error("hx appears to be the Helix editor, not SynHX")]
     HelixBinary,
@@ -55,16 +64,37 @@ pub enum HxClientError {
 /// Returns an error if no `hx` binary can be found or if the resolved binary
 /// is the Helix editor.
 pub fn resolve_hx_binary() -> Result<PathBuf, HxClientError> {
-    let path = std::env::var_os(VALIDATOR_HX_BINARY_ENV_VAR)
-        .map(PathBuf::from)
-        .or_else(|| which("hx").ok())
-        .ok_or(HxClientError::MissingBinary)?;
+    resolve_hx_binary_with_env(
+        std::env::var_os(VALIDATOR_HX_BINARY_ENV_VAR).as_deref(),
+        which("hx").ok(),
+    )
+}
+
+fn resolve_hx_binary_with_env(
+    override_path: Option<&OsStr>,
+    discovered_path: Option<PathBuf>,
+) -> Result<PathBuf, HxClientError> {
+    let path = match override_path {
+        Some(path) => explicit_hx_binary(PathBuf::from(path))?,
+        None => discovered_path.ok_or(HxClientError::MissingBinary)?,
+    };
 
     if hx_is_helix(&path) {
         return Err(HxClientError::HelixBinary);
     }
 
     Ok(path)
+}
+
+fn explicit_hx_binary(path: PathBuf) -> Result<PathBuf, HxClientError> {
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(HxClientError::MissingExplicitBinary {
+            env_var: VALIDATOR_HX_BINARY_ENV_VAR,
+            path,
+        })
+    }
 }
 
 /// Spawn a `SynHX` session with the provided expect timeout.
@@ -145,7 +175,17 @@ fn read_stream<T: Read>(maybe_stream: Option<T>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
     use super::*;
+
+    fn touch_binary(path: &std::path::Path) {
+        let parent = path.parent().expect("binary path should have a parent");
+        fs::create_dir_all(parent).expect("create binary directory");
+        fs::write(path, b"binary").expect("write binary");
+    }
 
     #[test]
     fn helix_output_is_detected_case_insensitively() {
@@ -159,5 +199,37 @@ mod tests {
         assert!(!output_looks_like_helix(
             "load: p: No such file or directory"
         ));
+    }
+
+    #[test]
+    fn explicit_override_must_exist() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let missing = temp_dir.path().join("missing-hx");
+
+        let error = resolve_hx_binary_with_env(Some(missing.as_os_str()), None)
+            .expect_err("missing explicit hx binary must fail");
+
+        assert!(matches!(
+            error,
+            HxClientError::MissingExplicitBinary {
+                env_var: VALIDATOR_HX_BINARY_ENV_VAR,
+                path,
+            } if path == missing
+        ));
+    }
+
+    #[test]
+    fn explicit_override_wins_when_present() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let explicit = temp_dir.path().join("custom-hx");
+        let discovered = temp_dir.path().join("discovered-hx");
+        touch_binary(&explicit);
+        touch_binary(&discovered);
+
+        let resolved =
+            resolve_hx_binary_with_env(Some(explicit.as_os_str()), Some(discovered.clone()))
+                .expect("resolve explicit hx binary");
+
+        assert_eq!(resolved, explicit);
     }
 }
