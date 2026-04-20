@@ -156,14 +156,38 @@ fn hx_is_helix(path: &PathBuf) -> Result<bool, HxClientError> {
             source,
         })?;
 
-    if let Ok(Some(_)) = child.wait_timeout(HELIX_DETECTION_TIMEOUT) {
-        let stdout = read_stream(child.stdout.take());
-        let stderr = read_stream(child.stderr.take());
-        let combined = format!("{stdout}{stderr}");
-        Ok(output_looks_like_helix(&combined))
-    } else {
-        terminate_child(&mut child);
-        Ok(false)
+    match child.wait_timeout(HELIX_DETECTION_TIMEOUT) {
+        Ok(Some(_)) => {
+            let stdout =
+                read_stream(child.stdout.take()).map_err(|source| HxClientError::Probe {
+                    path: path.clone(),
+                    source,
+                })?;
+            let stderr =
+                read_stream(child.stderr.take()).map_err(|source| HxClientError::Probe {
+                    path: path.clone(),
+                    source,
+                })?;
+            let combined = format!("{stdout}{stderr}");
+            Ok(output_looks_like_helix(&combined))
+        }
+        Ok(None) => {
+            terminate_child(&mut child);
+            Err(HxClientError::Probe {
+                path: path.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "hx --version probe timed out",
+                ),
+            })
+        }
+        Err(source) => {
+            terminate_child(&mut child);
+            Err(HxClientError::Probe {
+                path: path.clone(),
+                source,
+            })
+        }
     }
 }
 
@@ -174,40 +198,33 @@ fn terminate_child(child: &mut Child) {
     let _wait_result = child.wait();
 }
 
-fn read_stream<T: Read>(maybe_stream: Option<T>) -> String {
+fn read_stream<T: Read>(maybe_stream: Option<T>) -> Result<String, std::io::Error> {
     let mut buffer = Vec::new();
     if let Some(mut stream) = maybe_stream {
-        let _read_result = stream.read_to_end(&mut buffer);
+        stream.read_to_end(&mut buffer)?;
     }
-    String::from_utf8_lossy(&buffer).to_string()
+    Ok(String::from_utf8_lossy(&buffer).to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    //! Unit tests for Helix probe heuristics and binary-resolution edge cases.
+    //!
+    //! These tests cover the lightweight output classifier plus resolver behavior
+    //! around missing overrides and accepted executable paths.
 
+    use rstest::rstest;
     use tempfile::TempDir;
 
     use super::*;
 
-    fn touch_binary(path: &std::path::Path) {
-        let parent = path.parent().expect("binary path should have a parent");
-        fs::create_dir_all(parent).expect("create binary directory");
-        fs::write(path, b"binary").expect("write binary");
-    }
-
-    #[test]
-    fn helix_output_is_detected_case_insensitively() {
-        assert!(output_looks_like_helix("Helix 24.03"));
-        assert!(output_looks_like_helix("helix terminal editor"));
-    }
-
-    #[test]
-    fn non_helix_output_is_not_rejected() {
-        assert!(!output_looks_like_helix("hx version 0.1.48.1"));
-        assert!(!output_looks_like_helix(
-            "load: p: No such file or directory"
-        ));
+    #[rstest]
+    #[case("Helix 24.03", true)]
+    #[case("helix terminal editor", true)]
+    #[case("hx version 0.1.48.1", false)]
+    #[case("load: p: No such file or directory", false)]
+    fn helix_output_detection(#[case] output: &str, #[case] expected: bool) {
+        assert_eq!(output_looks_like_helix(output), expected);
     }
 
     #[test]
@@ -229,11 +246,8 @@ mod tests {
 
     #[test]
     fn explicit_override_wins_when_present() {
-        let temp_dir = TempDir::new().expect("create temp dir");
-        let explicit = temp_dir.path().join("custom-hx");
-        let discovered = temp_dir.path().join("discovered-hx");
-        touch_binary(&explicit);
-        touch_binary(&discovered);
+        let explicit = std::env::current_exe().expect("resolve current test binary");
+        let discovered = std::env::current_exe().expect("resolve current test binary");
 
         let resolved =
             resolve_hx_binary_with_env(Some(explicit.as_os_str()), Some(discovered.clone()))

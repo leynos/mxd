@@ -221,6 +221,10 @@ if [[ ! -d "./$source_dir" ]]; then
     fail "expected extracted source directory '$HX_WORK_ROOT/$source_dir'"
 fi
 
+if [[ -e "$HX_SRC_LINK" || -L "$HX_SRC_LINK" ]]; then
+    rm -rf -- "$HX_SRC_LINK"
+fi
+
 ln -sfn "$HX_WORK_ROOT/$source_dir" "$HX_SRC_LINK"
 
 echo "hx binary is available at $HX_BIN_DIR/hx"
