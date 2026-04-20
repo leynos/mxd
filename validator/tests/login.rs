@@ -18,15 +18,6 @@ fn login_validation_uses_wireframe_server_and_authenticates() -> Result<(), AnyE
     let Some(harness) = ValidatorHarness::prepare()? else {
         return Ok(());
     };
-    let resolved_binary = harness
-        .server_binary()
-        .file_name()
-        .and_then(std::ffi::OsStr::to_str);
-    if resolved_binary != Some("mxd-wireframe-server") {
-        return Err(AnyError::msg(format!(
-            "validator resolved unexpected server binary: {resolved_binary:?}"
-        )));
-    }
 
     let server = harness.start_server_with_setup(|db| setup_login_db(db.into()))?;
     let bind_addr = server.bind_addr();

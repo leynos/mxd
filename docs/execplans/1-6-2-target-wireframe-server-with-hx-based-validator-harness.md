@@ -542,7 +542,13 @@ Local Postgres enablement should follow
 
 ```sh
 ./scripts/install-synhx.sh
-cargo install --locked pg-embed-setup-unpriv
+export PG_VERSION_REQ=15.13.0
+export PG_RUNTIME_DIR="$PWD/.tmp/pg/runtime"
+export PG_DATA_DIR="$PWD/.tmp/pg/data"
+export PG_SUPERUSER=postgres
+export PG_PASSWORD=postgres
+export PG_TEST_BACKEND=embedded
+cargo install --locked --version 0.5.0 pg-embed-setup-unpriv
 pg_embedded_setup_unpriv
 cargo test -p validator --no-default-features --features postgres
 ```

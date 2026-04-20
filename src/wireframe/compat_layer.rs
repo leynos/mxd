@@ -281,10 +281,10 @@ mod tests {
     #[test]
     fn file_list_payload_bypasses_param_decode() {
         let peer: SocketAddr = "127.0.0.1:12345".parse().expect("valid loopback socket");
-        let xor = XorCompatibility::disabled();
+        let xor = XorCompatibility::enabled();
         let transaction = Transaction {
             header: header(TransactionType::GetFileNameList),
-            payload: vec![0xca, 0x00, 0x02, 0x00, 0x01],
+            payload: vec![0xff, 0x00, 0x01, 0x02, 0x03],
         };
 
         let decoded = decode_payload_for_request(
@@ -295,6 +295,10 @@ mod tests {
         )
         .expect("file-list payload should bypass parameter decode");
 
+        assert!(
+            xor.is_enabled(),
+            "xor state should remain non-trivial for the bypass check"
+        );
         assert_eq!(decoded.payload, transaction.payload);
     }
 

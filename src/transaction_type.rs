@@ -135,22 +135,48 @@ impl std::fmt::Display for TransactionType {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
-
     use super::TransactionType;
 
-    #[rstest]
-    #[case::file_list_empty(TransactionType::GetFileNameList, true, false)]
-    #[case::file_list_non_empty(TransactionType::GetFileNameList, false, false)]
-    #[case::banner_empty(TransactionType::DownloadBanner, true, false)]
-    #[case::banner_non_empty(TransactionType::DownloadBanner, false, true)]
-    #[case::news_article_empty(TransactionType::NewsArticleData, true, false)]
-    #[case::news_article_non_empty(TransactionType::NewsArticleData, false, false)]
-    fn rejects_payload_matches_expected_policy(
-        #[case] transaction_type: TransactionType,
-        #[case] payload_is_empty: bool,
-        #[case] expected: bool,
-    ) {
-        assert_eq!(transaction_type.rejects_payload(payload_is_empty), expected);
+    const ALL_TRANSACTION_TYPES: [TransactionType; 13] = [
+        TransactionType::Error,
+        TransactionType::Login,
+        TransactionType::Agreement,
+        TransactionType::Agreed,
+        TransactionType::GetFileNameList,
+        TransactionType::DownloadBanner,
+        TransactionType::GetUserNameList,
+        TransactionType::UserAccess,
+        TransactionType::NewsCategoryNameList,
+        TransactionType::NewsArticleNameList,
+        TransactionType::NewsArticleData,
+        TransactionType::PostNewsArticle,
+        TransactionType::Other(999),
+    ];
+
+    #[test]
+    fn rejects_payload_matches_expected_policy() {
+        assert!(!TransactionType::GetFileNameList.rejects_payload(true));
+        assert!(!TransactionType::GetFileNameList.rejects_payload(false));
+        assert!(!TransactionType::NewsArticleData.rejects_payload(true));
+        assert!(!TransactionType::NewsArticleData.rejects_payload(false));
+        assert!(!TransactionType::DownloadBanner.rejects_payload(true));
+        assert!(TransactionType::DownloadBanner.rejects_payload(false));
+        assert!(!TransactionType::GetUserNameList.rejects_payload(true));
+        assert!(TransactionType::GetUserNameList.rejects_payload(false));
+    }
+
+    #[test]
+    fn bypass_payload_decode_matches_transaction_policy() {
+        for transaction_type in ALL_TRANSACTION_TYPES {
+            let expected = matches!(transaction_type, TransactionType::GetFileNameList)
+                || !transaction_type.allows_payload();
+            assert_eq!(
+                transaction_type.bypass_payload_decode(),
+                expected,
+                "unexpected bypass policy for {transaction_type:?}"
+            );
+        }
+
+        assert!(TransactionType::GetUserNameList.bypass_payload_decode());
     }
 }

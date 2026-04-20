@@ -163,7 +163,7 @@ validate_source_dir() {
         fail "unable to determine extracted source directory"
     fi
 
-    if [[ "$directory" == .* || "$directory" == -* || "$directory" == */* ]]; then
+    if [[ "$directory" == "." || "$directory" == ".." || "$directory" == -* || "$directory" == */* ]]; then
         fail "refusing unsafe extracted source directory name: $directory"
     fi
 
@@ -200,8 +200,17 @@ install_file hx "$HX_BIN_DIR"
 wget -O "$source_archive" "$source_url"
 verify_archive_checksum "$source_archive" "$HX_SOURCE_SHA256"
 archive_listing="$(tar -tzf -- "$source_archive")"
-source_dir="$(printf '%s\n' "$archive_listing" | sed -n '1s#/.*##p')"
-source_dir="$(basename -- "$source_dir")"
+mapfile -t source_dirs < <(
+    printf '%s\n' "$archive_listing" |
+        awk -F/ 'NF > 0 && $1 != "" { print $1 }' |
+        sort -u
+)
+
+if [[ "${#source_dirs[@]}" -ne 1 ]]; then
+    fail "expected exactly one top-level source directory in $source_archive"
+fi
+
+source_dir="$(basename -- "${source_dirs[0]}")"
 validate_source_dir "$source_dir"
 
 rm -rf -- "./$source_dir"
