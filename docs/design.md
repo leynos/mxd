@@ -2589,6 +2589,91 @@ how Hotline works:
    This way you can assign an entire group access to a folder by one entry in
   `Permission`, instead of listing every user.
 
+For screen readers: the following E-R diagram shows the intended file-sharing
+metadata model. `FileNode` is the central hierarchical resource, with optional
+links to a parent node and an alias target node. Users create file nodes, users
+and groups are related through `UserGroup`, global privileges flow from
+`Permission` to users through `UserPermission`, and per-resource ACL entries
+flow from `Permission` to `FileNode` resources through `ResourcePermission`,
+whose principal may be either a user or a group.
+
+```mermaid
+erDiagram
+  FileNode {
+    bigint id
+    enum kind
+    varchar name
+    bigint parent_id
+    bigint alias_target_id
+    varchar object_key
+    bigint size
+    text comment
+    boolean is_dropbox
+    bigint creator_id
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  User {
+    bigint id
+    varchar username
+    varchar email
+    boolean active
+  }
+
+  Group {
+    bigint id
+    varchar name
+  }
+
+  UserGroup {
+    bigint user_id
+    bigint group_id
+  }
+
+  Permission {
+    int id
+    varchar code
+    varchar description
+  }
+
+  UserPermission {
+    bigint id
+    bigint user_id
+    int permission_id
+  }
+
+  ResourcePermission {
+    bigint id
+    varchar resource_type
+    bigint resource_id
+    varchar principal_type
+    bigint principal_id
+    int permission_id
+  }
+
+  %% Hierarchy relations
+  FileNode ||--o| FileNode : parent
+  FileNode ||--o| FileNode : alias_target
+
+  %% Creators
+  User ||--o{ FileNode : creates
+
+  %% Groups and membership
+  User ||--o{ UserGroup : member
+  Group ||--o{ UserGroup : membership
+
+  %% Global privileges
+  Permission ||--o{ UserPermission : grants
+  User ||--o{ UserPermission : holds
+
+  %% Shared resource ACL
+  Permission ||--o{ ResourcePermission : grants
+  User ||--o{ ResourcePermission : principal_user
+  Group ||--o{ ResourcePermission : principal_group
+  FileNode ||--o{ ResourcePermission : protected_resource
+```
+
 Our current implementation hasn’t introduced groups or the unified Permission
 table yet – it only has `file_acl` which is effectively a specific case of
 permission linking user->file. Going forward, we would migrate to the richer
