@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-use expectrl::{Regex, Session, spawn};
+use expectrl::{Regex, Session};
 use thiserror::Error;
 use wait_timeout::ChildExt;
 use which::which;
@@ -113,8 +113,9 @@ fn explicit_hx_binary(path: PathBuf) -> Result<PathBuf, HxClientError> {
 /// session cannot be started.
 pub fn spawn_hx_session(expect_timeout: Duration) -> Result<Session, HxClientError> {
     let path = resolve_hx_binary()?;
-    let mut session = spawn(path.to_string_lossy().as_ref())
-        .map_err(|source| HxClientError::Spawn { path, source })?;
+    let command = Command::new(&path);
+    let mut session =
+        Session::spawn(command).map_err(|source| HxClientError::Spawn { path, source })?;
     session.set_expect_timeout(Some(expect_timeout));
     Ok(session)
 }
@@ -207,8 +208,7 @@ mod tests {
     //! These tests cover the lightweight output classifier plus resolver behaviour
     //! around missing overrides and accepted executable paths.
 
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
+    use std::{fs, os::unix::fs::PermissionsExt};
 
     use rstest::rstest;
     use tempfile::TempDir;
