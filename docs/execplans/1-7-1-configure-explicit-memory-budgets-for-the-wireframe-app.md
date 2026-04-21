@@ -10,11 +10,11 @@ Status: COMPLETE
 
 Roadmap item 1.7.1 requires `mxd-wireframe-server` to stop relying on
 Wireframe's derived buffering defaults and to configure explicit
-`MemoryBudgets` that are justified by MXD's Hotline transaction limits and
-streaming limits. The delivered behaviour must be transport-realistic:
-oversized fragmented inputs and stalled partial inputs are rejected
-predictably, while valid requests that stay within the configured envelope
-continue to complete through the real server binary.
+`MemoryBudgets` that are justified by MXD (the MXD server)'s Hotline
+transaction limits and streaming limits. The delivered behaviour must be
+transport-realistic: oversized fragmented inputs and stalled partial inputs are
+rejected predictably, while valid requests that stay within the configured
+envelope continue to complete through the real server binary.
 
 Success is observable when:
 
@@ -122,10 +122,10 @@ Coordination rules:
   valid large flows or allow more buffering than intended. Severity: high.
   Likelihood: medium. Mitigation: centralize the formulas in one helper with
   unit tests and document the rationale in `docs/design.md`.
-- Risk: soft-pressure behaviour is timing-sensitive and may become flaky in CI.
-  Severity: medium. Likelihood: medium. Mitigation: use controlled chunked
-  writes, explicit socket deadlines, and assertions on outcome ordering rather
-  than brittle wall-clock thresholds.
+- Risk: soft-pressure behaviour is timing-sensitive and may become flaky in
+  Continuous Integration (CI). Severity: medium. Likelihood: medium.
+  Mitigation: use controlled chunked writes, explicit socket deadlines, and
+  assertions on outcome ordering rather than brittle wall-clock thresholds.
 - Risk: PostgreSQL-backed integration runs may fail for environment reasons
   unrelated to budgeting. Severity: medium. Likelihood: medium. Mitigation:
   follow the `pg_embedded_setup_unpriv` path and preserve existing skip logic
@@ -380,9 +380,10 @@ Required binary-backed coverage:
 - a stalled-input case showing a fragmented request that stops progressing is
   closed predictably rather than lingering indefinitely.
 
-Use `rstest-bdd` scenarios where the story reads naturally in Given/When/Then
-form from an operator or client perspective. Keep lower-level timing and chunk
-construction in Rust helpers and fixtures, not in the Gherkin text.
+Use `rstest-bdd` Behaviour-Driven Development (BDD) scenarios where the story
+reads naturally in Given/When/Then form from an operator or client perspective.
+Keep lower-level timing and chunk construction in Rust helpers and fixtures,
+not in the Gherkin text.
 
 Unless Stage A proves otherwise, extend the existing raw-socket harness in
 `test-util` with narrowly scoped helpers such as:

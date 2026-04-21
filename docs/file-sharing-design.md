@@ -434,8 +434,8 @@ steps:
 4. **Open Object Stream:** Using the `object_store` API, the object is
    fetched. The system can either request the entire object or a range. The
    `ObjectStore` trait provides `get` for full object and `get_ranges` for byte
-   ranges. For a resumable download, we’ll do a range request starting at the
-   resume offset until end-of-file. For example:
+   ranges. For a resumable download, the server performs a range request
+   starting at the resume offset until end-of-file. For example:
 
    ```rust
    let path = object_store::path::Path::from(file_node.object_key.clone());

@@ -2,9 +2,9 @@
 //!
 //! This adapter keeps Hotline fragment sequencing and logical transaction
 //! reconstruction inside the transport layer. It exposes enough metadata for
-//! Wireframe's message-assembly subsystem to enforce per-message and
-//! per-connection budgets while preserving the downstream `header || payload`
-//! byte shape expected by MXD's existing routing path.
+//! Wireframe's message-assembly subsystem to enforce budgets while preserving
+//! the downstream `header || payload` byte shape expected by MXD's routing
+//! path.
 
 use std::io;
 
@@ -21,17 +21,20 @@ use wireframe::message_assembler::{
 use crate::transaction::{FrameHeader, HEADER_LEN, MAX_PAYLOAD_SIZE};
 
 /// Maximum logical Hotline transaction size carried through the Wireframe app.
-///
-/// This is a logical request budget, not a physical frame ceiling. Physical
-/// Hotline frames remain capped by `MAX_FRAME_DATA`; the extra headroom lets
-/// Wireframe size protocol-level message assembly against the full reassembled
-/// transaction envelope.
+/// This is a logical request budget, not a physical frame ceiling; the extra
+/// headroom lets Wireframe size assembly against the full transaction envelope.
 pub(crate) const HOTLINE_LOGICAL_MESSAGE_BYTES: usize = HEADER_LEN + MAX_PAYLOAD_SIZE;
 
 const FIRST_FRAME_TAG: u8 = 0;
 const CONTINUATION_FRAME_TAG: u8 = 1;
 const FIRST_FRAME_HEADER_LEN: usize = 1 + 8 + 4 + 4;
 const CONTINUATION_FRAME_HEADER_LEN: usize = 1 + 8 + 4 + 1 + 4;
+
+#[derive(Clone, Copy)]
+enum AssemblyFrameTag {
+    First,
+    Continuation,
+}
 
 /// Parse the internal Hotline assembly payload emitted by `HotlineFrameCodec`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -49,13 +52,9 @@ impl MessageAssembler for HotlineMessageAssembler {
             return Err(short_payload_error("missing Hotline assembly tag"));
         };
 
-        match tag {
-            FIRST_FRAME_TAG => parse_first_frame_header(payload),
-            CONTINUATION_FRAME_TAG => parse_continuation_frame_header(payload),
-            _ => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("unknown Hotline assembly frame tag: {tag}"),
-            )),
+        match parse_frame_tag(tag)? {
+            AssemblyFrameTag::First => parse_first_frame_header(payload),
+            AssemblyFrameTag::Continuation => parse_continuation_frame_header(payload),
         }
     }
 }
@@ -103,10 +102,10 @@ fn assemble_frame_payload(
     payload.extend_from_slice(body);
     Ok(payload)
 }
-/// Build the internal payload representation for the first physical fragment. The metadata bytes
-/// are the normalized 20-byte logical transaction header with `data_size == total_size`, so a
-/// completed assembly reconstructs the existing `header || payload` shape consumed by
-/// `parse_transaction`.
+/// Build the internal payload for the first physical fragment.
+/// The metadata stores a normalized 20-byte logical header with
+/// `data_size == total_size`, preserving the `header || payload` shape that
+/// `parse_transaction` consumes after assembly.
 #[expect(
     clippy::big_endian_bytes,
     reason = "internal Hotline transport metadata uses network byte order"
@@ -163,36 +162,18 @@ fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Err
         ));
     }
 
-    let message_key = MessageKey(read_u64(slice(
-        payload,
-        1,
-        9,
-        "missing first-frame message key",
-    )?)?);
-    let total_body_len = usize::try_from(read_u32(slice(
-        payload,
-        9,
-        13,
-        "missing first-frame total body length",
-    )?)?)
-    .map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Hotline first-frame total length exceeds usize",
-        )
-    })?;
-    let body_len = usize::try_from(read_u32(slice(
-        payload,
-        13,
-        17,
-        "missing first-frame body length",
-    )?)?)
-    .map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Hotline first-frame body length exceeds usize",
-        )
-    })?;
+    let mut cursor = PayloadCursor::new(payload);
+    let tag = cursor.u8("missing Hotline assembly tag")?;
+    debug_assert!(matches!(parse_frame_tag(tag), Ok(AssemblyFrameTag::First)));
+    let message_key = MessageKey(cursor.u64("missing first-frame message key")?);
+    let total_body_len = u32_to_usize(
+        cursor.u32("missing first-frame total body length")?,
+        "Hotline first-frame total length exceeds usize",
+    )?;
+    let body_len = u32_to_usize(
+        cursor.u32("missing first-frame body length")?,
+        "Hotline first-frame body length exceeds usize",
+    )?;
     if body_len > total_body_len {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -219,40 +200,19 @@ fn parse_continuation_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, 
         ));
     }
 
-    let message_key = MessageKey(read_u64(slice(
-        payload,
-        1,
-        9,
-        "missing continuation message key",
-    )?)?);
-    let sequence = FrameSequence(read_u32(slice(
-        payload,
-        9,
-        13,
-        "missing continuation sequence",
-    )?)?);
-    let is_last = match byte(payload, 13, "missing continuation last flag")? {
-        0 => false,
-        1 => true,
-        value => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid Hotline continuation last-flag value: {value}"),
-            ));
-        }
-    };
-    let body_len = usize::try_from(read_u32(slice(
-        payload,
-        14,
-        18,
-        "missing continuation body length",
-    )?)?)
-    .map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Hotline continuation body length exceeds usize",
-        )
-    })?;
+    let mut cursor = PayloadCursor::new(payload);
+    let tag = cursor.u8("missing Hotline assembly tag")?;
+    debug_assert!(matches!(
+        parse_frame_tag(tag),
+        Ok(AssemblyFrameTag::Continuation)
+    ));
+    let message_key = MessageKey(cursor.u64("missing continuation message key")?);
+    let sequence = FrameSequence(cursor.u32("missing continuation sequence")?);
+    let is_last = parse_last_flag(cursor.u8("missing continuation last flag")?)?;
+    let body_len = u32_to_usize(
+        cursor.u32("missing continuation body length")?,
+        "Hotline continuation body length exceeds usize",
+    )?;
 
     Ok(ParsedFrameHeader::new(
         AssemblyFrameHeader::Continuation(ContinuationFrameHeader {
@@ -273,42 +233,84 @@ fn logical_header_bytes(header: &FrameHeader) -> [u8; HEADER_LEN] {
     bytes
 }
 
-fn slice<'a>(
+fn parse_frame_tag(tag: u8) -> Result<AssemblyFrameTag, io::Error> {
+    if tag == FIRST_FRAME_TAG {
+        Ok(AssemblyFrameTag::First)
+    } else if tag == CONTINUATION_FRAME_TAG {
+        Ok(AssemblyFrameTag::Continuation)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unknown Hotline assembly frame tag: {tag}"),
+        ))
+    }
+}
+
+fn parse_last_flag(flag: u8) -> Result<bool, io::Error> {
+    if flag == 0 {
+        Ok(false)
+    } else if flag == 1 {
+        Ok(true)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid Hotline continuation last-flag value: {flag}"),
+        ))
+    }
+}
+
+fn u32_to_usize(value: u32, err: &'static str) -> Result<usize, io::Error> {
+    usize::try_from(value).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, err))
+}
+
+struct PayloadCursor<'a> {
     payload: &'a [u8],
-    start: usize,
-    end: usize,
-    context: &'static str,
-) -> Result<&'a [u8], io::Error> {
-    payload
-        .get(start..end)
-        .ok_or_else(|| short_payload_error(context))
+    pos: usize,
 }
 
-fn byte(payload: &[u8], index: usize, context: &'static str) -> Result<u8, io::Error> {
-    payload
-        .get(index)
-        .copied()
-        .ok_or_else(|| short_payload_error(context))
-}
+impl<'a> PayloadCursor<'a> {
+    const fn new(payload: &'a [u8]) -> Self { Self { payload, pos: 0 } }
 
-#[expect(
-    clippy::big_endian_bytes,
-    reason = "internal Hotline transport metadata uses network byte order"
-)]
-#[rustfmt::skip]
-fn read_u32(bytes: &[u8]) -> Result<u32, io::Error> {
-    let array: [u8; 4] = bytes.try_into().map_err(|_| short_payload_error("expected 4 bytes"))?;
-    Ok(u32::from_be_bytes(array))
-}
+    fn take(&mut self, len: usize, context: &'static str) -> Result<&'a [u8], io::Error> {
+        let end = self
+            .pos
+            .checked_add(len)
+            .ok_or_else(|| short_payload_error(context))?;
+        let bytes = self
+            .payload
+            .get(self.pos..end)
+            .ok_or_else(|| short_payload_error(context))?;
+        self.pos = end;
+        Ok(bytes)
+    }
 
-#[expect(
-    clippy::big_endian_bytes,
-    reason = "internal Hotline transport metadata uses network byte order"
-)]
-#[rustfmt::skip]
-fn read_u64(bytes: &[u8]) -> Result<u64, io::Error> {
-    let array: [u8; 8] = bytes.try_into().map_err(|_| short_payload_error("expected 8 bytes"))?;
-    Ok(u64::from_be_bytes(array))
+    fn u8(&mut self, context: &'static str) -> Result<u8, io::Error> {
+        let bytes = self.take(1, context)?;
+        bytes
+            .first()
+            .copied()
+            .ok_or_else(|| short_payload_error(context))
+    }
+
+    #[expect(
+        clippy::big_endian_bytes,
+        reason = "internal Hotline transport metadata uses network byte order"
+    )]
+    fn u32(&mut self, context: &'static str) -> Result<u32, io::Error> {
+        let bytes = self.take(4, context)?;
+        let array: [u8; 4] = bytes.try_into().map_err(|_| short_payload_error(context))?;
+        Ok(u32::from_be_bytes(array))
+    }
+
+    #[expect(
+        clippy::big_endian_bytes,
+        reason = "internal Hotline transport metadata uses network byte order"
+    )]
+    fn u64(&mut self, context: &'static str) -> Result<u64, io::Error> {
+        let bytes = self.take(8, context)?;
+        let array: [u8; 8] = bytes.try_into().map_err(|_| short_payload_error(context))?;
+        Ok(u64::from_be_bytes(array))
+    }
 }
 
 fn short_payload_error(message: &'static str) -> io::Error {

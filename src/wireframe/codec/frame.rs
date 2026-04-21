@@ -46,86 +46,14 @@ impl HotlineFrameCodec {
 
 #[doc(hidden)]
 pub struct HotlineFrameDecoder {
-    series: Option<InboundSeriesState>,
+    series: InboundSeriesTracker,
 }
 
 impl HotlineFrameDecoder {
-    const fn new() -> Self { Self { series: None } }
-
-    fn build_first_frame_payload(
-        &mut self,
-        header: &crate::transaction::FrameHeader,
-        payload: &[u8],
-    ) -> Result<Vec<u8>, io::Error> {
-        let message_key = message_key_for(header);
-        let mut remaining = usize::try_from(header.total_size).map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "frame total size too large")
-        })?;
-        remaining = remaining.checked_sub(payload.len()).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "first fragment exceeds declared total size",
-            )
-        })?;
-        if remaining > 0 {
-            self.series = Some(InboundSeriesState {
-                first_header: header.clone(),
-                message_key,
-                remaining,
-                next_sequence: FrameSequence(1),
-                deadline: Instant::now() + SERIES_TIMEOUT,
-            });
+    const fn new() -> Self {
+        Self {
+            series: InboundSeriesTracker::new(),
         }
-        first_frame_payload(message_key, header, payload)
-    }
-
-    fn build_continuation_payload(
-        &mut self,
-        header: &crate::transaction::FrameHeader,
-        payload: &[u8],
-    ) -> Result<Vec<u8>, io::Error> {
-        let Some(series) = self.series.as_mut() else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "continuation fragment arrived without an active series",
-            ));
-        };
-        if Instant::now() > series.deadline {
-            self.series = None;
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "fragmented Hotline request timed out waiting for continuation",
-            ));
-        }
-        super::validate_fragment_consistency(&series.first_header, header)
-            .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
-
-        let data_size = payload.len();
-        if data_size > series.remaining {
-            self.series = None;
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "fragment exceeds remaining payload size",
-            ));
-        }
-
-        let is_last = data_size == series.remaining;
-        let message_key = series.message_key;
-        let sequence = series.next_sequence;
-        if is_last {
-            self.series = None;
-        } else {
-            series.remaining -= data_size;
-            series.next_sequence = sequence.checked_increment().ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "fragment sequence overflow while tracking continuation",
-                )
-            })?;
-            series.deadline = Instant::now() + SERIES_TIMEOUT;
-        }
-
-        continuation_frame_payload(message_key, sequence, is_last, payload)
     }
 }
 
@@ -138,10 +66,10 @@ impl Decoder for HotlineFrameDecoder {
             return Ok(None);
         };
 
-        let envelope_payload = if self.series.is_some() {
-            self.build_continuation_payload(&header, &payload)?
+        let envelope_payload = if self.series.has_active_series() {
+            self.series.continue_series(&header, &payload)?
         } else {
-            self.build_first_frame_payload(&header, &payload)?
+            self.series.start(&header, &payload)?
         };
         let envelope = Envelope::new(
             route_id_for(header.ty),
@@ -206,6 +134,143 @@ impl FrameCodec for HotlineFrameCodec {
 /// multi-frame payload progress without changing the server's overall idle
 /// connection policy.
 const SERIES_TIMEOUT: Duration = crate::transaction::IO_TIMEOUT;
+
+struct InboundSeriesTracker {
+    state: Option<InboundSeriesState>,
+}
+
+impl InboundSeriesTracker {
+    const fn new() -> Self { Self { state: None } }
+
+    const fn has_active_series(&self) -> bool { self.state.is_some() }
+
+    fn start(
+        &mut self,
+        header: &crate::transaction::FrameHeader,
+        payload: &[u8],
+    ) -> Result<Vec<u8>, io::Error> {
+        let message_key = message_key_for(header);
+        let mut remaining = usize::try_from(header.total_size).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "frame total size too large")
+        })?;
+        remaining = remaining.checked_sub(payload.len()).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "first fragment exceeds declared total size",
+            )
+        })?;
+
+        if remaining > 0 {
+            self.state = Some(InboundSeriesState {
+                first_header: header.clone(),
+                message_key,
+                remaining,
+                next_sequence: FrameSequence(1),
+                deadline: Instant::now() + SERIES_TIMEOUT,
+            });
+        }
+
+        first_frame_payload(message_key, header, payload)
+    }
+
+    fn continue_series(
+        &mut self,
+        header: &crate::transaction::FrameHeader,
+        payload: &[u8],
+    ) -> Result<Vec<u8>, io::Error> {
+        self.ensure_active_series()?;
+        self.fail_if_timed_out()?;
+        self.validate_fragment_consistency(header)?;
+
+        let data_size = payload.len();
+        let active_series = self.active_state()?;
+        if data_size > active_series.remaining {
+            self.clear();
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "fragment exceeds remaining payload size",
+            ));
+        }
+
+        let is_last = data_size == active_series.remaining;
+        let message_key = active_series.message_key;
+        let sequence = active_series.next_sequence;
+        if is_last {
+            self.clear();
+        } else {
+            let next_sequence = sequence.checked_increment().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "fragment sequence overflow while tracking continuation",
+                )
+            })?;
+            let active_series_mut = self.active_state_mut()?;
+            active_series_mut.remaining -= data_size;
+            active_series_mut.next_sequence = next_sequence;
+            active_series_mut.deadline = Instant::now() + SERIES_TIMEOUT;
+        }
+
+        continuation_frame_payload(message_key, sequence, is_last, payload)
+    }
+
+    fn ensure_active_series(&self) -> Result<(), io::Error> {
+        if self.has_active_series() {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "continuation fragment arrived without an active series",
+            ))
+        }
+    }
+
+    fn fail_if_timed_out(&mut self) -> Result<(), io::Error> {
+        let has_timed_out = self
+            .state
+            .as_ref()
+            .is_some_and(|series| Instant::now() > series.deadline);
+        if has_timed_out {
+            self.clear();
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "fragmented Hotline request timed out waiting for continuation",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn validate_fragment_consistency(
+        &self,
+        header: &crate::transaction::FrameHeader,
+    ) -> Result<(), io::Error> {
+        let active_series = self.active_state()?;
+        // Keep the active series intact when a continuation header is malformed.
+        // Only timeouts, completed series, and oversized bodies consume state.
+        super::validate_fragment_consistency(&active_series.first_header, header)
+            .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))
+    }
+
+    fn active_state(&self) -> Result<&InboundSeriesState, io::Error> {
+        self.state.as_ref().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "continuation fragment arrived without an active series",
+            )
+        })
+    }
+
+    fn active_state_mut(&mut self) -> Result<&mut InboundSeriesState, io::Error> {
+        self.state.as_mut().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "continuation fragment arrived without an active series",
+            )
+        })
+    }
+
+    const fn clear(&mut self) { self.state = None; }
+}
 
 #[derive(Debug)]
 struct InboundSeriesState {

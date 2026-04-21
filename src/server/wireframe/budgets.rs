@@ -14,13 +14,19 @@ use crate::wireframe::message_assembly::HOTLINE_LOGICAL_MESSAGE_BYTES;
 
 /// Build the explicit Wireframe memory budgets for the Hotline adapter.
 #[must_use]
-pub(crate) fn explicit_memory_budgets() -> MemoryBudgets {
+pub(crate) const fn explicit_memory_budgets() -> MemoryBudgets {
     let logical_message_bytes = non_zero(HOTLINE_LOGICAL_MESSAGE_BYTES);
     let budget = BudgetBytes::new(logical_message_bytes);
     MemoryBudgets::new(budget, budget, budget)
 }
 
-fn non_zero(bytes: usize) -> NonZeroUsize { NonZeroUsize::new(bytes).unwrap_or(NonZeroUsize::MIN) }
+const fn non_zero(bytes: usize) -> NonZeroUsize {
+    if let Some(non_zero) = NonZeroUsize::new(bytes) {
+        non_zero
+    } else {
+        panic!("non_zero: expected strictly positive byte count for Hotline budgets")
+    }
+}
 
 #[cfg(test)]
 mod tests {
