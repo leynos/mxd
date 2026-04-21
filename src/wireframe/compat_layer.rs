@@ -294,10 +294,23 @@ mod tests {
             transaction.clone(),
         )
         .expect("file-list payload should bypass parameter decode");
+        let non_bypassed = decode_payload_for_request(
+            &xor,
+            peer,
+            TransactionType::NewsArticleData,
+            transaction.clone(),
+        );
 
         assert!(
             xor.is_enabled(),
             "xor state should remain non-trivial for the bypass check"
+        );
+        assert!(
+            match non_bypassed.as_ref() {
+                Err(_) => true,
+                Ok(non_bypassed_decoded) => non_bypassed_decoded.payload != transaction.payload,
+            },
+            "non-bypassed transaction should not preserve the opaque payload"
         );
         assert_eq!(decoded.payload, transaction.payload);
     }

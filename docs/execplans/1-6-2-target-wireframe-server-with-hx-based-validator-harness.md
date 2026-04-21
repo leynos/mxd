@@ -251,73 +251,73 @@ Success is observable when:
 - Decision: make server targeting explicit inside the validator harness even
   though `TestServer` already defaults to `mxd-wireframe-server`. Rationale:
   roadmap acceptance is about deliberate wireframe validation, not an implicit
-  default that could regress later. Date/Author: 2026-04-10 / Assistant
+  default that could regress later. Date/Author: 2026-04-10 / Assistant.
 
 - Decision: treat the current chat/file-download gap as a first-class planning
   blocker, not something to paper over with partial "done" wording. Rationale:
   roadmap phases 2.2, 2.3, and 3.x still own those transactions, so 1.6.2 needs
   an explicit sequencing decision before implementation claims completion.
-  Date/Author: 2026-04-10 / Assistant
+  Date/Author: 2026-04-10 / Assistant.
 
 - Decision: extract validator primitives into library modules under
   `validator/src/` and cover them with `rstest`, rather than growing ad hoc
   test-local helpers in each file. Rationale: PTY orchestration, binary
   discovery, temp downloads, and skip/fail policy are all logic worth testing
-  directly. Date/Author: 2026-04-10 / Assistant
+  directly. Date/Author: 2026-04-10 / Assistant.
 
 - Decision: introduce dedicated validator Makefile/CI entrypoints instead of
   relying on workspace defaults. Rationale: `validator` is not a default member
   and its runtime requirements differ from ordinary `cargo nextest` suites.
-  Date/Author: 2026-04-10 / Assistant
+  Date/Author: 2026-04-10 / Assistant.
 
 - Decision: provision SynHX via `scripts/install-synhx.sh`, defaulting to
   `HX_VERSION=0.1.48.1`, with environment overrides for install directories.
   Rationale: one script gives devboxer and CI the same installation behaviour
   and removes fragile duplicated shell snippets. Date/Author: 2026-04-12 /
-  Assistant
+  Assistant.
 
 - Decision: keep pending validators default-disabled in
   `validator/validator.toml` and allow environment variables to override the
   file on a per-run basis. Rationale: `main` should stay green while parallel
   branches opt into the validators they need, and environment overrides are the
   least-friction path for CI jobs and ad hoc branch validation. Date/Author:
-  2026-04-12 / Assistant
+  2026-04-12 / Assistant.
 
 - Decision: enabled pending validators fail explicitly with an
   "enabled but not implemented yet" error until the underlying flow lands.
   Rationale: silent skips would hide missing coverage on branches that claim to
-  implement chat or file-download support. Date/Author: 2026-04-12 / Assistant
+  implement chat or file-download support. Date/Author: 2026-04-12 / Assistant.
 
 - Decision: document local Postgres validation via `pg-embed-setup-unpriv`,
   but do not assume the first CI cut must run both backends unless explicitly
   required during implementation. Rationale: the task acceptance says the
   harness runs in CI; the request separately asks for local Postgres
-  enablement. Date/Author: 2026-04-10 / Assistant
+  enablement. Date/Author: 2026-04-10 / Assistant.
 
 - Decision: resolve `mxd-wireframe-server` explicitly from a prebuilt binary in
   the validator harness before falling back to inherited cargo test binary
   hints. Rationale: compile-time startup delays from implicit `cargo run`
   exceeded the validator readiness window and produced misleading protocol
-  startup failures. Date/Author: 2026-04-12 / Assistant
+  startup failures. Date/Author: 2026-04-12 / Assistant.
 
 - Decision: make the first CI validator job sqlite-only while still documenting
   and supporting local Postgres validator runs. Rationale: the immediate goal
   is a fail-closed real-client validator path in CI, and sqlite reaches that
   goal without requiring a second backend job before the protocol overlap is
   sufficient to justify more matrix expansion. Date/Author: 2026-04-12 /
-  Assistant
+  Assistant.
 
 - Decision: narrow always-on SynHX validator coverage to the flows that the
   pinned client and current wireframe server both actually support today:
   successful login, failed-auth gating, and XOR login. Rationale: pretending
   that file listing, file download, chat, or news are covered would obscure the
-  real protocol gaps. Date/Author: 2026-04-12 / Assistant
+  real protocol gaps. Date/Author: 2026-04-12 / Assistant.
 
 - Decision: keep roadmap item 1.6.2 open after this implementation pass.
   Rationale: the harness plumbing, CI fail-closed path, and supported login
   coverage are now in place, but genuine real-client validation for file/news/
   chat flows still depends on additional compatibility or server feature work.
-  Date/Author: 2026-04-12 / Assistant
+  Date/Author: 2026-04-12 / Assistant.
 
 ## Outcomes & Retrospective
 

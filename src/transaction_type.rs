@@ -135,6 +135,11 @@ impl std::fmt::Display for TransactionType {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for `TransactionType` payload-policy helpers across explicit and
+    //! table-driven cases.
+
+    use rstest::rstest;
+
     use super::TransactionType;
 
     const ALL_TRANSACTION_TYPES: [TransactionType; 13] = [
@@ -153,30 +158,52 @@ mod tests {
         TransactionType::Other(999),
     ];
 
-    #[test]
-    fn rejects_payload_matches_expected_policy() {
-        assert!(!TransactionType::GetFileNameList.rejects_payload(true));
-        assert!(!TransactionType::GetFileNameList.rejects_payload(false));
-        assert!(!TransactionType::NewsArticleData.rejects_payload(true));
-        assert!(!TransactionType::NewsArticleData.rejects_payload(false));
-        assert!(!TransactionType::DownloadBanner.rejects_payload(true));
-        assert!(TransactionType::DownloadBanner.rejects_payload(false));
-        assert!(!TransactionType::GetUserNameList.rejects_payload(true));
-        assert!(TransactionType::GetUserNameList.rejects_payload(false));
+    #[rstest]
+    #[case(TransactionType::GetFileNameList, false, false)]
+    #[case(TransactionType::NewsArticleData, false, false)]
+    #[case(TransactionType::DownloadBanner, false, true)]
+    #[case(TransactionType::GetUserNameList, false, true)]
+    fn rejects_payload_matches_expected_policy(
+        #[case] transaction_type: TransactionType,
+        #[case] expected_for_empty_payload: bool,
+        #[case] expected_for_non_empty_payload: bool,
+    ) {
+        assert_eq!(
+            transaction_type.rejects_payload(true),
+            expected_for_empty_payload
+        );
+        assert_eq!(
+            transaction_type.rejects_payload(false),
+            expected_for_non_empty_payload
+        );
     }
 
-    #[test]
-    fn bypass_payload_decode_matches_transaction_policy() {
-        for transaction_type in ALL_TRANSACTION_TYPES {
-            let expected = matches!(transaction_type, TransactionType::GetFileNameList)
-                || !transaction_type.allows_payload();
-            assert_eq!(
-                transaction_type.bypass_payload_decode(),
-                expected,
-                "unexpected bypass policy for {transaction_type:?}"
-            );
-        }
-
-        assert!(TransactionType::GetUserNameList.bypass_payload_decode());
+    #[rstest]
+    #[case(TransactionType::Error, false)]
+    #[case(TransactionType::Login, false)]
+    #[case(TransactionType::Agreement, false)]
+    #[case(TransactionType::Agreed, false)]
+    #[case(TransactionType::GetFileNameList, true)]
+    #[case(TransactionType::DownloadBanner, true)]
+    #[case(TransactionType::GetUserNameList, true)]
+    #[case(TransactionType::UserAccess, false)]
+    #[case(TransactionType::NewsCategoryNameList, false)]
+    #[case(TransactionType::NewsArticleNameList, false)]
+    #[case(TransactionType::NewsArticleData, false)]
+    #[case(TransactionType::PostNewsArticle, false)]
+    #[case(TransactionType::Other(999), false)]
+    fn bypass_payload_decode_matches_transaction_policy(
+        #[case] transaction_type: TransactionType,
+        #[case] expected: bool,
+    ) {
+        assert!(
+            ALL_TRANSACTION_TYPES.contains(&transaction_type),
+            "missing coverage entry for {transaction_type:?}"
+        );
+        assert_eq!(
+            transaction_type.bypass_payload_decode(),
+            expected,
+            "unexpected bypass policy for {transaction_type:?}"
+        );
     }
 }

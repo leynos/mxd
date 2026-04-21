@@ -199,7 +199,7 @@ install_file hx "$HX_BIN_DIR"
 
 wget -O "$source_archive" "$source_url"
 verify_archive_checksum "$source_archive" "$HX_SOURCE_SHA256"
-archive_listing="$(tar -tzf -- "$source_archive")"
+archive_listing="$(tar -tzf "$source_archive")"
 mapfile -t source_dirs < <(
     printf '%s\n' "$archive_listing" |
         awk -F/ 'NF > 0 && $1 != "" { print $1 }' |
@@ -214,7 +214,7 @@ source_dir="$(basename -- "${source_dirs[0]}")"
 validate_source_dir "$source_dir"
 
 rm -rf -- "./$source_dir"
-tar xzf -- "$source_archive"
+tar xzf "$source_archive"
 rm -f "$source_archive"
 
 if [[ ! -d "./$source_dir" ]]; then
