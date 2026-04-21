@@ -164,7 +164,10 @@ pub async fn add_user_to_group(
 /// Returns any error produced by the database.
 #[must_use = "handle the result"]
 pub async fn create_file_node(conn: &mut DbConnection, node: &NewFileNode<'_>) -> QueryResult<i32> {
-    #[allow(unused_imports)]
+    #[expect(
+        unused_imports,
+        reason = "the bare SQLite branch does not compile the RETURNING path"
+    )]
     use crate::schema::file_nodes::dsl::{file_nodes, id};
     insert_returning_id!(conn = conn, table = file_nodes, values = node, id_col = id,)
 }
