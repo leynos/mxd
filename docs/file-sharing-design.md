@@ -1275,8 +1275,7 @@ Because we split metadata (DB) and file content (object store), maintaining
 consistency is critical:
 
 - **Two-Phase Operations:** For any create/upload, there are two steps (DB
-  insert
-  and object upload). We must handle failures in between. Our approach:
+  insert and object upload). We must handle failures in between. Our approach:
 
   - On **file upload**: We can delay DB insertion until after the object upload
     completes successfully. This way, if the upload fails (network issue, etc.),
