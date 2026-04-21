@@ -184,7 +184,8 @@ impl InboundSeriesTracker {
 
         let data_size = payload.len();
         let active_series = self.active_state()?;
-        if data_size > active_series.remaining {
+        let remaining = active_series.remaining;
+        if data_size > remaining {
             self.clear();
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -192,7 +193,7 @@ impl InboundSeriesTracker {
             ));
         }
 
-        let is_last = data_size == active_series.remaining;
+        let is_last = data_size == remaining;
         let message_key = active_series.message_key;
         let sequence = active_series.next_sequence;
         if is_last {

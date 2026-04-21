@@ -83,12 +83,12 @@ component, including how it ties into the user/permission system.
 
 To model files, folders, and related features, the system defines a
 **FileNode** table representing an item in the hierarchy (which might be a
-folder, a file, or an alias pointer). We also integrate with existing **User**,
-**Group**, and **Permission/ACL** tables from the application for access
-control. Each file or folder can have fine-grained ACL entries (linking to
-users or groups) in the shared permissions table. We include fields for
-metadata like size, timestamps, and comments. Below is the ER diagram in
-Mermaid notation:
+folder, a file, or an alias pointer). The design integrates with the existing
+**User**, **Group**, and **Permission/ACL** tables from the application for
+access control. Each file or folder can have fine-grained ACL entries linking
+to users or groups in the shared permissions table. The schema includes fields
+for metadata such as size, timestamps, and comments. The ER diagram below is
+shown in Mermaid notation:
 
 **Diagram description for screen readers:** The diagram shows main entities
 FileNode (representing files, folders, or aliases), User, Group, and
@@ -351,23 +351,24 @@ server performs:
    system, listing can be treated as requiring at least read access. If the
    folder is a dropbox (`is_dropbox=true`) and the user lacks the special view
    privilege, an empty list is returned (the folder will appear empty to them,
-   even though files might be present) – this mimics Hotline’s behavior of
+   even though files might be present) – this mimics Hotline’s behaviour of
    upload-only dropboxes.
 3. **Query DB:** Fetch all FileNodes where parent_id = folder’s ID. This yields
    all files, subfolders, and aliases in that directory. The system will
    retrieve attributes needed for the listing: the name, type (to know if it’s
    a folder or alias), size (for files or aliases), modification timestamp, and
-   comment. We also may query permissions to filter out any items the user
-   shouldn’t see individually (e.g., if a specific file has an ACL denying this
-   user, you might choose to omit it from the list or mark it locked). In most
-   cases, if the user can list the directory, they can see the names of items;
-   more granular hiding of specific files is optional.
-4. **Construct Response:** We send the list of entries. The Hotline protocol
+   comment. The implementation may also query permissions to filter out any
+   items the user shouldn’t see individually (e.g., if a specific file has an
+   ACL denying this user, the entry can be omitted from the list or marked
+   locked). In most cases, if the user can list the directory, they can see the
+   names of items; more granular hiding of specific files is optional.
+4. **Construct Response:** The server sends the list of entries. The Hotline
+   protocol
    expects each entry as a “File name with info” structure (transaction field
    200), which includes the item name plus info like size, type flags, dates,
    and comment. These are populated from the DB. For alias entries, a
-   flag/indicator in the info (Hotline likely had a bit to denote alias) and we
-   might include the alias’s target size/comment. For folders, size could be
+   flag/indicator in the info (Hotline likely had a bit to denote alias) can
+   also include the alias’s target size/comment. For folders, size could be
    sent as 0 or as a special flag indicating a folder (the client usually
    distinguished by type, not size).
 5. **Sorting/Paging:** Entries can be sorted alphabetically or by type as needed
@@ -851,7 +852,7 @@ files). Implementation:
    object_key, but will enforce ACL on the alias node. If the alias node
    permits the user to download (e.g. because the dest folder is public), the
    download proceeds even if the original file’s folder was restricted. This
-   behavior should be documented for admins, as it is a deliberate capability
+   behaviour should be documented for admins, as it is a deliberate capability
    (e.g., an admin can put an alias of a file from a restricted area into a
    public area to share it without duplicating the file). If instead one wanted
    alias to obey original’s ACL, one could implement that check, but we assume
@@ -1596,7 +1597,7 @@ database and object store. We also discussed performance optimizations to
 ensure the system can handle large files and many operations efficiently.
 
 This guide should enable developers to implement the file-sharing module in a
-Rust BBS server that feels like the classic Hotline server in behavior, but
+Rust BBS server that feels like the classic Hotline server in behaviour, but
 with the reliability and scalability expected from modern infrastructure. With
 careful attention to the details above, the resulting system will allow users
 to seamlessly upload/download files (even large ones with resume), organize

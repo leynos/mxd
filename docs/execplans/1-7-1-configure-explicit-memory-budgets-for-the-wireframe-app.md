@@ -162,13 +162,15 @@ Coordination rules:
 
 ## Surprises & Discoveries
 
-- `src/server/wireframe/mod.rs` currently builds the `HotlineApp` with
-  `.fragmentation(None)`, so Wireframe transport fragmentation is explicitly
-  disabled in today's runtime.
-- `src/wireframe/codec/framed.rs` already reassembles multi-fragment Hotline
-  transactions inside `HotlineCodec`, and `src/wireframe/codec/frame.rs`
-  reports `HEADER_LEN + MAX_FRAME_DATA` as the frame-length authority exposed
-  to Wireframe.
+- `src/server/wireframe/mod.rs` built the `HotlineApp` with
+  `.fragmentation(None)`, so Wireframe transport fragmentation remained
+  explicitly disabled in the delivered runtime.
+- `src/wireframe/codec/framed.rs` already reassembled multi-fragment Hotline
+  transactions inside `HotlineCodec`, and the delivered
+  `HotlineFrameCodec::max_frame_length()` change in
+  `src/wireframe/codec/frame.rs` now reports the logical Hotline request
+  envelope exposed to Wireframe rather than the physical
+  `HEADER_LEN + MAX_FRAME_DATA` frame size.
 - `docs/execplans/wireframe-v0-3-0-migration.md` explicitly recorded that
   `memory_budgets`, `enable_fragmentation()`, and the message assembler were
   not a drop-in during the v0.3.0 version bump because Hotline fragmentation
@@ -180,23 +182,21 @@ Coordination rules:
   `test-util/src/server/mod.rs` launches `mxd-wireframe-server`, and
   `test-util/src/wireframe_bdd_world.rs` already manages real TCP connections,
   handshakes, reconnects, and framed request/reply exchange.
-- Existing integration tests already assert connection-level behaviour for
-  malformed handshakes and invalid payloads, but there is no focused coverage
-  yet for soft-pressure or aggregate budget caps.
+- Focused integration coverage for soft-pressure behaviour and aggregate memory
+  budgets was added on top of those existing binary-backed harnesses.
 - Wireframe's protocol-level assembly state still derives a fragment ceiling
   from `codec.max_frame_length()` even when `fragmentation(None)` remains in
   place. Leaving `HotlineFrameCodec::max_frame_length()` at the physical
   `20 + 32 KiB` size would have capped assembled Hotline requests far below the
   existing 1 MiB protocol limit, so the adapter now reports the logical request
   envelope there while physical frame validation remains unchanged.
-- With transport fragmentation disabled, Wireframe does not proactively reap an
+- With transport fragmentation disabled, Wireframe did not proactively reap an
   idle partial Hotline request. To preserve the existing five-second fragment
-  gap semantics, the adapter tracks a continuation deadline in
-  `HotlineFrameDecoder` and rejects the series when the next fragment arrives
-  too late.
-- Local validation in this container also depended on bootstrapping two
-  external helper toolchains that the repository gates assume are present:
-  Whitaker for `make lint`, and `pg_worker` plus `PG_EMBEDDED_WORKER` for the
+  gap semantics, `HotlineFrameDecoder` enforced a continuation deadline and
+  rejected late fragments when the next continuation arrived too late.
+- Local validation in this container required bootstrapping two external helper
+  toolchains that the repository gates assume are present: Whitaker for
+  `make lint`, and `pg_worker` plus `PG_EMBEDDED_WORKER` for the
   PostgreSQL-backed `make test` path.
 
 ## Decision Log

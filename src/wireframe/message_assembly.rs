@@ -180,6 +180,13 @@ fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Err
             "Hotline first-frame body length exceeds total length",
         ));
     }
+    let expected_len = FIRST_FRAME_HEADER_LEN + HEADER_LEN + body_len;
+    if payload.len() != expected_len {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Hotline first-frame payload length does not match declared body length",
+        ));
+    }
 
     Ok(ParsedFrameHeader::new(
         AssemblyFrameHeader::First(FirstFrameHeader {
@@ -213,6 +220,13 @@ fn parse_continuation_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, 
         cursor.u32("missing continuation body length")?,
         "Hotline continuation body length exceeds usize",
     )?;
+    let expected_len = CONTINUATION_FRAME_HEADER_LEN + body_len;
+    if payload.len() != expected_len {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Hotline continuation payload length does not match declared body length",
+        ));
+    }
 
     Ok(ParsedFrameHeader::new(
         AssemblyFrameHeader::Continuation(ContinuationFrameHeader {
@@ -315,86 +329,4 @@ impl<'a> PayloadCursor<'a> {
 
 fn short_payload_error(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::UnexpectedEof, message)
-}
-
-#[cfg(test)]
-mod tests {
-    //! Unit coverage for Hotline message-assembly payload metadata.
-
-    use wireframe::message_assembler::FrameHeader as AssemblyFrameHeader;
-
-    use super::*;
-
-    fn header(total_size: u32, data_size: u32) -> FrameHeader {
-        FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 9,
-            error: 0,
-            total_size,
-            data_size,
-        }
-    }
-
-    #[test]
-    fn message_key_includes_type_and_identifier() {
-        let first = header(10, 5);
-        let mut second = first.clone();
-        second.ty = 108;
-
-        assert_ne!(message_key_for(&first), message_key_for(&second));
-    }
-
-    #[test]
-    fn first_frame_payload_reports_logical_header_metadata() {
-        let header = header(10, 4);
-        let payload =
-            first_frame_payload(message_key_for(&header), &header, b"data").expect("payload");
-        let parsed = HotlineMessageAssembler::new()
-            .parse_frame_header(&payload)
-            .expect("parsed header");
-
-        match parsed.header() {
-            AssemblyFrameHeader::First(first) => {
-                assert_eq!(first.metadata_len, HEADER_LEN);
-                assert_eq!(first.body_len, 4);
-                assert_eq!(first.total_body_len, Some(10));
-                assert!(!first.is_last);
-            }
-            other @ AssemblyFrameHeader::Continuation(_) => {
-                panic!("expected first frame header, got {other:?}");
-            }
-        }
-
-        let metadata = &payload[parsed.header_len()..parsed.header_len() + HEADER_LEN];
-        let logical = FrameHeader::from_bytes(
-            metadata
-                .try_into()
-                .expect("metadata stores a normalized 20-byte header"),
-        );
-        assert_eq!(logical.total_size, 10);
-        assert_eq!(logical.data_size, 10);
-    }
-
-    #[test]
-    fn continuation_payload_reports_sequence_and_last_flag() {
-        let payload = continuation_frame_payload(MessageKey(11), FrameSequence(2), true, b"tail")
-            .expect("payload");
-        let parsed = HotlineMessageAssembler::new()
-            .parse_frame_header(&payload)
-            .expect("parsed header");
-
-        match parsed.header() {
-            AssemblyFrameHeader::Continuation(next) => {
-                assert_eq!(next.message_key, MessageKey(11));
-                assert_eq!(next.sequence, Some(FrameSequence(2)));
-                assert_eq!(next.body_len, 4);
-                assert!(next.is_last);
-            }
-            other @ AssemblyFrameHeader::First(_) => {
-                panic!("expected continuation header, got {other:?}");
-            }
-        }
-    }
 }

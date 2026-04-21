@@ -38,3 +38,6 @@ pub mod routes;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_helpers;
+
+#[cfg(test)]
+mod message_assembly_tests;
