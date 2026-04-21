@@ -5,8 +5,10 @@ use test_util::{AnyError, PostgresTestDb, postgres::PostgresTestDbError, with_en
 #[cfg(feature = "postgres")]
 #[test]
 fn external_postgres_is_used() -> Result<(), AnyError> {
-    let base = std::env::var("POSTGRES_TEST_URL")
-        .unwrap_or_else(|_| "postgres://postgres:password@localhost/test".to_owned());
+    let configured_external_url = std::env::var("POSTGRES_TEST_URL").ok();
+    let base = configured_external_url
+        .clone()
+        .unwrap_or_else(|| "postgres://postgres:password@localhost/test".to_owned());
     let idx = base
         .rfind('/')
         .ok_or_else(|| anyhow::anyhow!("POSTGRES_TEST_URL missing path"))?;
@@ -30,6 +32,11 @@ fn external_postgres_is_used() -> Result<(), AnyError> {
                 Ok::<_, AnyError>(())
             }
             Err(PostgresTestDbError::Unavailable(_)) => {
+                if configured_external_url.is_some() {
+                    return Err(anyhow::anyhow!(
+                        "expected configured external PostgreSQL instance to be reachable"
+                    ));
+                }
                 tracing::warn!("skipping test: PostgreSQL unavailable");
                 Ok(())
             }
