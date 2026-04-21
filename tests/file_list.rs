@@ -2,7 +2,6 @@
 //!
 //! Exercises the `GetFileNameList` transaction with ACL filtering and error
 //! handling scenarios.
-#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::panic_in_result_fn, reason = "test assertions")]
 
 use std::{
@@ -39,8 +38,7 @@ type SetupFn = fn(DatabaseUrl) -> TestResult<()>;
 fn perform_login(stream: &mut TcpStream, username: &[u8], password: &[u8]) -> Result<(), AnyError> {
     let params = vec![(FieldId::Login, username), (FieldId::Password, password)];
     let payload = encode_params(&params)?;
-    let payload_len =
-        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
+    let payload_len = u32::try_from(payload.len())?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -90,8 +88,7 @@ fn request_file_list(
     payload: Vec<u8>,
     transaction_id: u32,
 ) -> Result<Vec<String>, AnyError> {
-    let payload_len =
-        u32::try_from(payload.len()).expect("payload length fits within the 32-bit header field");
+    let payload_len = u32::try_from(payload.len())?;
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,

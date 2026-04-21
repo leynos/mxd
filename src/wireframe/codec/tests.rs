@@ -16,6 +16,18 @@ fn hotline_config() -> impl bincode::config::Config {
         .with_fixed_int_encoding()
 }
 
+fn file_list_header(is_reply: u8, payload_len: u32) -> FrameHeader {
+    FrameHeader {
+        flags: 0,
+        is_reply,
+        ty: 200,
+        id: 99,
+        error: 0,
+        total_size: payload_len,
+        data_size: payload_len,
+    }
+}
+
 /// Assert that encoding the given transaction fails with an error message
 /// containing the expected substring.
 fn assert_encode_error(tx: &HotlineTransaction, expected_msg: &str) {
@@ -69,30 +81,34 @@ async fn decodes_valid_single_frame(#[case] total: u32, #[case] data: u32) {
     assert_eq!(tx.payload().len(), total as usize);
 }
 
+#[rstest]
+#[case(0)]
+#[case(1)]
 #[tokio::test]
-async fn decodes_opaque_file_list_request_payload() {
+async fn decodes_opaque_file_list_payload(#[case] is_reply: u8) {
     let payload = b"\x00\xffnot-a-param-block".to_vec();
     let payload_len = u32::try_from(payload.len()).expect("payload length fits in u32");
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 200,
-        id: 99,
-        error: 0,
-        total_size: payload_len,
-        data_size: payload_len,
-    };
-    let bytes = transaction_bytes(&header, &payload);
-    let mut reader = BufReader::new(Cursor::new(bytes));
+    let header = file_list_header(is_reply, payload_len);
+    if is_reply == 0 {
+        let bytes = transaction_bytes(&header, &payload);
+        let mut reader = BufReader::new(Cursor::new(bytes));
 
-    let (tx, leftover) = read_preamble::<_, HotlineTransaction>(&mut reader)
-        .await
-        .expect("file-list request should decode");
+        let (tx, leftover) = read_preamble::<_, HotlineTransaction>(&mut reader)
+            .await
+            .expect("file-list request should decode");
 
-    assert!(leftover.is_empty());
-    assert_eq!(tx.header().ty, header.ty);
-    assert_eq!(tx.header().id, header.id);
-    assert_eq!(tx.payload(), payload.as_slice());
+        assert!(leftover.is_empty());
+        assert_eq!(tx.header().ty, header.ty);
+        assert_eq!(tx.header().is_reply, is_reply);
+        assert_eq!(tx.header().id, header.id);
+        assert_eq!(tx.payload(), payload.as_slice());
+        return;
+    }
+
+    let tx = Transaction { header, payload };
+    let err = HotlineTransaction::try_from(tx)
+        .expect_err("invalid file-list reply payload must be rejected");
+    assert!(err.to_string().contains("size mismatch"));
 }
 
 #[rstest]
@@ -309,25 +325,4 @@ fn encoding_rejects_invalid_transactions(
 ) {
     let tx = HotlineTransaction { header, payload };
     assert_encode_error(&tx, expected_msg);
-}
-
-#[test]
-fn try_from_rejects_invalid_file_list_reply_payload() {
-    let payload = b"\x00\xffnot-a-param-block".to_vec();
-    let payload_len = u32::try_from(payload.len()).expect("payload length fits in u32");
-    let tx = Transaction {
-        header: FrameHeader {
-            flags: 0,
-            is_reply: 1,
-            ty: 200,
-            id: 99,
-            error: 0,
-            total_size: payload_len,
-            data_size: payload_len,
-        },
-        payload,
-    };
-
-    let err = HotlineTransaction::try_from(tx).expect_err("invalid reply payload must be rejected");
-    assert!(err.to_string().contains("size mismatch"));
 }
