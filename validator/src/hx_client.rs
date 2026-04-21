@@ -173,13 +173,7 @@ fn hx_is_helix(path: &PathBuf) -> Result<bool, HxClientError> {
         }
         Ok(None) => {
             terminate_child(&mut child);
-            Err(HxClientError::Probe {
-                path: path.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "hx --version probe timed out",
-                ),
-            })
+            Ok(false)
         }
         Err(source) => {
             terminate_child(&mut child);
@@ -212,6 +206,9 @@ mod tests {
     //!
     //! These tests cover the lightweight output classifier plus resolver behaviour
     //! around missing overrides and accepted executable paths.
+
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
 
     use rstest::rstest;
     use tempfile::TempDir;
@@ -257,5 +254,22 @@ mod tests {
 
         assert_ne!(explicit, discovered);
         assert_eq!(resolved, explicit);
+    }
+
+    #[test]
+    fn timeout_probe_is_treated_as_non_helix() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let hx_script = temp_dir.path().join("hx");
+        fs::write(&hx_script, "#!/usr/bin/env sh\nsleep 2\n").expect("write timeout script");
+        let mut permissions = fs::metadata(&hx_script)
+            .expect("read timeout script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&hx_script, permissions).expect("make timeout script executable");
+
+        let resolved = resolve_hx_binary_with_env(None, Some(hx_script.clone()))
+            .expect("timeout probe should still accept non-Helix hx");
+
+        assert_eq!(resolved, hx_script);
     }
 }
