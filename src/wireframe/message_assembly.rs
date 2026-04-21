@@ -69,47 +69,37 @@ pub(crate) fn message_key_for(header: &FrameHeader) -> MessageKey {
     MessageKey(key)
 }
 
-/// Shared frame-payload builder used by [`first_frame_payload`] and [`continuation_frame_payload`].
-/// Layout: `tag(1) | message_key(8) | middle | body_len(4) | metadata | body`. Distinguishes
-/// first from continuation internal Hotline assembly frames.
+/// Frame-type-specific parameters for [`assemble_frame_payload`].
 #[derive(Clone, Copy)]
-#[rustfmt::skip]
-enum FrameTag { First, Continuation }
-#[rustfmt::skip]
-impl From<FrameTag> for u8 {
-    fn from(tag: FrameTag) -> Self {
-        match tag { FrameTag::First => FIRST_FRAME_TAG, FrameTag::Continuation => CONTINUATION_FRAME_TAG }
-    }
-}
-/// Variable byte segments supplied to [`assemble_frame_payload`].
-#[derive(Clone, Copy)]
-struct FrameSegments<'a> {
-    /// Bytes between `message_key` and `body_len` in the encoded frame.
+struct FramePayloadSpec<'a> {
+    tag: u8,
     middle: &'a [u8],
-    /// Bytes appended after `body_len`, e.g. the logical header for first frames.
     metadata: &'a [u8],
-    /// Static error text surfaced when `body.len()` overflows `u32`.
     body_len_err: &'static str,
 }
+
+/// Shared frame-payload builder used by [`first_frame_payload`] and
+/// [`continuation_frame_payload`].
+///
+/// Layout: `tag(1) | message_key(8) | middle | body_len(4) | metadata | body`
 #[expect(
     clippy::big_endian_bytes,
     reason = "internal Hotline transport metadata uses network byte order"
 )]
 fn assemble_frame_payload(
-    tag: FrameTag,
+    spec: FramePayloadSpec<'_>,
     message_key: MessageKey,
-    segments: FrameSegments<'_>,
     body: &[u8],
 ) -> Result<Vec<u8>, io::Error> {
     let body_len = u32::try_from(body.len())
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, segments.body_len_err))?;
-    let capacity = 1 + 8 + segments.middle.len() + 4 + segments.metadata.len() + body.len();
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, spec.body_len_err))?;
+    let capacity = 1 + 8 + spec.middle.len() + 4 + spec.metadata.len() + body.len();
     let mut payload = Vec::with_capacity(capacity);
-    payload.push(u8::from(tag));
+    payload.push(spec.tag);
     payload.extend_from_slice(&u64::from(message_key).to_be_bytes());
-    payload.extend_from_slice(segments.middle);
+    payload.extend_from_slice(spec.middle);
     payload.extend_from_slice(&body_len.to_be_bytes());
-    payload.extend_from_slice(segments.metadata);
+    payload.extend_from_slice(spec.metadata);
     payload.extend_from_slice(body);
     Ok(payload)
 }
@@ -127,13 +117,17 @@ pub(crate) fn first_frame_payload(
     body: &[u8],
 ) -> Result<Vec<u8>, io::Error> {
     let total_size_bytes = header.total_size.to_be_bytes();
-    let logical_header = logical_header_bytes(header);
-    let segments = FrameSegments {
-        middle: &total_size_bytes,
-        metadata: &logical_header,
-        body_len_err: "Hotline first-frame body length exceeds u32",
-    };
-    assemble_frame_payload(FrameTag::First, message_key, segments, body)
+    let metadata = logical_header_bytes(header);
+    assemble_frame_payload(
+        FramePayloadSpec {
+            tag: FIRST_FRAME_TAG,
+            middle: &total_size_bytes,
+            metadata: &metadata,
+            body_len_err: "Hotline first-frame body length exceeds u32",
+        },
+        message_key,
+        body,
+    )
 }
 
 /// Build the internal payload representation for a continuation fragment.
@@ -150,12 +144,16 @@ pub(crate) fn continuation_frame_payload(
     let mut middle = [0u8; 5];
     middle[..4].copy_from_slice(&u32::from(sequence).to_be_bytes());
     middle[4] = u8::from(is_last);
-    let segments = FrameSegments {
-        middle: &middle,
-        metadata: &[],
-        body_len_err: "Hotline continuation body length exceeds u32",
-    };
-    assemble_frame_payload(FrameTag::Continuation, message_key, segments, body)
+    assemble_frame_payload(
+        FramePayloadSpec {
+            tag: CONTINUATION_FRAME_TAG,
+            middle: &middle,
+            metadata: &[],
+            body_len_err: "Hotline continuation body length exceeds u32",
+        },
+        message_key,
+        body,
+    )
 }
 
 fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Error> {
