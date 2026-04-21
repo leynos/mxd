@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Install the SynHX `hx` binary and source tree for validator runs.
+# Requires Bash 4+.
 #
 # Usage:
 #   ./scripts/install-synhx.sh
@@ -26,6 +27,14 @@ HX_PLATFORM_ARCHIVE=""
 fail() {
     echo "Error: $*" >&2
     exit 1
+}
+
+require_bash_4() {
+    if (( BASH_VERSINFO[0] >= 4 )); then
+        return
+    fi
+
+    fail "scripts/install-synhx.sh requires Bash 4 or newer"
 }
 
 require_supported_platform() {
@@ -94,6 +103,7 @@ install_file() {
     fail "cannot write to $destination_dir and sudo is unavailable; set HX_BIN_DIR to a writable directory or provide sudo access"
 }
 
+require_bash_4
 require_supported_platform
 require_command tar
 require_command wget

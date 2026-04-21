@@ -7,7 +7,7 @@
 use std::{
     ffi::OsStr,
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     time::Duration,
 };
@@ -146,14 +146,14 @@ pub fn terminate_hx(session: &mut Session) -> Result<(), HxClientError> {
         .map_err(|error| HxClientError::Cleanup(error.to_string()))
 }
 
-fn hx_is_helix(path: &PathBuf) -> Result<bool, HxClientError> {
+fn hx_is_helix(path: &Path) -> Result<bool, HxClientError> {
     let mut child = Command::new(path)
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|source| HxClientError::Probe {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })?;
 
@@ -161,12 +161,12 @@ fn hx_is_helix(path: &PathBuf) -> Result<bool, HxClientError> {
         Ok(Some(_)) => {
             let stdout =
                 read_stream(child.stdout.take()).map_err(|source| HxClientError::Probe {
-                    path: path.clone(),
+                    path: path.to_path_buf(),
                     source,
                 })?;
             let stderr =
                 read_stream(child.stderr.take()).map_err(|source| HxClientError::Probe {
-                    path: path.clone(),
+                    path: path.to_path_buf(),
                     source,
                 })?;
             let combined = format!("{stdout}{stderr}");
@@ -179,7 +179,7 @@ fn hx_is_helix(path: &PathBuf) -> Result<bool, HxClientError> {
         Err(source) => {
             terminate_child(&mut child);
             Err(HxClientError::Probe {
-                path: path.clone(),
+                path: path.to_path_buf(),
                 source,
             })
         }

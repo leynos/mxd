@@ -149,7 +149,7 @@ Success is observable when:
       platforms and missing `sudo`, and normalizing `pg-embed-setup-unpriv`
       command and guide references in the touched documentation.
 - [ ] Keep roadmap item 1.6.2 open until real-client file/news/chat coverage
-      exists or the acceptance criteria are re-scoped.
+      exists, or the acceptance criteria are re-scoped.
 - [ ] Run full quality gates with tee-captured logs and commit the final
       implementation.
 
@@ -178,7 +178,7 @@ Success is observable when:
   validator tests currently rely on skip behaviour rather than CI enforcement.
 
 - Observation: the currently documented SynHX version in legacy design text is
-  stale for this task. Evidence: the supplied install process pins
+  stale for this task. Evidence: the supplied installation process pins
   `HX_VERSION=0.1.48.1` from `leynos/synhx-client` releases, whereas older
   design prose mentions `0.2.4`. Impact: the plan should standardize on a
   repository-owned install script and the newer pinned version.
