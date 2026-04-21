@@ -35,13 +35,12 @@ const DOWNLOAD_FILE_PERMISSION_CODE: i32 = 2;
 
 macro_rules! insert_or_get_id {
     (
-        conn =
-        $conn:expr,table =
-        $table:expr,values =
-        $values:expr,conflict_col =
-        $conflict_col:expr,conflict_val =
-        $conflict_val:expr,id_col =
-        $id_col:expr $(,)?
+        conn         = $conn:expr,
+        table        = $table:expr,
+        values       = $values:expr,
+        conflict_col = $conflict_col:expr,
+        conflict_val = $conflict_val:expr,
+        id_col       = $id_col:expr $(,)?
     ) => {{
         diesel::insert_into($table)
             .values($values)
@@ -55,6 +54,41 @@ macro_rules! insert_or_get_id {
             .select($id_col)
             .first($conn)
             .await
+    }};
+}
+
+macro_rules! insert_returning_id {
+    (
+        conn    = $conn:expr,
+        table   = $table:expr,
+        values  = $values:expr,
+        id_col  = $id_col:expr $(,)?
+    ) => {{
+        cfg_if! {
+            if #[cfg(any(
+                feature = "postgres",
+                feature = "returning_clauses_for_sqlite_3_35"
+            ))] {
+                diesel::insert_into($table)
+                    .values($values)
+                    .returning($id_col)
+                    .get_result($conn)
+                    .await
+            } else if #[cfg(all(
+                feature = "sqlite",
+                not(feature = "returning_clauses_for_sqlite_3_35")
+            ))] {
+                diesel::insert_into($table)
+                    .values($values)
+                    .execute($conn)
+                    .await?;
+                fetch_last_insert_rowid($conn).await
+            } else {
+                compile_error!(
+                    "Either 'sqlite' or 'postgres' feature must be enabled"
+                );
+            }
+        }
     }};
 }
 
@@ -83,12 +117,12 @@ pub async fn seed_permission(
 ) -> QueryResult<i32> {
     use crate::schema::permissions::dsl as p;
     insert_or_get_id!(
-        conn = conn,
-        table = p::permissions,
-        values = permission,
+        conn         = conn,
+        table        = p::permissions,
+        values       = permission,
         conflict_col = p::code,
         conflict_val = permission.code,
-        id_col = p::id,
+        id_col       = p::id,
     )
 }
 
@@ -100,12 +134,12 @@ pub async fn seed_permission(
 pub async fn create_group(conn: &mut DbConnection, group: &NewGroup<'_>) -> QueryResult<i32> {
     use crate::schema::groups::dsl as g;
     insert_or_get_id!(
-        conn = conn,
-        table = g::groups,
-        values = group,
+        conn         = conn,
+        table        = g::groups,
+        values       = group,
         conflict_col = g::name,
         conflict_val = group.name,
-        id_col = g::id,
+        id_col       = g::id,
     )
 }
 
@@ -128,46 +162,23 @@ pub async fn add_user_to_group(
         .map(|rows| rows > 0)
 }
 
-cfg_if! {
-    if #[cfg(any(feature = "postgres", feature = "returning_clauses_for_sqlite_3_35"))] {
-        /// Insert a new file node and return its identifier.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_file_node(
-            conn: &mut DbConnection,
-            node: &NewFileNode<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::file_nodes::dsl::{file_nodes, id};
-
-            diesel::insert_into(file_nodes)
-                .values(node)
-                .returning(id)
-                .get_result(conn)
-                .await
-        }
-    } else if #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))] {
-        /// Insert a new file node and return its identifier.
-        ///
-        /// # Errors
-        /// Returns any error produced by the database.
-        #[must_use = "handle the result"]
-        pub async fn create_file_node(
-            conn: &mut DbConnection,
-            node: &NewFileNode<'_>,
-        ) -> QueryResult<i32> {
-            use crate::schema::file_nodes::dsl::file_nodes;
-
-            diesel::insert_into(file_nodes)
-                .values(node)
-                .execute(conn)
-                .await?;
-            fetch_last_insert_rowid(conn).await
-        }
-    } else {
-        compile_error!("Either 'sqlite' or 'postgres' feature must be enabled");
-    }
+/// Insert a new file node and return its identifier.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn create_file_node(
+    conn: &mut DbConnection,
+    node: &NewFileNode<'_>,
+) -> QueryResult<i32> {
+    #[allow(unused_imports)]
+    use crate::schema::file_nodes::dsl::{file_nodes, id};
+    insert_returning_id!(
+        conn   = conn,
+        table  = file_nodes,
+        values = node,
+        id_col = id,
+    )
 }
 
 /// Grant a resource-scoped permission to a principal.
