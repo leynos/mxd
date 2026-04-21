@@ -164,12 +164,31 @@ pub async fn add_user_to_group(
 /// Returns any error produced by the database.
 #[must_use = "handle the result"]
 pub async fn create_file_node(conn: &mut DbConnection, node: &NewFileNode<'_>) -> QueryResult<i32> {
-    #[expect(
-        unused_imports,
-        reason = "the bare SQLite branch does not compile the RETURNING path"
-    )]
-    use crate::schema::file_nodes::dsl::{file_nodes, id};
-    insert_returning_id!(conn = conn, table = file_nodes, values = node, id_col = id,)
+    use crate::schema::file_nodes::dsl::file_nodes;
+
+    cfg_if! {
+        if #[cfg(any(
+            feature = "postgres",
+            feature = "returning_clauses_for_sqlite_3_35"
+        ))] {
+            use crate::schema::file_nodes::dsl::id;
+            insert_returning_id!(conn = conn, table = file_nodes, values = node, id_col = id,)
+        } else if #[cfg(all(
+            feature = "sqlite",
+            not(feature = "returning_clauses_for_sqlite_3_35")
+        ))] {
+            insert_returning_id!(
+                conn = conn,
+                table = file_nodes,
+                values = node,
+                id_col = crate::schema::file_nodes::dsl::id,
+            )
+        } else {
+            compile_error!(
+                "Either 'sqlite' or 'postgres' feature must be enabled"
+            );
+        }
+    }
 }
 
 /// Grant a resource-scoped permission to a principal.

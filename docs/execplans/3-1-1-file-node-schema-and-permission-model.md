@@ -6,6 +6,18 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 
 Status: COMPLETED
 
+Progress note (2026-04-22):
+
+- Follow-on CI hardening uncovered that a reasoned
+  `#[expect(unused_imports)]` on `create_file_node` was still the wrong shape
+  for coverage builds. The `postgres` coverage path fulfils the import, which
+  turns the expectation itself into a denied warning under
+  `-D unfulfilled-lint-expectations`.
+- The repository helper now uses compile-time gated imports inside
+  `create_file_node` instead of attribute-based lint suppression or
+  expectation. This keeps the feature split explicit and avoids policy drift in
+  both standard Clippy and coverage-driven builds.
+
 PLANS.md does not exist in this repository.
 
 ## Purpose / big picture
