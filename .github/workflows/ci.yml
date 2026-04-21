@@ -188,6 +188,7 @@ jobs:
         uses: ./.github/actions/generate-coverage
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
+          POSTGRES_TEST_URL: postgres://postgres:password@127.0.0.1/test
         with:
           with-default-features: false
           features: postgres test-support
