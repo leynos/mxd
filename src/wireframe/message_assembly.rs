@@ -69,44 +69,54 @@ pub(crate) fn message_key_for(header: &FrameHeader) -> MessageKey {
     MessageKey(key)
 }
 
-/// Shared frame-payload builder used by [`first_frame_payload`] and
-/// [`continuation_frame_payload`].
-///
-/// Layout: `tag(1) | message_key(8) | middle | body_len(4) | metadata | body`
+/// Shared frame-payload builder used by [`first_frame_payload`] and [`continuation_frame_payload`].
+/// Layout: `tag(1) | message_key(8) | middle | body_len(4) | metadata | body`. Distinguishes
+/// first from continuation internal Hotline assembly frames.
+#[derive(Clone, Copy)]
+#[rustfmt::skip]
+enum FrameTag { First, Continuation }
+#[rustfmt::skip]
+impl From<FrameTag> for u8 {
+    fn from(tag: FrameTag) -> Self {
+        match tag { FrameTag::First => FIRST_FRAME_TAG, FrameTag::Continuation => CONTINUATION_FRAME_TAG }
+    }
+}
+/// Variable byte segments supplied to [`assemble_frame_payload`].
+#[derive(Clone, Copy)]
+struct FrameSegments<'a> {
+    /// Bytes between `message_key` and `body_len` in the encoded frame.
+    middle: &'a [u8],
+    /// Bytes appended after `body_len`, e.g. the logical header for first frames.
+    metadata: &'a [u8],
+    /// Static error text surfaced when `body.len()` overflows `u32`.
+    body_len_err: &'static str,
+}
 #[expect(
     clippy::big_endian_bytes,
     reason = "internal Hotline transport metadata uses network byte order"
 )]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "frame assembly varies over explicit transport segments and error context"
-)]
 fn assemble_frame_payload(
-    tag: u8,
+    tag: FrameTag,
     message_key: MessageKey,
-    middle: &[u8],
+    segments: FrameSegments<'_>,
     body: &[u8],
-    metadata: &[u8],
-    body_len_err: &'static str,
 ) -> Result<Vec<u8>, io::Error> {
     let body_len = u32::try_from(body.len())
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, body_len_err))?;
-    let capacity = 1 + 8 + middle.len() + 4 + metadata.len() + body.len();
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, segments.body_len_err))?;
+    let capacity = 1 + 8 + segments.middle.len() + 4 + segments.metadata.len() + body.len();
     let mut payload = Vec::with_capacity(capacity);
-    payload.push(tag);
+    payload.push(u8::from(tag));
     payload.extend_from_slice(&u64::from(message_key).to_be_bytes());
-    payload.extend_from_slice(middle);
+    payload.extend_from_slice(segments.middle);
     payload.extend_from_slice(&body_len.to_be_bytes());
-    payload.extend_from_slice(metadata);
+    payload.extend_from_slice(segments.metadata);
     payload.extend_from_slice(body);
     Ok(payload)
 }
-
-/// Build the internal payload representation for the first physical fragment.
-///
-/// The metadata bytes are the normalized 20-byte logical transaction header
-/// with `data_size == total_size`, so a completed assembly reconstructs the
-/// existing `header || payload` shape consumed by `parse_transaction`.
+/// Build the internal payload representation for the first physical fragment. The metadata bytes
+/// are the normalized 20-byte logical transaction header with `data_size == total_size`, so a
+/// completed assembly reconstructs the existing `header || payload` shape consumed by
+/// `parse_transaction`.
 #[expect(
     clippy::big_endian_bytes,
     reason = "internal Hotline transport metadata uses network byte order"
@@ -116,14 +126,14 @@ pub(crate) fn first_frame_payload(
     header: &FrameHeader,
     body: &[u8],
 ) -> Result<Vec<u8>, io::Error> {
-    assemble_frame_payload(
-        FIRST_FRAME_TAG,
-        message_key,
-        &header.total_size.to_be_bytes(),
-        body,
-        &logical_header_bytes(header),
-        "Hotline first-frame body length exceeds u32",
-    )
+    let total_size_bytes = header.total_size.to_be_bytes();
+    let logical_header = logical_header_bytes(header);
+    let segments = FrameSegments {
+        middle: &total_size_bytes,
+        metadata: &logical_header,
+        body_len_err: "Hotline first-frame body length exceeds u32",
+    };
+    assemble_frame_payload(FrameTag::First, message_key, segments, body)
 }
 
 /// Build the internal payload representation for a continuation fragment.
@@ -140,14 +150,12 @@ pub(crate) fn continuation_frame_payload(
     let mut middle = [0u8; 5];
     middle[..4].copy_from_slice(&u32::from(sequence).to_be_bytes());
     middle[4] = u8::from(is_last);
-    assemble_frame_payload(
-        CONTINUATION_FRAME_TAG,
-        message_key,
-        &middle,
-        body,
-        &[],
-        "Hotline continuation body length exceeds u32",
-    )
+    let segments = FrameSegments {
+        middle: &middle,
+        metadata: &[],
+        body_len_err: "Hotline continuation body length exceeds u32",
+    };
+    assemble_frame_payload(FrameTag::Continuation, message_key, segments, body)
 }
 
 fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Error> {
@@ -289,10 +297,9 @@ fn byte(payload: &[u8], index: usize, context: &'static str) -> Result<u8, io::E
     clippy::big_endian_bytes,
     reason = "internal Hotline transport metadata uses network byte order"
 )]
+#[rustfmt::skip]
 fn read_u32(bytes: &[u8]) -> Result<u32, io::Error> {
-    let array: [u8; 4] = bytes
-        .try_into()
-        .map_err(|_| short_payload_error("expected 4 bytes"))?;
+    let array: [u8; 4] = bytes.try_into().map_err(|_| short_payload_error("expected 4 bytes"))?;
     Ok(u32::from_be_bytes(array))
 }
 
@@ -300,10 +307,9 @@ fn read_u32(bytes: &[u8]) -> Result<u32, io::Error> {
     clippy::big_endian_bytes,
     reason = "internal Hotline transport metadata uses network byte order"
 )]
+#[rustfmt::skip]
 fn read_u64(bytes: &[u8]) -> Result<u64, io::Error> {
-    let array: [u8; 8] = bytes
-        .try_into()
-        .map_err(|_| short_payload_error("expected 8 bytes"))?;
+    let array: [u8; 8] = bytes.try_into().map_err(|_| short_payload_error("expected 8 bytes"))?;
     Ok(u64::from_be_bytes(array))
 }
 
