@@ -210,7 +210,7 @@ fn read_stream<T: Read>(maybe_stream: Option<T>) -> Result<String, std::io::Erro
 mod tests {
     //! Unit tests for Helix probe heuristics and binary-resolution edge cases.
     //!
-    //! These tests cover the lightweight output classifier plus resolver behavior
+    //! These tests cover the lightweight output classifier plus resolver behaviour
     //! around missing overrides and accepted executable paths.
 
     use rstest::rstest;
@@ -247,12 +247,15 @@ mod tests {
     #[test]
     fn explicit_override_wins_when_present() {
         let explicit = std::env::current_exe().expect("resolve current test binary");
-        let discovered = std::env::current_exe().expect("resolve current test binary");
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let discovered = temp_dir.path().join("discovered-hx");
+        std::os::unix::fs::symlink(&explicit, &discovered).expect("create discovered hx symlink");
 
         let resolved =
             resolve_hx_binary_with_env(Some(explicit.as_os_str()), Some(discovered.clone()))
                 .expect("resolve explicit hx binary");
 
+        assert_ne!(explicit, discovered);
         assert_eq!(resolved, explicit);
     }
 }
