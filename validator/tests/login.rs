@@ -56,8 +56,8 @@ fn login_validation_rejects_invalid_credentials() -> Result<(), AnyError> {
     ))?;
     expect_output_with_timeout(
         &mut session,
-        "(?i)login failed\\?",
-        "hx did not report failed authentication",
+        "(?i)connected",
+        "hx did not connect to the wireframe server before invalid-auth checks",
         connect_expect_timeout(),
     )?;
     session.send_line("/ls")?;
