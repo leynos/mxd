@@ -33,6 +33,31 @@ const PRINCIPAL_USER: &str = "user";
 const PRINCIPAL_GROUP: &str = "group";
 const DOWNLOAD_FILE_PERMISSION_CODE: i32 = 2;
 
+macro_rules! insert_or_get_id {
+    (
+        conn =
+        $conn:expr,table =
+        $table:expr,values =
+        $values:expr,conflict_col =
+        $conflict_col:expr,conflict_val =
+        $conflict_val:expr,id_col =
+        $id_col:expr $(,)?
+    ) => {{
+        diesel::insert_into($table)
+            .values($values)
+            .on_conflict($conflict_col)
+            .do_nothing()
+            .execute($conn)
+            .await?;
+
+        $table
+            .filter($conflict_col.eq($conflict_val))
+            .select($id_col)
+            .first($conn)
+            .await
+    }};
+}
+
 /// Errors that can occur when resolving file-node paths.
 #[derive(Debug, Error)]
 pub enum FileNodeLookupError {
@@ -57,19 +82,14 @@ pub async fn seed_permission(
     permission: &NewPermission<'_>,
 ) -> QueryResult<i32> {
     use crate::schema::permissions::dsl as p;
-
-    diesel::insert_into(p::permissions)
-        .values(permission)
-        .on_conflict(p::code)
-        .do_nothing()
-        .execute(conn)
-        .await?;
-
-    p::permissions
-        .filter(p::code.eq(permission.code))
-        .select(p::id)
-        .first(conn)
-        .await
+    insert_or_get_id!(
+        conn = conn,
+        table = p::permissions,
+        values = permission,
+        conflict_col = p::code,
+        conflict_val = permission.code,
+        id_col = p::id,
+    )
 }
 
 /// Insert a group row if needed and return its identifier.
@@ -79,19 +99,14 @@ pub async fn seed_permission(
 #[must_use = "handle the result"]
 pub async fn create_group(conn: &mut DbConnection, group: &NewGroup<'_>) -> QueryResult<i32> {
     use crate::schema::groups::dsl as g;
-
-    diesel::insert_into(g::groups)
-        .values(group)
-        .on_conflict(g::name)
-        .do_nothing()
-        .execute(conn)
-        .await?;
-
-    g::groups
-        .filter(g::name.eq(group.name))
-        .select(g::id)
-        .first(conn)
-        .await
+    insert_or_get_id!(
+        conn = conn,
+        table = g::groups,
+        values = group,
+        conflict_col = g::name,
+        conflict_val = group.name,
+        id_col = g::id,
+    )
 }
 
 /// Link a user to a group.
