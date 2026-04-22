@@ -17,6 +17,11 @@ Progress note (2026-04-22):
   `create_file_node` instead of attribute-based lint suppression or
   expectation. This keeps the feature split explicit and avoids policy drift in
   both standard Clippy and coverage-driven builds.
+- Follow-up review found that routing `GetFileNameList` straight to
+  `list_visible_root_file_nodes_for_user` breaks upgraded databases whose
+  additive migrations still only contain legacy `files` and `file_acl` rows.
+  Until roadmap work adds a real backfill, the file-list helper must fall back
+  to the legacy tables when no visible root `file_nodes` exist.
 
 PLANS.md does not exist in this repository.
 

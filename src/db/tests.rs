@@ -20,7 +20,11 @@ use crate::{
         NewUser,
         NewUserGroup,
     },
-    schema::file_nodes::dsl as file_nodes,
+    schema::{
+        file_acl::dsl as legacy_file_acl,
+        file_nodes::dsl as file_nodes,
+        files::dsl as legacy_files,
+    },
 };
 
 #[cfg(feature = "sqlite")]
@@ -399,6 +403,58 @@ async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) {
         .expect("visibility query should succeed");
     assert_eq!(visible.len(), 1);
     assert_eq!(visible[0].name, "shared.txt");
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_legacy_file_acl_visibility_fallback(#[future] migrated_conn: DbConnection) {
+    let mut conn = migrated_conn.await;
+    create_user(
+        &mut conn,
+        &NewUser {
+            username: "frank",
+            password: "hash",
+        },
+    )
+    .await
+    .expect("failed to create user");
+    let frank = get_user_by_name(&mut conn, "frank")
+        .await
+        .expect("lookup failed")
+        .expect("user missing");
+
+    diesel::insert_into(legacy_files::files)
+        .values((
+            legacy_files::name.eq("legacy.txt"),
+            legacy_files::object_key.eq("objects/legacy.txt"),
+            legacy_files::size.eq(99_i64),
+        ))
+        .execute(&mut conn)
+        .await
+        .expect("failed to create legacy file");
+    let file_id = legacy_files::files
+        .filter(legacy_files::name.eq("legacy.txt"))
+        .select(legacy_files::id)
+        .first::<i32>(&mut conn)
+        .await
+        .expect("legacy file id");
+
+    diesel::insert_into(legacy_file_acl::file_acl)
+        .values((
+            legacy_file_acl::file_id.eq(file_id),
+            legacy_file_acl::user_id.eq(frank.id),
+        ))
+        .execute(&mut conn)
+        .await
+        .expect("failed to create legacy acl");
+
+    let visible = list_visible_root_file_nodes_for_user(&mut conn, frank.id)
+        .await
+        .expect("visibility query should succeed");
+    assert_eq!(visible.len(), 1);
+    assert_eq!(visible[0].name, "legacy.txt");
+    assert_eq!(visible[0].kind, "file");
 }
 
 #[cfg(feature = "sqlite")]

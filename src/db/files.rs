@@ -338,7 +338,7 @@ pub async fn list_visible_root_file_nodes_for_user(
         .filter(ug::user_id.eq(user_id))
         .select(ug::group_id);
 
-    f::file_nodes
+    let visible = f::file_nodes
         .inner_join(
             rp::resource_permissions.on(rp::resource_type
                 .eq(RESOURCE_TYPE_FILE_NODE)
@@ -359,5 +359,41 @@ pub async fn list_visible_root_file_nodes_for_user(
         .distinct()
         .order(f::name.asc())
         .load::<VisibleFileNode>(conn)
-        .await
+        .await?;
+
+    if visible.is_empty() {
+        list_legacy_visible_root_files_for_user(conn, user_id).await
+    } else {
+        Ok(visible)
+    }
+}
+
+async fn list_legacy_visible_root_files_for_user(
+    conn: &mut DbConnection,
+    user_id: i32,
+) -> QueryResult<Vec<VisibleFileNode>> {
+    #[derive(Queryable)]
+    struct LegacyVisibleFile {
+        id: i32,
+        name: String,
+    }
+
+    use crate::schema::{file_acl::dsl as a, files::dsl as f};
+
+    let legacy_files = f::files
+        .inner_join(a::file_acl.on(a::file_id.eq(f::id)))
+        .filter(a::user_id.eq(user_id))
+        .order(f::name.asc())
+        .select((f::id, f::name))
+        .load::<LegacyVisibleFile>(conn)
+        .await?;
+
+    Ok(legacy_files
+        .into_iter()
+        .map(|file| VisibleFileNode {
+            id: file.id,
+            name: file.name,
+            kind: String::from("file"),
+        })
+        .collect())
 }
