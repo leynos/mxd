@@ -658,7 +658,7 @@ Architecture-specific checks to include during review:
 - A polymorphic ACL row shape (`resource_type` plus `resource_id`,
   `principal_type` plus `principal_id`) stays portable across SQLite and
   PostgreSQL, but portable conditional foreign keys for those polymorphic
-  references do not. A strict fully-normalized alternative would require split
+  references do not. A strict fully normalized alternative would require split
   ACL tables or backend-specific trigger logic, which is wider than 3.1.1.
 - The additive migration set made the SQLite test bootstrap slower under
   `cargo nextest` than the earlier schema, so the migration timeout in
