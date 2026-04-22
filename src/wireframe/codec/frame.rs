@@ -26,6 +26,7 @@ use crate::{
     wireframe::{
         message_assembly::{
             HOTLINE_LOGICAL_MESSAGE_BYTES,
+            IsLast,
             continuation_frame_payload,
             first_frame_payload,
             message_key_for,
@@ -214,7 +215,7 @@ impl InboundSeriesTracker {
             active_series_mut.deadline = Instant::now() + SERIES_TIMEOUT;
         }
 
-        continuation_frame_payload(message_key, sequence, is_last, payload)
+        continuation_frame_payload(message_key, sequence, IsLast(is_last), payload)
     }
 
     /// Return an error if no fragment series is currently active.

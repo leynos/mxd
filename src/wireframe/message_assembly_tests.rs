@@ -10,6 +10,7 @@ use wireframe::message_assembler::{
 
 use super::message_assembly::{
     HotlineMessageAssembler,
+    IsLast,
     continuation_frame_payload,
     first_frame_payload,
     message_key_for,
@@ -69,8 +70,9 @@ fn first_frame_payload_reports_logical_header_metadata() {
 
 #[test]
 fn continuation_payload_reports_sequence_and_last_flag() {
-    let payload = continuation_frame_payload(MessageKey(11), FrameSequence(2), true, b"tail")
-        .expect("payload");
+    let payload =
+        continuation_frame_payload(MessageKey(11), FrameSequence(2), IsLast(true), b"tail")
+            .expect("payload");
     let parsed = HotlineMessageAssembler::new()
         .parse_frame_header(&payload)
         .expect("parsed header");
@@ -121,7 +123,7 @@ fn build_payload(builder: PayloadBuilder) -> Vec<u8> {
             first_frame_payload(message_key_for(&header), &header, b"data").expect("payload")
         }
         PayloadBuilder::Continuation => {
-            continuation_frame_payload(MessageKey(11), FrameSequence(2), true, b"tail")
+            continuation_frame_payload(MessageKey(11), FrameSequence(2), IsLast(true), b"tail")
                 .expect("payload")
         }
     }

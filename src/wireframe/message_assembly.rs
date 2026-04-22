@@ -50,7 +50,9 @@ impl HotlineMessageAssembler {
 impl MessageAssembler for HotlineMessageAssembler {
     fn parse_frame_header(&self, payload: &[u8]) -> Result<ParsedFrameHeader, io::Error> {
         let Some((&tag, _)) = payload.split_first() else {
-            return Err(short_payload_error("missing Hotline assembly tag"));
+            return Err(short_payload_error(ParseError(
+                "missing Hotline assembly tag",
+            )));
         };
 
         match parse_frame_tag(tag)? {
@@ -143,12 +145,12 @@ pub(crate) fn first_frame_payload(
 pub(crate) fn continuation_frame_payload(
     message_key: MessageKey,
     sequence: FrameSequence,
-    is_last: bool,
+    is_last: IsLast,
     body: &[u8],
 ) -> Result<Vec<u8>, io::Error> {
     let mut middle = [0u8; 5];
     middle[..4].copy_from_slice(&u32::from(sequence).to_be_bytes());
-    middle[4] = u8::from(is_last);
+    middle[4] = u8::from(bool::from(is_last));
     assemble_frame_payload(
         FramePayloadSpec {
             tag: CONTINUATION_FRAME_TAG,
@@ -164,22 +166,22 @@ pub(crate) fn continuation_frame_payload(
 /// Parse the internal first-fragment assembly payload into a `ParsedFrameHeader`.
 fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Error> {
     if payload.len() < FIRST_FRAME_HEADER_LEN + HEADER_LEN {
-        return Err(short_payload_error(
+        return Err(short_payload_error(ParseError(
             "Hotline first-frame payload shorter than metadata header",
-        ));
+        )));
     }
 
     let mut cursor = PayloadCursor::new(payload);
-    let tag = cursor.u8("missing Hotline assembly tag")?;
+    let tag = cursor.u8(ParseError("missing Hotline assembly tag"))?;
     debug_assert!(matches!(parse_frame_tag(tag), Ok(AssemblyFrameTag::First)));
-    let message_key = MessageKey(cursor.u64("missing first-frame message key")?);
+    let message_key = MessageKey(cursor.u64(ParseError("missing first-frame message key"))?);
     let total_body_len = u32_to_usize(
-        cursor.u32("missing first-frame total body length")?,
-        "Hotline first-frame total length exceeds usize",
+        cursor.u32(ParseError("missing first-frame total body length"))?,
+        ParseError("Hotline first-frame total length exceeds usize"),
     )?;
     let body_len = u32_to_usize(
-        cursor.u32("missing first-frame body length")?,
-        "Hotline first-frame body length exceeds usize",
+        cursor.u32(ParseError("missing first-frame body length"))?,
+        ParseError("Hotline first-frame body length exceeds usize"),
     )?;
     if body_len > total_body_len {
         return Err(io::Error::new(
@@ -197,7 +199,7 @@ fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Err
     let logical_header = parse_logical_header(payload)?;
     let logical_total_len = u32_to_usize(
         logical_header.total_size,
-        "Hotline logical first-frame total length exceeds usize",
+        ParseError("Hotline logical first-frame total length exceeds usize"),
     )?;
     if logical_total_len != total_body_len || logical_header.data_size != logical_header.total_size
     {
@@ -222,23 +224,23 @@ fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Err
 /// Parse the internal continuation-fragment assembly payload into a `ParsedFrameHeader`.
 fn parse_continuation_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Error> {
     if payload.len() < CONTINUATION_FRAME_HEADER_LEN {
-        return Err(short_payload_error(
+        return Err(short_payload_error(ParseError(
             "Hotline continuation payload shorter than metadata header",
-        ));
+        )));
     }
 
     let mut cursor = PayloadCursor::new(payload);
-    let tag = cursor.u8("missing Hotline assembly tag")?;
+    let tag = cursor.u8(ParseError("missing Hotline assembly tag"))?;
     debug_assert!(matches!(
         parse_frame_tag(tag),
         Ok(AssemblyFrameTag::Continuation)
     ));
-    let message_key = MessageKey(cursor.u64("missing continuation message key")?);
-    let sequence = FrameSequence(cursor.u32("missing continuation sequence")?);
-    let is_last = parse_last_flag(cursor.u8("missing continuation last flag")?)?;
+    let message_key = MessageKey(cursor.u64(ParseError("missing continuation message key"))?);
+    let sequence = FrameSequence(cursor.u32(ParseError("missing continuation sequence"))?);
+    let is_last = parse_last_flag(cursor.u8(ParseError("missing continuation last flag"))?)?;
     let body_len = u32_to_usize(
-        cursor.u32("missing continuation body length")?,
-        "Hotline continuation body length exceeds usize",
+        cursor.u32(ParseError("missing continuation body length"))?,
+        ParseError("Hotline continuation body length exceeds usize"),
     )?;
     let expected_len = CONTINUATION_FRAME_HEADER_LEN + body_len;
     if payload.len() != expected_len {
@@ -253,7 +255,7 @@ fn parse_continuation_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, 
             message_key,
             sequence: Some(sequence),
             body_len,
-            is_last,
+            is_last: bool::from(is_last),
         }),
         CONTINUATION_FRAME_HEADER_LEN,
     ))
@@ -272,12 +274,12 @@ fn logical_header_bytes(header: &FrameHeader) -> [u8; HEADER_LEN] {
 fn parse_logical_header(payload: &[u8]) -> Result<FrameHeader, io::Error> {
     let metadata_start = FIRST_FRAME_HEADER_LEN;
     let metadata_end = metadata_start + HEADER_LEN;
-    let metadata_bytes = payload
-        .get(metadata_start..metadata_end)
-        .ok_or_else(|| short_payload_error("missing Hotline logical metadata header"))?;
+    let metadata_bytes = payload.get(metadata_start..metadata_end).ok_or_else(|| {
+        short_payload_error(ParseError("missing Hotline logical metadata header"))
+    })?;
     let metadata: [u8; HEADER_LEN] = metadata_bytes
         .try_into()
-        .map_err(|_| short_payload_error("missing Hotline logical metadata header"))?;
+        .map_err(|_| short_payload_error(ParseError("missing Hotline logical metadata header")))?;
     Ok(FrameHeader::from_bytes(&metadata))
 }
 
@@ -296,22 +298,32 @@ fn parse_frame_tag(tag: u8) -> Result<AssemblyFrameTag, io::Error> {
 }
 
 /// Interpret a raw last-flag byte as `bool`, rejecting values other than `0` or `1`.
-fn parse_last_flag(flag: u8) -> Result<bool, io::Error> {
-    if flag == 0 {
-        Ok(false)
-    } else if flag == 1 {
-        Ok(true)
-    } else {
-        Err(io::Error::new(
+fn parse_last_flag(flag: u8) -> Result<IsLast, io::Error> {
+    match flag {
+        0 => Ok(IsLast(false)),
+        1 => Ok(IsLast(true)),
+        _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("invalid Hotline continuation last-flag value: {flag}"),
-        ))
+        )),
     }
 }
 
 /// Convert a `u32` to `usize`, mapping overflow to an `InvalidData` error.
-fn u32_to_usize(value: u32, err: &'static str) -> Result<usize, io::Error> {
-    usize::try_from(value).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, err))
+fn u32_to_usize(value: u32, err: ParseError) -> Result<usize, io::Error> {
+    usize::try_from(value).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, err.0))
+}
+
+/// Wraps a static error or context string to reduce primitive-argument density.
+#[derive(Clone, Copy)]
+struct ParseError(pub &'static str);
+
+/// Wraps the last-fragment boolean indicator as a distinct type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct IsLast(pub bool);
+
+impl From<IsLast> for bool {
+    fn from(v: IsLast) -> Self { v.0 }
 }
 
 /// Cursor over an assembly payload slice that advances its position on each read.
@@ -325,7 +337,7 @@ impl<'a> PayloadCursor<'a> {
     const fn new(payload: &'a [u8]) -> Self { Self { payload, pos: 0 } }
 
     /// Return `len` bytes at the current position and advance the cursor.
-    fn take(&mut self, len: usize, context: &'static str) -> Result<&'a [u8], io::Error> {
+    fn take(&mut self, len: usize, context: ParseError) -> Result<&'a [u8], io::Error> {
         let end = self
             .pos
             .checked_add(len)
@@ -339,7 +351,7 @@ impl<'a> PayloadCursor<'a> {
     }
 
     /// Read one byte and advance the cursor.
-    fn u8(&mut self, context: &'static str) -> Result<u8, io::Error> {
+    fn u8(&mut self, context: ParseError) -> Result<u8, io::Error> {
         let bytes = self.take(1, context)?;
         bytes
             .first()
@@ -352,7 +364,7 @@ impl<'a> PayloadCursor<'a> {
         clippy::big_endian_bytes,
         reason = "internal Hotline transport metadata uses network byte order"
     )]
-    fn u32(&mut self, context: &'static str) -> Result<u32, io::Error> {
+    fn u32(&mut self, context: ParseError) -> Result<u32, io::Error> {
         let bytes = self.take(4, context)?;
         let array: [u8; 4] = bytes.try_into().map_err(|_| short_payload_error(context))?;
         Ok(u32::from_be_bytes(array))
@@ -363,7 +375,7 @@ impl<'a> PayloadCursor<'a> {
         clippy::big_endian_bytes,
         reason = "internal Hotline transport metadata uses network byte order"
     )]
-    fn u64(&mut self, context: &'static str) -> Result<u64, io::Error> {
+    fn u64(&mut self, context: ParseError) -> Result<u64, io::Error> {
         let bytes = self.take(8, context)?;
         let array: [u8; 8] = bytes.try_into().map_err(|_| short_payload_error(context))?;
         Ok(u64::from_be_bytes(array))
@@ -371,6 +383,6 @@ impl<'a> PayloadCursor<'a> {
 }
 
 /// Construct an `UnexpectedEof` error for a truncated assembly payload.
-fn short_payload_error(message: &'static str) -> io::Error {
-    io::Error::new(io::ErrorKind::UnexpectedEof, message)
+fn short_payload_error(message: ParseError) -> io::Error {
+    io::Error::new(io::ErrorKind::UnexpectedEof, message.0)
 }
