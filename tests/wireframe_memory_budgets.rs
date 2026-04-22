@@ -1,5 +1,3 @@
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-
 //! Integration tests for Wireframe memory-budget enforcement.
 
 use std::{
@@ -133,6 +131,7 @@ fn assert_connection_closed(stream: &mut TcpStream) -> Result<(), AnyError> {
     }
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn fragmented_request_within_explicit_budget_still_routes() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
@@ -180,6 +179,7 @@ fn oversized_fragmented_request_is_disconnected_on_first_frame() -> Result<(), A
     assert_connection_closed(&mut stream)
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn stalled_fragmented_request_is_disconnected_when_continuation_resumes() -> Result<(), AnyError> {
     let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {

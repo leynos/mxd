@@ -703,7 +703,7 @@ assert_eq!(
 
 `obs_handle()` is an `rstest` fixture that constructs a handle directly.
 `Labels` provides a builder for label pairs used with
-`ObservabilityHandle:: counter`.
+`ObservabilityHandle::counter`.
 
 The handle's `snapshot()` method drains counters atomically. Query after
 `snapshot()`; earlier values are not retained.

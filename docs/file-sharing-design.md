@@ -363,14 +363,13 @@ server performs:
    locked). In most cases, if the user can list the directory, they can see the
    names of items; more granular hiding of specific files is optional.
 4. **Construct Response:** The server sends the list of entries. The Hotline
-   protocol
-   expects each entry as a “File name with info” structure (transaction field
-   200), which includes the item name plus info like size, type flags, dates,
-   and comment. These are populated from the DB. For alias entries, a
-   flag/indicator in the info (Hotline likely had a bit to denote alias) can
-   also include the alias’s target size/comment. For folders, size could be
-   sent as 0 or as a special flag indicating a folder (the client usually
-   distinguished by type, not size).
+   protocol expects each entry as a “File name with info” structure
+   (transaction field 200), which includes the item name plus info like size,
+   type flags, dates, and comment. These are populated from the DB. For alias
+   entries, a flag/indicator in the info (Hotline likely had a bit to denote
+   alias) can also include the alias’s target size/comment. For folders, size
+   could be sent as 0 or as a special flag indicating a folder (the client
+   usually distinguished by type, not size).
 5. **Sorting/Paging:** Entries can be sorted alphabetically or by type as needed
    (Hotline sorted folders and files separately). If a directory has many
    entries, paging can be implemented (though Hotline protocol may not have

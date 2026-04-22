@@ -187,6 +187,18 @@ fn parse_first_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, io::Err
             "Hotline first-frame payload length does not match declared body length",
         ));
     }
+    let logical_header = parse_logical_header(payload)?;
+    let logical_total_len = u32_to_usize(
+        logical_header.total_size,
+        "Hotline logical first-frame total length exceeds usize",
+    )?;
+    if logical_total_len != total_body_len || logical_header.data_size != logical_header.total_size
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Hotline first-frame logical header length does not match declared total length",
+        ));
+    }
 
     Ok(ParsedFrameHeader::new(
         AssemblyFrameHeader::First(FirstFrameHeader {
@@ -245,6 +257,18 @@ fn logical_header_bytes(header: &FrameHeader) -> [u8; HEADER_LEN] {
     logical.data_size = logical.total_size;
     logical.write_bytes(&mut bytes);
     bytes
+}
+
+fn parse_logical_header(payload: &[u8]) -> Result<FrameHeader, io::Error> {
+    let metadata_start = FIRST_FRAME_HEADER_LEN;
+    let metadata_end = metadata_start + HEADER_LEN;
+    let metadata_bytes = payload
+        .get(metadata_start..metadata_end)
+        .ok_or_else(|| short_payload_error("missing Hotline logical metadata header"))?;
+    let metadata: [u8; HEADER_LEN] = metadata_bytes
+        .try_into()
+        .map_err(|_| short_payload_error("missing Hotline logical metadata header"))?;
+    Ok(FrameHeader::from_bytes(&metadata))
 }
 
 fn parse_frame_tag(tag: u8) -> Result<AssemblyFrameTag, io::Error> {

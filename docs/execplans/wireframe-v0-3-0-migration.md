@@ -146,7 +146,7 @@ changing behaviour.
   transport tests. Evidence: the suites most relevant to the migration already
   depend on Hotline-specific preamble bytes, frame reassembly, and bespoke
   helpers, and the dependency bump plus app-factory refactor did not create
-  painful test boilerplate. Impact: the migration can stay smaller and lower
+  painful test boilerplate. Impact: the migration can stay a smaller and lower
   risk by keeping the existing test helpers for now.
 
 ## Decision log

@@ -121,3 +121,22 @@ fn continuation_parser_rejects_declared_body_length_mismatches() {
         "unexpected error: {err}"
     );
 }
+
+#[test]
+fn first_frame_parser_rejects_logical_header_total_mismatches() {
+    let header = header(10, 4);
+    let mut payload =
+        first_frame_payload(message_key_for(&header), &header, b"data").expect("payload");
+    payload[29..33].copy_from_slice(&9u32.to_be_bytes());
+
+    let err = HotlineMessageAssembler::new()
+        .parse_frame_header(&payload)
+        .expect_err("logical header total must match declared first-frame total");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string().contains(
+            "Hotline first-frame logical header length does not match declared total length",
+        ),
+        "unexpected error: {err}"
+    );
+}

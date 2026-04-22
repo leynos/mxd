@@ -1,6 +1,6 @@
 # Repository layout
 
-This document describes the organisation of the mxd codebase and the purpose of
+This document describes the organization of the mxd codebase and the purpose of
 each major directory and file.
 
 ## Top-level structure
