@@ -44,7 +44,7 @@ jobs:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
         with:
           install-postgres-deps: ${{ matrix.install_postgres_deps }}
@@ -149,7 +149,7 @@ jobs:
       MXD_VALIDATOR_FAIL_CLOSED: "true"
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
         with:
           install-sqlite-deps: true
