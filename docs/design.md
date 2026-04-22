@@ -535,6 +535,33 @@ reassembles those internal fragments back into the same `header || payload`
 byte layout already expected by `parse_transaction`, so the routing middleware
 and domain handlers do not gain any new transport coupling.
 
+The supporting internal APIs are split along the same seam:
+
+- `take_hotline_frame` in `src/wireframe/codec/physical_frame.rs` is the
+  shared physical-frame extractor. It validates the fixed 20-byte Hotline
+  header, checks whether the backing `BytesMut` already contains the full
+  frame, and returns `Ok(None)` until enough bytes have arrived. Both the
+  legacy `HotlineCodec` path and the Wireframe-facing `HotlineFrameCodec` path
+  delegate to this helper so physical header validation stays consistent.
+- `InboundSeriesTracker` in `src/wireframe/codec/frame.rs` is the stateful
+  fragment-series tracker held by `HotlineFrameDecoder`. It records the first
+  fragment header, stable message key, remaining logical bytes, next
+  continuation sequence number, and per-series deadline. Each continuation is
+  validated against that state before being forwarded to
+  `continuation_frame_payload`, and the tracker clears the active series on
+  completion, timeout, or protocol error.
+- `HotlineMessageAssembler` in `src/wireframe/message_assembly.rs` implements
+  Wireframe's `MessageAssembler` trait for Hotline. It parses the internal
+  first-frame and continuation payloads emitted by `HotlineFrameCodec` and
+  turns them into `ParsedFrameHeader` values consumed by Wireframe's
+  budget-enforcement and logical reassembly machinery.
+- `explicit_memory_budgets` in `src/server/wireframe/budgets.rs` is a
+  `const fn` that derives `MemoryBudgets` from `HOTLINE_LOGICAL_MESSAGE_BYTES`,
+  which is the 20-byte Hotline header plus the 1 MiB logical payload limit. It
+  assigns that same value to `bytes_per_message`, `bytes_per_connection`, and
+  `bytes_in_flight`, matching the legacy constraint that a connection carries
+  at most one in-flight logical Hotline transaction.
+
 The Wireframe app deliberately keeps `.fragmentation(None)` so Hotline's native
 wire contract remains the only on-the-wire fragmentation mechanism. Roadmap
 item 1.7.1 nevertheless enables explicit `MemoryBudgets` on the adapter. All
