@@ -223,8 +223,57 @@ and explicit dependencies. Timeframes are intentionally omitted.
   transport for login, authenticated-session continuity, file list, and news
   flows. See [^1] and [^2]. Dependencies: 1.4.
 - [ ] 1.6.2. Extend the hx-based validator harness to target the wireframe
-  server. Acceptance: The harness covers login, file download, chat, and news
-  flows and runs in CI. Dependencies: 1.6.1.
+  server in staged increments. Acceptance: The active validator suite states
+  which transaction types it exercises positively, negatively, or not at all;
+  unsupported surfaces are linked to the roadmap items that unblock them; and
+  CI runs only the validators whose protocol surfaces are implemented. See
+  `docs/design.md` ("Expectrl-based Protocol Harness (SynHX Compatibility)"),
+  `docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md` §6,
+  and `docs/internal-compatibility-matrix.md` ("Open compatibility gaps").
+  Dependencies: 1.6.1, 1.5.3.
+  - [ ] Publish a validator coverage matrix for the 12 named wireframe
+    transaction types. Acceptance: The matrix distinguishes positive coverage,
+    negative-only coverage, and no harness coverage, and links each missing
+    surface to the owning roadmap item, including `2.1.1`, `3.2.1`, `3.3.1`,
+    `4.2.1`, and `4.3.1`. See `docs/verification-strategy.md` and
+    `docs/internal-compatibility-matrix.md`.
+  - [ ] Make failed-auth validation unambiguous. Acceptance: The invalid
+    credentials validator asserts an explicit authentication failure outcome
+    and uses fixture data that proves the target user exists with a known
+    valid password before the wrong-password attempt. See `docs/protocol.md`
+    §"ID 107 – Login" and `docs/design.md` ("Expectrl-based Protocol
+    Harness (SynHX Compatibility)").
+  - [ ] Promote the plaintext and XOR login validators from handshake-only
+    checks to usable-session checks. Acceptance: Both validators complete at
+    least one positive post-auth transaction after login, and the XOR case
+    proves the session remains usable instead of stopping at `connected`.
+    Requires `3.2.1` or another implemented post-auth transaction with stable
+    SynHX parity. See `docs/internal-compatibility-matrix.md` and
+    `docs/protocol.md` §"ID 200 – Get File Name List". Dependencies: 1.5.1,
+    3.2.1.
+  - [ ] Add harness coverage for session and privilege transactions once they
+    exist. Acceptance: `GetUserNameList`, `UserAccess`, and explicit error
+    reply paths each gain at least one positive assertion through `hx`, plus a
+    rejection or privilege-gated case where applicable. Requires `2.1.1` for
+    user and presence flows, and uses the error propagation guarantees from
+    `1.4.5`. See `docs/protocol.md` §"ID 300 – Get User Name List",
+    §"ID 354 – User Access", and `docs/design.md` error-reply routing notes.
+    Dependencies: 2.1.1, 1.4.5.
+  - [ ] Replace placeholder validators with executable scenarios or explicit
+    roadmap-linked gaps. Acceptance: `PendingValidator::Chat` and
+    `PendingValidator::FileDownload` no longer contribute silent skips or a
+    hard-coded `not implemented` failure; they either run real flows or point
+    at the roadmap item that still blocks them. Requires `2.3.2` for chat and
+    `3.3.1` for file download. See `docs/chat-schema.md` and
+    `docs/file-sharing-design.md`.
+  - [ ] Add banner and news validator coverage only when protocol parity
+    exists. Acceptance: `DownloadBanner`, `NewsCategoryNameList`,
+    `NewsArticleNameList`, `NewsArticleData`, and `PostNewsArticle` each gain
+    a real-client validator only after the server and pinned client agree on
+    the transaction shape, or after a documented compatibility shim is in
+    place. Requires `3.3.1`, `4.2.1`, and `4.3.1`. See `docs/protocol.md`
+    §"ID 212 – Download Banner", `docs/news-schema.md`, and
+    `docs/internal-compatibility-matrix.md`.
 - [ ] 1.6.3. Add cross-architecture CI jobs (x86_64 and aarch64 Linux) for the
   wireframe build and smoke tests. Acceptance: CI publishes binaries for both
   targets and reports handshake, login, and shutdown smoke results.
