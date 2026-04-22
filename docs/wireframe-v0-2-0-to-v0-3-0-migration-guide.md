@@ -891,10 +891,12 @@ yielding a `SendStreamingOutcome`.*
   correlation identifier. Returns a `ResponseStream` that validates every
   inbound frame against that identifier.
 
-`ResponseStream` implements `futures::Stream` with
-`Item = Result<P, ClientError>`. It holds an exclusive borrow of the client for
-the duration of the stream, preventing concurrent sends. The terminator frame
-is consumed internally, and the stream returns `None` once it arrives.
+`ResponseStream<'_, P, S, T, C>` implements `futures::Stream` with
+`Item = Result<P, ClientError>`. The stream is generic over `P`, so callers
+choose the concrete frame or envelope type they want to decode. It holds an
+exclusive borrow of the client for the duration of the stream, preventing
+concurrent sends. The terminator frame is consumed internally, and the stream
+returns `None` once it arrives.
 
 ```rust
 use std::net::SocketAddr;

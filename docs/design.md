@@ -2557,55 +2557,55 @@ entries flow from `Permission` to `FileNode` resources through
 ```mermaid
 erDiagram
   FileNode {
-    bigint id
+    INTEGER id
     enum kind
-    varchar name
-    bigint parent_id
-    bigint alias_target_id
-    varchar object_key
-    bigint size
+    TEXT name
+    INTEGER parent_id
+    INTEGER alias_target_id
+    TEXT object_key
+    INTEGER size
     text comment
     boolean is_dropbox
-    bigint creator_id
+    INTEGER creator_id
     timestamp created_at
     timestamp updated_at
   }
 
   User {
-    bigint id
-    varchar username
-    varchar email
+    INTEGER id
+    TEXT username
+    TEXT email
     boolean active
   }
 
   Group {
-    bigint id
-    varchar name
+    INTEGER id
+    TEXT name
   }
 
   UserGroup {
-    bigint user_id
-    bigint group_id
+    INTEGER user_id
+    INTEGER group_id
   }
 
   Permission {
-    int id
+    INTEGER id
     int code
-    varchar name
-    varchar description
+    TEXT name
+    TEXT description
   }
 
   UserPermission {
-    bigint user_id
-    int permission_id
+    INTEGER user_id
+    INTEGER permission_id
   }
 
   ResourcePermission {
-    varchar resource_type
-    bigint resource_id
-    varchar principal_type
-    bigint principal_id
-    int permission_id
+    TEXT resource_type
+    INTEGER resource_id
+    TEXT principal_type
+    INTEGER principal_id
+    INTEGER permission_id
   }
 
   %% Hierarchy relations

@@ -153,7 +153,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db.as_str()).await?;
-            apply_migrations(&mut conn, db.as_str()).await?;
+            apply_migrations(&mut conn, db.as_str(), None).await?;
 
             // Create test user for authentication
             ensure_test_user(&mut conn).await?;
@@ -201,7 +201,7 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db.as_str()).await?;
-            apply_migrations(&mut conn, db.as_str()).await?;
+            apply_migrations(&mut conn, db.as_str(), None).await?;
 
             // Create test user for authentication
             ensure_test_user(&mut conn).await?;

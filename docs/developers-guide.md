@@ -164,13 +164,13 @@ re-exports the public surface of each module.
 
 ### Module responsibilities
 
-| Module | Responsibility |
-| ------ | -------------- |
-| `config.rs` | Loads `validator.toml` and applies environment-variable overrides to determine which pending validators are enabled. |
-| `policy.rs` | Decides whether a missing prerequisite causes a hard test failure (`fail_closed = true`) or a graceful skip (`fail_closed = false`). Reads `MXD_VALIDATOR_FAIL_CLOSED`; falls back to `CI=true` detection. |
-| `server_binary.rs` | Resolves the path to a prebuilt `mxd-wireframe-server` binary. Precedence: `MXD_VALIDATOR_SERVER_BINARY` → `CARGO_BIN_EXE_mxd-wireframe-server` → workspace `target/` candidates. |
-| `hx_client.rs` | Discovers the `hx` binary (rejecting the Helix editor via a version probe), spawns a PTY session via `expectrl`, and provides helpers to wait for the Hotline prompt and terminate the session. |
-| `harness.rs` | Orchestrates the above: `ValidatorHarness::prepare()` runs policy and prerequisite checks, `start_server_with_setup()` launches the wireframe server, and `spawn_hx()` opens the PTY client. Also exports PTY expect/send helpers used directly by tests. |
+| Module             | Responsibility                                                                                                                                                                                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.rs`        | Loads `validator.toml` and applies environment-variable overrides to determine which pending validators are enabled.                                                                                                                                      |
+| `policy.rs`        | Decides whether a missing prerequisite causes a hard test failure (`fail_closed = true`) or a graceful skip (`fail_closed = false`). Reads `MXD_VALIDATOR_FAIL_CLOSED`; falls back to `CI=true` detection.                                                |
+| `server_binary.rs` | Resolves the path to a prebuilt `mxd-wireframe-server` binary. Precedence: `MXD_VALIDATOR_SERVER_BINARY` → `CARGO_BIN_EXE_mxd-wireframe-server` → workspace `target/` candidates.                                                                         |
+| `hx_client.rs`     | Discovers the `hx` binary (rejecting the Helix editor via a version probe), spawns a PTY session via `expectrl`, and provides helpers to wait for the Hotline prompt and terminate the session.                                                           |
+| `harness.rs`       | Orchestrates the above: `ValidatorHarness::prepare()` runs policy and prerequisite checks, `start_server_with_setup()` launches the wireframe server, and `spawn_hx()` opens the PTY client. Also exports PTY expect/send helpers used directly by tests. |
 
 ### Key public types
 

@@ -33,6 +33,16 @@ Progress note (2026-04-22):
   the identifiers returned by insertion instead of reloading the whole table,
   and migration DDL now guards against self-parent rows plus stale polymorphic
   ACL principals.
+- The current verification pass on the rebased branch found a second set of
+  still-live follow-ups: `GetFileNameList` was still dropping legacy-visible
+  files whenever any new `file_nodes` ACL rows existed, the migration timeout
+  was still bypassing merged config by reading the environment directly inside
+  the DB adapter, and `file_path` still lived at the crate root instead of the
+  DB adapter boundary.
+- The implementation response is to keep the compatibility union explicit at
+  the repository edge, thread migration timeout through `AppConfig`, move the
+  recursive file-path helper into `src/db/`, and tighten migration DDL so file
+  node basenames cannot be empty or contain `/`.
 
 ## Purpose / big picture
 
@@ -622,6 +632,10 @@ Architecture-specific checks to include during review:
   implementation, verification, and documentation work landed together.
 - [x] (2026-04-20 18:10Z) Verified the documentation gates:
   `make markdownlint` and `make nixie`.
+- [x] (2026-04-22 09:10Z) Verified the rebased branch against the latest review
+  findings, fixing only the items still live in the current tree.
+- [x] (2026-04-22 09:10Z) Revalidated the final tree with `make check-fmt`,
+  `make typecheck`, `make lint`, and `make test` after the follow-up fixes.
 
 ## Surprises & Discoveries
 
@@ -650,6 +664,15 @@ Architecture-specific checks to include during review:
   `cargo nextest` than the earlier schema, so the migration timeout in
   `src/db/migrations.rs` needed to increase from five seconds to fifteen
   seconds to keep parallel test-database setup stable.
+- The repository-level lint suite treats `tokio::select!` macro expansion as a
+  banned `%` remainder use through lint expansion, so the migration watchdog
+  needed a `futures_util::future::select` implementation instead of the more
+  obvious Tokio macro.
+- Tightening the fixture helper in `tests/file_nodes_repository.rs` exposed that
+  `build_test_db` intentionally returns `None` when the postgres-backed
+  integration fixture is unavailable. Keeping the helper strict without turning
+  unsupported environments into false passes required scoping that test module
+  to the SQLite feature set that actually provisions those fixtures in CI.
 
 ## Decision Log
 
@@ -693,6 +716,21 @@ Architecture-specific checks to include during review:
   and legal combinations of principals and resources until a later roadmap step
   decides whether to split the ACL table or add trigger-backed validation.
   Date/Author: 2026-04-20 / Codex.
+- Decision: keep the upgraded-database compatibility path as a union of modern
+  `file_nodes` visibility and legacy `files` plus `file_acl` visibility rather
+  than a pure fallback only when the modern result set is empty. Rationale:
+  partial backfill states can legitimately expose rows from both sources, so
+  the repository helper must preserve legacy-visible files until roadmap 3.1.2
+  retires them. Date/Author: 2026-04-22 / Codex.
+- Decision: thread the migration timeout through merged application config
+  instead of letting `src/db/migrations.rs` read the environment directly.
+  Rationale: timeout policy belongs at the configuration boundary, and keeping
+  the DB adapter on resolved values preserves hexagonal dependency direction.
+  Date/Author: 2026-04-22 / Codex.
+- Decision: move `file_path` under `src/db/` rather than keeping it at the
+  crate root. Rationale: the helper is a recursive Diesel plus CTE adapter
+  concern, not a core domain or application module, so its ownership belongs to
+  the outbound database adapter. Date/Author: 2026-04-22 / Codex.
 
 ## Outcomes & Retrospective
 
@@ -723,6 +761,11 @@ Intended outcomes once implemented:
 - Behavioural coverage: the existing file-list transport regression coverage
   remained intact while fixtures were moved to `file_nodes`, so the observable
   contract stayed exercised without widening 3.1.1 into new protocol work.
+- Follow-up hardening after review kept the original scope intact while
+  tightening upgrade compatibility, configuration boundaries, migration DDL,
+  and fixture structure. The final branch now preserves legacy file visibility
+  until backfill exists, keeps migration timeout policy outside the DB adapter,
+  and records the rebased implementation decisions in the docs.
 - Follow-up work pushed to later roadmap items: session privilege loading from
   `user_permissions`, the `files`/`file_acl` backfill and retirement step in
   3.1.2, drop-box and alias protocol operations in 3.2+, and any stricter

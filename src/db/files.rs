@@ -12,20 +12,20 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use thiserror::Error;
 
-use super::connection::DbConnection;
 #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
 use super::insert::fetch_last_insert_rowid;
-use crate::{
+use super::{
+    connection::DbConnection,
     file_path::{FILE_NODE_BODY_SQL, FILE_NODE_STEP_SQL, build_path_cte_with_conn, prepare_path},
-    models::{
-        FileNode,
-        NewFileNode,
-        NewGroup,
-        NewPermission,
-        NewResourcePermission,
-        NewUserGroup,
-        VisibleFileNode,
-    },
+};
+use crate::models::{
+    FileNode,
+    NewFileNode,
+    NewGroup,
+    NewPermission,
+    NewResourcePermission,
+    NewUserGroup,
+    VisibleFileNode,
 };
 
 const RESOURCE_TYPE_FILE_NODE: &str = "file_node";
@@ -355,12 +355,18 @@ pub async fn list_visible_root_file_nodes_for_user(
         .order(f::name.asc())
         .load::<VisibleFileNode>(conn)
         .await?;
-
-    if visible.is_empty() {
-        list_legacy_visible_root_files_for_user(conn, user_id).await
-    } else {
-        Ok(visible)
+    let legacy_visible = list_legacy_visible_root_files_for_user(conn, user_id).await?;
+    let mut merged = std::collections::BTreeMap::new();
+    for node in visible {
+        merged.insert((node.name.clone(), node.kind.clone()), node);
     }
+    for node in legacy_visible {
+        merged
+            .entry((node.name.clone(), node.kind.clone()))
+            .or_insert(node);
+    }
+
+    Ok(merged.into_values().collect())
 }
 
 async fn list_legacy_visible_root_files_for_user(

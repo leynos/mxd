@@ -1,4 +1,5 @@
 //! Integration tests for the `file_nodes` repository helpers.
+#![cfg(feature = "sqlite")]
 
 use anyhow::ensure;
 use mxd::{
@@ -60,9 +61,8 @@ fn with_test_db_setup(
     f: impl FnOnce(Runtime, test_util::TestDb) -> Result<(), AnyError>,
 ) -> Result<(), AnyError> {
     let runtime = Runtime::new()?;
-    let Some(db) = build_test_db(&runtime, setup)? else {
-        return Ok(());
-    };
+    let db = build_test_db(&runtime, setup)?
+        .ok_or_else(|| anyhow::anyhow!("test database fixture unavailable"))?;
     f(runtime, db)
 }
 

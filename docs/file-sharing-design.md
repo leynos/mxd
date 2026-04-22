@@ -261,7 +261,8 @@ CREATE TABLE file_nodes (
          AND alias_target_id IS NOT NULL
          AND size IS NULL
          AND is_dropbox = FALSE)
-    )
+    ),
+    UNIQUE (parent_id, name)
 );
 
 CREATE TABLE resource_permissions (
@@ -472,13 +473,11 @@ steps:
    file (follow FileNode.alias_target_id chain).
 
 2. **Permission Check:** Verify the user has download rights. This means either
-   a global privilege (Hotline’s “Download File (2)” which may be set in their
-   account) and no folder-specific denial, or a specific allow on that
-   file/folder via Permission table. Also check if the file is in a dropbox and
-   the user is not allowed to view it – in which case deny (users typically
-   cannot download from dropboxes unless they have the special access). If the
-   file has an ACL entry and the user (or their group) isn't listed with
-   download permission, rejection occurs.
+   a matching global grant in `user_permissions` or a matching direct or
+   inherited grant in `resource_permissions` for the file or folder. Also check
+   whether the file is in a dropbox and whether the user holds the special view
+   privilege; if not, reject the request. If the file has an ACL entry and the
+   user (or their group) lacks the required download grant, rejection occurs.
 
 3. **Retrieve Metadata:** From the FileNode, get the `object_key`, size, and
    other metadata. This also helps with resume: if the client provided a resume
@@ -1187,113 +1186,66 @@ Security is crucial: the system must enforce **folder-level and per-file ACLs**
 on all operations. The design has been integrated with the shared permissions
 schema to achieve this. Key points of ACL enforcement in the implementation:
 
-- **Privilege Model:** We adopt Hotline’s privilege bitmap scheme. Each user has
-  a global privileges mask (`User.global_access`) which grants baseline rights
-  (e.g., the user might have global Download permission bit = 1, Upload = 1,
-  etc., if the admin allowed it). Additionally, each folder or file can have
-  specific permission entries (`Permission` records) that override or refine
-  these rights on that resource. Hotline distinguished *general privileges* vs
-  *folder privileges*. In our model, global privileges are general; folder
-  privileges can be set per folder via the Permission table. For example, a
-  user might globally have no upload rights, but the admin could specifically
-  allow them to upload to “Uploads” folder by adding a Permission entry for
-  that user on that folder with the Upload bit enabled. Conversely, we can deny
-  access by not granting a right in a context where the global would allow it –
-  e.g., to create a **dropbox**, an admin would give everyone Upload rights
-  (bit 1) on that folder but not give Download (bit 2), effectively making it
-  write-only for them. Additionally, the **View Drop Boxes (30)** bit can be
-  used globally to allow certain users (e.g., moderators) to see the contents
-  of dropboxes; our server will check for that bit to decide if a user can
-  list/download from a dropbox.
+- **Privilege Model:** The implementation stores Hotline privilege codes in the
+  shared `permissions` catalogue rather than a bespoke per-user bitmask. Global
+  grants live in `user_permissions`, shared principals live in `groups` plus
+  `user_groups`, and per-resource ACLs live in `resource_permissions`. This
+  keeps one normalized privilege source for file, folder, and other feature
+  areas while still allowing folder-specific or file-specific grants.
 
-- **ACL Enforcement Logic:** For each request, we perform checks as described in
-  operations above. In general, the logic for a user `U` accessing resource `X`
-  (file or folder) is:
+- **ACL Enforcement Logic:** For each request, the server derives access for a
+  user `U` and resource `X` in this order:
 
-  1. Determine the set of privileges `P` that apply. Start with
-     `P = U.global_access` (bitmask).
+  1. Resolve the Hotline privilege code required by the operation from the
+     `permissions` catalogue. For example, downloads require the `download`
+     privilege code and uploads require the upload code.
+  2. Check `user_permissions` for a matching global grant on `U`.
+  3. Check `resource_permissions` for direct grants on `X` for `U`.
+  4. Load the user’s group memberships from `user_groups` and check
+     `resource_permissions` again for matching group principals.
+  5. If the operation targets a file and the design calls for folder-scoped
+     inheritance, repeat the resource lookup against the containing folder.
 
-  2. Find any Permission entries for resource X (or its parent if we consider
-     inheritance). We do **not** automatically inherit ACLs from parent in this
-     design, except that absence of an entry means the parent’s rules implicitly
-     apply by virtue of user’s global rights and parent’s restrictions. If a
-     Permission entry exists for X and for this user (or a group they belong
-     to), it explicitly grants certain bits. We could interpret absence of a bit
-     in that entry as a denial (override) or just not granting anything extra.
-     There are different models:
+  This model keeps the decision in normalized tables: privilege definitions
+  come from `permissions`, global grants come from `user_permissions`, and
+  resource-scoped grants come from `resource_permissions` for either users or
+  groups. Legacy `files` and `file_acl` rows remain only as a temporary
+  backfill fallback during roadmap item 3.1.2; they are not the long-term
+  authority for ACL enforcement.
 
-     - *Additive ACL:* global rights + any folder-specific grants. In this
-       model, if a folder has an entry granting a user Download, that user can
-       download even if global disallowed (i.e., it’s an exception). And if the
-       folder has no entry restricting it, a user with global right can proceed.
-       If we want to allow explicit denial, we’d have to store negative rights
-       (not in our schema). Instead, implementation as additive with the
-       understanding that admin can set global rights low (deny by default) and
-       grant per folder as needed (or vice versa).
-     - *Override ACL:* if any entry exists for that resource or its parents, it
-       could override global. Hotline’s documentation is a bit unclear, but the
-       presence of folder-specific privileges suggests that if set, those define
-       what the user can do in that folder, possibly irrespective of global. We
-       might adopt: if a folder has any Permission entries for a given action,
-       then only those listed can perform it in that folder (others implicitly
-       denied, even if global says yes). This would align with the concept of
-       dropbox: if a folder has an entry that only allows Upload to everyone,
-       and no entry for Download (even though a user might have global download,
-       the intention is to block it in this folder). So one rule could be:
-       **folder-specific ACL overrides global** for that folder (and
-       subcontents, unless subfolder has its own). This means when checking
-       permissions, we first look for an entry on the resource (file or
-       containing folder). If one exists for the relevant privilege, we abide by
-       it (allow or deny if user not in list). If none exists, we defer to
-       global.
+- **Dropboxes:** A dropbox is still represented by `is_dropbox = true` on a
+  folder, but the access rule is expressed through normalized grants. A common
+  configuration is:
 
-  3. Groups: If the user isn’t directly allowed but belongs to a group that is,
-     that counts as allowed. We combine their group permissions (just OR the
-     bits from any matching group entries).
+  - a `resource_permissions` row granting the upload privilege to an
+    "everyone" group on the dropbox folder;
+  - no download grant for that group on the same folder; and
+  - a global `user_permissions` grant for *View Drop Boxes (30)* only for
+    moderators or administrators who should be allowed to inspect contents.
 
-  4. Dropboxes: Marked by `is_dropbox=true`, these are effectively folders
-     intended to be write-only for normal users. Implementation: We set such a
-     folder’s ACL such that:
+  Listing code then combines the structural `is_dropbox` flag with the
+  privilege lookup above: ordinary users can upload, while only principals with
+  the relevant view or download grant can list or fetch contents.
 
-     - `Permission(resource_id=dropbox_id, principal_type='group',`
-       `principal_id=<Everyone>, privileges=UploadBit)` – granting upload to all.
-     - No permission granting Download or List to that group. According to our
-       override rule, that means even if users have global download, they can’t
-       download here since the folder has a specific ACL that *only* gave upload.
-       Additionally, to hide contents, our code explicitly checks
-       `if folder.is_dropbox and user lacks VIEW_DROPBOX then don’t list contents`
-       as mentioned. So a normal user can upload (because of the allow entry) but
-       cannot see files (because no allow entry for download and override logic
-       kicks in, plus our listing filter). An admin or privileged user with the
-       global “View Drop Boxes” bit will bypass the hiding and can list/download
-       from it.
+- **Per-file ACLs:** If a specific file needs tighter access than its folder,
+  the server adds file-scoped `resource_permissions` rows for that file node.
+  Those rows are checked before content is served, so a file can remain private
+  even when it appears beneath a broader shared folder.
 
-  5. Per-file ACL: If a file itself has an entry (less common unless someone set
-     a specific file to only be downloadable by certain users), we check that as
-     well. Typically, if a file has a Permission entry, we treat that as
-     authoritative for that file – e.g., mark a file as private to a user by
-     giving only that user Download permission on it and no one else. Others
-     will be denied even if they can list the folder. We can implement that by
-     checking the Permission table for resource_type='file',
-     resource_id=\<file_id>. If an entry exists and the requesting user or their
-     group is not in it with the needed bit, we deny.
-
-  6. We should also consider the “Any Name (26)” privilege which allowed users
-     to override name restrictions – in our context, that might allow them to
-     upload a file that overwrites an existing one or use reserved names. We can
-     interpret it loosely: a user with that bit could overwrite files they don’t
-     own, or use illegal characters, etc. This is an edge case – we mention it
-     as a known privilege but specifics left out in code; an admin can always do
-     such actions anyway.
+- **Legacy compatibility:** References to `files` and `file_acl` in the current
+  codebase are transitional only. Upgraded databases still need that fallback
+  until roadmap item 3.1.2 backfills `file_nodes` and `resource_permissions`,
+  but new enforcement logic should be described in terms of the normalized
+  tables above.
 
 Applying these rules ensures that:
 
 - Users cannot perform operations they’re not allowed to. Each command
   implementation incorporated these checks (download, upload, delete, etc., all
-  gated by checking the corresponding bit via either global or folder ACL). For
-  example, a user attempting to delete a file triggers check for Delete File
-  (bit 0) on that file’s folder (or file); attempting to move a folder triggers
-  check for Move Folder (8) on source, and possibly Create rights on dest.
+  gated by checking the required privilege code through `user_permissions` and
+  `resource_permissions`). For example, a user attempting to delete a file
+  triggers a lookup for the Delete File privilege on that file or folder, while
+  moving a folder requires the relevant source and destination grants.
 - Aliases: As discussed, we decide that an alias’s accessibility is governed by
   the alias’s location. If a user can see and download the alias, the server
   will allow it, even if the original file was elsewhere. We do not separately
@@ -1303,25 +1255,19 @@ Applying these rules ensures that:
   folder. This effectively means an alias can be used to *share* a file into a
   more accessible area. Admins should be cautious, but since only users with
   Make Alias privilege can create them, this is under control.
-- Admin Override: Typically there is an “admin” or “owner” who has all
-  privileges. Hotline’s permission bitmap often had bit 25 *Upload Anywhere*
-  and other bits for broad bypass. We can consider that if a user has a global
-  flag that essentially grants all (or specifically one that says they’re an
-  admin), our checks can short-circuit and allow. For instance, if
-  `User.global_access` has all bits set (e.g., 0xFFFFFFFF), we treat them as
-  full admin. Or if a certain high bit like 32 was reserved for administrator.
-  Implementation-wise, the system can ensure that if they have been granted
-  every relevant bit globally, they won’t be blocked by folder ACL (except
-  maybe dropbox view if that’s not set – but an admin likely has that too).
+- Admin Override: An administrative account can still be modelled as a user
+  that holds the full relevant privilege set in `user_permissions`, possibly
+  combined with broad group membership. That keeps the override path inside the
+  normalized tables instead of introducing a separate bitmask escape hatch.
 - **Auditing and Logging:** We should log permission failures for security
   auditing. E.g., if user tries to download a file without rights, we log it.
 
-By centralizing permission checks in each operation handler, and using the
-common Permission table, we maintain consistency across features. The **shared
-permissions table** means a user’s access to files is managed in the same place
-as, say, their chat or news privileges – an admin can update one system. The
-bits we cited align with Hotline’s known privileges, so an admin interface can
-toggle those bits per user or per folder.
+By centralizing permission checks in each operation handler and using the
+shared `permissions`, `user_permissions`, and `resource_permissions` tables,
+the design maintains consistency across features. A user’s access to files is
+managed through the same normalized privilege catalogue that supports other
+feature areas, so administrative tooling can update one coherent permission
+system.
 
 ## Metadata Consistency and Sync
 
@@ -1533,15 +1479,12 @@ Finally, we address strategies for ensuring good performance and scalability:
   could be slow. One could allow batch updates (not in Hotline UI though). It’s
   fine given typical usage.
 - **Permission checks overhead:** Our permission check typically involves
-  looking up entries in the Permission table for a given file or its folder. We
-  can optimize by caching resolved permissions per folder for a user session,
-  or by storing an “effective rights” bitmask in the FileNode that combines
-  parent ACL and global for quick check (updated whenever ACLs change).
-  However, computing that on the fly is usually fine (a DB query for Permission
-  where resource_id = folder or file and principal in {user, any group of
-  user}). We can reduce queries by doing joins in the listing query to fetch an
-  “allowed” flag for each item, but that may be overkill. Simpler: check per
-  operation individually.
+  looking up `user_permissions` and `resource_permissions` for a given file or
+  its folder. The implementation can optimize this by caching resolved
+  permissions per folder for a user session, or by precomputing an effective
+  grant set when ACLs change. However, computing the decision on the fly is
+  usually fine. The server can also reduce query count by joining resource ACL
+  rows into listing queries when that becomes worthwhile.
 - **Dropping stale uploads:** If a user starts an upload and never finishes
   (e.g., connection lost), we will have a multipart upload in object store and
   possibly an incomplete DB entry. We should have a cleanup mechanism: e.g., a

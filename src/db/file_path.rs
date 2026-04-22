@@ -1,4 +1,4 @@
-//! Utilities for traversing `file_nodes` paths.
+//! Utilities for traversing `file_nodes` paths inside the DB adapter.
 //!
 //! This module mirrors the recursive-CTE approach used by the news path
 //! helpers, but targets the hierarchical file-sharing namespace introduced in

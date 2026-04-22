@@ -9,6 +9,7 @@ mod audit;
 mod bundles;
 mod categories;
 mod connection;
+mod file_path;
 mod files;
 mod insert;
 mod migrations;
