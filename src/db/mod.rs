@@ -32,6 +32,7 @@ pub use self::{
         add_user_to_group,
         create_file_node,
         create_group,
+        download_file_permission,
         get_file_node,
         grant_resource_permission,
         list_child_file_nodes,

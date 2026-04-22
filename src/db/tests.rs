@@ -15,7 +15,6 @@ use crate::{
         NewCategory,
         NewFileNode,
         NewGroup,
-        NewPermission,
         NewResourcePermission,
         NewUser,
         NewUserGroup,
@@ -107,16 +106,9 @@ async fn fetch_file_node_id(conn: &mut DbConnection, name: &str) -> i32 {
 
 #[cfg(feature = "sqlite")]
 async fn seed_download_permission(conn: &mut DbConnection) -> i32 {
-    seed_permission(
-        conn,
-        &NewPermission {
-            code: 2,
-            name: "download_file",
-            description: "List or download a file node",
-        },
-    )
-    .await
-    .expect("failed to seed download permission")
+    seed_permission(conn, &download_file_permission())
+        .await
+        .expect("failed to seed download permission")
 }
 
 #[cfg(feature = "sqlite")]

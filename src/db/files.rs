@@ -32,6 +32,8 @@ const RESOURCE_TYPE_FILE_NODE: &str = "file_node";
 const PRINCIPAL_USER: &str = "user";
 const PRINCIPAL_GROUP: &str = "group";
 const DOWNLOAD_FILE_PERMISSION_CODE: i32 = 2;
+const DOWNLOAD_FILE_PERMISSION_NAME: &str = "download_file";
+const DOWNLOAD_FILE_PERMISSION_DESCRIPTION: &str = "List or download a file node";
 
 macro_rules! insert_or_get_id {
     (
@@ -97,9 +99,19 @@ pub enum FileNodeLookupError {
     /// A database query error occurred.
     #[error(transparent)]
     Diesel(#[from] diesel::result::Error),
-    /// A JSON serialisation error occurred while preparing the path.
+    /// A JSON serialization error occurred while preparing the path.
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
+}
+
+/// Build the seeded permission row used for file downloads and listings.
+#[must_use]
+pub const fn download_file_permission() -> NewPermission<'static> {
+    NewPermission {
+        code: DOWNLOAD_FILE_PERMISSION_CODE,
+        name: DOWNLOAD_FILE_PERMISSION_NAME,
+        description: DOWNLOAD_FILE_PERMISSION_DESCRIPTION,
+    }
 }
 
 /// Insert a permission row if needed and return its identifier.
@@ -166,29 +178,12 @@ pub async fn add_user_to_group(
 pub async fn create_file_node(conn: &mut DbConnection, node: &NewFileNode<'_>) -> QueryResult<i32> {
     use crate::schema::file_nodes::dsl::file_nodes;
 
-    cfg_if! {
-        if #[cfg(any(
-            feature = "postgres",
-            feature = "returning_clauses_for_sqlite_3_35"
-        ))] {
-            use crate::schema::file_nodes::dsl::id;
-            insert_returning_id!(conn = conn, table = file_nodes, values = node, id_col = id,)
-        } else if #[cfg(all(
-            feature = "sqlite",
-            not(feature = "returning_clauses_for_sqlite_3_35")
-        ))] {
-            insert_returning_id!(
-                conn = conn,
-                table = file_nodes,
-                values = node,
-                id_col = crate::schema::file_nodes::dsl::id,
-            )
-        } else {
-            compile_error!(
-                "Either 'sqlite' or 'postgres' feature must be enabled"
-            );
-        }
-    }
+    insert_returning_id!(
+        conn = conn,
+        table = file_nodes,
+        values = node,
+        id_col = crate::schema::file_nodes::dsl::id,
+    )
 }
 
 /// Grant a resource-scoped permission to a principal.

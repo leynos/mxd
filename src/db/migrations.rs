@@ -1,6 +1,6 @@
 //! Embedded migration utilities.
 
-use std::{error::Error as StdError, fmt, time::Duration};
+use std::{error::Error as StdError, fmt, future::Future, time::Duration};
 
 use cfg_if::cfg_if;
 use diesel::result::{Error as DieselError, QueryResult};
@@ -72,7 +72,8 @@ impl StdError for MigrationTimeoutError {}
 // five-second cap becomes flaky under nextest's parallel SQLite database
 // creation. Keep the watchdog, but give embedded migrations enough headroom to
 // finish deterministically on loaded CI and developer machines.
-const MIGRATION_TIMEOUT: Duration = Duration::from_secs(15);
+const DEFAULT_MIGRATION_TIMEOUT: Duration = Duration::from_secs(15);
+const MIGRATION_TIMEOUT_ENV: &str = "MXD_MIGRATION_TIMEOUT_SECS";
 
 /// Wrap a migration harness error in a Diesel error.
 fn wrap_harness_error(e: Box<dyn StdError + Send + Sync>) -> DieselError {
@@ -80,8 +81,28 @@ fn wrap_harness_error(e: Box<dyn StdError + Send + Sync>) -> DieselError {
 }
 
 /// Wrap a timeout error in a Diesel error.
-fn wrap_timeout_error() -> DieselError {
-    DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
+fn wrap_timeout_error(duration: Duration) -> DieselError {
+    DieselError::SerializationError(Box::new(MigrationTimeoutError(duration)))
+}
+
+fn migration_timeout_from_env_value(value: Option<&str>) -> Duration {
+    value
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .map_or(DEFAULT_MIGRATION_TIMEOUT, Duration::from_secs)
+}
+
+fn migration_timeout() -> Duration {
+    migration_timeout_from_env_value(std::env::var(MIGRATION_TIMEOUT_ENV).ok().as_deref())
+}
+
+async fn run_with_migration_timeout<F, T>(duration: Duration, future: F) -> Result<T, DieselError>
+where
+    F: Future<Output = T>,
+{
+    timeout(duration, future)
+        .await
+        .map_err(|_| wrap_timeout_error(duration))
 }
 
 /// Check whether migrations are pending.
@@ -131,12 +152,9 @@ cfg_if! {
         /// Returns any error produced by Diesel while running migrations.
         #[must_use = "handle the result"]
         pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
-            timeout(
-                MIGRATION_TIMEOUT,
-                conn.spawn_blocking(execute_migrations_sync),
-            )
-            .await
-            .map_err(|_| wrap_timeout_error())??;
+            let timeout = migration_timeout();
+            run_with_migration_timeout(timeout, conn.spawn_blocking(execute_migrations_sync))
+                .await??;
             Ok(())
         }
     } else if #[cfg(all(feature = "postgres", not(feature = "sqlite")))] {
@@ -165,13 +183,10 @@ cfg_if! {
         pub async fn run_migrations(database_url: &str) -> QueryResult<()> {
             use tokio::task;
             let url = database_url.to_owned();
-            timeout(
-                MIGRATION_TIMEOUT,
-                task::spawn_blocking(move || establish_and_migrate(&url)),
-            )
-            .await
-            .map_err(|_| wrap_timeout_error())?
-            .map_err(wrap_executor_error)??;
+            let timeout = migration_timeout();
+            run_with_migration_timeout(timeout, task::spawn_blocking(move || establish_and_migrate(&url)))
+                .await?
+                .map_err(wrap_executor_error)??;
             Ok(())
         }
     }
@@ -196,4 +211,66 @@ pub async fn apply_migrations(conn: &mut DbConnection, _database_url: &str) -> Q
 pub async fn apply_migrations(conn: &mut DbConnection, url: &str) -> QueryResult<()> {
     let _ = conn;
     run_migrations(url).await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::pending;
+
+    use super::*;
+
+    #[test]
+    fn migration_timeout_uses_default_when_env_value_is_missing() {
+        assert_eq!(
+            migration_timeout_from_env_value(None),
+            DEFAULT_MIGRATION_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn migration_timeout_uses_default_when_env_value_is_invalid() {
+        assert_eq!(
+            migration_timeout_from_env_value(Some("invalid")),
+            DEFAULT_MIGRATION_TIMEOUT
+        );
+        assert_eq!(
+            migration_timeout_from_env_value(Some("0")),
+            DEFAULT_MIGRATION_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn migration_timeout_accepts_positive_env_override() {
+        assert_eq!(
+            migration_timeout_from_env_value(Some("7")),
+            Duration::from_secs(7)
+        );
+    }
+
+    #[tokio::test]
+    async fn migration_watchdog_allows_work_that_finishes_in_time() {
+        let result = run_with_migration_timeout(Duration::from_millis(5), async {
+            Ok::<(), DieselError>(())
+        })
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "watchdog should not trip for completed work"
+        );
+    }
+
+    #[tokio::test]
+    async fn migration_watchdog_reports_the_applied_timeout() {
+        let err =
+            run_with_migration_timeout(Duration::from_millis(1), pending::<QueryResult<()>>())
+                .await
+                .expect_err("pending work should time out");
+
+        let DieselError::SerializationError(inner) = err else {
+            panic!("timeout should be wrapped as a serialization error");
+        };
+
+        assert_eq!(inner.to_string(), "migration execution exceeded 1ms");
+    }
 }

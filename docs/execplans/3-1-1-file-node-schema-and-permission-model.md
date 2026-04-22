@@ -22,6 +22,12 @@ Progress note (2026-04-22):
   additive migrations still only contain legacy `files` and `file_acl` rows.
   Until roadmap work adds a real backfill, the file-list helper must fall back
   to the legacy tables when no visible root `file_nodes` exist.
+- Review follow-up also identified two maintainability gaps:
+  the seeded `download_file` privilege mapping had drift risk because tests,
+  fixtures, and repository helpers all re-spelled the same code/name pair, and
+  the migration watchdog timeout needed a deterministic test seam plus an
+  override path so non-CI environments can tighten the cap without patching
+  source.
 
 PLANS.md does not exist in this repository.
 

@@ -22,6 +22,7 @@ use mxd::{
         create_file_node,
         create_group,
         create_user,
+        download_file_permission,
         grant_resource_permission,
         seed_permission,
     },
@@ -32,7 +33,6 @@ use mxd::{
         NewCategory,
         NewFileNode,
         NewGroup,
-        NewPermission,
         NewResourcePermission,
         NewUser,
         NewUserGroup,
@@ -94,16 +94,9 @@ async fn fetch_test_user_id(conn: &mut DbConnection) -> Result<i32, AnyError> {
 }
 
 async fn seed_download_file_permission(conn: &mut DbConnection) -> Result<i32, AnyError> {
-    seed_permission(
-        conn,
-        &NewPermission {
-            code: 2,
-            name: "download_file",
-            description: "List or download a file node",
-        },
-    )
-    .await
-    .map_err(Into::into)
+    seed_permission(conn, &download_file_permission())
+        .await
+        .map_err(Into::into)
 }
 
 async fn ensure_everyone_group_membership(
