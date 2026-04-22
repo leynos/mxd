@@ -78,7 +78,6 @@ impl Decoder for HotlineFrameDecoder {
         let bytes = envelope
             .to_bytes()
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-
         Ok(Some(bytes))
     }
 }
@@ -114,15 +113,10 @@ impl FrameCodec for HotlineFrameCodec {
     type Frame = Vec<u8>;
     type Decoder = HotlineFrameDecoder;
     type Encoder = HotlineFrameEncoder;
-
     fn decoder(&self) -> Self::Decoder { HotlineFrameDecoder::new() }
-
     fn encoder(&self) -> Self::Encoder { HotlineFrameEncoder::new() }
-
     fn frame_payload(frame: &Self::Frame) -> &[u8] { frame.as_slice() }
-
     fn wrap_payload(&self, payload: Bytes) -> Self::Frame { payload.to_vec() }
-
     fn max_frame_length(&self) -> usize { HOTLINE_LOGICAL_MESSAGE_BYTES }
 }
 
@@ -184,6 +178,12 @@ impl InboundSeriesTracker {
         self.ensure_active_series()?;
         self.fail_if_timed_out()?;
         self.validate_fragment_consistency(header)?;
+        if payload.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "continuation fragment carries zero bytes",
+            ));
+        }
 
         let data_size = payload.len();
         let active_series = self.active_state()?;
@@ -263,12 +263,8 @@ impl InboundSeriesTracker {
 }
 
 /// Construct the standard error used when no continuation series is active.
-fn missing_active_series_error() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidData,
-        "continuation fragment arrived without an active series",
-    )
-}
+#[rustfmt::skip]
+fn missing_active_series_error() -> io::Error { io::Error::new(io::ErrorKind::InvalidData, "continuation fragment arrived without an active series") }
 
 /// Per-series state held while a multi-fragment Hotline transaction is assembled.
 #[derive(Debug)]
@@ -286,110 +282,5 @@ struct InboundSeriesState {
 }
 
 #[cfg(test)]
-mod tests {
-    //! Tests cover `HotlineFrameCodec` payload wrapping, inbound fragment
-    //! metadata, and logical message-budget invariants.
-
-    use bytes::{Bytes, BytesMut};
-    use rstest::{fixture, rstest};
-    use tokio_util::codec::Decoder as _;
-    use wireframe::{
-        app::{Envelope, Packet},
-        codec::FrameCodec,
-        correlation::CorrelatableFrame,
-        message::Message,
-    };
-
-    use super::HotlineFrameCodec;
-    use crate::{
-        transaction::{FrameHeader, HEADER_LEN, MAX_PAYLOAD_SIZE},
-        wireframe::test_helpers::fragmented_transaction_bytes,
-    };
-
-    #[fixture]
-    fn codec() -> HotlineFrameCodec {
-        // Provide a fresh codec instance per rstest case.
-        HotlineFrameCodec::new()
-    }
-
-    #[rstest]
-    #[case(Bytes::from(vec![0u8, 1u8, 2u8, 3u8, 4u8]), vec![0u8, 1u8, 2u8, 3u8, 4u8])]
-    #[case(Bytes::new(), Vec::new())]
-    fn wrap_payload_cases(
-        codec: HotlineFrameCodec,
-        #[case] bytes: Bytes,
-        #[case] expected: Vec<u8>,
-    ) {
-        let frame = codec.wrap_payload(bytes);
-
-        assert_eq!(frame, expected);
-    }
-
-    #[rstest]
-    #[case(vec![10u8, 20u8, 30u8], vec![10u8, 20u8, 30u8])]
-    #[case(Vec::new(), Vec::new())]
-    fn frame_payload_cases(#[case] data: Vec<u8>, #[case] expected: Vec<u8>) {
-        let slice = HotlineFrameCodec::frame_payload(&data);
-
-        assert_eq!(slice, expected.as_slice());
-    }
-
-    #[test]
-    fn max_frame_length_matches_logical_message_budget() {
-        let codec = HotlineFrameCodec::new();
-
-        assert_eq!(codec.max_frame_length(), HEADER_LEN + MAX_PAYLOAD_SIZE);
-    }
-
-    #[test]
-    fn codec_round_trip_payload_unchanged() {
-        let codec = HotlineFrameCodec::new();
-        let original = vec![0xabu8, 0xcdu8, 0xefu8];
-        let bytes = Bytes::from(original.clone());
-
-        let frame = codec.wrap_payload(bytes);
-        let extracted = HotlineFrameCodec::frame_payload(&frame);
-
-        assert_eq!(extracted, original);
-    }
-
-    #[test]
-    fn decoder_emits_first_then_continuation_payloads_for_fragmented_request() {
-        let header = FrameHeader {
-            flags: 0,
-            is_reply: 0,
-            ty: 107,
-            id: 44,
-            error: 0,
-            total_size: 6,
-            data_size: 6,
-        };
-        let fragments = fragmented_transaction_bytes(&header, b"abcdef", 4).expect("fragments");
-        let mut bytes = BytesMut::new();
-        let mut decoder = HotlineFrameCodec::new().decoder();
-
-        bytes.extend_from_slice(&fragments[0]);
-        let first = decoder
-            .decode(&mut bytes)
-            .expect("decode first frame")
-            .expect("first frame payload");
-        let (first_env, _) = Envelope::from_bytes(&first).expect("decode first envelope");
-        assert_eq!(
-            first_env.id(),
-            crate::wireframe::route_ids::route_id_for(107)
-        );
-        assert_eq!(first_env.correlation_id(), Some(44));
-
-        bytes.extend_from_slice(&fragments[1]);
-        let second = decoder
-            .decode(&mut bytes)
-            .expect("decode continuation")
-            .expect("continuation payload");
-        let (second_env, _) = Envelope::from_bytes(&second).expect("decode second envelope");
-        assert_eq!(
-            second_env.id(),
-            crate::wireframe::route_ids::route_id_for(107)
-        );
-        assert_eq!(second_env.correlation_id(), Some(44));
-    }
-}
+#[path = "frame_tests.rs"]
+mod tests;
