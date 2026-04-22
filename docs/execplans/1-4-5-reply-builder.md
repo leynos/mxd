@@ -35,7 +35,7 @@ after implementation and verification.
   `make nixie`.
 - Use `rstest` for unit tests and `rstest-bdd` v0.3.2 for behavioural tests.
 - For Postgres-backed tests, use `pg_embedded_setup_unpriv` as documented in
-  `docs/pg-embedded-setup-unpriv-users-guide.md`.
+  `docs/pg-embed-setup-unpriv-users-guide.md`.
 
 ## Tolerances (exception triggers)
 
@@ -129,7 +129,7 @@ Relevant areas to review before editing:
   `docs/verification-strategy.md`, `docs/rust-testing-with-rstest-fixtures.md`,
   `docs/reliable-testing-in-rust-via-dependency-injection.md`,
   `docs/rstest-bdd-users-guide.md`, and
-  `docs/pg-embedded-setup-unpriv-users-guide.md`.
+  `docs/pg-embed-setup-unpriv-users-guide.md`.
 
 Terminology used in this plan:
 

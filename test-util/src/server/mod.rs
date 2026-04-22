@@ -33,7 +33,7 @@ use crate::postgres::PostgresTestDb;
 /// The wireframe server (`mxd-wireframe-server`) is the default, as it provides
 /// the production-ready transport layer implementation.
 const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
-const DEFAULT_BIND_HOST: &str = "localhost";
+const DEFAULT_BIND_HOST: &str = "127.0.0.1";
 const TEST_BIND_HOST_ENV: &str = "MXD_TEST_BIND_HOST";
 const MAX_SERVER_LAUNCH_ATTEMPTS: u8 = 3;
 

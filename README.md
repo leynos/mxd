@@ -95,13 +95,24 @@ PostgreSQL server. Set `POSTGRES_TEST_URL` to reuse an existing database URL
 ## Validation harness
 
 The `validator` crate provides a compatibility check using the `hx` client and
-`expectrl` to ensure mxd speaks the Hotline protocol correctly. Install `hx`
-version 0.2.4 and make sure it's on your `PATH` before running:
+`expectrl` to ensure mxd speaks the Hotline protocol correctly. Install the
+pinned SynHX client with the shared helper script and run the validator from
+the repository root:
 
 ```bash
-cd validator
-cargo test
+export HX_BIN_DIR="$HOME/.local/bin"
+./scripts/install-synhx.sh
+# Choose one way to expose the installed `hx` binary to later commands.
+export PATH="$HX_BIN_DIR:$PATH"
+# or
+export MXD_VALIDATOR_HX_BINARY="$HX_BIN_DIR/hx"
+make test-validator-sqlite
 ```
+
+The validator now resolves an explicit prebuilt `mxd-wireframe-server` binary
+instead of falling back to `cargo run` during test startup. Use
+`make test-validator-postgres` after preparing local PostgreSQL support with
+`pg_embedded_setup_unpriv` if you need the postgres validator path.
 
 ## Fuzzing
 

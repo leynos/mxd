@@ -108,7 +108,7 @@ fn decode_payload_for_request(
     tx_type: TransactionType,
     transaction: Transaction,
 ) -> Result<Transaction, Vec<u8>> {
-    if !tx_type.allows_payload() {
+    if tx_type.bypass_payload_decode() {
         return Ok(transaction);
     }
     let decoded_payload = match xor.decode_payload(&transaction.payload) {
@@ -164,11 +164,14 @@ pub(crate) fn finalize_reply(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::{
+        net::SocketAddr,
+        sync::atomic::{AtomicU32, Ordering},
+    };
 
     use tokio::runtime::Builder;
 
-    use super::CompatibilityLayer;
+    use super::{CompatibilityLayer, decode_payload_for_request};
     use crate::{
         commands::{Command, CommandContext},
         handler::Session,
@@ -177,6 +180,7 @@ mod tests {
         transaction_type::TransactionType,
         wireframe::{
             auth_strategy::{AuthStrategy, AuthStrategyFuture},
+            compat::XorCompatibility,
             login_reply_augmenter::LoginReplyAugmenter,
             test_helpers::dummy_pool,
         },
@@ -272,6 +276,43 @@ mod tests {
     #[test]
     fn non_login_commands_bypass_auth_strategy() {
         run_auth_strategy_test(TransactionType::GetFileNameList, 0);
+    }
+
+    #[test]
+    fn file_list_payload_bypasses_param_decode() {
+        let peer: SocketAddr = "127.0.0.1:12345".parse().expect("valid loopback socket");
+        let xor = XorCompatibility::enabled();
+        let transaction = Transaction {
+            header: header(TransactionType::GetFileNameList),
+            payload: vec![0xff, 0x00, 0x01, 0x02, 0x03],
+        };
+
+        let decoded = decode_payload_for_request(
+            &xor,
+            peer,
+            TransactionType::GetFileNameList,
+            transaction.clone(),
+        )
+        .expect("file-list payload should bypass parameter decode");
+        let non_bypassed = decode_payload_for_request(
+            &xor,
+            peer,
+            TransactionType::NewsArticleData,
+            transaction.clone(),
+        );
+
+        assert!(
+            xor.is_enabled(),
+            "xor state should remain non-trivial for the bypass check"
+        );
+        assert!(
+            match non_bypassed.as_ref() {
+                Err(_) => true,
+                Ok(non_bypassed_decoded) => non_bypassed_decoded.payload != transaction.payload,
+            },
+            "non-bypassed transaction should not preserve the opaque payload"
+        );
+        assert_eq!(decoded.payload, transaction.payload);
     }
 
     #[test]

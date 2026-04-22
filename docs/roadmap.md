@@ -237,10 +237,9 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 - [ ] 1.7.1. Configure explicit `MemoryBudgets` for the wireframe app using
   Hotline transaction and streaming limits. Acceptance: `mxd-wireframe-server`
-  sets per-message, per-connection, and in-flight budgets explicitly,
-  oversized or stalled fragmented inputs are disconnected predictably, and
-  integration tests cover soft-pressure and hard-cap behaviour. Dependencies:
-  1.3.2, 1.6.1.
+  sets per-message, per-connection, and in-flight budgets explicitly, oversized
+  or stalled fragmented inputs are disconnected predictably, and integration
+  tests cover soft-pressure and hard-cap behaviour. Dependencies: 1.3.2, 1.6.1.
 - [ ] 1.7.2. Add regression coverage for the v0.3.0 budgeting and
   fragmentation controls using `wireframe::testkit`. Acceptance: low-level
   transport tests use partial-frame, fragment, and slow-I/O helpers instead of
@@ -253,23 +252,21 @@ and explicit dependencies. Timeframes are intentionally omitted.
   reused by file-transfer and large-payload regression suites. Dependencies:
   1.3.2, 1.6.1.
 - [ ] 1.7.4. Adopt `wireframe_testing` loopback and observability helpers for
-  selected protocol suites. Acceptance: `WireframePair`,
-  `ObservabilityHandle`, and codec-aware fixtures replace custom loopback
-  scaffolding in at least one routing or handshake suite and expose
-  codec/queue metrics for assertions. Dependencies: 1.7.2, 1.7.3.
+  selected protocol suites. Acceptance: `WireframePair`, `ObservabilityHandle`,
+  and codec-aware fixtures replace custom loopback scaffolding in at least one
+  routing or handshake suite and expose codec/queue metrics for assertions.
+  Dependencies: 1.7.2, 1.7.3.
 - [ ] 1.7.5. Add client request hooks, structured tracing, and, where
   justified, pooling to validation tooling. Acceptance: validation and
   load-oriented harnesses use `before_send`/`after_receive` hooks and
-  `TracingConfig` for frame diagnostics, and any `WireframeClientPool`
-  adoption demonstrates measurable throughput or fixture-simplification gains
-  without changing protocol semantics. Dependencies: 1.6.2, 1.7.3.
+  `TracingConfig` for frame diagnostics, and any `WireframeClientPool` adoption
+  demonstrates measurable throughput or fixture-simplification gains without
+  changing protocol semantics. Dependencies: 1.6.2, 1.7.3.
 
 \[^1\]:
-[docs/design.md §Transaction routing middleware (December
-2025)](docs/design.md#transaction-routing-middleware-december-2025)
-\[^2\]:
-[docs/design.md §Regression verification via the wireframe binary (February
-2026)](docs/design.md#regression-verification-via-the-wireframe-binary-february-2026)
+[docs/design.md §Transaction routing middleware (December 2025)](docs/design.md#transaction-routing-middleware-december-2025)
+ \[^2\]:
+[docs/design.md §Regression verification via the wireframe binary (February 2026)](docs/design.md#regression-verification-via-the-wireframe-binary-february-2026)
 
 ## 2. Session and presence parity
 

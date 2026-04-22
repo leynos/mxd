@@ -82,7 +82,7 @@ privileged operations.
 - [x] Integrate privilege enforcement into news transaction handlers.
 - [x] Add unit tests for privilege bitflags and session helpers.
 - [x] Add rstest-bdd behavioural tests for privilege enforcement.
-- [x] Add Postgres-backed tests using `pg-embedded-setup-unpriv`.
+- [x] Add Postgres-backed tests using `pg-embed-setup-unpriv`.
 - [x] Update `docs/design.md` with session context architecture.
 - [ ] Update `docs/users-guide.md` if user-visible behaviour changes.
       (Not required: no user-visible behaviour change; privilege enforcement is
@@ -288,7 +288,7 @@ The implementation proceeds in four stages:
    - User without news post privilege cannot post articles
 
 3. Add Postgres-backed tests using `PostgresTestDb` fixture from
-   `pg-embedded-setup-unpriv`.
+   `pg-embed-setup-unpriv`.
 
 4. Update `docs/design.md` with session context architecture diagram and
    privilege enforcement description.
@@ -485,4 +485,4 @@ Dependencies:
 - `bitflags` crate (added directly: `bitflags = "2.10.0"`)
 - `rstest` v0.26 (already in dev-dependencies)
 - `rstest-bdd` v0.3.2 (already in dev-dependencies)
-- `pg-embedded-setup-unpriv` (already in dev-dependencies)
+- `pg-embed-setup-unpriv` (already in dev-dependencies)

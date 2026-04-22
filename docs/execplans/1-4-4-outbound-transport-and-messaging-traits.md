@@ -117,7 +117,7 @@ Relevant areas to review before editing:
   behaviour.
 - Test guidance is in `docs/rust-testing-with-rstest-fixtures.md`,
   `docs/rstest-bdd-users-guide.md`, and
-  `docs/pg-embedded-setup-unpriv-users-guide.md`.
+  `docs/pg-embed-setup-unpriv-users-guide.md`.
 
 Terminology used in this plan:
 

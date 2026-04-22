@@ -81,6 +81,169 @@ The behavioural suite uses `rstest-bdd` v0.5.0 in both the root crate and
 - If a scenario needs a fallible return signature, use explicit
   `Result<(), E>` or `StepResult<(), E>` in the scenario function signature.
 
+## Validator toggles for pending flows
+
+The `validator` crate now ships placeholder validators for wireframe flows that
+are still being implemented on parallel branches. This lets feature branches
+opt into the required validation early without forcing the main branch to fail
+before the corresponding server functionality lands.
+
+By default, the pending validators are disabled in `validator/validator.toml`:
+
+```toml
+[validators]
+chat = false
+file_download = false
+```
+
+Environment variables override the file:
+
+- `MXD_VALIDATOR_CONFIG` points at an alternate config file.
+- `MXD_VALIDATOR_ENABLE_CHAT=true|false` enables or disables the chat
+  validator.
+- `MXD_VALIDATOR_ENABLE_FILE_DOWNLOAD=true|false` enables or disables the
+  file-download validator.
+
+When a pending validator is disabled, the corresponding test prints a clear
+skip message and exits successfully. When it is enabled before the underlying
+feature has landed, the validator fails with an explicit "enabled but not
+implemented yet" error. That makes the opt-in suitable for parallel feature
+branches that want the validation to go red until the branch completes the flow.
+
+Examples:
+
+```sh
+# Install the pinned SynHX client once for local validator runs.
+export HX_BIN_DIR="$HOME/.local/bin"
+./scripts/install-synhx.sh
+
+# Choose one way to expose the installed `hx` binary to later commands.
+export PATH="$HX_BIN_DIR:$PATH"
+# or
+export MXD_VALIDATOR_HX_BINARY="$HX_BIN_DIR/hx"
+
+# Run the supported sqlite validator suite against a prebuilt wireframe server.
+make test-validator-sqlite
+
+# Enable the chat validator for the current shell only.
+export MXD_VALIDATOR_ENABLE_CHAT=true
+cargo test -p validator --test pending_validators
+
+# Use an alternate config file that enables both pending validators.
+cat > /tmp/validator.toml <<'EOF'
+[validators]
+chat = true
+file_download = true
+EOF
+export MXD_VALIDATOR_CONFIG=/tmp/validator.toml
+cargo test -p validator --test pending_validators
+```
+
+The shared validator harness now resolves prerequisites explicitly:
+
+- `make validator-sqlite-server` builds `target/debug/mxd-wireframe-server`.
+- `make validator-postgres-server` builds
+  `target/postgres/debug/mxd-wireframe-server`.
+- `MXD_VALIDATOR_SERVER_BINARY` overrides the server binary path if the default
+  target location is not suitable.
+- `MXD_VALIDATOR_HX_BINARY` overrides the `hx` binary path.
+- `MXD_VALIDATOR_FAIL_CLOSED=true|false` forces missing prerequisites to fail
+  or skip regardless of whether `CI=true`.
+
+Keep implemented validators such as login and XOR login coverage always on. The
+pending toggles exist only for flows whose server-side work is still in
+progress. At present, chat and file download remain pending, while SynHX file
+listing and news posting are still blocked by client/server protocol-shape
+differences rather than missing harness plumbing.
+
+## Validator harness architecture
+
+The `validator` crate is structured into five focused modules. Tests in
+`validator/tests/` import primitives from `validator/src/lib.rs`, which
+re-exports the public surface of each module.
+
+### Module responsibilities
+
+| Module | Responsibility |
+| ------ | -------------- |
+| `config.rs` | Loads `validator.toml` and applies environment-variable overrides to determine which pending validators are enabled. |
+| `policy.rs` | Decides whether a missing prerequisite causes a hard test failure (`fail_closed = true`) or a graceful skip (`fail_closed = false`). Reads `MXD_VALIDATOR_FAIL_CLOSED`; falls back to `CI=true` detection. |
+| `server_binary.rs` | Resolves the path to a prebuilt `mxd-wireframe-server` binary. Precedence: `MXD_VALIDATOR_SERVER_BINARY` → `CARGO_BIN_EXE_mxd-wireframe-server` → workspace `target/` candidates. |
+| `hx_client.rs` | Discovers the `hx` binary (rejecting the Helix editor via a version probe), spawns a PTY session via `expectrl`, and provides helpers to wait for the Hotline prompt and terminate the session. |
+| `harness.rs` | Orchestrates the above: `ValidatorHarness::prepare()` runs policy and prerequisite checks, `start_server_with_setup()` launches the wireframe server, and `spawn_hx()` opens the PTY client. Also exports PTY expect/send helpers used directly by tests. |
+
+### Key public types
+
+```rust
+/// Central harness handle. Obtain one with `ValidatorHarness::default()` then
+/// call `prepare()` before any other method.
+pub struct ValidatorHarness { /* ... */ }
+
+/// Describes whether a missing prerequisite should fail the test or skip it.
+pub enum PrerequisiteResolution {
+    Fail(String),
+    Skip(String),
+}
+
+/// Errors returned when `hx` cannot be resolved or the PTY session fails.
+pub enum HxClientError { /* ... */ }
+
+/// Errors returned when no prebuilt wireframe server binary can be found.
+pub enum ServerBinaryError { /* ... */ }
+```
+
+### Typical test structure
+
+```rust
+#[test]
+fn my_validator_test() -> Result<(), AnyError> {
+    let harness = ValidatorHarness::default();
+    let Some(harness) = harness.prepare()? else {
+        // Prerequisite missing and policy says skip.
+        return Ok(());
+    };
+    let server = harness.start_server_with_setup(setup_login_db)?;
+    let mut hx = harness.spawn_hx()?;
+    send_line_and_expect(&mut hx, "/server -l alice -p secret 127.0.0.1 …", "…")?;
+    expect_output_with_timeout(&mut hx, "connected", connect_expect_timeout())?;
+    close_hx(&mut hx);
+    Ok(())
+}
+```
+
+`prepare()` returns `Ok(None)` when prerequisites are absent and the policy is
+`fail_closed = false` (local developer environment). Tests must propagate the
+`None` case as a skip rather than a panic.
+
+### Payload-handling methods on `TransactionType`
+
+Two const methods control how the wireframe layer handles request payloads:
+
+- `rejects_payload(self, payload_is_empty: bool) -> bool` returns `true` when a
+  non-empty payload should be rejected as invalid. Always returns `false` for
+  `GetFileNameList` so directory context payloads pass through.
+- `bypass_payload_decode(self) -> bool` returns `true` when the parameter block
+  decoder should be skipped entirely and the raw bytes preserved. Used for
+  `GetFileNameList` and any transaction type that does not accept a structured
+  payload.
+
+These methods replace the prior ad-hoc `!allows_payload()` checks in
+`src/commands/mod.rs`, `src/wireframe/compat_layer.rs`, and
+`src/transaction/params.rs`.
+
+### Error-handling conventions
+
+- Both `HxClientError` and `ServerBinaryError` implement `std::error::Error`
+  via `thiserror`.
+- `ValidatorHarness::prepare()` maps these errors through `ValidatorRunPolicy`
+  and either returns them as `anyhow::Error` (fail-closed) or returns
+  `Ok(None)` (skip).
+- PTY expect helpers (`expect_output`, `expect_output_with_timeout`,
+  `expect_no_match`) embed the pending terminal output in the error message to
+  simplify debugging failed assertions.
+- `close_hx()` demotes session-cleanup errors to stderr diagnostics rather than
+  failing the test, consistent with best-effort teardown.
+
 ## Wireframe adapter context handoff
 
 The Wireframe adapter carries Hotline handshake metadata from the asynchronous

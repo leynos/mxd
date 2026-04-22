@@ -49,6 +49,28 @@ impl TransactionType {
             Self::GetFileNameList | Self::DownloadBanner | Self::GetUserNameList
         )
     }
+
+    /// Return `true` when a non-empty payload should be rejected outright.
+    #[must_use]
+    pub const fn rejects_payload(self, payload_is_empty: bool) -> bool {
+        if payload_is_empty {
+            return false;
+        }
+        match self {
+            // SynHX sends a binary `DATA_DIR` block for `/ls`, even for the
+            // root listing flow that MXD currently treats as a single logical
+            // file-list command. Accept the payload and let the handler ignore
+            // it until directory-aware semantics land.
+            Self::GetFileNameList => false,
+            _ => !self.allows_payload(),
+        }
+    }
+
+    /// Return `true` when request payload bytes should bypass decode attempts.
+    #[must_use]
+    pub const fn bypass_payload_decode(self) -> bool {
+        matches!(self, Self::GetFileNameList) || !self.allows_payload()
+    }
 }
 
 impl From<u16> for TransactionType {
@@ -108,5 +130,80 @@ impl std::fmt::Display for TransactionType {
             Self::PostNewsArticle => f.write_str("PostNewsArticle"),
             Self::Other(v) => write!(f, "Other({v})"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests for `TransactionType` payload-policy helpers across explicit and
+    //! table-driven cases.
+
+    use rstest::rstest;
+
+    use super::TransactionType;
+
+    const ALL_TRANSACTION_TYPES: [TransactionType; 13] = [
+        TransactionType::Error,
+        TransactionType::Login,
+        TransactionType::Agreement,
+        TransactionType::Agreed,
+        TransactionType::GetFileNameList,
+        TransactionType::DownloadBanner,
+        TransactionType::GetUserNameList,
+        TransactionType::UserAccess,
+        TransactionType::NewsCategoryNameList,
+        TransactionType::NewsArticleNameList,
+        TransactionType::NewsArticleData,
+        TransactionType::PostNewsArticle,
+        TransactionType::Other(999),
+    ];
+
+    #[rstest]
+    #[case(TransactionType::GetFileNameList, false, false)]
+    #[case(TransactionType::NewsArticleData, false, false)]
+    #[case(TransactionType::DownloadBanner, false, true)]
+    #[case(TransactionType::GetUserNameList, false, true)]
+    fn rejects_payload_matches_expected_policy(
+        #[case] transaction_type: TransactionType,
+        #[case] expected_for_empty_payload: bool,
+        #[case] expected_for_non_empty_payload: bool,
+    ) {
+        assert_eq!(
+            transaction_type.rejects_payload(true),
+            expected_for_empty_payload
+        );
+        assert_eq!(
+            transaction_type.rejects_payload(false),
+            expected_for_non_empty_payload
+        );
+    }
+
+    #[rstest]
+    #[case(TransactionType::Error, false)]
+    #[case(TransactionType::Login, false)]
+    #[case(TransactionType::Agreement, false)]
+    #[case(TransactionType::Agreed, false)]
+    #[case(TransactionType::GetFileNameList, true)]
+    #[case(TransactionType::DownloadBanner, true)]
+    #[case(TransactionType::GetUserNameList, true)]
+    #[case(TransactionType::UserAccess, false)]
+    #[case(TransactionType::NewsCategoryNameList, false)]
+    #[case(TransactionType::NewsArticleNameList, false)]
+    #[case(TransactionType::NewsArticleData, false)]
+    #[case(TransactionType::PostNewsArticle, false)]
+    #[case(TransactionType::Other(999), false)]
+    fn bypass_payload_decode_matches_transaction_policy(
+        #[case] transaction_type: TransactionType,
+        #[case] expected: bool,
+    ) {
+        assert!(
+            ALL_TRANSACTION_TYPES.contains(&transaction_type),
+            "missing coverage entry for {transaction_type:?}"
+        );
+        assert_eq!(
+            transaction_type.bypass_payload_decode(),
+            expected,
+            "unexpected bypass policy for {transaction_type:?}"
+        );
     }
 }

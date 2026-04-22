@@ -5138,8 +5138,12 @@ dependencies = [
  "expectrl",
  "mxd",
  "nix 0.27.1",
+ "rstest 0.26.1",
+ "serde",
  "tempfile",
  "test-util",
+ "thiserror 2.0.17",
+ "toml 0.8.23",
  "wait-timeout",
  "which",
 ]

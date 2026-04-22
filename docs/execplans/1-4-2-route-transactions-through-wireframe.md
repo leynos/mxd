@@ -79,7 +79,7 @@ tests.
       `tests/features/wireframe_routing.feature` with login/file/news
       scenarios.
 - [x] (2026-01-04) Ensure Postgres-backed routing scenarios use the embedded
-      Postgres harness (`pg-embedded-setup-unpriv`) via `PostgresTestDb`.
+      Postgres harness (`pg-embed-setup-unpriv`) via `PostgresTestDb`.
 - [x] (2026-01-04) Update `docs/design.md` with routing architecture and
       frame codec details.
 - [x] (2026-01-04) Mark task 1.4.2 as done in `docs/roadmap.md`.
@@ -381,7 +381,7 @@ Add behavioural tests using rstest-bdd v0.3.2:
 - Create `tests/features/wireframe_routing.feature` with scenarios for Login,
   file listing, and news listing.
 - Implement step definitions in `tests/wireframe_routing_bdd.rs`.
-- Add Postgres-backed scenarios using `pg-embedded-setup-unpriv`.
+- Add Postgres-backed scenarios using `pg-embed-setup-unpriv`.
 
 ### Phase 4: Documentation
 
@@ -484,7 +484,7 @@ Dependencies:
 - `wireframe` crate (already in use)
 - `rstest` v0.26 (already in dev-dependencies)
 - `rstest-bdd` v0.3.2
-- `pg-embedded-setup-unpriv` (already in dev-dependencies)
+- `pg-embed-setup-unpriv` (already in dev-dependencies)
 
 ## Revision Note
 

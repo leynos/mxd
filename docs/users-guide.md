@@ -108,7 +108,7 @@ wireframe-only suites; the postgres jobs automatically reuse the staged
 binaries. Both server binaries honour the same `MXD_DATABASE` and `--database`
 values, allowing the helper to be re-run once and then switching between
 `cargo run --bin mxd` and `cargo run --bin mxd-wireframe-server` without
-additional setup. Refer to `docs/pg-embedded-setup-unpriv-users-guide.md` for
+additional setup. Refer to `docs/pg-embed-setup-unpriv-users-guide.md` for
 cluster path customization and privilege troubleshooting details.
 
 ## Behaviour coverage

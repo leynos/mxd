@@ -25,6 +25,8 @@ use rstest::fixture;
 use url::Url;
 use uuid::Uuid;
 
+const DEFAULT_POSTGRES_PORT: u16 = 5432;
+
 /// A validated `PostgreSQL` database connection URL.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseUrl(String);
@@ -170,7 +172,7 @@ impl PostgresTestDbError {
 
 #[expect(clippy::shadow_reuse, reason = "clearer flow with shadowing")]
 fn postgres_available(url: &Url) -> bool {
-    if let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) {
+    if let (Some(host), Some(port)) = (url.host_str(), probe_port(url)) {
         let addr = (host, port)
             .to_socket_addrs()
             .ok()
@@ -180,6 +182,13 @@ fn postgres_available(url: &Url) -> bool {
         }
     }
     false
+}
+
+fn probe_port(url: &Url) -> Option<u16> {
+    url.port().or_else(|| match url.scheme() {
+        "postgres" | "postgresql" => Some(DEFAULT_POSTGRES_PORT),
+        _ => url.port_or_known_default(),
+    })
 }
 
 fn generate_db_name(prefix: &str) -> Result<DatabaseName, DatabaseNameError> {
@@ -652,4 +661,23 @@ pub fn postgres_db_fast() -> PostgresTestDb {
         };
         panic!("{msg}");
     })
+}
+
+#[cfg(test)]
+mod tests {
+    //! Regression tests for external `PostgreSQL` URL probing.
+
+    use rstest::rstest;
+    use url::Url;
+
+    use super::probe_port;
+
+    #[rstest]
+    #[case("postgres://postgres:password@127.0.0.1/test", Some(5432))]
+    #[case("postgresql://postgres:password@127.0.0.1/test", Some(5432))]
+    #[case("postgres://postgres:password@127.0.0.1:6543/test", Some(6543))]
+    fn probe_port_matches_postgres_url_policy(#[case] url: &str, #[case] expected: Option<u16>) {
+        let parsed = Url::parse(url).expect("test URL should parse");
+        assert_eq!(probe_port(&parsed), expected);
+    }
 }
