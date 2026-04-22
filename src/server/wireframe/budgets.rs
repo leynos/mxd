@@ -20,6 +20,7 @@ pub(crate) const fn explicit_memory_budgets() -> MemoryBudgets {
     MemoryBudgets::new(budget, budget, budget)
 }
 
+/// Const-safe helper that converts a `usize` to `NonZeroUsize`, panicking on zero.
 const fn non_zero(bytes: usize) -> NonZeroUsize {
     if let Some(non_zero) = NonZeroUsize::new(bytes) {
         non_zero

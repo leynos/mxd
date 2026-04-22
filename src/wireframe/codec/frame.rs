@@ -44,17 +44,16 @@ impl HotlineFrameCodec {
     pub const fn new() -> Self { Self }
 }
 
+/// Stateful decoder half of `HotlineFrameCodec`, tracking active fragment series.
 #[doc(hidden)]
 pub struct HotlineFrameDecoder {
     series: InboundSeriesTracker,
 }
 
 impl HotlineFrameDecoder {
-    const fn new() -> Self {
-        Self {
-            series: InboundSeriesTracker::new(),
-        }
-    }
+    /// Create a new decoder.
+    #[rustfmt::skip]
+    const fn new() -> Self { Self { series: InboundSeriesTracker::new() } }
 }
 
 impl Decoder for HotlineFrameDecoder {
@@ -84,17 +83,16 @@ impl Decoder for HotlineFrameDecoder {
     }
 }
 
+/// Encoder half of `HotlineFrameCodec` that delegates to `HotlineCodec`.
 #[doc(hidden)]
 pub struct HotlineFrameEncoder {
     inner: HotlineCodec,
 }
 
 impl HotlineFrameEncoder {
-    fn new() -> Self {
-        Self {
-            inner: HotlineCodec::new(),
-        }
-    }
+    /// Create a new encoder.
+    #[rustfmt::skip]
+    fn new() -> Self { Self { inner: HotlineCodec::new() } }
 }
 
 impl Encoder<Vec<u8>> for HotlineFrameEncoder {
@@ -135,15 +133,19 @@ impl FrameCodec for HotlineFrameCodec {
 /// connection policy.
 const SERIES_TIMEOUT: Duration = crate::transaction::IO_TIMEOUT;
 
+/// Tracker for one in-progress multi-fragment Hotline series.
 struct InboundSeriesTracker {
     state: Option<InboundSeriesState>,
 }
 
 impl InboundSeriesTracker {
+    /// Create a tracker with no active series.
     const fn new() -> Self { Self { state: None } }
 
+    /// Returns `true` when a fragment series is in progress.
     const fn has_active_series(&self) -> bool { self.state.is_some() }
 
+    /// Record the first fragment, open an active series if needed, and return its payload.
     fn start(
         &mut self,
         header: &crate::transaction::FrameHeader,
@@ -173,6 +175,7 @@ impl InboundSeriesTracker {
         first_frame_payload(message_key, header, payload)
     }
 
+    /// Validate and advance an active series by one continuation fragment.
     fn continue_series(
         &mut self,
         header: &crate::transaction::FrameHeader,
@@ -214,17 +217,10 @@ impl InboundSeriesTracker {
         continuation_frame_payload(message_key, sequence, is_last, payload)
     }
 
-    fn ensure_active_series(&self) -> Result<(), io::Error> {
-        if self.has_active_series() {
-            Ok(())
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "continuation fragment arrived without an active series",
-            ))
-        }
-    }
+    /// Return an error if no fragment series is currently active.
+    fn ensure_active_series(&self) -> Result<(), io::Error> { self.active_state().map(drop) }
 
+    /// Clear state and return an error if the series deadline has elapsed.
     fn fail_if_timed_out(&mut self) -> Result<(), io::Error> {
         let has_timed_out = self
             .state
@@ -241,44 +237,51 @@ impl InboundSeriesTracker {
         }
     }
 
+    /// Delegate header-consistency checks while preserving active state on failure.
     fn validate_fragment_consistency(
         &self,
         header: &crate::transaction::FrameHeader,
     ) -> Result<(), io::Error> {
         let active_series = self.active_state()?;
-        // Keep the active series intact when a continuation header is malformed.
-        // Only timeouts, completed series, and oversized bodies consume state.
+        // Malformed continuation headers do not consume active-series state.
         super::validate_fragment_consistency(&active_series.first_header, header)
             .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))
     }
 
+    /// Return a shared reference to the active series state, or an error.
     fn active_state(&self) -> Result<&InboundSeriesState, io::Error> {
-        self.state.as_ref().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "continuation fragment arrived without an active series",
-            )
-        })
+        self.state.as_ref().ok_or_else(missing_active_series_error)
     }
 
+    /// Return a mutable reference to the active series state, or an error.
     fn active_state_mut(&mut self) -> Result<&mut InboundSeriesState, io::Error> {
-        self.state.as_mut().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "continuation fragment arrived without an active series",
-            )
-        })
+        self.state.as_mut().ok_or_else(missing_active_series_error)
     }
 
+    /// Clear the active series, discarding in-progress reassembly state.
     const fn clear(&mut self) { self.state = None; }
 }
 
+/// Construct the standard error used when no continuation series is active.
+fn missing_active_series_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "continuation fragment arrived without an active series",
+    )
+}
+
+/// Per-series state held while a multi-fragment Hotline transaction is assembled.
 #[derive(Debug)]
 struct InboundSeriesState {
+    /// Header captured from the first fragment for later consistency checks.
     first_header: crate::transaction::FrameHeader,
+    /// Stable message key derived from the first fragment.
     message_key: wireframe::message_assembler::MessageKey,
+    /// Number of body bytes still expected from later fragments.
     remaining: usize,
+    /// Sequence number required for the next continuation fragment.
     next_sequence: FrameSequence,
+    /// Deadline by which the next continuation fragment must arrive.
     deadline: Instant,
 }
 
