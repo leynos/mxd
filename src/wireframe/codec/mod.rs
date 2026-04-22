@@ -12,6 +12,7 @@ mod frame;
 mod framed;
 #[cfg(kani)]
 mod kani;
+mod physical_frame;
 
 use bincode::{
     de::{BorrowDecode, BorrowDecoder, read::Reader},
@@ -19,6 +20,7 @@ use bincode::{
     error::{DecodeError, EncodeError},
 };
 
+pub(super) use self::physical_frame::take_hotline_frame;
 pub use self::{frame::HotlineFrameCodec, framed::HotlineCodec};
 use crate::{
     field_id::FieldId,

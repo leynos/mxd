@@ -523,11 +523,73 @@ constraints before payload processing begins:
 - A zero `data_size` with non-zero `total_size` is invalid (except for empty
   frames where both are zero).
 
-**Multi-fragment reassembly.** When `data_size < total_size`, the codec reads
-continuation frames until the full payload is assembled. Each continuation
-frame must maintain header consistency with the first frame (same `flags`,
-`is_reply`, `type`, `id`, `error`, and `total_size`). The codec validates that
-continuation data does not exceed the remaining byte count.
+**Inbound fragment handling and explicit budgets.** When
+`data_size < total_size`, the inbound `HotlineFrameCodec` no longer buffers the
+full logical request by itself. It validates one physical Hotline frame at a
+time, preserves the legacy sequential-fragment rules, and emits an internal
+first/continuation payload consumed by `HotlineMessageAssembler`. The first
+payload carries a normalized 20-byte logical header (`data_size == total_size`)
+plus the first body chunk. Continuation payloads carry a stable message key,
+fragment sequence, last-fragment flag, and body chunk. Wireframe then
+reassembles those internal fragments back into the same `header || payload`
+byte layout already expected by `parse_transaction`, so the routing middleware
+and domain handlers do not gain any new transport coupling.
+
+The supporting internal APIs are split along the same seam:
+
+- `take_hotline_frame` in `src/wireframe/codec/physical_frame.rs` is the
+  shared physical-frame extractor. It validates the fixed 20-byte Hotline
+  header, checks whether the backing `BytesMut` already contains the full
+  frame, and returns `Ok(None)` until enough bytes have arrived. Both the
+  legacy `HotlineCodec` path and the Wireframe-facing `HotlineFrameCodec` path
+  delegate to this helper so physical header validation stays consistent.
+- `InboundSeriesTracker` in `src/wireframe/codec/frame.rs` is the stateful
+  fragment-series tracker held by `HotlineFrameDecoder`. It records the first
+  fragment header, stable message key, remaining logical bytes, next
+  continuation sequence number, and per-series deadline. Each continuation is
+  validated against that state before being forwarded to
+  `continuation_frame_payload`.
+  `InboundSeriesTracker::validate_fragment_consistency()` deliberately
+  preserves the active series when a continuation header does not match the
+  first fragment, so a mismatched continuation does not discard the outstanding
+  series by itself. The tracker clears state on successful completion, on
+  timeout, and on the specific protocol errors in
+  `InboundSeriesTracker::continue_series()` that call `clear()`: a
+  zero-progress continuation (`"continuation fragment made no progress"`) and
+  an oversize continuation (`"fragment exceeds remaining payload size"`).
+- `HotlineMessageAssembler` in `src/wireframe/message_assembly.rs` implements
+  Wireframe's `MessageAssembler` trait for Hotline. It parses the internal
+  first-frame and continuation payloads emitted by `HotlineFrameCodec` and
+  turns them into `ParsedFrameHeader` values consumed by Wireframe's
+  budget-enforcement and logical reassembly machinery.
+- `explicit_memory_budgets` in `src/server/wireframe/budgets.rs` is a
+  `const fn` that derives `MemoryBudgets` from `HOTLINE_LOGICAL_MESSAGE_BYTES`,
+  which is the 20-byte Hotline header plus the 1 MiB logical payload limit. It
+  assigns that same value to `bytes_per_message`, `bytes_per_connection`, and
+  `bytes_in_flight`, matching the legacy constraint that a connection carries
+  at most one in-flight logical Hotline transaction.
+
+The Wireframe app deliberately keeps `.fragmentation(None)` so Hotline's native
+wire contract remains the only on-the-wire fragmentation mechanism. Roadmap
+item 1.7.1 nevertheless enables explicit `MemoryBudgets` on the adapter. All
+three budget dimensions collapse to the same logical request envelope:
+`HEADER_LEN + MAX_PAYLOAD_SIZE` (20 bytes plus up to 1 MiB of payload). That
+matches the legacy invariant that one connection can have at most one
+fragmented request in flight at a time, so `bytes_per_message`,
+`bytes_per_connection`, and `bytes_in_flight` all share the same ceiling.
+
+`HotlineFrameCodec::max_frame_length()` now reports that logical envelope size
+rather than the 32 KiB physical frame size. Physical Hotline frames are still
+bounded by header validation (`data_size <= MAX_FRAME_DATA`), but the widened
+logical value prevents Wireframe's derived assembly defaults from silently
+clamping reassembled Hotline requests below the existing 1 MiB protocol limit.
+
+To preserve the legacy stalled-fragment semantics, the frame codec tracks a
+five-second deadline between physical fragments. A continuation that arrives
+after that gap, or with mismatched header fields, closes the connection instead
+of routing partial state. Because transport fragmentation remains disabled, the
+server does not proactively reap an otherwise idle partial request before the
+client resumes; the timeout is enforced when the next continuation is observed.
 
 **Outbound encoding parity.** `HotlineTransaction` implements `bincode::Encode`
 by emitting one or more physical frames. Payloads larger than `MAX_FRAME_DATA`

@@ -26,6 +26,8 @@
     reason = "intentional console output for server status"
 )]
 
+mod budgets;
+
 use std::{
     io::{self, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs},
@@ -55,6 +57,7 @@ use crate::{
         compat_policy::ClientCompatibility,
         connection::{HandshakeMetadata, take_current_context},
         handshake,
+        message_assembly::HotlineMessageAssembler,
         outbound::{
             WireframeOutboundConnection,
             WireframeOutboundMessaging,
@@ -245,6 +248,8 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
 
     let app = HotlineApp::default()
         .fragmentation(None)
+        .memory_budgets(budgets::explicit_memory_budgets())
+        .with_message_assembler(HotlineMessageAssembler::new())
         .with_protocol(protocol)
         .wrap(TransactionMiddleware::new(TransactionMiddlewareConfig {
             router,

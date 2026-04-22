@@ -1,6 +1,6 @@
 # Repository layout
 
-This document describes the organisation of the mxd codebase and the purpose of
+This document describes the organization of the mxd codebase and the purpose of
 each major directory and file.
 
 ## Top-level structure
@@ -29,7 +29,7 @@ mxd/
 └── validator/             # Protocol validation harness
 ```
 
-## Source code organisation (`src/`)
+## Source code organization (`src/`)
 
 The `src/` directory follows a hexagonal architecture pattern, separating
 domain logic from infrastructure adapters.
@@ -56,7 +56,7 @@ src/
 
 ## Documentation (`docs/`)
 
-Documentation is organised by purpose and audience.
+Documentation is organized by purpose and audience.
 
 ### Core documentation
 

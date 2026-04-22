@@ -284,7 +284,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 1.7. Adopt wireframe v0.3.0 runtime and tooling capabilities
 
-- [ ] 1.7.1. Configure explicit `MemoryBudgets` for the wireframe app using
+- [x] 1.7.1. Configure explicit `MemoryBudgets` for the wireframe app using
   Hotline transaction and streaming limits. Acceptance: `mxd-wireframe-server`
   sets per-message, per-connection, and in-flight budgets explicitly, oversized
   or stalled fragmented inputs are disconnected predictably, and integration

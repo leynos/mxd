@@ -28,6 +28,7 @@ pub mod connection;
 pub mod context;
 pub mod handshake;
 pub(crate) mod login_reply_augmenter;
+pub(crate) mod message_assembly;
 pub mod outbound;
 pub mod preamble;
 pub mod protocol;
@@ -37,3 +38,6 @@ pub mod routes;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_helpers;
+
+#[cfg(test)]
+mod message_assembly_tests;

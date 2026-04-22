@@ -147,15 +147,23 @@ pub fn terminate_hx(session: &mut Session) -> Result<(), HxClientError> {
 }
 
 fn hx_is_helix(path: &Path) -> Result<bool, HxClientError> {
-    let mut child = Command::new(path)
+    let mut child = match Command::new(path)
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|source| HxClientError::Probe {
-            path: path.to_path_buf(),
-            source,
-        })?;
+    {
+        Ok(child) => child,
+        Err(source) if source.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+            return Ok(false);
+        }
+        Err(source) => {
+            return Err(HxClientError::Probe {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
 
     match child.wait_timeout(HELIX_DETECTION_TIMEOUT) {
         Ok(Some(_)) => {
@@ -260,7 +268,14 @@ mod tests {
     fn timeout_probe_is_treated_as_non_helix() {
         let temp_dir = TempDir::new().expect("create temp dir");
         let hx_script = temp_dir.path().join("hx");
-        fs::write(&hx_script, "#!/usr/bin/env sh\nsleep 2\n").expect("write timeout script");
+        {
+            use std::io::Write as _;
+
+            let mut file = fs::File::create(&hx_script).expect("create timeout script");
+            file.write_all(b"#!/usr/bin/env sh\nsleep 2\n")
+                .expect("write timeout script");
+            file.sync_all().expect("sync timeout script to disk");
+        }
         let mut permissions = fs::metadata(&hx_script)
             .expect("read timeout script metadata")
             .permissions();

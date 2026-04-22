@@ -20,7 +20,7 @@
 
 use std::io;
 
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
 use super::HotlineTransaction;
@@ -71,43 +71,6 @@ impl HotlineCodec {
     /// Create a new Hotline codec.
     #[must_use]
     pub fn new() -> Self { Self::default() }
-
-    fn peek_header(src: &BytesMut) -> Result<Option<FrameHeader>, io::Error> {
-        if src.len() < HEADER_LEN {
-            return Ok(None);
-        }
-
-        let header_slice = src
-            .get(..HEADER_LEN)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "missing header bytes"))?;
-        let header_bytes: &[u8; HEADER_LEN] = header_slice
-            .try_into()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid header length"))?;
-        let header = FrameHeader::from_bytes(header_bytes);
-
-        super::validate_header(&header)
-            .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))?;
-
-        Ok(Some(header))
-    }
-
-    fn take_frame_payload(
-        src: &mut BytesMut,
-        header: &FrameHeader,
-    ) -> Result<Option<Vec<u8>>, io::Error> {
-        let data_size = usize::try_from(header.data_size)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "frame data size too large"))?;
-        let frame_len = HEADER_LEN
-            .checked_add(data_size)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "frame length overflow"))?;
-        if src.len() < frame_len {
-            src.reserve(frame_len - src.len());
-            return Ok(None);
-        }
-
-        src.advance(HEADER_LEN);
-        Ok(Some(src.split_to(data_size).to_vec()))
-    }
 
     fn finalize_transaction(
         header: FrameHeader,
@@ -167,10 +130,7 @@ impl Decoder for HotlineCodec {
     type Item = HotlineTransaction;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let Some(header) = Self::peek_header(src)? else {
-            return Ok(None);
-        };
-        let Some(payload) = Self::take_frame_payload(src, &header)? else {
+        let Some((header, payload)) = super::take_hotline_frame(src)? else {
             return Ok(None);
         };
 

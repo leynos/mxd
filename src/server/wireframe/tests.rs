@@ -117,7 +117,8 @@ fn app_factory_builds_when_handshake_context_is_present() {
         );
     });
 
-    assert!(app.is_ok());
+    let app = app.expect("app factory should succeed when handshake context is present");
+    assert!(app.message_assembler().is_some());
 }
 
 #[rstest]

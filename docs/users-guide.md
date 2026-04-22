@@ -36,11 +36,16 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   and records the negotiated sub-protocol ID and sub-version in per-connection
   state. The metadata stays available for the lifetime of the connection, so
   compatibility shims can branch on client quirks, and it is cleared during
-  teardown to avoid leaking between sessions. The transaction framing codec is
-  in place (including multi-fragment reassembly). Routing error replies now
-  preserve transaction IDs and types when a header is available, and routing
-  failures are logged through the existing `tracing` infrastructure with
-  transaction context.
+  teardown to avoid leaking between sessions. The transaction framing adapter
+  keeps Hotline's native multi-fragment wire contract while configuring
+  explicit inbound Wireframe budgets for one full logical request (20-byte
+  header plus up to 1 MiB of payload). Fragmented requests above that cap are
+  disconnected. If a client pauses a fragmented request for more than five
+  seconds and then resumes it, the server closes the connection instead of
+  routing the partial request. Valid fragmented requests that stay within the
+  cap continue to route normally. Routing error replies preserve transaction
+  IDs and types when a header is available, and routing failures are logged
+  through the existing `tracing` infrastructure with transaction context.
 - The wireframe adapter automatically detects clients that XOR-encode text
   fields (for example, SynHX with the `encode` toggle enabled). Once detected,
   inbound payloads are decoded and outbound replies are encoded to match the
