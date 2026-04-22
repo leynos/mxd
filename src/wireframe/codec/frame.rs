@@ -178,16 +178,16 @@ impl InboundSeriesTracker {
         self.ensure_active_series()?;
         self.fail_if_timed_out()?;
         self.validate_fragment_consistency(header)?;
-        if payload.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "continuation fragment carries zero bytes",
-            ));
-        }
-
         let data_size = payload.len();
         let active_series = self.active_state()?;
         let remaining = active_series.remaining;
+        if data_size == 0 && remaining > 0 {
+            self.clear();
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "continuation fragment made no progress",
+            ));
+        }
         if data_size > remaining {
             self.clear();
             return Err(io::Error::new(

@@ -128,7 +128,46 @@ fn decoder_rejects_zero_byte_continuation_fragment() {
         .expect_err("zero-byte continuation must be rejected");
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     assert!(
-        err.to_string().contains("zero bytes"),
+        err.to_string().contains("no progress"),
         "unexpected error message: {err}"
+    );
+}
+
+#[test]
+fn continue_series_clears_active_state_on_zero_progress_fragment() {
+    let first_header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 107,
+        id: 55,
+        error: 0,
+        total_size: 4,
+        data_size: 2,
+    };
+    let mut tracker = super::InboundSeriesTracker::new();
+    let _ = tracker
+        .start(&first_header, &[0u8; 2])
+        .expect("first fragment starts a tracked series");
+
+    let zero_header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: 107,
+        id: 55,
+        error: 0,
+        total_size: 4,
+        data_size: 0,
+    };
+    let err = tracker
+        .continue_series(&zero_header, b"")
+        .expect_err("zero-progress continuation must be rejected");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string().contains("no progress"),
+        "unexpected error message: {err}"
+    );
+    assert!(
+        !tracker.has_active_series(),
+        "zero-progress continuation must clear the active series"
     );
 }
