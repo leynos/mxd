@@ -87,56 +87,57 @@ fn continuation_payload_reports_sequence_and_last_flag() {
     }
 }
 
-#[test]
-fn first_frame_parser_rejects_declared_body_length_mismatches() {
-    let header = header(10, 4);
-    let mut payload =
-        first_frame_payload(message_key_for(&header), &header, b"data").expect("payload");
-    payload[13..17].copy_from_slice(&5u32.to_be_bytes());
-
+/// Corrupt one `u32` field in `payload` and assert that `parse_frame_header`
+/// returns an `InvalidData` error whose message contains `expected_msg`.
+fn assert_tampered_payload_rejected(
+    mut payload: Vec<u8>,
+    tamper_range: std::ops::Range<usize>,
+    tampered_value: u32,
+    expected_msg: &str,
+) {
+    payload[tamper_range].copy_from_slice(&tampered_value.to_be_bytes());
     let err = HotlineMessageAssembler::new()
         .parse_frame_header(&payload)
-        .expect_err("declared first-frame body length must match trailing bytes");
+        .expect_err("parse_frame_header must return an error for tampered payload");
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     assert!(
-        err.to_string()
-            .contains("Hotline first-frame payload length does not match declared body length"),
+        err.to_string().contains(expected_msg),
         "unexpected error: {err}"
     );
 }
 
 #[test]
-fn continuation_parser_rejects_declared_body_length_mismatches() {
-    let mut payload = continuation_frame_payload(MessageKey(11), FrameSequence(2), true, b"tail")
-        .expect("payload");
-    payload[14..18].copy_from_slice(&5u32.to_be_bytes());
+fn first_frame_parser_rejects_declared_body_length_mismatches() {
+    let header = header(10, 4);
+    let payload = first_frame_payload(message_key_for(&header), &header, b"data").expect("payload");
+    assert_tampered_payload_rejected(
+        payload,
+        13..17,
+        5,
+        "Hotline first-frame payload length does not match declared body length",
+    );
+}
 
-    let err = HotlineMessageAssembler::new()
-        .parse_frame_header(&payload)
-        .expect_err("declared continuation body length must match trailing bytes");
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
-    assert!(
-        err.to_string()
-            .contains("Hotline continuation payload length does not match declared body length",),
-        "unexpected error: {err}"
+#[test]
+fn continuation_parser_rejects_declared_body_length_mismatches() {
+    let payload = continuation_frame_payload(MessageKey(11), FrameSequence(2), true, b"tail")
+        .expect("payload");
+    assert_tampered_payload_rejected(
+        payload,
+        14..18,
+        5,
+        "Hotline continuation payload length does not match declared body length",
     );
 }
 
 #[test]
 fn first_frame_parser_rejects_logical_header_total_mismatches() {
     let header = header(10, 4);
-    let mut payload =
-        first_frame_payload(message_key_for(&header), &header, b"data").expect("payload");
-    payload[29..33].copy_from_slice(&9u32.to_be_bytes());
-
-    let err = HotlineMessageAssembler::new()
-        .parse_frame_header(&payload)
-        .expect_err("logical header total must match declared first-frame total");
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
-    assert!(
-        err.to_string().contains(
-            "Hotline first-frame logical header length does not match declared total length",
-        ),
-        "unexpected error: {err}"
+    let payload = first_frame_payload(message_key_for(&header), &header, b"data").expect("payload");
+    assert_tampered_payload_rejected(
+        payload,
+        29..33,
+        9,
+        "Hotline first-frame logical header length does not match declared total length",
     );
 }
