@@ -98,8 +98,7 @@ fn decoder_emits_first_then_continuation_payloads_for_fragmented_request() {
     assert_eq!(second_env.correlation_id(), Some(44));
 }
 
-#[test]
-fn decoder_rejects_zero_byte_continuation_fragment() {
+fn tracker_with_pending_series() -> (super::InboundSeriesTracker, FrameHeader, FrameHeader) {
     let first_header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -123,6 +122,13 @@ fn decoder_rejects_zero_byte_continuation_fragment() {
         total_size: 4,
         data_size: 0,
     };
+
+    (tracker, first_header, zero_header)
+}
+
+#[test]
+fn decoder_rejects_zero_byte_continuation_fragment() {
+    let (mut tracker, _, zero_header) = tracker_with_pending_series();
     let err = tracker
         .continue_series(&zero_header, &[])
         .expect_err("zero-byte continuation must be rejected");
@@ -135,29 +141,7 @@ fn decoder_rejects_zero_byte_continuation_fragment() {
 
 #[test]
 fn continue_series_clears_active_state_on_zero_progress_fragment() {
-    let first_header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 107,
-        id: 55,
-        error: 0,
-        total_size: 4,
-        data_size: 2,
-    };
-    let mut tracker = super::InboundSeriesTracker::new();
-    let _ = tracker
-        .start(&first_header, &[0u8; 2])
-        .expect("first fragment starts a tracked series");
-
-    let zero_header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: 107,
-        id: 55,
-        error: 0,
-        total_size: 4,
-        data_size: 0,
-    };
+    let (mut tracker, _, zero_header) = tracker_with_pending_series();
     let err = tracker
         .continue_series(&zero_header, b"")
         .expect_err("zero-progress continuation must be rejected");

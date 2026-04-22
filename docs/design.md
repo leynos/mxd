@@ -548,8 +548,15 @@ The supporting internal APIs are split along the same seam:
   fragment header, stable message key, remaining logical bytes, next
   continuation sequence number, and per-series deadline. Each continuation is
   validated against that state before being forwarded to
-  `continuation_frame_payload`, and the tracker clears the active series on
-  completion, timeout, or protocol error.
+  `continuation_frame_payload`.
+  `InboundSeriesTracker::validate_fragment_consistency()` deliberately
+  preserves the active series when a continuation header does not match the
+  first fragment, so a mismatched continuation does not discard the outstanding
+  series by itself. The tracker clears state on successful completion, on
+  timeout, and on the specific protocol errors in
+  `InboundSeriesTracker::continue_series()` that call `clear()`: a
+  zero-progress continuation (`"continuation fragment made no progress"`) and
+  an oversize continuation (`"fragment exceeds remaining payload size"`).
 - `HotlineMessageAssembler` in `src/wireframe/message_assembly.rs` implements
   Wireframe's `MessageAssembler` trait for Hotline. It parses the internal
   first-frame and continuation payloads emitted by `HotlineFrameCodec` and
