@@ -385,7 +385,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   tables. Completed 2026-04-20 with additive dual-backend migrations,
   `diesel-cte-ext` hierarchy helpers, file-list regression coverage, and the
   shared `permissions`/`user_permissions` plus `resource_permissions` split.
-  Dependencies: 1.
+  Dependencies: 1.4.1.
 - [ ] 3.1.2. Migrate existing file metadata into `FileNode` records without data
   loss. Acceptance: All legacy file entries appear in the new schema with
   correct hierarchy, comments, and ACLs. Dependencies: 3.1.1.

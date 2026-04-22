@@ -35,6 +35,7 @@ CREATE TABLE file_nodes (
     creator_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (parent_id IS NULL OR parent_id <> id),
     CHECK (alias_target_id IS NULL OR alias_target_id <> id),
     CHECK (
         (kind = 'file'
@@ -103,3 +104,63 @@ CREATE INDEX idx_resource_permissions_lookup
 
 CREATE INDEX idx_resource_permissions_resource
     ON resource_permissions(resource_type, resource_id);
+
+CREATE OR REPLACE FUNCTION validate_resource_permission_principal()
+RETURNS trigger AS $$
+BEGIN
+    IF NEW.principal_type = 'user' THEN
+        IF NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.principal_id) THEN
+            RAISE EXCEPTION
+                'resource_permissions principal % is not a valid user',
+                NEW.principal_id;
+        END IF;
+    ELSIF NEW.principal_type = 'group' THEN
+        IF NOT EXISTS (SELECT 1 FROM groups WHERE id = NEW.principal_id) THEN
+            RAISE EXCEPTION
+                'resource_permissions principal % is not a valid group',
+                NEW.principal_id;
+        END IF;
+    ELSE
+        RAISE EXCEPTION
+            'resource_permissions principal type % is invalid',
+            NEW.principal_type;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER validate_resource_permissions_principal
+    BEFORE INSERT OR UPDATE ON resource_permissions
+    FOR EACH ROW
+    EXECUTE FUNCTION validate_resource_permission_principal();
+
+CREATE OR REPLACE FUNCTION delete_user_resource_permissions()
+RETURNS trigger AS $$
+BEGIN
+    DELETE FROM resource_permissions
+    WHERE principal_type = 'user'
+      AND principal_id = OLD.id;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER cleanup_user_resource_permissions
+    AFTER DELETE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION delete_user_resource_permissions();
+
+CREATE OR REPLACE FUNCTION delete_group_resource_permissions()
+RETURNS trigger AS $$
+BEGIN
+    DELETE FROM resource_permissions
+    WHERE principal_type = 'group'
+      AND principal_id = OLD.id;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER cleanup_group_resource_permissions
+    AFTER DELETE ON groups
+    FOR EACH ROW
+    EXECUTE FUNCTION delete_group_resource_permissions();

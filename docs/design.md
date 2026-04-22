@@ -2567,8 +2567,8 @@ erDiagram
     text comment
     boolean is_dropbox
     bigint creator_id
-    timestamptz created_at
-    timestamptz updated_at
+    timestamp created_at
+    timestamp updated_at
   }
 
   User {
@@ -2609,8 +2609,8 @@ erDiagram
   }
 
   %% Hierarchy relations
-  FileNode ||--o| FileNode : parent
-  FileNode ||--o| FileNode : alias_target
+  FileNode ||--o{ FileNode : parent
+  FileNode ||--o{ FileNode : alias_target
 
   %% Creators
   User ||--o{ FileNode : creates
@@ -2629,6 +2629,10 @@ erDiagram
   Group ||--o{ ResourcePermission : principal_group
   FileNode ||--o{ ResourcePermission : protected_resource
 ```
+
+`created_at` and `updated_at` are shown with a backend-neutral timestamp type
+in this diagram. PostgreSQL stores them as `TIMESTAMP`, while SQLite stores
+them as `DATETIME`.
 
 Roadmap item 3.1.1 implements the tables in that E-R diagram with two important
 clarifications:

@@ -35,6 +35,7 @@ CREATE TABLE file_nodes (
     creator_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (parent_id IS NULL OR parent_id <> id),
     CHECK (alias_target_id IS NULL OR alias_target_id <> id),
     CHECK (
         (kind = 'file'
@@ -103,3 +104,57 @@ CREATE INDEX idx_resource_permissions_lookup
 
 CREATE INDEX idx_resource_permissions_resource
     ON resource_permissions(resource_type, resource_id);
+
+CREATE TRIGGER validate_resource_permissions_principal_insert
+BEFORE INSERT ON resource_permissions
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN NEW.principal_type = 'user'
+             AND NOT EXISTS (
+                 SELECT 1 FROM users WHERE id = NEW.principal_id
+             )
+        THEN RAISE(ABORT, 'resource_permissions principal is not a valid user')
+        WHEN NEW.principal_type = 'group'
+             AND NOT EXISTS (
+                 SELECT 1 FROM groups WHERE id = NEW.principal_id
+             )
+        THEN RAISE(ABORT, 'resource_permissions principal is not a valid group')
+    END;
+END;
+
+CREATE TRIGGER validate_resource_permissions_principal_update
+BEFORE UPDATE ON resource_permissions
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN NEW.principal_type = 'user'
+             AND NOT EXISTS (
+                 SELECT 1 FROM users WHERE id = NEW.principal_id
+             )
+        THEN RAISE(ABORT, 'resource_permissions principal is not a valid user')
+        WHEN NEW.principal_type = 'group'
+             AND NOT EXISTS (
+                 SELECT 1 FROM groups WHERE id = NEW.principal_id
+             )
+        THEN RAISE(ABORT, 'resource_permissions principal is not a valid group')
+    END;
+END;
+
+CREATE TRIGGER cleanup_resource_permissions_after_user_delete
+AFTER DELETE ON users
+FOR EACH ROW
+BEGIN
+    DELETE FROM resource_permissions
+    WHERE principal_type = 'user'
+      AND principal_id = OLD.id;
+END;
+
+CREATE TRIGGER cleanup_resource_permissions_after_group_delete
+AFTER DELETE ON groups
+FOR EACH ROW
+BEGIN
+    DELETE FROM resource_permissions
+    WHERE principal_type = 'group'
+      AND principal_id = OLD.id;
+END;

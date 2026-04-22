@@ -5,6 +5,8 @@ use diesel_async::AsyncConnection;
 use diesel_async::RunQueryDsl;
 #[cfg(feature = "sqlite")]
 use rstest::{fixture, rstest};
+#[cfg(feature = "sqlite")]
+use test_util::AnyError;
 
 use super::*;
 #[cfg(feature = "sqlite")]
@@ -95,20 +97,20 @@ async fn seed_root_category(conn: &mut DbConnection, name: &'static str) {
 }
 
 #[cfg(feature = "sqlite")]
-async fn fetch_file_node_id(conn: &mut DbConnection, name: &str) -> i32 {
+async fn fetch_file_node_id(conn: &mut DbConnection, name: &str) -> Result<i32, AnyError> {
     file_nodes::file_nodes
         .filter(file_nodes::name.eq(name))
         .select(file_nodes::id)
         .first::<i32>(conn)
         .await
-        .expect("file-node id")
+        .map_err(anyhow::Error::from)
 }
 
 #[cfg(feature = "sqlite")]
-async fn seed_download_permission(conn: &mut DbConnection) -> i32 {
+async fn seed_download_permission(conn: &mut DbConnection) -> Result<i32, AnyError> {
     seed_permission(conn, &download_file_permission())
         .await
-        .expect("failed to seed download permission")
+        .map_err(anyhow::Error::from)
 }
 
 #[cfg(feature = "sqlite")]
@@ -179,7 +181,7 @@ async fn test_create_root_article_invalid_path(#[future] migrated_conn: DbConnec
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_file_node_acl_flow(#[future] migrated_conn: DbConnection) {
+async fn test_file_node_acl_flow(#[future] migrated_conn: DbConnection) -> Result<(), AnyError> {
     let mut conn = migrated_conn.await;
     let user = NewUser {
         username: "carol",
@@ -207,8 +209,8 @@ async fn test_file_node_acl_flow(#[future] migrated_conn: DbConnection) {
     create_file_node(&mut conn, &file)
         .await
         .expect("failed to create file node");
-    let file_id = fetch_file_node_id(&mut conn, "report.txt").await;
-    let permission_id = seed_download_permission(&mut conn).await;
+    let file_id = fetch_file_node_id(&mut conn, "report.txt").await?;
+    let permission_id = seed_download_permission(&mut conn).await?;
 
     let acl = NewResourcePermission {
         resource_type: "file_node",
@@ -234,6 +236,7 @@ async fn test_file_node_acl_flow(#[future] migrated_conn: DbConnection) {
         .expect("failed to list files");
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].name, "report.txt");
+    Ok(())
 }
 
 #[cfg(feature = "sqlite")]
@@ -326,7 +329,7 @@ async fn test_resolve_file_node_path_and_alias(#[future] migrated_conn: DbConnec
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) {
+async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) -> Result<(), AnyError> {
     let mut conn = migrated_conn.await;
     create_user(
         &mut conn,
@@ -373,7 +376,7 @@ async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) {
     )
     .await
     .expect("failed to create file");
-    let permission_id = seed_download_permission(&mut conn).await;
+    let permission_id = seed_download_permission(&mut conn).await?;
 
     assert!(
         grant_resource_permission(
@@ -395,6 +398,200 @@ async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) {
         .expect("visibility query should succeed");
     assert_eq!(visible.len(), 1);
     assert_eq!(visible[0].name, "shared.txt");
+    Ok(())
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_file_nodes_reject_self_parent(
+    #[future] migrated_conn: DbConnection,
+) -> Result<(), AnyError> {
+    let mut conn = migrated_conn.await;
+    create_user(
+        &mut conn,
+        &NewUser {
+            username: "selfparent",
+            password: "hash",
+        },
+    )
+    .await?;
+    let owner = get_user_by_name(&mut conn, "selfparent")
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("selfparent user missing"))?;
+
+    let folder_id = create_file_node(
+        &mut conn,
+        &NewFileNode {
+            kind: FileNodeKind::Folder.as_str(),
+            name: "Loop",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: None,
+            size: None,
+            comment: None,
+            is_dropbox: false,
+            creator_id: owner.id,
+        },
+    )
+    .await?;
+
+    let err = diesel::update(file_nodes::file_nodes.filter(file_nodes::id.eq(folder_id)))
+        .set(file_nodes::parent_id.eq(Some(folder_id)))
+        .execute(&mut conn)
+        .await
+        .expect_err("self-parent update should fail");
+    assert!(err.to_string().contains("CHECK constraint failed"));
+    Ok(())
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_resource_permissions_cleanup_on_principal_delete(
+    #[future] migrated_conn: DbConnection,
+) -> Result<(), AnyError> {
+    use crate::schema::{
+        groups::dsl as groups_dsl,
+        resource_permissions::dsl as resource_permissions,
+        users::dsl as users_dsl,
+    };
+
+    let mut conn = migrated_conn.await;
+    create_user(
+        &mut conn,
+        &NewUser {
+            username: "owner",
+            password: "hash",
+        },
+    )
+    .await?;
+    create_user(
+        &mut conn,
+        &NewUser {
+            username: "grantee",
+            password: "hash",
+        },
+    )
+    .await?;
+
+    let owner = get_user_by_name(&mut conn, "owner")
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("owner user missing"))?;
+    let grantee = get_user_by_name(&mut conn, "grantee")
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("grantee user missing"))?;
+    let group_id = create_group(&mut conn, &NewGroup { name: "cleanup" }).await?;
+    let permission_id = seed_download_permission(&mut conn).await?;
+    let node_id = create_file_node(
+        &mut conn,
+        &NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "cleanup.txt",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some("objects/cleanup.txt"),
+            size: Some(9),
+            comment: None,
+            is_dropbox: false,
+            creator_id: owner.id,
+        },
+    )
+    .await?;
+
+    grant_resource_permission(
+        &mut conn,
+        &NewResourcePermission {
+            resource_type: "file_node",
+            resource_id: node_id,
+            principal_type: "user",
+            principal_id: grantee.id,
+            permission_id,
+        },
+    )
+    .await?;
+    grant_resource_permission(
+        &mut conn,
+        &NewResourcePermission {
+            resource_type: "file_node",
+            resource_id: node_id,
+            principal_type: "group",
+            principal_id: group_id,
+            permission_id,
+        },
+    )
+    .await?;
+
+    let initial_count = resource_permissions::resource_permissions
+        .count()
+        .get_result::<i64>(&mut conn)
+        .await?;
+    assert_eq!(initial_count, 2);
+
+    diesel::delete(users_dsl::users.filter(users_dsl::id.eq(grantee.id)))
+        .execute(&mut conn)
+        .await?;
+    diesel::delete(groups_dsl::groups.filter(groups_dsl::id.eq(group_id)))
+        .execute(&mut conn)
+        .await?;
+
+    let remaining_count = resource_permissions::resource_permissions
+        .count()
+        .get_result::<i64>(&mut conn)
+        .await?;
+    assert_eq!(remaining_count, 0);
+    Ok(())
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_resource_permissions_reject_unknown_principal(
+    #[future] migrated_conn: DbConnection,
+) -> Result<(), AnyError> {
+    let mut conn = migrated_conn.await;
+    create_user(
+        &mut conn,
+        &NewUser {
+            username: "principal-owner",
+            password: "hash",
+        },
+    )
+    .await?;
+    let owner = get_user_by_name(&mut conn, "principal-owner")
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("principal-owner user missing"))?;
+    let permission_id = seed_download_permission(&mut conn).await?;
+    let node_id = create_file_node(
+        &mut conn,
+        &NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "principal-check.txt",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some("objects/principal-check.txt"),
+            size: Some(5),
+            comment: None,
+            is_dropbox: false,
+            creator_id: owner.id,
+        },
+    )
+    .await?;
+
+    let err = grant_resource_permission(
+        &mut conn,
+        &NewResourcePermission {
+            resource_type: "file_node",
+            resource_id: node_id,
+            principal_type: "user",
+            principal_id: i32::MAX,
+            permission_id,
+        },
+    )
+    .await
+    .expect_err("unknown principal should be rejected");
+    assert!(err.to_string().contains("resource_permissions principal"));
+    Ok(())
 }
 
 #[cfg(feature = "sqlite")]

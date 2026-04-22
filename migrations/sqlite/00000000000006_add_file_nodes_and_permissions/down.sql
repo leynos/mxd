@@ -1,3 +1,7 @@
+DROP TRIGGER cleanup_resource_permissions_after_group_delete;
+DROP TRIGGER cleanup_resource_permissions_after_user_delete;
+DROP TRIGGER validate_resource_permissions_principal_update;
+DROP TRIGGER validate_resource_permissions_principal_insert;
 DROP TABLE resource_permissions;
 DROP TABLE file_nodes;
 DROP TABLE user_groups;

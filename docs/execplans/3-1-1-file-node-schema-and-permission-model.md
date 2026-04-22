@@ -28,8 +28,11 @@ Progress note (2026-04-22):
   the migration watchdog timeout needed a deterministic test seam plus an
   override path so non-CI environments can tighten the cap without patching
   source.
-
-PLANS.md does not exist in this repository.
+- A later verification pass also tightened the roadmap artefacts around this
+  work: documentation links are now repository-relative, file-node fixtures use
+  the identifiers returned by insertion instead of reloading the whole table,
+  and migration DDL now guards against self-parent rows plus stale polymorphic
+  ACL principals.
 
 ## Purpose / big picture
 
@@ -184,19 +187,18 @@ Current relevant state:
 - The current database schema still uses flat file metadata in
   `migrations/postgres/00000000000004_create_files/up.sql`,
   `migrations/sqlite/00000000000004_create_files/up.sql`,
-  [src/schema.rs](/home/user/project/src/schema.rs), and
-  [src/models.rs](/home/user/project/src/models.rs).
+  [src/schema.rs](../../src/schema.rs), and
+  [src/models.rs](../../src/models.rs).
 - File persistence logic currently lives in
-  [src/db/files.rs](/home/user/project/src/db/files.rs) and only supports
-  `create_file`, `add_file_acl`, and `list_files_for_user`.
+  [src/db/files.rs](../../src/db/files.rs) and only supports `create_file`,
+  `add_file_acl`, and `list_files_for_user`.
 - The existing file-list transaction handler in
-  [src/commands/handlers.rs](/home/user/project/src/commands/handlers.rs)
-  assumes a flat list of files filtered by `file_acl`.
+  [src/commands/handlers.rs](../../src/commands/handlers.rs) assumes a flat
+  list of files filtered by `file_acl`.
 - Test fixtures in
-  [test-util/src/fixtures/mod.rs](/home/user/project/test-util/src/fixtures/mod.rs)
-   and transport tests in
-  [tests/file_list.rs](/home/user/project/tests/file_list.rs) currently seed
-  and validate the old schema.
+  [test-util/src/fixtures/mod.rs](../../test-util/src/fixtures/mod.rs) and
+  transport tests in [tests/file_list.rs](../../tests/file_list.rs) currently
+  seed and validate the old schema.
 - `docs/file-sharing-design.md` defines the intended `FileNode` model with
   folders, files, aliases, `is_dropbox`, comments, and principal-based ACLs.
 - `docs/news-schema.md` and `docs/design.md` describe a normalized shared

@@ -37,7 +37,7 @@ use mxd::{
         NewUser,
         NewUserGroup,
     },
-    schema::{file_nodes::dsl as file_nodes_dsl, users::dsl as users_dsl},
+    schema::users::dsl as users_dsl,
     users::hash_password,
 };
 
@@ -154,14 +154,12 @@ async fn seed_root_file_nodes(
             creator_id,
         },
     ];
+    let mut file_node_ids = HashMap::with_capacity(file_nodes.len());
     for file_node in &file_nodes {
-        create_file_node(conn, file_node).await?;
+        let node_id = create_file_node(conn, file_node).await?;
+        file_node_ids.insert(file_node.name.to_owned(), node_id);
     }
-    let file_rows = file_nodes_dsl::file_nodes
-        .select((file_nodes_dsl::name, file_nodes_dsl::id))
-        .load::<(String, i32)>(conn)
-        .await?;
-    Ok(file_rows.into_iter().collect())
+    Ok(file_node_ids)
 }
 
 async fn grant_fixture_download_visibility(

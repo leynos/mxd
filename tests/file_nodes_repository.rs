@@ -87,7 +87,10 @@ async fn seed_docs_tree(
     Ok((folder_id, file_id, alias_id))
 }
 
-async fn create_shared_root_file(conn: &mut DbConnection, creator_id: i32) -> Result<i32, AnyError> {
+async fn create_shared_root_file(
+    conn: &mut DbConnection,
+    creator_id: i32,
+) -> Result<i32, AnyError> {
     create_file_node(
         conn,
         &NewFileNode {

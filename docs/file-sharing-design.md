@@ -29,7 +29,8 @@ transaction IDs are:
 - **UploadFile (203)** – Upload a single file (supports resume).
 - **DeleteFile (204)** – Delete a file (or folder).
 - **NewFolder (205)** – Create a new folder.
-- **GetFileInfo (206)** – Retrieve file/folder info (size, dates, comment, etc).
+- **GetFileInfo (206)** – Retrieve file/folder info (size, dates, comment,
+  etc).
 - **SetFileInfo (207)** – Set file/folder info (e.g. rename or comment).
 - **MoveFile (208)** – Move or rename a file/folder.
 - **MakeFileAlias (209)** – Create an alias (link) to a file.
@@ -114,8 +115,8 @@ erDiagram
         text comment
         boolean is_dropbox
         bigint creator_id
-        timestamptz created_at
-        timestamptz updated_at
+        timestamp created_at
+        timestamp updated_at
     }
 
     User {
@@ -155,8 +156,8 @@ erDiagram
         int permission_id
     }
 
-    FileNode ||--o| FileNode : parent
-    FileNode ||--o| FileNode : alias_target
+    FileNode ||--o{ FileNode : parent
+    FileNode ||--o{ FileNode : alias_target
     User ||--o{ FileNode : creates
     User ||--o{ UserGroup : member
     Group ||--o{ UserGroup : membership
@@ -167,6 +168,10 @@ erDiagram
     Group ||--o{ ResourcePermission : principal_group
     FileNode ||--o{ ResourcePermission : protected_resource
 ```
+
+`created_at` and `updated_at` are shown with a backend-neutral timestamp type
+in this diagram. PostgreSQL stores them as `TIMESTAMP`, while SQLite stores
+them as `DATETIME`.
 
 In this model:
 
@@ -237,6 +242,7 @@ CREATE TABLE file_nodes (
     creator_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (parent_id IS NULL OR parent_id <> id),
     CHECK (alias_target_id IS NULL OR alias_target_id <> id),
     CHECK (
         (kind = 'file'
@@ -273,6 +279,11 @@ CREATE TABLE resource_permissions (
     )
 );
 ```
+
+Backend-specific triggers validate that `principal_id` resolves against the
+declared `principal_type` and clean up ACL rows when users or groups are
+deleted, so the polymorphic ACL table keeps referential integrity without
+splitting the table shape across adapters.
 
 This schema enables the representation of the complete file system hierarchy
 and access controls:
