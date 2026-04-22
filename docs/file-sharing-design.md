@@ -272,10 +272,10 @@ follows:
 - **Database as Source of Truth:** The **FileNode** hierarchy in the database is
   the authoritative representation of directories, subdirectories, and file
   names. We do **not** rely on the object store to list or organize
-  directories. This allows metadata attachment (permissions, comments, etc.) to
-  directories themselves, which object stores cannot do. Folders in our system
-  are logical constructs (entries in the DB) and need not correspond to any
-  physical object in the store.
+  directories. This enables attaching metadata (permissions, comments, etc.) to
+  directories themselves, which object stores cannot do. Folders are logical
+  constructs (database entries) and do not need to correspond to any physical
+  object in the store.
 - **Object Key Design:** For actual file content, an **object key** is generated
   for each file stored. A simple strategy is to use a path-like key mirroring
   the file's path (e.g., combine parent folder names and filename). However,

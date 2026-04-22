@@ -107,6 +107,7 @@ fn assemble_frame_payload(
     payload.extend_from_slice(body);
     Ok(payload)
 }
+
 /// Build the internal payload for the first physical fragment.
 /// The metadata stores a normalized 20-byte logical header with
 /// `data_size == total_size`, preserving the `header || payload` shape that
