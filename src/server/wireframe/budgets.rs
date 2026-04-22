@@ -3,7 +3,7 @@
 //! The transport adapter keeps fragmented Hotline request handling limited to
 //! one in-flight logical transaction per connection, matching the legacy
 //! sequential framing model. All three budget dimensions therefore collapse to
-//! the same logical transaction envelope: a normalized 20-byte header plus the
+//! the same logical transaction envelope: a normalised 20-byte header plus the
 //! maximum 1 MiB assembled payload.
 
 use std::num::NonZeroUsize;

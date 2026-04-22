@@ -111,7 +111,7 @@ fn assemble_frame_payload(
 }
 
 /// Build the internal payload for the first physical fragment.
-/// The metadata stores a normalized 20-byte logical header with
+/// The metadata stores a normalised 20-byte logical header with
 /// `data_size == total_size`, preserving the `header || payload` shape that
 /// `parse_transaction` consumes after assembly.
 #[expect(
@@ -261,7 +261,7 @@ fn parse_continuation_frame_header(payload: &[u8]) -> Result<ParsedFrameHeader, 
     ))
 }
 
-/// Serialize a normalized copy of `header` with `data_size == total_size`.
+/// Serialise a normalised copy of `header` with `data_size == total_size`.
 fn logical_header_bytes(header: &FrameHeader) -> [u8; HEADER_LEN] {
     let mut bytes = [0u8; HEADER_LEN];
     let mut logical = header.clone();
@@ -270,7 +270,7 @@ fn logical_header_bytes(header: &FrameHeader) -> [u8; HEADER_LEN] {
     bytes
 }
 
-/// Parse the normalized logical header embedded in a first-frame payload.
+/// Parse the normalised logical header embedded in a first-frame payload.
 fn parse_logical_header(payload: &[u8]) -> Result<FrameHeader, io::Error> {
     let metadata_start = FIRST_FRAME_HEADER_LEN;
     let metadata_end = metadata_start + HEADER_LEN;
