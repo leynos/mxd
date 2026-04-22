@@ -562,11 +562,11 @@ interrupted. The steps:
      header provides the data fork size (which should match the file size). We
      use that size for validation.
 
-   - We then stream the incoming data bytes to storage. For efficiency and
-     memory safety, we do not buffer the entire file. Instead, we initiate a
-     multipart upload to the object store. Using `ObjectStore::put_multipart`
-     provides a `WriteMultipart` handle that accepts bytes fed in chunks.
-     For example:
+   - The implementation then streams the incoming data bytes to storage. For
+     efficiency and memory safety, it does not buffer the entire file.
+     Instead, it initiates a multipart upload to the object store. Using
+     `ObjectStore::put_multipart` provides a `WriteMultipart` handle that
+     accepts bytes fed in chunks. For example:
 
    ```rust
    let store_path = object_store::path::Path::from(new_file.object_key.clone());
@@ -608,18 +608,20 @@ interrupted. The steps:
      appends that to the existing object (not trivial in object store
      unless continuing multi-part) or it can be stored as a separate object and
      later merge – not ideal.
-   - Ideally, we rely on the multi-part continuation: e.g., AWS S3 allows you
-     to resume a multipart upload if you have the upload ID and part numbers
-     already uploaded. We would have to keep track of the next byte/part needed.
-     Given our use of `WriteMultipart`, we might need a custom approach for
-     resume (since `WriteMultipart` might not expose a mid-upload state easily).
-     A simpler approach: don’t finalize the multipart and on resume, start a new
-     one and throw away the partial object. But that would waste what was
-     uploaded. Instead, to implement true resume, we might manually manage
-     parts: e.g., on first upload attempt, store each part number and ETag as
-     they complete. On resume, call object_store’s low-level API to initiate a
-     *MultipartUpload* with the same upload ID (if supported by crate) and skip
-     to the last completed part. This is complex, so an easier design might be:
+   - Ideally, the implementation relies on multipart continuation: for
+     example, AWS S3 allows resuming a multipart upload when the upload ID and
+     part numbers are available. The implementation would have to keep track
+     of the next byte/part needed. Given the use of `WriteMultipart`, a custom
+     approach might be needed for resume (since `WriteMultipart` might not
+     expose a mid-upload state easily). A simpler approach would be not to
+     finalize the multipart and, on resume, start a new one and throw away the
+     partial object. But that would waste what was uploaded. Instead, to
+     implement true resume, the implementation might manually manage parts:
+     e.g., on first upload attempt, store each part number and ETag as they
+     complete. On resume, call object_store’s low-level API to initiate a
+     *MultipartUpload* with the same upload ID (if supported by crate) and
+     skip to the last completed part. This is complex, so an easier design
+     might be:
    - **Alternate Resume Design:** On interruption, *do not create the DB entry
      at all*. Instead, have the client re-upload the file (modern approach, or
      use a separate partial file mechanism). However, since Hotline clearly had
@@ -713,8 +715,9 @@ and a move to a different folder via MoveFile. We handle both:
      strictly follow that, a user with those bits can move an item from any
      folder they can see to any other folder they can see. In practice, you
      might also require Create rights on destination and Delete on source, but
-     since Hotline explicitly lists Move as a privilege, we honor that: the
-     user must have the Move permission for that item's current folder (and
+     since Hotline explicitly lists Move as a privilege, the implementation
+     honours that: the user must have the Move permission for that item's
+     current folder (and
      perhaps also for the destination folder). In the ACL model, enforcement
      can occur as follows: user must have privilege 4 (move) on the source
      item’s parent, and privilege 5
@@ -724,12 +727,13 @@ and a move to a different folder via MoveFile. We handle both:
 
   3. **DB Update:** Update the FileNode’s `parent_id` to the new folder’s ID
      and/or update its `name` if it's also a rename. This is an atomic update
-     in the DB. We must ensure no name collision in the destination (the
-     `UNIQUE(parent_id,name)` constraint provides protection – checking is
-     still recommended; if a violation is detected, the operation should
-     fail). For moving folders, all child FileNodes remain linked to
-     the same parent IDs (only the moved folder's own parent changes), so the
-     tree is effectively spliced out and moved. **Important:** If we stored any
+     in the DB. The implementation must ensure no name collision in the
+     destination (the `UNIQUE(parent_id,name)` constraint provides protection
+     – checking is still recommended; if a violation is detected, the
+     operation should fail). For moving folders, all child FileNodes remain
+     linked to the same parent IDs (only the moved folder's own parent
+     changes), so the tree is effectively spliced out and moved.
+     **Important:** If we stored any
      kind of full path or had object keys tied to path, this is where complexity
      arises:
 
@@ -932,10 +936,9 @@ will follow the same general approach:
      skip or resume. For the implementation, the server will:
 
      - Read the client's request for each file. If it says skip, the server
-       just moves on. If resume, it will provide an offset. We then stream the
-       file from
-       that offset (similar to DownloadFile logic, using get_range). If full
-       send, we stream from start.
+       just moves on. If resume, it will provide an offset. The server then
+       streams the file from that offset (similar to DownloadFile logic, using
+       get_range). If full send, it streams from start.
 
    - When sending a file’s data, we again leverage object_store streaming. We
      already have the object keys from our enumerated list (the DB gave us each
@@ -1275,7 +1278,8 @@ Because we split metadata (DB) and file content (object store), maintaining
 consistency is critical:
 
 - **Two-Phase Operations:** For any create/upload, there are two steps (DB
-  insert and object upload). We must handle failures in between. Our approach:
+  insert and object upload). The implementation must handle failures in
+  between. This approach:
 
   - On **file upload**: We can delay DB insertion until after the object upload
     completes successfully. This way, if the upload fails (network issue, etc.),

@@ -1,5 +1,6 @@
 //! Regression tests for Hotline message-assembly payload validation.
 
+use rstest::rstest;
 use wireframe::message_assembler::{
     FrameHeader as AssemblyFrameHeader,
     FrameSequence,
@@ -106,38 +107,51 @@ fn assert_tampered_payload_rejected(
     );
 }
 
-#[test]
-fn first_frame_parser_rejects_declared_body_length_mismatches() {
-    let header = header(10, 4);
-    let payload = first_frame_payload(message_key_for(&header), &header, b"data").expect("payload");
-    assert_tampered_payload_rejected(
-        payload,
-        13..17,
-        5,
-        "Hotline first-frame payload length does not match declared body length",
-    );
+#[derive(Clone, Copy)]
+enum PayloadBuilder {
+    First,
+    Continuation,
+    FirstLogicalHeaderTotal,
 }
 
-#[test]
-fn continuation_parser_rejects_declared_body_length_mismatches() {
-    let payload = continuation_frame_payload(MessageKey(11), FrameSequence(2), true, b"tail")
-        .expect("payload");
-    assert_tampered_payload_rejected(
-        payload,
-        14..18,
-        5,
-        "Hotline continuation payload length does not match declared body length",
-    );
+fn build_payload(builder: PayloadBuilder) -> Vec<u8> {
+    match builder {
+        PayloadBuilder::First | PayloadBuilder::FirstLogicalHeaderTotal => {
+            let header = header(10, 4);
+            first_frame_payload(message_key_for(&header), &header, b"data").expect("payload")
+        }
+        PayloadBuilder::Continuation => {
+            continuation_frame_payload(MessageKey(11), FrameSequence(2), true, b"tail")
+                .expect("payload")
+        }
+    }
 }
 
-#[test]
-fn first_frame_parser_rejects_logical_header_total_mismatches() {
-    let header = header(10, 4);
-    let payload = first_frame_payload(message_key_for(&header), &header, b"data").expect("payload");
-    assert_tampered_payload_rejected(
-        payload,
-        29..33,
-        9,
-        "Hotline first-frame logical header length does not match declared total length",
-    );
+#[rstest]
+#[case(
+    PayloadBuilder::First,
+    13..17,
+    5,
+    "Hotline first-frame payload length does not match declared body length"
+)]
+#[case(
+    PayloadBuilder::Continuation,
+    14..18,
+    5,
+    "Hotline continuation payload length does not match declared body length"
+)]
+#[case(
+    PayloadBuilder::FirstLogicalHeaderTotal,
+    29..33,
+    9,
+    "Hotline first-frame logical header length does not match declared total length"
+)]
+fn tampered_payloads_are_rejected(
+    #[case] builder: PayloadBuilder,
+    #[case] tamper_range: std::ops::Range<usize>,
+    #[case] tampered_value: u32,
+    #[case] expected_msg: &str,
+) {
+    let payload = build_payload(builder);
+    assert_tampered_payload_rejected(payload, tamper_range, tampered_value, expected_msg);
 }

@@ -373,8 +373,8 @@ Required binary-backed coverage:
 - a happy-path case showing a fragmented request that stays within budget still
   completes successfully;
 - a soft-pressure case showing a fragmented input near the aggregate cap is
-  paced rather than immediately dropped, and still completes when the client
-  continues making progress within timeout;
+  permitted to complete (the harness does not assert internal pacing), and
+  still completes when the client continues making progress within timeout;
 - a hard-cap case showing a payload or partial assembly that exceeds the
   configured cap is disconnected deterministically; and
 - a stalled-input case showing a fragmented request that stops progressing is

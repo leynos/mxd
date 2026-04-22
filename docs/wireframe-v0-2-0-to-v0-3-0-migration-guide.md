@@ -1211,7 +1211,7 @@ The job should:
 - fail immediately on any non-zero exit status so merges are blocked on
   documentation errors,
 - capture stdout and stderr from both commands, and
-- upload those logs as CI artifacts for review when the job fails.
+- upload those logs as CI artefacts for review when the job fails.
 
 One suitable shell step is:
 
@@ -1222,4 +1222,4 @@ make nixie 2>&1 | tee nixie.log
 ```
 
 The CI workflow should publish `markdownlint.log` and `nixie.log` as build
-artifacts and mark `docs:markdownlint+nixie` as a required merge check.
+artefacts and mark `docs:markdownlint+nixie` as a required merge check.

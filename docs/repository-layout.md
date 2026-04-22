@@ -29,7 +29,7 @@ mxd/
 └── validator/             # Protocol validation harness
 ```
 
-## Source code organisation (`src/`)
+## Source code organization (`src/`)
 
 The `src/` directory follows a hexagonal architecture pattern, separating
 domain logic from infrastructure adapters.
@@ -56,7 +56,7 @@ src/
 
 ## Documentation (`docs/`)
 
-Documentation is organised by purpose and audience.
+Documentation is organized by purpose and audience.
 
 ### Core documentation
 
