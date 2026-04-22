@@ -1,5 +1,5 @@
 //! Integration tests for the `file_nodes` repository helpers.
-#![cfg(feature = "sqlite")]
+#![cfg(any(feature = "sqlite", feature = "postgres"))]
 
 use anyhow::ensure;
 use mxd::{

@@ -464,7 +464,8 @@ async fn test_file_nodes_reject_invalid_basenames(
         .await?
         .ok_or_else(|| anyhow::anyhow!("basename-owner user missing"))?;
 
-    for invalid_name in ["", "bad/name"] {
+    for (index, invalid_name) in ["", "bad/name"].into_iter().enumerate() {
+        let object_key = format!("objects/invalid-name-{index}.txt");
         let err = create_file_node(
             &mut conn,
             &NewFileNode {
@@ -472,7 +473,7 @@ async fn test_file_nodes_reject_invalid_basenames(
                 name: invalid_name,
                 parent_id: None,
                 alias_target_id: None,
-                object_key: Some("objects/invalid-name.txt"),
+                object_key: Some(object_key.as_str()),
                 size: Some(1),
                 comment: None,
                 is_dropbox: false,

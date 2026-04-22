@@ -89,6 +89,8 @@ Documentation is organized by purpose and audience.
 - `design.md` — Comprehensive architecture and design decisions.
 - `protocol.md` — Hotline protocol specification and implementation notes.
 - `roadmap.md` — Implementation roadmap with phases and tasks.
+- `execplans/3-1-1-file-node-schema-and-permission-model.md` — File metadata
+  and permission-model execution plan.
 - `users-guide.md` — End-user guide for running the server.
 - `developers-guide.md` — Developer workflow and quality gates.
 
@@ -158,6 +160,7 @@ Detailed execution plans for roadmap tasks:
 - `1-5-4-verify-xor-and-sub-version-compatibility.md`
 - `1-5-6-split-login-authentication-strategies-from-reply-augmentation.md`
 - `1-6-1-port-unit-and-integration-tests.md`
+- `3-1-1-file-node-schema-and-permission-model.md`
 - `afl-circular-dependency-issue.md`
 - `adopt-pg-embed-setup-v0-5-0.md`
 - `adopt-rstest-bdd-v0-4-0.md`

@@ -3,7 +3,7 @@
 //! Centralizes repeated setup flows (users, files, news content) so tests can
 //! compose databases with minimal boilerplate.
 
-pub mod file_sharing_fixtures;
+mod file_sharing_fixtures;
 mod helpers;
 
 use std::io;

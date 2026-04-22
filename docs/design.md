@@ -2526,11 +2526,12 @@ table([18](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d
   public-by-default), but it might have been a starting point or a temporary
   measure until the more complex permission system is built.
 
-Roadmap item 3.1.1 now implements that richer design as an additive schema
-step. The new outbound adapter state lives in `mxd::db::files` and
-`mxd::file_path`, while the transport and command layers still consume a narrow
-query surface instead of Diesel models or recursive SQL directly. The schema is
-split into:
+Roadmap item 3.1.1 implements that richer design as an additive schema step.
+The current authoritative file-sharing schema for new adapter work is the
+`file_nodes` plus shared-permission model exposed through `mxd::db::files` and
+`mxd::db::file_path`, while the transport and command layers still consume a
+narrow query surface instead of Diesel models or recursive SQL directly. The
+schema is split into:
 
 - `file_nodes` for folders, files, and aliases, with `kind`, `parent_id`,
   `alias_target_id`, `object_key`, `size`, `comment`, `is_dropbox`,
@@ -2543,8 +2544,9 @@ split into:
   resource identity, and principal identity.
 
 The migrations keep the legacy `files` and `file_acl` tables in place so
-roadmap item 3.1.2 can backfill existing metadata safely. Only the current
-file-listing path is switched to the new adapter in 3.1.1.
+roadmap item 3.1.2 can backfill existing metadata safely. During that additive
+window, `GetFileNameList` reads through the new adapter and unions in legacy
+rows so upgraded databases do not lose visibility before backfill completes.
 
 For screen readers: the following E-R diagram shows the implemented
 file-sharing metadata model. `FileNode` is the central hierarchical resource,

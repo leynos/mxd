@@ -82,6 +82,26 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
 - `make test-wireframe-only` exercises the Wireframe-first configuration and
   runs the behaviour scenarios that assert the feature gate.
 
+
+## Startup configuration reference
+
+Both server binaries share the same startup configuration surface through
+`AppConfig`.
+
+- `--bind` / `MXD_BIND` set the listener bind address. Example:
+  `cargo run --bin mxd -- --bind 0.0.0.0:5500`.
+- `--database` / `MXD_DATABASE` set the database URL or sqlite path. Example:
+  `MXD_DATABASE=postgres://localhost/mxd cargo run --bin mxd`.
+- `--migration-timeout-secs` / `MXD_MIGRATION_TIMEOUT_SECS` map to the
+  `migration_timeout_secs` field and set an optional migration timeout in
+  seconds as an integer. Example:
+  `cargo run --bin mxd -- --migration-timeout-secs 30` or
+  `MXD_MIGRATION_TIMEOUT_SECS=30 cargo run --bin mxd-wireframe-server`.
+
+When `--migration-timeout-secs` is unset, startup uses the built-in default
+migration timeout. A value of `0` is normalized back to that default rather
+than disabling the watchdog.
+
 ## File metadata baseline
 
 Roadmap item 3.1.1 is an internal schema milestone rather than a new protocol

@@ -263,20 +263,14 @@ Repository documentation to keep in view while implementing this plan:
   follow-on `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md`
   edits required by this roadmap step.
 
-Skills available in this session that are relevant to this work:
+Repository-level guidance that remains useful while implementing this work:
 
 - `hexagonal-architecture`: use for dependency-rule checks, port placement,
   adapter isolation, and drift detection.
-- `leta`: use first for code exploration and symbol-level navigation before
-  changing Rust modules.
-- `rust-router`: use to route Rust design or implementation questions to the
-  smallest relevant Rust skill.
 - `rust-types-and-apis`: use when designing repository traits, newtypes, and
   domain-facing interfaces for `FileNode` and permission access.
 - `rust-errors`: use when shaping semantic repository or application errors at
   the port boundary.
-- `nextest`: use when working through the test strategy and execution model for
-  `make test`.
 
 ## Plan of work
 
@@ -616,7 +610,7 @@ Architecture-specific checks to include during review:
   `resource_permissions`, and `file_nodes`, keeping legacy `files` and
   `file_acl` in place for roadmap item 3.1.2.
 - [x] (2026-04-20 16:05Z) Refreshed Diesel schema and models, introduced the
-  `mxd::file_path` recursive CTE helper, and narrowed the new persistence
+  `mxd::db::file_path` recursive CTE helper, and narrowed the new persistence
   surface in `mxd::db::files` to path resolution, child listing, alias
   resolution, and visible-root listing.
 - [x] (2026-04-20 16:05Z) Updated test fixtures, repository coverage, and the
@@ -639,8 +633,6 @@ Architecture-specific checks to include during review:
 
 ## Surprises & Discoveries
 
-- The repository does not expose the project-memory MCP note tools in this
-  session, so planning had to rely on repository docs alone.
 - The current codebase still has only `files` and `file_acl`; no shared
   `permissions`, `user_permissions`, `groups`, or `user_groups` migrations
   exist yet.
