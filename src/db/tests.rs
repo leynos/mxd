@@ -100,16 +100,6 @@ async fn seed_root_category(conn: &mut DbConnection, name: &'static str) {
         .expect("failed to seed category");
 }
 
-#[cfg(feature = "sqlite")]
-async fn fetch_file_node_id(conn: &mut DbConnection, name: &str) -> Result<i32, AnyError> {
-    file_nodes::file_nodes
-        .filter(file_nodes::name.eq(name))
-        .select(file_nodes::id)
-        .first::<i32>(conn)
-        .await
-        .map_err(anyhow::Error::from)
-}
-
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 async fn seed_download_permission(conn: &mut DbConnection) -> Result<i32, AnyError> {
     seed_permission(conn, &download_file_permission())
@@ -287,10 +277,9 @@ async fn test_file_node_acl_flow(#[future] migrated_conn: DbConnection) -> Resul
         is_dropbox: false,
         creator_id: carol.id,
     };
-    create_file_node(&mut conn, &file)
+    let file_id = create_file_node(&mut conn, &file)
         .await
         .expect("failed to create file node");
-    let file_id = fetch_file_node_id(&mut conn, "report.txt").await?;
     let permission_id = seed_download_permission(&mut conn).await?;
 
     let acl = NewResourcePermission {
