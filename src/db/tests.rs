@@ -166,24 +166,6 @@ async fn resource_permission_count(conn: &mut DbConnection) -> Result<i64, AnyEr
         .map_err(anyhow::Error::from)
 }
 
-#[cfg(feature = "postgres")]
-async fn setup_embedded_postgres_conn(
-    database_name: &str,
-) -> Result<(postgresql_embedded::PostgreSQL, DbConnection), AnyError> {
-    use postgresql_embedded::PostgreSQL;
-
-    let mut pg = PostgreSQL::default();
-    pg.setup().await?;
-    pg.start().await?;
-    pg.create_database(database_name).await?;
-
-    let url = pg.settings().url(database_name);
-    run_migrations(&url, None).await?;
-    let conn = diesel_async::AsyncPgConnection::establish(&url).await?;
-
-    Ok((pg, conn))
-}
-
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
@@ -521,10 +503,22 @@ async fn test_file_nodes_reject_self_parent(#[future] migrated_conn: DbConnectio
 #[tokio::test]
 #[ignore = "requires embedded PostgreSQL server"]
 async fn test_file_nodes_reject_self_parent() {
-    let (pg, mut conn) = setup_embedded_postgres_conn("self_parent")
+    use postgresql_embedded::PostgreSQL;
+
+    let mut pg = PostgreSQL::default();
+    pg.setup().await.expect("failed to set up postgres");
+    pg.start().await.expect("failed to start postgres");
+    pg.create_database("self_parent")
         .await
-        .expect("failed to start embedded postgres");
-    let result = test_file_nodes_reject_self_parent_body(&mut conn, "check constraint").await;
+        .expect("failed to create db");
+    let url = pg.settings().url("self_parent");
+    run_migrations(&url, None)
+        .await
+        .expect("failed to apply migrations");
+    let mut conn = diesel_async::AsyncPgConnection::establish(&url)
+        .await
+        .expect("failed to connect to postgres");
+    let result = test_file_nodes_reject_self_parent_body(&mut conn, "check").await;
     pg.stop().await.expect("failed to stop postgres");
     result.expect("self-parent guard should reject recursive parent links");
 }
@@ -578,10 +572,22 @@ async fn test_file_nodes_reject_invalid_basenames(#[future] migrated_conn: DbCon
 #[tokio::test]
 #[ignore = "requires embedded PostgreSQL server"]
 async fn test_file_nodes_reject_invalid_basenames() {
-    let (pg, mut conn) = setup_embedded_postgres_conn("invalid_basenames")
+    use postgresql_embedded::PostgreSQL;
+
+    let mut pg = PostgreSQL::default();
+    pg.setup().await.expect("failed to set up postgres");
+    pg.start().await.expect("failed to start postgres");
+    pg.create_database("invalid_basenames")
         .await
-        .expect("failed to start embedded postgres");
-    let result = test_file_nodes_reject_invalid_basenames_body(&mut conn, "check constraint").await;
+        .expect("failed to create db");
+    let url = pg.settings().url("invalid_basenames");
+    run_migrations(&url, None)
+        .await
+        .expect("failed to apply migrations");
+    let mut conn = diesel_async::AsyncPgConnection::establish(&url)
+        .await
+        .expect("failed to connect to postgres");
+    let result = test_file_nodes_reject_invalid_basenames_body(&mut conn, "check").await;
     pg.stop().await.expect("failed to stop postgres");
     result.expect("basename guard should reject empty and slash-delimited names");
 }
@@ -687,9 +693,21 @@ async fn test_resource_permissions_cleanup_on_principal_delete(
 #[tokio::test]
 #[ignore = "requires embedded PostgreSQL server"]
 async fn test_resource_permissions_cleanup_on_principal_delete() {
-    let (pg, mut conn) = setup_embedded_postgres_conn("cleanup_principal_delete")
+    use postgresql_embedded::PostgreSQL;
+
+    let mut pg = PostgreSQL::default();
+    pg.setup().await.expect("failed to set up postgres");
+    pg.start().await.expect("failed to start postgres");
+    pg.create_database("cleanup_principal_delete")
         .await
-        .expect("failed to start embedded postgres");
+        .expect("failed to create db");
+    let url = pg.settings().url("cleanup_principal_delete");
+    run_migrations(&url, None)
+        .await
+        .expect("failed to apply migrations");
+    let mut conn = diesel_async::AsyncPgConnection::establish(&url)
+        .await
+        .expect("failed to connect to postgres");
     let result = test_resource_permissions_cleanup_on_principal_delete_body(&mut conn).await;
     pg.stop().await.expect("failed to stop postgres");
     result.expect("principal deletes should clean up ACL rows");
@@ -744,9 +762,21 @@ async fn test_resource_permissions_reject_unknown_principal(#[future] migrated_c
 #[tokio::test]
 #[ignore = "requires embedded PostgreSQL server"]
 async fn test_resource_permissions_reject_unknown_principal() {
-    let (pg, mut conn) = setup_embedded_postgres_conn("unknown_principal")
+    use postgresql_embedded::PostgreSQL;
+
+    let mut pg = PostgreSQL::default();
+    pg.setup().await.expect("failed to set up postgres");
+    pg.start().await.expect("failed to start postgres");
+    pg.create_database("unknown_principal")
         .await
-        .expect("failed to start embedded postgres");
+        .expect("failed to create db");
+    let url = pg.settings().url("unknown_principal");
+    run_migrations(&url, None)
+        .await
+        .expect("failed to apply migrations");
+    let mut conn = diesel_async::AsyncPgConnection::establish(&url)
+        .await
+        .expect("failed to connect to postgres");
     let result = test_resource_permissions_reject_unknown_principal_body(&mut conn).await;
     pg.stop().await.expect("failed to stop postgres");
     result.expect("unknown principals should be rejected");
