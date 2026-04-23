@@ -42,7 +42,7 @@ pub(super) fn parse_login_params(payload: &[u8]) -> Result<LoginCredentials, Tra
 /// Convert a parsed transaction into a high-level command.
 pub(super) fn parse_command(tx: Transaction) -> Result<Command, TransactionError> {
     let ty = TransactionType::from(tx.header.ty);
-    if !ty.allows_payload() && !tx.payload.is_empty() {
+    if ty.rejects_payload(tx.payload.is_empty()) {
         return Ok(Command::InvalidPayload { header: tx.header });
     }
     match ty {

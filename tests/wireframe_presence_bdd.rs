@@ -396,6 +396,40 @@ fn when_disconnect(world: &PresenceWorld, label: String) -> Result<(), AnyError>
     world.disconnect(&label)
 }
 
+fn verify_notify_change_user_fields(
+    params: &[(FieldId, Vec<u8>)],
+    expected: &NotifyChangeUserExpected,
+) -> Result<(), AnyError> {
+    let actual_user_id = read_u32_param(params, FieldId::UserId)?;
+    let actual_icon_id = read_u32_param(params, FieldId::IconId)?;
+    let actual_name = read_string_param(params, FieldId::Name)?;
+    if actual_user_id != expected.user_id {
+        return Err(anyhow!(
+            "expected user id {}, got {actual_user_id}",
+            expected.user_id
+        ));
+    }
+    if actual_icon_id != expected.icon_id {
+        return Err(anyhow!(
+            "expected icon id {}, got {actual_icon_id}",
+            expected.icon_id
+        ));
+    }
+    if actual_name != expected.name {
+        return Err(anyhow!(
+            "expected name {:?}, got {actual_name:?}",
+            expected.name
+        ));
+    }
+    Ok(())
+}
+
+struct NotifyChangeUserExpected {
+    user_id: u32,
+    name: String,
+    icon_id: u32,
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "bdd step signature mirrors feature placeholders"
@@ -422,19 +456,14 @@ fn then_notify_change_user(
         ));
     }
     let params = assert_step_ok!(decode_params(&notification.payload).map_err(|e| e.to_string()));
-    let actual_user_id = read_u32_param(&params, FieldId::UserId)?;
-    let actual_icon_id = read_u32_param(&params, FieldId::IconId)?;
-    let actual_name = read_string_param(&params, FieldId::Name)?;
-    if actual_user_id != user_id {
-        return Err(anyhow!("expected user id {user_id}, got {actual_user_id}"));
-    }
-    if actual_icon_id != icon_id {
-        return Err(anyhow!("expected icon id {icon_id}, got {actual_icon_id}"));
-    }
-    if actual_name != name {
-        return Err(anyhow!("expected name {name:?}, got {actual_name:?}"));
-    }
-    Ok(())
+    verify_notify_change_user_fields(
+        &params,
+        &NotifyChangeUserExpected {
+            user_id,
+            name,
+            icon_id,
+        },
+    )
 }
 
 #[then("client \"{label}\" receives a notify delete user for user {user_id}")]
