@@ -7,7 +7,7 @@ use diesel_async::RunQueryDsl;
 #[cfg(feature = "sqlite")]
 use rstest::{fixture, rstest};
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-use test_util::{AnyError, build_test_db_async, setup_login_db};
+use test_util::AnyError;
 
 use super::*;
 #[cfg(feature = "sqlite")]
@@ -42,11 +42,6 @@ async fn migrated_conn() -> DbConnection {
         .await
         .expect("failed to apply migrations");
     conn
-}
-
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-async fn build_migrated_test_db() -> Result<Option<test_util::TestDb>, AnyError> {
-    build_test_db_async(setup_login_db).await
 }
 
 #[cfg(feature = "sqlite")]
@@ -179,6 +174,24 @@ async fn resource_permission_count(conn: &mut DbConnection) -> Result<i64, AnyEr
         .get_result::<i64>(conn)
         .await
         .map_err(anyhow::Error::from)
+}
+
+#[cfg(feature = "postgres")]
+async fn setup_embedded_postgres_conn(
+    database_name: &str,
+) -> Result<(postgresql_embedded::PostgreSQL, DbConnection), AnyError> {
+    use postgresql_embedded::PostgreSQL;
+
+    let mut pg = PostgreSQL::default();
+    pg.setup().await?;
+    pg.start().await?;
+    pg.create_database(database_name).await?;
+
+    let url = pg.settings().url(database_name);
+    run_migrations(&url, None).await?;
+    let conn = diesel_async::AsyncPgConnection::establish(&url).await?;
+
+    Ok((pg, conn))
 }
 
 #[cfg(feature = "sqlite")]
@@ -469,18 +482,14 @@ async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) -> Res
     Ok(())
 }
 
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-#[tokio::test]
-async fn test_file_nodes_reject_self_parent() -> Result<(), AnyError> {
-    let Some(db) = build_migrated_test_db().await? else {
-        return Ok(());
-    };
-    let pool = db.pool();
-    let mut conn = pool.get().await?;
-    let owner_id = create_test_user(&mut conn, "selfparent").await?;
+pub(super) async fn test_file_nodes_reject_self_parent_body(
+    conn: &mut DbConnection,
+    check_msg: &str,
+) -> Result<(), AnyError> {
+    let owner_id = create_test_user(conn, "selfparent").await?;
 
     let folder_id = create_file_node(
-        &mut conn,
+        conn,
         &NewFileNode {
             kind: FileNodeKind::Folder.as_str(),
             name: "Loop",
@@ -497,30 +506,50 @@ async fn test_file_nodes_reject_self_parent() -> Result<(), AnyError> {
 
     let err = diesel::update(file_nodes::file_nodes.filter(file_nodes::id.eq(folder_id)))
         .set(file_nodes::parent_id.eq(Some(folder_id)))
-        .execute(&mut conn)
+        .execute(conn)
         .await
         .expect_err("self-parent update should fail");
     anyhow::ensure!(
-        err.to_string().to_lowercase().contains("check constraint"),
+        err.to_string()
+            .to_lowercase()
+            .contains(&check_msg.to_lowercase()),
         "self-parent update returned unexpected error: {err}"
     );
     Ok(())
 }
 
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
+#[cfg(feature = "sqlite")]
+#[rstest]
 #[tokio::test]
-async fn test_file_nodes_reject_invalid_basenames() -> Result<(), AnyError> {
-    let Some(db) = build_migrated_test_db().await? else {
-        return Ok(());
-    };
-    let pool = db.pool();
-    let mut conn = pool.get().await?;
-    let owner_id = create_test_user(&mut conn, "basename-owner").await?;
+async fn test_file_nodes_reject_self_parent(#[future] migrated_conn: DbConnection) {
+    let mut conn = migrated_conn.await;
+    test_file_nodes_reject_self_parent_body(&mut conn, "CHECK constraint failed")
+        .await
+        .expect("self-parent guard should reject recursive parent links");
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[ignore = "requires embedded PostgreSQL server"]
+async fn test_file_nodes_reject_self_parent() {
+    let (pg, mut conn) = setup_embedded_postgres_conn("self_parent")
+        .await
+        .expect("failed to start embedded postgres");
+    let result = test_file_nodes_reject_self_parent_body(&mut conn, "check constraint").await;
+    pg.stop().await.expect("failed to stop postgres");
+    result.expect("self-parent guard should reject recursive parent links");
+}
+
+pub(super) async fn test_file_nodes_reject_invalid_basenames_body(
+    conn: &mut DbConnection,
+    check_msg: &str,
+) -> Result<(), AnyError> {
+    let owner_id = create_test_user(conn, "basename-owner").await?;
 
     for (index, invalid_name) in ["", "bad/name"].into_iter().enumerate() {
         let object_key = format!("objects/invalid-name-{index}.txt");
         let err = create_file_node(
-            &mut conn,
+            conn,
             &NewFileNode {
                 kind: FileNodeKind::File.as_str(),
                 name: invalid_name,
@@ -536,7 +565,9 @@ async fn test_file_nodes_reject_invalid_basenames() -> Result<(), AnyError> {
         .await
         .expect_err("invalid basename should be rejected");
         anyhow::ensure!(
-            err.to_string().to_lowercase().contains("check constraint"),
+            err.to_string()
+                .to_lowercase()
+                .contains(&check_msg.to_lowercase()),
             "invalid basename '{invalid_name}' returned unexpected error: {err}"
         );
     }
@@ -544,7 +575,28 @@ async fn test_file_nodes_reject_invalid_basenames() -> Result<(), AnyError> {
     Ok(())
 }
 
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_file_nodes_reject_invalid_basenames(#[future] migrated_conn: DbConnection) {
+    let mut conn = migrated_conn.await;
+    test_file_nodes_reject_invalid_basenames_body(&mut conn, "CHECK constraint failed")
+        .await
+        .expect("basename guard should reject empty and slash-delimited names");
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[ignore = "requires embedded PostgreSQL server"]
+async fn test_file_nodes_reject_invalid_basenames() {
+    let (pg, mut conn) = setup_embedded_postgres_conn("invalid_basenames")
+        .await
+        .expect("failed to start embedded postgres");
+    let result = test_file_nodes_reject_invalid_basenames_body(&mut conn, "check constraint").await;
+    pg.stop().await.expect("failed to stop postgres");
+    result.expect("basename guard should reject empty and slash-delimited names");
+}
+
 async fn grant_cleanup_permissions(conn: &mut DbConnection) -> Result<(i32, i32), AnyError> {
     let owner_id = create_test_user(conn, "owner").await?;
     let grantee_id = create_test_user(conn, "grantee").await?;
@@ -587,7 +639,6 @@ async fn grant_cleanup_permissions(conn: &mut DbConnection) -> Result<(i32, i32)
     Ok((grantee_id, group_id))
 }
 
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
 async fn delete_cleanup_principals(
     conn: &mut DbConnection,
     grantee_id: i32,
@@ -605,30 +656,25 @@ async fn delete_cleanup_principals(
     Ok(())
 }
 
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-#[tokio::test]
-async fn test_resource_permissions_cleanup_on_principal_delete() -> Result<(), AnyError> {
-    let Some(db) = build_migrated_test_db().await? else {
-        return Ok(());
-    };
-    let pool = db.pool();
-    let mut conn = pool.get().await?;
-    let initial_count = resource_permission_count(&mut conn).await?;
+pub(super) async fn test_resource_permissions_cleanup_on_principal_delete_body(
+    conn: &mut DbConnection,
+) -> Result<(), AnyError> {
+    let initial_count = resource_permission_count(conn).await?;
     anyhow::ensure!(
         initial_count == 0,
         "cleanup test expected empty ACL table at start, found {initial_count} rows"
     );
 
-    let (grantee_id, group_id) = grant_cleanup_permissions(&mut conn).await?;
-    let granted_count = resource_permission_count(&mut conn).await?;
+    let (grantee_id, group_id) = grant_cleanup_permissions(conn).await?;
+    let granted_count = resource_permission_count(conn).await?;
     anyhow::ensure!(
         granted_count == 2,
         "cleanup test expected 2 ACL rows after grants, found {granted_count}"
     );
 
-    delete_cleanup_principals(&mut conn, grantee_id, group_id).await?;
+    delete_cleanup_principals(conn, grantee_id, group_id).await?;
 
-    let remaining_count = resource_permission_count(&mut conn).await?;
+    let remaining_count = resource_permission_count(conn).await?;
     anyhow::ensure!(
         remaining_count == 0,
         "cleanup triggers left {remaining_count} ACL rows after deleting principals"
@@ -636,18 +682,37 @@ async fn test_resource_permissions_cleanup_on_principal_delete() -> Result<(), A
     Ok(())
 }
 
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
+#[cfg(feature = "sqlite")]
+#[rstest]
 #[tokio::test]
-async fn test_resource_permissions_reject_unknown_principal() -> Result<(), AnyError> {
-    let Some(db) = build_migrated_test_db().await? else {
-        return Ok(());
-    };
-    let pool = db.pool();
-    let mut conn = pool.get().await?;
-    let owner_id = create_test_user(&mut conn, "principal-owner").await?;
-    let permission_id = seed_download_permission(&mut conn).await?;
+async fn test_resource_permissions_cleanup_on_principal_delete(
+    #[future] migrated_conn: DbConnection,
+) {
+    let mut conn = migrated_conn.await;
+    test_resource_permissions_cleanup_on_principal_delete_body(&mut conn)
+        .await
+        .expect("principal deletes should clean up ACL rows");
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[ignore = "requires embedded PostgreSQL server"]
+async fn test_resource_permissions_cleanup_on_principal_delete() {
+    let (pg, mut conn) = setup_embedded_postgres_conn("cleanup_principal_delete")
+        .await
+        .expect("failed to start embedded postgres");
+    let result = test_resource_permissions_cleanup_on_principal_delete_body(&mut conn).await;
+    pg.stop().await.expect("failed to stop postgres");
+    result.expect("principal deletes should clean up ACL rows");
+}
+
+pub(super) async fn test_resource_permissions_reject_unknown_principal_body(
+    conn: &mut DbConnection,
+) -> Result<(), AnyError> {
+    let owner_id = create_test_user(conn, "principal-owner").await?;
+    let permission_id = seed_download_permission(conn).await?;
     let node_id = create_root_file_node_for_owner(
-        &mut conn,
+        conn,
         owner_id,
         RootFileNodeSpec {
             name: "principal-check.txt",
@@ -658,7 +723,7 @@ async fn test_resource_permissions_reject_unknown_principal() -> Result<(), AnyE
     .await?;
 
     let err = grant_resource_permission(
-        &mut conn,
+        conn,
         &NewResourcePermission {
             resource_type: "file_node",
             resource_id: node_id,
@@ -674,6 +739,28 @@ async fn test_resource_permissions_reject_unknown_principal() -> Result<(), AnyE
         "unknown principal returned unexpected error: {err}"
     );
     Ok(())
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_resource_permissions_reject_unknown_principal(#[future] migrated_conn: DbConnection) {
+    let mut conn = migrated_conn.await;
+    test_resource_permissions_reject_unknown_principal_body(&mut conn)
+        .await
+        .expect("unknown principals should be rejected");
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[ignore = "requires embedded PostgreSQL server"]
+async fn test_resource_permissions_reject_unknown_principal() {
+    let (pg, mut conn) = setup_embedded_postgres_conn("unknown_principal")
+        .await
+        .expect("failed to start embedded postgres");
+    let result = test_resource_permissions_reject_unknown_principal_body(&mut conn).await;
+    pg.stop().await.expect("failed to stop postgres");
+    result.expect("unknown principals should be rejected");
 }
 
 #[cfg(feature = "sqlite")]
