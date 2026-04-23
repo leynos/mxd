@@ -220,43 +220,35 @@ impl Command {
         self,
         context: CommandContext<'_>,
     ) -> Result<(), CommandError> {
-        let CommandContext {
-            peer,
-            pool,
-            session,
-            transport,
-            messaging,
-            presence,
-        } = context;
         match self {
-            Self::Login { req } => {
-                Self::process_login_with_presence(
-                    LoginContext {
-                        peer,
-                        pool,
-                        session,
-                        presence: PresenceContext {
-                            transport,
-                            messaging,
-                            presence,
-                        },
-                    },
-                    req,
-                )
-                .await
-            }
-            Self::GetUserNameList { header } => Self::process_get_user_name_list(
-                UserListContext {
+            Self::Login { req } => Self::dispatch_login(context, req).await,
+            Self::GetUserNameList { header } => {
+                let CommandContext {
                     session,
                     transport,
                     presence,
-                },
-                &header,
-            ),
+                    ..
+                } = context;
+                Self::process_get_user_name_list(
+                    UserListContext {
+                        session,
+                        transport,
+                        presence,
+                    },
+                    &header,
+                )
+            }
             Self::GetClientInfoText {
                 header,
                 target_user_id,
             } => {
+                let CommandContext {
+                    pool,
+                    session,
+                    transport,
+                    presence,
+                    ..
+                } = context;
                 Self::process_get_client_info_text(
                     ClientInfoContext {
                         pool,
@@ -270,24 +262,60 @@ impl Command {
                 .await
             }
             Self::SetClientUserInfo { header, update } => {
-                Self::process_set_client_user_info(
-                    SessionPresenceContext {
-                        session,
-                        presence: PresenceContext {
-                            transport,
-                            messaging,
-                            presence,
-                        },
-                    },
-                    header,
-                    update,
-                )
-                .await
+                Self::dispatch_set_client_user_info(context, header, update).await
             }
             _ => Err(CommandError::Invariant(
                 "non-presence command passed to presence dispatcher",
             )),
         }
+    }
+
+    async fn dispatch_login(
+        context: CommandContext<'_>,
+        req: LoginRequest,
+    ) -> Result<(), CommandError> {
+        let CommandContext {
+            peer,
+            pool,
+            session,
+            transport,
+            messaging,
+            presence,
+        } = context;
+        let login_ctx = LoginContext {
+            peer,
+            pool,
+            session,
+            presence: PresenceContext {
+                transport,
+                messaging,
+                presence,
+            },
+        };
+        Self::process_login_with_presence(login_ctx, req).await
+    }
+
+    async fn dispatch_set_client_user_info(
+        context: CommandContext<'_>,
+        header: FrameHeader,
+        update: UserInfoUpdate,
+    ) -> Result<(), CommandError> {
+        let CommandContext {
+            session,
+            transport,
+            messaging,
+            presence,
+            ..
+        } = context;
+        let ctx = SessionPresenceContext {
+            session,
+            presence: PresenceContext {
+                transport,
+                messaging,
+                presence,
+            },
+        };
+        Self::process_set_client_user_info(ctx, header, update).await
     }
 
     async fn execute(

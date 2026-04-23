@@ -6,7 +6,7 @@ use super::{
     parsing::{LoginCredentials, parse_login_params},
     *,
 };
-use crate::{field_id::FieldId, transaction::encode_params};
+use crate::{field_id::FieldId, transaction::encode_params, transaction_type::TransactionType};
 
 /// Returns valid login parameters for testing.
 fn valid_login_payload() -> Vec<u8> {
