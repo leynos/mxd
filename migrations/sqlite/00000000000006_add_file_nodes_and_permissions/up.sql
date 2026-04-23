@@ -42,6 +42,7 @@ CREATE TABLE file_nodes (
          AND object_key IS NOT NULL
          AND alias_target_id IS NULL
          AND size IS NOT NULL
+         AND size >= 0
          AND is_dropbox = 0)
         OR
         (kind = 'folder'

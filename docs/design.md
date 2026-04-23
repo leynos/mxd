@@ -2627,14 +2627,18 @@ erDiagram
 
   %% Shared resource ACL
   Permission ||--o{ ResourcePermission : grants
-  User ||--o{ ResourcePermission : principal_user
-  Group ||--o{ ResourcePermission : principal_group
-  FileNode ||--o{ ResourcePermission : protected_resource
+  User o|..o{ ResourcePermission : principal_user
+  Group o|..o{ ResourcePermission : principal_group
+  FileNode ||..o{ ResourcePermission : protected_resource
 ```
 
 `created_at` and `updated_at` are shown with a backend-neutral timestamp type
 in this diagram. PostgreSQL stores them as `TIMESTAMP`, while SQLite stores
 them as `DATETIME`.
+
+`ResourcePermission` uses logical ACL associations in this diagram: the
+`principal_type` and `principal_id` links are polymorphic and trigger-validated
+rather than enforced as direct foreign keys.
 
 Roadmap item 3.1.1 implements the tables in that E-R diagram with two important
 clarifications:

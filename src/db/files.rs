@@ -1,5 +1,9 @@
-//! File hierarchy and ACL helpers.
-
+//! Maintainer-facing file hierarchy and ACL helpers. This module is the
+//! implementation reference for the additive migration from `files` and
+//! `file_acl` to `file_nodes` and `resource_permissions`: read visibility,
+//! write-side seeding, and the merged read path that keeps upgraded databases serving legacy
+//! content until backfill finishes. Reads return a deduplicated union, with ACL-backed
+//! `file_nodes` entries winning when the same `(name, kind)` pair exists twice.
 use cfg_if::cfg_if;
 use diesel::{
     OptionalExtension,
@@ -310,10 +314,8 @@ pub async fn resolve_alias_target(
 }
 
 /// List the visible top-level file nodes for the selected user.
-///
-/// Visibility is defined as a resource permission granting protocol privilege
-/// code `2` (*Download File*) either directly to the user or indirectly via
-/// one of their groups.
+/// Visibility is granted by protocol privilege code `2` (*Download File*)
+/// either directly to the user or indirectly via one of their groups.
 ///
 /// # Errors
 /// Returns any error produced by the database.
@@ -365,7 +367,6 @@ pub async fn list_visible_root_file_nodes_for_user(
             .entry((node.name.clone(), node.kind.clone()))
             .or_insert(node);
     }
-
     Ok(merged.into_values().collect())
 }
 
@@ -378,7 +379,6 @@ async fn list_legacy_visible_root_files_for_user(
         id: i32,
         name: String,
     }
-
     use crate::schema::{file_acl::dsl as a, files::dsl as f};
 
     let legacy_files = f::files

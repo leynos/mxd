@@ -662,9 +662,10 @@ Architecture-specific checks to include during review:
   obvious Tokio macro.
 - Tightening the fixture helper in `tests/file_nodes_repository.rs` exposed that
   `build_test_db` intentionally returns `None` when the postgres-backed
-  integration fixture is unavailable. Keeping the helper strict without turning
-  unsupported environments into false passes required scoping that test module
-  to the SQLite feature set that actually provisions those fixtures in CI.
+  integration fixture is unavailable. The test module now gates both backends,
+  so the helper must keep that `None` path as a deliberate skip for unavailable
+  fixtures instead of assuming SQLite-only execution or turning unsupported
+  environments into false failures.
 
 ## Decision Log
 

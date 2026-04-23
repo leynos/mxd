@@ -1,14 +1,17 @@
-#[cfg(feature = "sqlite")]
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use diesel::prelude::*;
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use diesel_async::AsyncConnection;
-#[cfg(feature = "sqlite")]
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use diesel_async::RunQueryDsl;
 #[cfg(feature = "sqlite")]
 use rstest::{fixture, rstest};
-#[cfg(feature = "sqlite")]
-use test_util::AnyError;
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+use test_util::{AnyError, build_test_db_async, setup_login_db};
 
 use super::*;
+#[cfg(feature = "sqlite")]
+use crate::schema::{file_acl::dsl as legacy_file_acl, files::dsl as legacy_files};
 #[cfg(feature = "sqlite")]
 use crate::{
     models::{
@@ -21,11 +24,12 @@ use crate::{
         NewUser,
         NewUserGroup,
     },
-    schema::{
-        file_acl::dsl as legacy_file_acl,
-        file_nodes::dsl as file_nodes,
-        files::dsl as legacy_files,
-    },
+    schema::file_nodes::dsl as file_nodes,
+};
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+use crate::{
+    models::{FileNodeKind, NewFileNode, NewGroup, NewResourcePermission, NewUser},
+    schema::file_nodes::dsl as file_nodes,
 };
 
 #[cfg(feature = "sqlite")]
@@ -38,6 +42,11 @@ async fn migrated_conn() -> DbConnection {
         .await
         .expect("failed to apply migrations");
     conn
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn build_migrated_test_db() -> Result<Option<test_util::TestDb>, AnyError> {
+    build_test_db_async(setup_login_db).await
 }
 
 #[cfg(feature = "sqlite")]
@@ -106,9 +115,68 @@ async fn fetch_file_node_id(conn: &mut DbConnection, name: &str) -> Result<i32, 
         .map_err(anyhow::Error::from)
 }
 
-#[cfg(feature = "sqlite")]
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 async fn seed_download_permission(conn: &mut DbConnection) -> Result<i32, AnyError> {
     seed_permission(conn, &download_file_permission())
+        .await
+        .map_err(anyhow::Error::from)
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn create_test_user(conn: &mut DbConnection, username: &str) -> Result<i32, AnyError> {
+    create_user(
+        conn,
+        &NewUser {
+            username,
+            password: "hash",
+        },
+    )
+    .await?;
+
+    get_user_by_name(conn, username)
+        .await?
+        .map(|user| user.id)
+        .ok_or_else(|| anyhow::anyhow!("test user '{username}' missing after insert"))
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+struct RootFileNodeSpec<'a> {
+    name: &'a str,
+    object_key: &'a str,
+    size: i64,
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn create_root_file_node_for_owner(
+    conn: &mut DbConnection,
+    owner_id: i32,
+    spec: RootFileNodeSpec<'_>,
+) -> Result<i32, AnyError> {
+    create_file_node(
+        conn,
+        &NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: spec.name,
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some(spec.object_key),
+            size: Some(spec.size),
+            comment: None,
+            is_dropbox: false,
+            creator_id: owner_id,
+        },
+    )
+    .await
+    .map_err(anyhow::Error::from)
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn resource_permission_count(conn: &mut DbConnection) -> Result<i64, AnyError> {
+    use crate::schema::resource_permissions::dsl as resource_permissions;
+
+    resource_permissions::resource_permissions
+        .count()
+        .get_result::<i64>(conn)
         .await
         .map_err(anyhow::Error::from)
 }
@@ -401,24 +469,15 @@ async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) -> Res
     Ok(())
 }
 
-#[cfg(feature = "sqlite")]
-#[rstest]
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 #[tokio::test]
-async fn test_file_nodes_reject_self_parent(
-    #[future] migrated_conn: DbConnection,
-) -> Result<(), AnyError> {
-    let mut conn = migrated_conn.await;
-    create_user(
-        &mut conn,
-        &NewUser {
-            username: "selfparent",
-            password: "hash",
-        },
-    )
-    .await?;
-    let owner = get_user_by_name(&mut conn, "selfparent")
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("selfparent user missing"))?;
+async fn test_file_nodes_reject_self_parent() -> Result<(), AnyError> {
+    let Some(db) = build_migrated_test_db().await? else {
+        return Ok(());
+    };
+    let pool = db.pool();
+    let mut conn = pool.get().await?;
+    let owner_id = create_test_user(&mut conn, "selfparent").await?;
 
     let folder_id = create_file_node(
         &mut conn,
@@ -431,7 +490,7 @@ async fn test_file_nodes_reject_self_parent(
             size: None,
             comment: None,
             is_dropbox: false,
-            creator_id: owner.id,
+            creator_id: owner_id,
         },
     )
     .await?;
@@ -441,28 +500,22 @@ async fn test_file_nodes_reject_self_parent(
         .execute(&mut conn)
         .await
         .expect_err("self-parent update should fail");
-    assert!(err.to_string().contains("CHECK constraint failed"));
+    anyhow::ensure!(
+        err.to_string().to_lowercase().contains("check constraint"),
+        "self-parent update returned unexpected error: {err}"
+    );
     Ok(())
 }
 
-#[cfg(feature = "sqlite")]
-#[rstest]
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 #[tokio::test]
-async fn test_file_nodes_reject_invalid_basenames(
-    #[future] migrated_conn: DbConnection,
-) -> Result<(), AnyError> {
-    let mut conn = migrated_conn.await;
-    create_user(
-        &mut conn,
-        &NewUser {
-            username: "basename-owner",
-            password: "hash",
-        },
-    )
-    .await?;
-    let owner = get_user_by_name(&mut conn, "basename-owner")
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("basename-owner user missing"))?;
+async fn test_file_nodes_reject_invalid_basenames() -> Result<(), AnyError> {
+    let Some(db) = build_migrated_test_db().await? else {
+        return Ok(());
+    };
+    let pool = db.pool();
+    let mut conn = pool.get().await?;
+    let owner_id = create_test_user(&mut conn, "basename-owner").await?;
 
     for (index, invalid_name) in ["", "bad/name"].into_iter().enumerate() {
         let object_key = format!("objects/invalid-name-{index}.txt");
@@ -477,84 +530,50 @@ async fn test_file_nodes_reject_invalid_basenames(
                 size: Some(1),
                 comment: None,
                 is_dropbox: false,
-                creator_id: owner.id,
+                creator_id: owner_id,
             },
         )
         .await
         .expect_err("invalid basename should be rejected");
-        assert!(err.to_string().contains("CHECK constraint failed"));
+        anyhow::ensure!(
+            err.to_string().to_lowercase().contains("check constraint"),
+            "invalid basename '{invalid_name}' returned unexpected error: {err}"
+        );
     }
 
     Ok(())
 }
 
-#[cfg(feature = "sqlite")]
-#[rstest]
-#[tokio::test]
-async fn test_resource_permissions_cleanup_on_principal_delete(
-    #[future] migrated_conn: DbConnection,
-) -> Result<(), AnyError> {
-    use crate::schema::{
-        groups::dsl as groups_dsl,
-        resource_permissions::dsl as resource_permissions,
-        users::dsl as users_dsl,
-    };
-
-    let mut conn = migrated_conn.await;
-    create_user(
-        &mut conn,
-        &NewUser {
-            username: "owner",
-            password: "hash",
-        },
-    )
-    .await?;
-    create_user(
-        &mut conn,
-        &NewUser {
-            username: "grantee",
-            password: "hash",
-        },
-    )
-    .await?;
-
-    let owner = get_user_by_name(&mut conn, "owner")
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("owner user missing"))?;
-    let grantee = get_user_by_name(&mut conn, "grantee")
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("grantee user missing"))?;
-    let group_id = create_group(&mut conn, &NewGroup { name: "cleanup" }).await?;
-    let permission_id = seed_download_permission(&mut conn).await?;
-    let node_id = create_file_node(
-        &mut conn,
-        &NewFileNode {
-            kind: FileNodeKind::File.as_str(),
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn grant_cleanup_permissions(conn: &mut DbConnection) -> Result<(i32, i32), AnyError> {
+    let owner_id = create_test_user(conn, "owner").await?;
+    let grantee_id = create_test_user(conn, "grantee").await?;
+    let group_id = create_group(conn, &NewGroup { name: "cleanup" }).await?;
+    let permission_id = seed_download_permission(conn).await?;
+    let node_id = create_root_file_node_for_owner(
+        conn,
+        owner_id,
+        RootFileNodeSpec {
             name: "cleanup.txt",
-            parent_id: None,
-            alias_target_id: None,
-            object_key: Some("objects/cleanup.txt"),
-            size: Some(9),
-            comment: None,
-            is_dropbox: false,
-            creator_id: owner.id,
+            object_key: "objects/cleanup.txt",
+            size: 9,
         },
     )
     .await?;
 
     grant_resource_permission(
-        &mut conn,
+        conn,
         &NewResourcePermission {
             resource_type: "file_node",
             resource_id: node_id,
             principal_type: "user",
-            principal_id: grantee.id,
+            principal_id: grantee_id,
             permission_id,
         },
     )
     .await?;
     grant_resource_permission(
-        &mut conn,
+        conn,
         &NewResourcePermission {
             resource_type: "file_node",
             resource_id: node_id,
@@ -565,58 +584,75 @@ async fn test_resource_permissions_cleanup_on_principal_delete(
     )
     .await?;
 
-    let initial_count = resource_permissions::resource_permissions
-        .count()
-        .get_result::<i64>(&mut conn)
-        .await?;
-    assert_eq!(initial_count, 2);
+    Ok((grantee_id, group_id))
+}
 
-    diesel::delete(users_dsl::users.filter(users_dsl::id.eq(grantee.id)))
-        .execute(&mut conn)
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn delete_cleanup_principals(
+    conn: &mut DbConnection,
+    grantee_id: i32,
+    group_id: i32,
+) -> Result<(), AnyError> {
+    use crate::schema::{groups::dsl as groups_dsl, users::dsl as users_dsl};
+
+    diesel::delete(users_dsl::users.filter(users_dsl::id.eq(grantee_id)))
+        .execute(conn)
         .await?;
     diesel::delete(groups_dsl::groups.filter(groups_dsl::id.eq(group_id)))
-        .execute(&mut conn)
+        .execute(conn)
         .await?;
 
-    let remaining_count = resource_permissions::resource_permissions
-        .count()
-        .get_result::<i64>(&mut conn)
-        .await?;
-    assert_eq!(remaining_count, 0);
     Ok(())
 }
 
-#[cfg(feature = "sqlite")]
-#[rstest]
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 #[tokio::test]
-async fn test_resource_permissions_reject_unknown_principal(
-    #[future] migrated_conn: DbConnection,
-) -> Result<(), AnyError> {
-    let mut conn = migrated_conn.await;
-    create_user(
-        &mut conn,
-        &NewUser {
-            username: "principal-owner",
-            password: "hash",
-        },
-    )
-    .await?;
-    let owner = get_user_by_name(&mut conn, "principal-owner")
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("principal-owner user missing"))?;
+async fn test_resource_permissions_cleanup_on_principal_delete() -> Result<(), AnyError> {
+    let Some(db) = build_migrated_test_db().await? else {
+        return Ok(());
+    };
+    let pool = db.pool();
+    let mut conn = pool.get().await?;
+    let initial_count = resource_permission_count(&mut conn).await?;
+    anyhow::ensure!(
+        initial_count == 0,
+        "cleanup test expected empty ACL table at start, found {initial_count} rows"
+    );
+
+    let (grantee_id, group_id) = grant_cleanup_permissions(&mut conn).await?;
+    let granted_count = resource_permission_count(&mut conn).await?;
+    anyhow::ensure!(
+        granted_count == 2,
+        "cleanup test expected 2 ACL rows after grants, found {granted_count}"
+    );
+
+    delete_cleanup_principals(&mut conn, grantee_id, group_id).await?;
+
+    let remaining_count = resource_permission_count(&mut conn).await?;
+    anyhow::ensure!(
+        remaining_count == 0,
+        "cleanup triggers left {remaining_count} ACL rows after deleting principals"
+    );
+    Ok(())
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+#[tokio::test]
+async fn test_resource_permissions_reject_unknown_principal() -> Result<(), AnyError> {
+    let Some(db) = build_migrated_test_db().await? else {
+        return Ok(());
+    };
+    let pool = db.pool();
+    let mut conn = pool.get().await?;
+    let owner_id = create_test_user(&mut conn, "principal-owner").await?;
     let permission_id = seed_download_permission(&mut conn).await?;
-    let node_id = create_file_node(
+    let node_id = create_root_file_node_for_owner(
         &mut conn,
-        &NewFileNode {
-            kind: FileNodeKind::File.as_str(),
+        owner_id,
+        RootFileNodeSpec {
             name: "principal-check.txt",
-            parent_id: None,
-            alias_target_id: None,
-            object_key: Some("objects/principal-check.txt"),
-            size: Some(5),
-            comment: None,
-            is_dropbox: false,
-            creator_id: owner.id,
+            object_key: "objects/principal-check.txt",
+            size: 5,
         },
     )
     .await?;
@@ -633,7 +669,10 @@ async fn test_resource_permissions_reject_unknown_principal(
     )
     .await
     .expect_err("unknown principal should be rejected");
-    assert!(err.to_string().contains("resource_permissions principal"));
+    anyhow::ensure!(
+        err.to_string().contains("resource_permissions principal"),
+        "unknown principal returned unexpected error: {err}"
+    );
     Ok(())
 }
 

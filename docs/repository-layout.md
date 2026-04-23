@@ -29,32 +29,6 @@ mxd/
 └── validator/             # Protocol validation harness
 ```
 
-
-## Source code organization (`src/`)
-
-The `src/` directory follows a hexagonal architecture pattern, separating
-domain logic from infrastructure adapters.
-
-```text
-src/
-├── lib.rs                 # Library entry point
-├── main.rs                # Legacy server binary entry point
-├── bin/                   # Additional binary entry points
-│   ├── gen_corpus.rs      # Fuzzing corpus generator
-│   └── mxd_wireframe_server.rs  # Wireframe server binary
-├── db/                    # Database adapter (Diesel ORM)
-├── domain/                # Core domain logic
-├── server/                # Server runtime and CLI
-│   ├── admin.rs           # Administrative subcommands
-│   ├── cli.rs             # CLI argument parsing
-│   ├── legacy.rs          # Legacy networking runtime
-│   ├── wireframe.rs       # Wireframe bootstrap
-│   └── mod.rs             # Server module entry
-├── transaction/           # Hotline transaction handling
-├── wireframe/             # Wireframe protocol adapter
-└── wireframe_compat/      # Compatibility layer for Wireframe
-```
-
 ## Source code organization (`src/`)
 
 The `src/` directory follows a hexagonal architecture pattern, separating
