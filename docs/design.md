@@ -2560,24 +2560,24 @@ entries flow from `Permission` to `FileNode` resources through
 erDiagram
   FileNode {
     INTEGER id
-    enum kind
+    VARCHAR kind
     TEXT name
     INTEGER parent_id
     INTEGER alias_target_id
     TEXT object_key
     INTEGER size
-    text comment
-    boolean is_dropbox
+    TEXT comment
+    BOOLEAN is_dropbox
     INTEGER creator_id
-    timestamp created_at
-    timestamp updated_at
+    TIMESTAMP created_at
+    TIMESTAMP updated_at
   }
 
   User {
     INTEGER id
     TEXT username
     TEXT email
-    boolean active
+    BOOLEAN active
   }
 
   Group {
@@ -2592,7 +2592,7 @@ erDiagram
 
   Permission {
     INTEGER id
-    int code
+    INTEGER code
     TEXT name
     TEXT description
   }

@@ -661,11 +661,11 @@ Architecture-specific checks to include during review:
   needed a `futures_util::future::select` implementation instead of the more
   obvious Tokio macro.
 - Tightening the fixture helper in `tests/file_nodes_repository.rs` exposed that
-  `build_test_db` intentionally returns `None` when the postgres-backed
-  integration fixture is unavailable. The test module now gates both backends,
-  so the helper must keep that `None` path as a deliberate skip for unavailable
-  fixtures instead of assuming SQLite-only execution or turning unsupported
-  environments into false failures.
+  keeping the helper strict without turning unsupported environments into false
+  passes required `build_test_db` to return `None` when the PostgreSQL-backed
+  integration fixture is unavailable; the test module itself is gated for both
+  `sqlite` and `postgres` feature sets via
+  `#![cfg(any(feature = "sqlite", feature = "postgres"))]`.
 
 ## Decision Log
 
