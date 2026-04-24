@@ -30,5 +30,5 @@ pub use self::{
     files::{add_file_acl, create_file, list_files_for_user},
     migrations::{apply_migrations, run_migrations},
     paths::PathLookupError,
-    users::{create_user, get_user_by_name},
+    users::{create_user, get_user_by_id, get_user_by_name},
 };

@@ -321,7 +321,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 2.1. Harden session lifecycle management
 
-- [ ] 2.1.1. Implement transactions 300–307 (user list, change notifications,
+- [x] 2.1.1. Implement transactions 300–307 (user list, change notifications,
   agree/disagree flows) exactly as described in `docs/protocol.md`. Acceptance:
   Clients receive Notify Change User (301) and Notify Delete User (302)
   broadcasts that reflect session joins, updates, and logouts. Dependencies: 1.

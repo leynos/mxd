@@ -13,6 +13,7 @@ use crate::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    presence::PresenceRegistry,
     server::outbound::NoopOutboundMessaging,
     transaction::parse_transaction,
     transaction_type::TransactionType,
@@ -60,6 +61,7 @@ struct RouterTestSetup {
     session: Session,
     peer: SocketAddr,
     messaging: NoopOutboundMessaging,
+    presence: PresenceRegistry,
 }
 
 struct MinimalRouterTestSetup {
@@ -69,6 +71,7 @@ struct MinimalRouterTestSetup {
     peer: SocketAddr,
     messaging: NoopOutboundMessaging,
     pool: DbPool,
+    presence: PresenceRegistry,
 }
 
 #[fixture]
@@ -87,6 +90,7 @@ fn router_test_setup() -> Result<Option<RouterTestSetup>, AnyError> {
         session: Session::default(),
         peer,
         messaging: NoopOutboundMessaging,
+        presence: PresenceRegistry::default(),
     }))
 }
 
@@ -101,6 +105,7 @@ fn minimal_router_setup() -> Result<MinimalRouterTestSetup, AnyError> {
         peer,
         messaging: NoopOutboundMessaging,
         pool: dummy_pool(),
+        presence: PresenceRegistry::default(),
     })
 }
 
@@ -136,6 +141,7 @@ fn execute_login(
             pool: setup.test_db.pool(),
             session: &mut setup.session,
             messaging: &setup.messaging,
+            presence: &setup.presence,
         },
     ));
     let tx = parse_transaction(&reply)?;
@@ -234,6 +240,7 @@ fn non_login_hooks_fire_in_order(
             pool: setup.test_db.pool(),
             session: &mut setup.session,
             messaging: &setup.messaging,
+            presence: &setup.presence,
         },
     ));
     let login_tx = parse_transaction(&login_reply)?;
@@ -255,6 +262,7 @@ fn non_login_hooks_fire_in_order(
             pool: setup.test_db.pool(),
             session: &mut setup.session,
             messaging: &setup.messaging,
+            presence: &setup.presence,
         },
     ));
     let tx = parse_transaction(&reply)?;
@@ -305,6 +313,7 @@ fn parse_failure_does_not_trigger_hooks(
             pool: setup.pool,
             session: &mut setup.session,
             messaging: &setup.messaging,
+            presence: &setup.presence,
         },
     ));
 

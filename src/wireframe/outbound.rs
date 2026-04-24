@@ -17,6 +17,7 @@ use wireframe::{
 };
 
 use crate::{
+    presence::{PresenceRegistry, build_notify_delete_user},
     server::outbound::{
         OutboundConnectionId,
         OutboundError,
@@ -75,16 +76,22 @@ impl WireframeOutboundRegistry {
 pub struct WireframeOutboundConnection {
     id: OutboundConnectionId,
     registry: Arc<WireframeOutboundRegistry>,
+    presence: Arc<PresenceRegistry>,
     handle: OnceLock<PushHandle<Vec<u8>>>,
 }
 
 impl WireframeOutboundConnection {
     /// Create a new outbound connection state.
     #[must_use]
-    pub const fn new(id: OutboundConnectionId, registry: Arc<WireframeOutboundRegistry>) -> Self {
+    pub const fn new(
+        id: OutboundConnectionId,
+        registry: Arc<WireframeOutboundRegistry>,
+        presence: Arc<PresenceRegistry>,
+    ) -> Self {
         Self {
             id,
             registry,
+            presence,
             handle: OnceLock::new(),
         }
     }
@@ -105,10 +112,70 @@ impl WireframeOutboundConnection {
     fn handle(&self) -> Option<PushHandle<Vec<u8>>> { self.handle.get().cloned() }
 
     fn registry(&self) -> &WireframeOutboundRegistry { &self.registry }
+
+    fn take_disconnect_notification(&self) -> Option<(i32, Vec<OutboundConnectionId>, Vec<u8>)> {
+        let removal_result = self.presence.remove(self.id);
+        self.registry.remove(self.id);
+        let removal = removal_result?;
+        let user_id = removal.departed.user_id;
+        let encoded_message = build_notify_delete_user(user_id).map_err(|error| {
+            warn!(?error, user_id, "failed to encode notify-delete-user");
+        });
+        let message = encoded_message.ok()?;
+        Some((user_id, removal.remaining_peer_ids, message.to_bytes()))
+    }
+
+    fn spawn_disconnect_notification(
+        registry: Arc<WireframeOutboundRegistry>,
+        user_id: i32,
+        peer_ids: Vec<OutboundConnectionId>,
+        bytes: Vec<u8>,
+    ) {
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            warn!(user_id, "no runtime available for disconnect notification");
+            return;
+        };
+        runtime.spawn(async move {
+            push_disconnect_notifications(registry, peer_ids, bytes).await;
+        });
+    }
 }
 
 impl Drop for WireframeOutboundConnection {
-    fn drop(&mut self) { self.registry.remove(self.id); }
+    fn drop(&mut self) {
+        let Some((user_id, peer_ids, bytes)) = self.take_disconnect_notification() else {
+            return;
+        };
+        let registry = Arc::clone(&self.registry);
+        Self::spawn_disconnect_notification(registry, user_id, peer_ids, bytes);
+    }
+}
+
+async fn push_disconnect_notifications(
+    registry: Arc<WireframeOutboundRegistry>,
+    peer_ids: Vec<OutboundConnectionId>,
+    bytes: Vec<u8>,
+) {
+    for connection_id in peer_ids {
+        push_disconnect_notification(&registry, connection_id, &bytes).await;
+    }
+}
+
+async fn push_disconnect_notification(
+    registry: &WireframeOutboundRegistry,
+    connection_id: OutboundConnectionId,
+    bytes: &[u8],
+) {
+    let Some(handle) = registry.handle_for(connection_id) else {
+        return;
+    };
+    if let Err(error) = handle.push_high_priority(bytes.to_vec()).await {
+        warn!(
+            ?error,
+            target = connection_id.as_u64(),
+            "disconnect push failed"
+        );
+    }
 }
 
 /// Wireframe implementation of outbound messaging.
@@ -183,12 +250,18 @@ const fn map_push_error(error: PushError) -> OutboundError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use rstest::{fixture, rstest};
     use tokio::runtime::Runtime;
     use wireframe::push::PushQueues;
 
     use super::*;
-    use crate::transaction::FrameHeader;
+    use crate::{
+        field_id::FieldId,
+        presence::{PresenceRegistry, PresenceSnapshot},
+        transaction::{FrameHeader, decode_params},
+    };
 
     #[fixture]
     fn reply() -> Transaction {
@@ -210,7 +283,11 @@ mod tests {
     fn push_to_current_requires_handle(reply: Transaction) {
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
-        let connection = Arc::new(WireframeOutboundConnection::new(id, registry));
+        let connection = Arc::new(WireframeOutboundConnection::new(
+            id,
+            registry,
+            Arc::new(PresenceRegistry::default()),
+        ));
         let messaging = WireframeOutboundMessaging::new(connection);
         let rt = Runtime::new().expect("runtime");
 
@@ -225,7 +302,11 @@ mod tests {
     fn push_to_current_enqueues_frame(reply: Transaction) {
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
-        let connection = Arc::new(WireframeOutboundConnection::new(id, Arc::clone(&registry)));
+        let connection = Arc::new(WireframeOutboundConnection::new(
+            id,
+            Arc::clone(&registry),
+            Arc::new(PresenceRegistry::default()),
+        ));
         let messaging = WireframeOutboundMessaging::new(Arc::clone(&connection));
         let rt = Runtime::new().expect("runtime");
 
@@ -249,5 +330,64 @@ mod tests {
         assert_eq!(priority, wireframe::push::PushPriority::High);
         let parsed = crate::transaction::parse_transaction(&frame).expect("parse reply");
         assert_eq!(parsed, reply);
+    }
+
+    #[rstest]
+    fn dropping_connection_broadcasts_notify_delete_user() {
+        let rt = Runtime::new().expect("runtime");
+        let registry = Arc::new(WireframeOutboundRegistry::default());
+        let presence = Arc::new(PresenceRegistry::default());
+
+        let departing_id = registry.allocate_id();
+        let departing = Arc::new(WireframeOutboundConnection::new(
+            departing_id,
+            Arc::clone(&registry),
+            Arc::clone(&presence),
+        ));
+        let remaining_id = registry.allocate_id();
+        let remaining = Arc::new(WireframeOutboundConnection::new(
+            remaining_id,
+            Arc::clone(&registry),
+            Arc::clone(&presence),
+        ));
+
+        let (mut queues, handle) = PushQueues::<Vec<u8>>::builder()
+            .high_capacity(1)
+            .low_capacity(1)
+            .build()
+            .expect("push queues");
+        remaining.register_handle(&handle);
+
+        let _ = presence.upsert(PresenceSnapshot {
+            connection_id: departing_id,
+            user_id: 7,
+            display_name: "alice".to_owned(),
+            icon_id: 0,
+            status_flags: 0,
+        });
+        let _ = presence.upsert(PresenceSnapshot {
+            connection_id: remaining_id,
+            user_id: 8,
+            display_name: "bob".to_owned(),
+            icon_id: 0,
+            status_flags: 0,
+        });
+
+        rt.block_on(async {
+            drop(departing);
+            tokio::task::yield_now().await;
+            let (_, frame) = queues.recv().await.expect("queued disconnect notification");
+            let parsed = crate::transaction::parse_transaction(&frame).expect("parse transaction");
+            assert_eq!(parsed.header.ty, 302);
+            let params = decode_params(&parsed.payload).expect("decode params");
+            let user_id = params
+                .iter()
+                .find(|(field_id, _)| *field_id == FieldId::UserId)
+                .map(|(_, bytes)| i32::from_be_bytes(bytes.as_slice().try_into().expect("user id")))
+                .expect("user id field");
+            assert_eq!(user_id, 7);
+        });
+
+        drop(remaining);
     }
 }
