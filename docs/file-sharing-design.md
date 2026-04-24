@@ -232,7 +232,8 @@ CREATE TABLE user_groups (
 CREATE TABLE file_nodes (
     id INTEGER PRIMARY KEY,
     kind TEXT NOT NULL CHECK (kind IN ('file', 'folder', 'alias')),
-    name TEXT NOT NULL CHECK (name <> '' AND POSITION('/' IN name) = 0),
+    name TEXT NOT NULL CHECK (name <> '' AND instr(name, '/') = 0),
+    -- SQLite syntax; PostgreSQL uses position('/' in name) = 0.
     parent_id INTEGER REFERENCES file_nodes(id) ON DELETE CASCADE,
     alias_target_id INTEGER REFERENCES file_nodes(id) ON DELETE RESTRICT,
     object_key TEXT,
@@ -265,14 +266,17 @@ CREATE TABLE file_nodes (
     )
 );
 
+-- Unique root names (NULL parent is treated as a distinct scope)
 CREATE UNIQUE INDEX idx_file_nodes_root_name
     ON file_nodes(name)
     WHERE parent_id IS NULL;
 
+-- Unique child names within each folder
 CREATE UNIQUE INDEX idx_file_nodes_child_name
     ON file_nodes(parent_id, name)
     WHERE parent_id IS NOT NULL;
 
+-- Unique object keys among stored files
 CREATE UNIQUE INDEX idx_file_nodes_object_key
     ON file_nodes(object_key)
     WHERE object_key IS NOT NULL;
