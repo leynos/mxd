@@ -111,10 +111,13 @@ tables remain in place until roadmap item 3.1.2 backfills existing metadata.
 
 There is no user-visible command change at this milestone:
 `Get File Name List (200)` still behaves as before, but the backing lookup is
-now conditional. Fresh databases resolve visible top-level entries from
-`file_nodes` and `resource_permissions`, while upgraded databases continue to
-read legacy `files` and `file_acl` rows until roadmap item 3.1.2 backfills the
-new tables. Folder traversal, alias operations, file comments, and
+additive during the upgrade window. Fresh databases resolve visible top-level
+entries from `file_nodes` and `resource_permissions` only, while upgraded or
+mixed-state databases merge visible entries from `file_nodes`/
+`resource_permissions` with legacy `files`/`file_acl` rows until roadmap item
+3.1.2 backfills the new tables. This union is implemented in `src/db/files.rs`;
+operators should treat mixed-state listings cautiously until backfill
+completes. Folder traversal, alias operations, file comments, and
 drop-box-specific transport behaviour remain scheduled for later roadmap items.
 For the schema split and the planned backfill path, refer to `docs/design.md`
 and `docs/file-sharing-design.md`.

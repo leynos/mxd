@@ -135,7 +135,7 @@ postgresql_embedded = { version = "0.20", features = ["tokio"] }
 rstest = { workspace = true }
 rstest-bdd = { workspace = true }
 rstest-bdd-macros = { workspace = true }
-serial_test = "3"
+serial_test = { version = "3", features = ["file_locks"] }
 proptest = "1.4.0"
 tempfile = "3.23.0"
 paste = "1.0.15"

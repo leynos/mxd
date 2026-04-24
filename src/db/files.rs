@@ -1,10 +1,9 @@
 //! File hierarchy and ACL helpers.
 //!
-//! This module provides repository functions for the hierarchical `file_nodes` schema
-//! and the polymorphic `resource_permissions` ACL model. During the additive migration
-//! window, visibility queries merge results from the new
-//! `file_nodes` tables with legacy `files`/`file_acl` data to ensure no user-visible regressions
-//! until backfill completes.
+//! This module provides repository functions for the hierarchical `file_nodes`
+//! schema and polymorphic `resource_permissions` ACL model. During the additive migration window,
+//! visibility queries merge new `file_nodes` rows with legacy `files`/`file_acl` data until
+//! backfill completes.
 use cfg_if::cfg_if;
 use diesel::{
     OptionalExtension,
@@ -32,7 +31,6 @@ use crate::models::{
     NewUserGroup,
     VisibleFileNode,
 };
-
 const RESOURCE_TYPE_FILE_NODE: &str = "file_node";
 const PRINCIPAL_USER: &str = "user";
 const PRINCIPAL_GROUP: &str = "group";
@@ -358,16 +356,18 @@ pub async fn list_visible_root_file_nodes_for_user(
         .load::<VisibleFileNode>(conn)
         .await?;
     let legacy_visible = list_legacy_visible_root_files_for_user(conn, user_id).await?;
-    let mut merged = std::collections::BTreeMap::new();
-    for node in visible {
-        merged.insert((node.name.clone(), node.kind.clone()), node);
-    }
-    for node in legacy_visible {
-        merged
-            .entry((node.name.clone(), node.kind.clone()))
-            .or_insert(node);
-    }
-    Ok(merged.into_values().collect())
+    let mut merged = visible;
+    let modern_keys = merged
+        .iter()
+        .map(|node| (node.name.clone(), node.kind.clone()))
+        .collect::<std::collections::BTreeSet<_>>();
+    merged.extend(
+        legacy_visible
+            .into_iter()
+            .filter(|node| !modern_keys.contains(&(node.name.clone(), node.kind.clone()))),
+    );
+    merged.sort_by(|left, right| left.name.cmp(&right.name).then(left.kind.cmp(&right.kind)));
+    Ok(merged)
 }
 
 async fn list_legacy_visible_root_files_for_user(

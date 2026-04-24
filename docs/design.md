@@ -2560,7 +2560,7 @@ entries flow from `Permission` to `FileNode` resources through
 erDiagram
   FileNode {
     INTEGER id
-    VARCHAR kind
+    TEXT kind
     TEXT name
     INTEGER parent_id
     INTEGER alias_target_id
@@ -2786,7 +2786,7 @@ means:
 - The user requests an alias of a file or folder to be created in some folder
   (target directory).
 
-- The server would create a new FileNode with `type='alias'`, name perhaps
+- The server would create a new FileNode with `kind='alias'`, name perhaps
   given by user or same as target, parent_id = target directory, and
   alias_target_id = the item they want to link.
 

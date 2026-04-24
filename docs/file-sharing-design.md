@@ -106,7 +106,7 @@ groups through a permission code.
 erDiagram
     FileNode {
         bigint id
-        enum kind
+        TEXT kind
         varchar name
         bigint parent_id
         bigint alias_target_id
@@ -395,7 +395,7 @@ follows:
   system would still need the DB to get comments and permissions, so it's
   simpler to rely entirely on the DB for structure.
 - **Folder Creation and Deletion:** Creating a folder (NewFolder command)
-  results in a new FileNode of type 'folder' in the DB. **No object is created
+  results in a new FileNode of kind 'folder' in the DB. **No object is created
   in the store** for it (consistent with object stores not needing a
   placeholder object for directories). Deleting a folder in the DB (if empty or
   via recursive delete) will involve deleting all descendant FileNode records
@@ -449,7 +449,7 @@ server performs:
    upload-only dropboxes.
 3. **Query DB:** Fetch all FileNodes where parent_id = folder’s ID. This yields
    all files, subfolders, and aliases in that directory. The system will
-   retrieve attributes needed for the listing: the name, type (to know if it’s
+   retrieve attributes needed for the listing: the name, kind (to know if it’s
    a folder or alias), size (for files or aliases), modification timestamp, and
    comment. The implementation may also query permissions to filter out any
    items the user shouldn’t see individually (e.g., if a specific file has an
@@ -459,12 +459,12 @@ server performs:
 4. **Construct Response:** The server sends the list of entries. The Hotline
    protocol expects each entry as a “File name with info” structure
    (transaction field 200), which includes the item name plus info like size,
-   type flags, dates, and comment. These are populated from the DB. For alias
+   kind flags, dates, and comment. These are populated from the DB. For alias
    entries, a flag/indicator in the info (Hotline likely had a bit to denote
    alias) can also include the alias’s target size/comment. For folders, size
    could be sent as 0 or as a special flag indicating a folder (the client
-   usually distinguished by type, not size).
-5. **Sorting/Paging:** Entries can be sorted alphabetically or by type as needed
+   usually distinguished by kind, not size).
+5. **Sorting/Paging:** Entries can be sorted alphabetically or by kind as needed
    (Hotline sorted folders and files separately). If a directory has many
    entries, paging can be implemented (though Hotline protocol may not have
    defined paging – it likely sent all at once). In a modern implementation,
@@ -480,10 +480,10 @@ async fn list_directory(path: &str, user: &User) -> Result<Vec<ListEntry>, Error
     enforce_can_download_or_list(user, folder_id)?;  // permission check
     let entries = sqlx::query_as!(
         FileNode, 
-        "SELECT id, name, type, size, comment, alias_target_id, updated_at 
+        "SELECT id, name, kind, size, comment, alias_target_id, updated_at 
          FROM FileNode 
          WHERE parent_id = $1 
-         ORDER BY type DESC, name ASC", folder_id)
+         ORDER BY kind DESC, name ASC", folder_id)
         .fetch_all(db_pool).await?;
     // Map to ListEntry DTO with required info
     let list = entries.into_iter().filter(|node| {
@@ -507,7 +507,7 @@ Downloading a file involves streaming the file’s bytes from object storage to
 the client, potentially starting at a byte offset if resuming. Implementation
 steps:
 
-1. **Locate File:** Resolve the requested file path to a FileNode (type should
+1. **Locate File:** Resolve the requested file path to a FileNode (kind should
    be 'file' or 'alias'). If it's an alias, resolution occurs to its target
    file (follow FileNode.alias_target_id chain).
 
@@ -612,7 +612,7 @@ interrupted. The steps:
    is flagged read-only for the user, deny.
 
 3. **Create DB Record:** Insert a new FileNode for the file. We mark its
-   `parent_id`, name, type='file', and set `size=0` initially. We can also
+   `parent_id`, name, kind='file', and set `size=0` initially. We can also
    store `created_by` = user’s ID and a timestamp. We generate a new
    `object_key` for it. At this point, depending on strategy, the
    implementation might not commit the DB transaction until the file content is
@@ -765,7 +765,7 @@ Creating a directory is a simple metadata operation:
    folder-specific rule. We might say if the user can upload to that parent,
    they can also create subfolders, or enforce a separate bit. For fidelity,
    implement bit 5 as needed.
-3. **DB Insert:** Create a new FileNode of type 'folder' with the given name and
+3. **DB Insert:** Create a new FileNode of kind 'folder' with the given name and
    parent_id = parent folder’s ID. Initialize its `comment` (empty by default),
    and `created_by` the user’s ID. Set `is_dropbox` to false by default (unless
    we allow user to create a dropbox specifically – usually dropboxes are set
@@ -892,7 +892,7 @@ files). Implementation:
 
 1. **Identify Target and Destination:** The request provides the existing file’s
    path (source) and a new path for the alias (destination folder and alias
-   name). We locate the target FileNode (must be type 'file'; we should confirm
+   name). We locate the target FileNode (must be kind 'file'; we should confirm
    that aliasing a folder is either not allowed or handled similarly). Locate
    the destination folder and the alias name from the request.
 2. **Permission Check:** Check the user has privilege to create an alias.
@@ -904,7 +904,7 @@ files). Implementation:
    grant access in another area – we handle access at use time anyway. So
    require at least that the user *can* see the target file (download
    permission there), and can create items in the destination.
-3. **DB Insert:** Create a new FileNode entry of type 'alias' in the destination
+3. **DB Insert:** Create a new FileNode entry of kind 'alias' in the destination
    folder with the given alias name. Set its `alias_target_id` to the target
    file’s ID. We do *not* create any object_key for it (no actual data for
    alias). We might set its `size` equal to the target’s size, or leave it as 0
@@ -1180,13 +1180,13 @@ implementation:
 
 4. **DB and Storage Operations:** As described:
 
-   - For each new folder encountered, insert a FileNode (type='folder') in the
+   - For each new folder encountered, insert a FileNode (kind='folder') in the
      appropriate parent. Use the name given. Inherit dropbox flag = false unless
      we decide differently (if client is uploading into a dropbox, the new
      subfolders could possibly be marked dropbox as well? Usually no, subfolders
      inside dropbox might also be dropbox by inheritance or not accessible – an
      edge consideration beyond protocol’s scope).
-   - For each file, when its data arrives, we create a FileNode (type='file',
+   - For each file, when its data arrives, we create a FileNode (kind='file',
      parent as resolved by path) and stream the content to object_store (like
      normal upload). If a file already exists at that path and the user has
      right to overwrite, we might skip or replace it.
@@ -1236,8 +1236,8 @@ schema to achieve this. Key points of ACL enforcement in the implementation:
   user `U` and resource `X` in this order:
 
   1. Resolve the Hotline privilege code required by the operation from the
-     `permissions` catalogue. For example, downloads require the `download`
-     privilege code and uploads require the upload code.
+     `permissions` catalogue. For example, downloads require the
+     `download_file` privilege code and uploads require the `upload_file` code.
   2. Check `user_permissions` for a matching global grant on `U`.
   3. Check `resource_permissions` for direct grants on `X` for `U`.
   4. Load the user’s group memberships from `user_groups` and check

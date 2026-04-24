@@ -34,21 +34,19 @@ use crate::{
 
 #[cfg(feature = "sqlite")]
 #[fixture]
-async fn migrated_conn() -> DbConnection {
-    let mut conn = DbConnection::establish(":memory:")
-        .await
-        .expect("failed to create in-memory connection");
-    apply_migrations(&mut conn, "", None)
-        .await
-        .expect("failed to apply migrations");
-    conn
+async fn migrated_conn() -> Result<DbConnection, AnyError> {
+    let mut conn = DbConnection::establish(":memory:").await?;
+    apply_migrations(&mut conn, "", None).await?;
+    Ok(conn)
 }
 
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_create_and_get_user(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_create_and_get_user(#[future] migrated_conn: Result<DbConnection, AnyError>) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     let new_user = NewUser {
         username: "alice",
         password: "hash",
@@ -68,8 +66,10 @@ async fn test_create_and_get_user(#[future] migrated_conn: DbConnection) {
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_create_bundle_and_category(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_create_bundle_and_category(#[future] migrated_conn: Result<DbConnection, AnyError>) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     let bun = NewBundle {
         parent_bundle_id: None,
         name: "Bundle",
@@ -169,8 +169,10 @@ async fn resource_permission_count(conn: &mut DbConnection) -> Result<i64, AnyEr
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_list_names_invalid_path(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_list_names_invalid_path(#[future] migrated_conn: Result<DbConnection, AnyError>) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     // Ensure we have at least one bundle to differentiate root vs invalid lookups.
     let bun = NewBundle {
         parent_bundle_id: None,
@@ -188,8 +190,12 @@ async fn test_list_names_invalid_path(#[future] migrated_conn: DbConnection) {
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_create_root_article_round_trip(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_create_root_article_round_trip(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     seed_root_category(&mut conn, "General").await;
     let title = "Root Article".to_string();
     let data = "Hello, world!".to_string();
@@ -217,8 +223,12 @@ async fn test_create_root_article_round_trip(#[future] migrated_conn: DbConnecti
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_create_root_article_invalid_path(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_create_root_article_invalid_path(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     let params = CreateRootArticleParams {
         title: "Ghost",
         flags: 0,
@@ -234,8 +244,12 @@ async fn test_create_root_article_invalid_path(#[future] migrated_conn: DbConnec
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_file_node_acl_flow(#[future] migrated_conn: DbConnection) -> Result<(), AnyError> {
-    let mut conn = migrated_conn.await;
+async fn test_file_node_acl_flow(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) -> Result<(), AnyError> {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     let user = NewUser {
         username: "carol",
         password: "hash",
@@ -294,8 +308,12 @@ async fn test_file_node_acl_flow(#[future] migrated_conn: DbConnection) -> Resul
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_resolve_file_node_path_and_alias(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_resolve_file_node_path_and_alias(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     let user = NewUser {
         username: "dora",
         password: "hash",
@@ -381,8 +399,12 @@ async fn test_resolve_file_node_path_and_alias(#[future] migrated_conn: DbConnec
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_group_acl_visibility(#[future] migrated_conn: DbConnection) -> Result<(), AnyError> {
-    let mut conn = migrated_conn.await;
+async fn test_group_acl_visibility(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) -> Result<(), AnyError> {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     create_user(
         &mut conn,
         &NewUser {
@@ -475,11 +497,13 @@ pub(super) async fn test_file_nodes_reject_self_parent_body(
     )
     .await?;
 
-    let err = diesel::update(file_nodes::file_nodes.filter(file_nodes::id.eq(folder_id)))
+    let Err(err) = diesel::update(file_nodes::file_nodes.filter(file_nodes::id.eq(folder_id)))
         .set(file_nodes::parent_id.eq(Some(folder_id)))
         .execute(conn)
         .await
-        .expect_err("self-parent update should fail");
+    else {
+        anyhow::bail!("self-parent update should fail");
+    };
     anyhow::ensure!(
         err.to_string()
             .to_lowercase()
@@ -492,8 +516,12 @@ pub(super) async fn test_file_nodes_reject_self_parent_body(
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_file_nodes_reject_self_parent(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_file_nodes_reject_self_parent(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     test_file_nodes_reject_self_parent_body(&mut conn, "CHECK constraint failed")
         .await
         .expect("self-parent guard should reject recursive parent links");
@@ -501,7 +529,7 @@ async fn test_file_nodes_reject_self_parent(#[future] migrated_conn: DbConnectio
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[ignore = "requires embedded PostgreSQL server"]
+#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_file_nodes_reject_self_parent() {
     use postgresql_embedded::PostgreSQL;
 
@@ -531,7 +559,7 @@ pub(super) async fn test_file_nodes_reject_invalid_basenames_body(
 
     for (index, invalid_name) in ["", "bad/name"].into_iter().enumerate() {
         let object_key = format!("objects/invalid-name-{index}.txt");
-        let err = create_file_node(
+        let Err(err) = create_file_node(
             conn,
             &NewFileNode {
                 kind: FileNodeKind::File.as_str(),
@@ -546,7 +574,9 @@ pub(super) async fn test_file_nodes_reject_invalid_basenames_body(
             },
         )
         .await
-        .expect_err("invalid basename should be rejected");
+        else {
+            anyhow::bail!("invalid basename '{invalid_name}' should be rejected");
+        };
         anyhow::ensure!(
             err.to_string()
                 .to_lowercase()
@@ -561,8 +591,12 @@ pub(super) async fn test_file_nodes_reject_invalid_basenames_body(
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_file_nodes_reject_invalid_basenames(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_file_nodes_reject_invalid_basenames(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     test_file_nodes_reject_invalid_basenames_body(&mut conn, "CHECK constraint failed")
         .await
         .expect("basename guard should reject empty and slash-delimited names");
@@ -570,7 +604,7 @@ async fn test_file_nodes_reject_invalid_basenames(#[future] migrated_conn: DbCon
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[ignore = "requires embedded PostgreSQL server"]
+#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_file_nodes_reject_invalid_basenames() {
     use postgresql_embedded::PostgreSQL;
 
@@ -681,9 +715,11 @@ pub(super) async fn test_resource_permissions_cleanup_on_principal_delete_body(
 #[rstest]
 #[tokio::test]
 async fn test_resource_permissions_cleanup_on_principal_delete(
-    #[future] migrated_conn: DbConnection,
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
 ) {
-    let mut conn = migrated_conn.await;
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     test_resource_permissions_cleanup_on_principal_delete_body(&mut conn)
         .await
         .expect("principal deletes should clean up ACL rows");
@@ -691,7 +727,7 @@ async fn test_resource_permissions_cleanup_on_principal_delete(
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[ignore = "requires embedded PostgreSQL server"]
+#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_resource_permissions_cleanup_on_principal_delete() {
     use postgresql_embedded::PostgreSQL;
 
@@ -729,7 +765,7 @@ pub(super) async fn test_resource_permissions_reject_unknown_principal_body(
     )
     .await?;
 
-    let err = grant_resource_permission(
+    let Err(err) = grant_resource_permission(
         conn,
         &NewResourcePermission {
             resource_type: "file_node",
@@ -740,7 +776,9 @@ pub(super) async fn test_resource_permissions_reject_unknown_principal_body(
         },
     )
     .await
-    .expect_err("unknown principal should be rejected");
+    else {
+        anyhow::bail!("unknown principal should be rejected");
+    };
     anyhow::ensure!(
         err.to_string().contains("resource_permissions principal"),
         "unknown principal returned unexpected error: {err}"
@@ -751,8 +789,12 @@ pub(super) async fn test_resource_permissions_reject_unknown_principal_body(
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_resource_permissions_reject_unknown_principal(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_resource_permissions_reject_unknown_principal(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     test_resource_permissions_reject_unknown_principal_body(&mut conn)
         .await
         .expect("unknown principals should be rejected");
@@ -760,7 +802,7 @@ async fn test_resource_permissions_reject_unknown_principal(#[future] migrated_c
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[ignore = "requires embedded PostgreSQL server"]
+#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_resource_permissions_reject_unknown_principal() {
     use postgresql_embedded::PostgreSQL;
 
@@ -785,8 +827,12 @@ async fn test_resource_permissions_reject_unknown_principal() {
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_legacy_file_acl_visibility_fallback(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_legacy_file_acl_visibility_fallback(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     create_user(
         &mut conn,
         &NewUser {
@@ -838,9 +884,11 @@ async fn test_legacy_file_acl_visibility_fallback(#[future] migrated_conn: DbCon
 #[rstest]
 #[tokio::test]
 async fn test_visible_root_files_merge_legacy_and_file_node_sources(
-    #[future] migrated_conn: DbConnection,
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
 ) -> Result<(), AnyError> {
-    let mut conn = migrated_conn.await;
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     create_user(
         &mut conn,
         &NewUser {
@@ -923,8 +971,10 @@ async fn test_establish_pool_returns_pool() {
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
-async fn test_audit_features(#[future] migrated_conn: DbConnection) {
-    let mut conn = migrated_conn.await;
+async fn test_audit_features(#[future] migrated_conn: Result<DbConnection, AnyError>) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
     audit_sqlite_features(&mut conn)
         .await
         .expect("sqlite feature audit failed");
