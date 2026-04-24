@@ -1,9 +1,10 @@
-//! Maintainer-facing file hierarchy and ACL helpers. This module is the
-//! implementation reference for the additive migration from `files` and
-//! `file_acl` to `file_nodes` and `resource_permissions`: read visibility,
-//! write-side seeding, and the merged read path that keeps upgraded databases serving legacy
-//! content until backfill finishes. Reads return a deduplicated union, with ACL-backed
-//! `file_nodes` entries winning when the same `(name, kind)` pair exists twice.
+//! File hierarchy and ACL helpers.
+//!
+//! This module provides repository functions for the hierarchical `file_nodes` schema
+//! and the polymorphic `resource_permissions` ACL model. During the additive migration
+//! window, visibility queries merge results from the new
+//! `file_nodes` tables with legacy `files`/`file_acl` data to ensure no user-visible regressions
+//! until backfill completes.
 use cfg_if::cfg_if;
 use diesel::{
     OptionalExtension,
@@ -63,7 +64,6 @@ macro_rules! insert_or_get_id {
             .await
     }};
 }
-
 macro_rules! insert_returning_id {
     (conn = $conn:expr,table = $table:expr,values = $values:expr,id_col = $id_col:expr $(,)?) => {{
         cfg_if! {
