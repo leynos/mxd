@@ -301,6 +301,8 @@ fn find_param(params: &[(FieldId, Vec<u8>)], field_id: FieldId) -> Result<&[u8],
         .ok_or_else(|| anyhow!("missing {field_id}"))
 }
 
+type FieldParam = (FieldId, Vec<u8>);
+
 fn read_u32_param(params: &[(FieldId, Vec<u8>)], field_id: FieldId) -> Result<u32, AnyError> {
     decode_protocol_u32(find_param(params, field_id)?)
 }
@@ -396,8 +398,14 @@ fn when_disconnect(world: &PresenceWorld, label: String) -> Result<(), AnyError>
     world.disconnect(&label)
 }
 
+struct NotifyChangeUserExpected {
+    user_id: u32,
+    name: String,
+    icon_id: u32,
+}
+
 fn verify_notify_change_user_fields(
-    params: &[(FieldId, Vec<u8>)],
+    params: &[FieldParam],
     expected: &NotifyChangeUserExpected,
 ) -> Result<(), AnyError> {
     let actual_user_id = read_u32_param(params, FieldId::UserId)?;
@@ -424,15 +432,9 @@ fn verify_notify_change_user_fields(
     Ok(())
 }
 
-struct NotifyChangeUserExpected {
-    user_id: u32,
-    name: String,
-    icon_id: u32,
-}
-
 #[expect(
     clippy::too_many_arguments,
-    reason = "bdd step signature mirrors feature placeholders"
+    reason = "bdd step signature mirrors feature-file placeholders; cannot be reduced"
 )]
 #[then(
     "client \"{label}\" receives a notify change user for user {user_id} with name \"{name}\" and \
