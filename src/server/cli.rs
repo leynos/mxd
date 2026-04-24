@@ -151,6 +151,16 @@ mod tests {
     }
 
     #[rstest]
+    fn migration_timeout_loads_from_env() {
+        Jail::expect_with(|j| {
+            j.set_env("MXD_MIGRATION_TIMEOUT_SECS", "9");
+            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
+            assert_eq!(cfg.migration_timeout_secs, Some(9));
+            Ok(())
+        });
+    }
+
+    #[rstest]
     fn loads_from_dotfile() {
         Jail::expect_with(|j| {
             j.create_file(".mxd.toml", "bind = \"1.2.3.4:1111\"")?;

@@ -1,13 +1,14 @@
 //! Embedded migration utilities.
 
-use std::{error::Error as StdError, fmt, time::Duration};
+use std::{error::Error as StdError, fmt, future::Future, time::Duration};
 
 use cfg_if::cfg_if;
 use diesel::result::{Error as DieselError, QueryResult};
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use diesel::{Connection, result::ConnectionError};
-use diesel_migrations::MigrationHarness;
-use tokio::time::timeout;
+use diesel_migrations::{MigrationError, MigrationHarness};
+use futures_util::{FutureExt, future::Either, pin_mut};
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use super::connection::{DbConnection, MIGRATIONS};
@@ -68,7 +69,22 @@ impl fmt::Display for MigrationTimeoutError {
 
 impl StdError for MigrationTimeoutError {}
 
-const MIGRATION_TIMEOUT: Duration = Duration::from_secs(5);
+#[derive(Debug)]
+struct MigrationCancelledError;
+
+impl fmt::Display for MigrationCancelledError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("migration execution cancelled")
+    }
+}
+
+impl StdError for MigrationCancelledError {}
+
+// The additive file-node migration increases setup cost enough that the old
+// five-second cap becomes flaky under nextest's parallel SQLite database
+// creation. Keep the watchdog, but give embedded migrations enough headroom to
+// finish deterministically on loaded CI and developer machines.
+const DEFAULT_MIGRATION_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Wrap a migration harness error in a Diesel error.
 fn wrap_harness_error(e: Box<dyn StdError + Send + Sync>) -> DieselError {
@@ -76,8 +92,41 @@ fn wrap_harness_error(e: Box<dyn StdError + Send + Sync>) -> DieselError {
 }
 
 /// Wrap a timeout error in a Diesel error.
-fn wrap_timeout_error() -> DieselError {
-    DieselError::SerializationError(Box::new(MigrationTimeoutError(MIGRATION_TIMEOUT)))
+fn wrap_timeout_error(duration: Duration) -> DieselError {
+    DieselError::SerializationError(Box::new(MigrationTimeoutError(duration)))
+}
+
+fn wrap_cancellation_error() -> DieselError {
+    DieselError::SerializationError(Box::new(MigrationCancelledError))
+}
+
+fn migration_timeout(timeout_secs: Option<u64>) -> Duration {
+    timeout_secs
+        .filter(|seconds| *seconds > 0)
+        .map_or(DEFAULT_MIGRATION_TIMEOUT, Duration::from_secs)
+}
+
+async fn run_with_migration_timeout<F, T>(
+    duration: Duration,
+    token: CancellationToken,
+    future: F,
+) -> Result<T, DieselError>
+where
+    F: Future<Output = T>,
+{
+    let migration_future = future.fuse();
+    let timeout_sleep = tokio::time::sleep(duration).fuse();
+    pin_mut!(migration_future);
+    pin_mut!(timeout_sleep);
+
+    match futures_util::future::select(migration_future, timeout_sleep).await {
+        Either::Left((result, _)) => Ok(result),
+        Either::Right(((), pending_migration)) => {
+            token.cancel();
+            let _ = pending_migration.await;
+            Err(wrap_timeout_error(duration))
+        }
+    }
 }
 
 /// Check whether migrations are pending.
@@ -95,20 +144,39 @@ where
 /// Execute all pending migrations.
 ///
 /// Assumes caller has already verified migrations are pending.
-fn apply_pending_migrations<C>(conn: &mut C) -> QueryResult<()>
+fn ensure_migrations_not_cancelled(token: &CancellationToken) -> QueryResult<()> {
+    if token.is_cancelled() {
+        Err(wrap_cancellation_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn is_no_migration_run_error(error: &(dyn StdError + Send + Sync + 'static)) -> bool {
+    error
+        .downcast_ref::<MigrationError>()
+        .is_some_and(|inner| matches!(inner, MigrationError::NoMigrationRun))
+}
+
+fn apply_pending_migrations<C>(conn: &mut C, token: &CancellationToken) -> QueryResult<()>
 where
     C: MigrationHarness<super::connection::Backend>,
 {
     info!("applying pending migrations");
-    conn.run_pending_migrations(MIGRATIONS)
-        .map(|_| ())
-        .map_err(wrap_harness_error)
+    loop {
+        ensure_migrations_not_cancelled(token)?;
+        match conn.run_next_migration(MIGRATIONS) {
+            Ok(_) => (),
+            Err(error) if is_no_migration_run_error(&*error) => return Ok(()),
+            Err(error) => return Err(wrap_harness_error(error)),
+        }
+    }
 }
 
 /// Check for pending migrations and execute them if present.
 ///
 /// Returns `Ok(())` if no migrations are pending or if migrations complete successfully.
-fn execute_migrations_sync<C>(conn: &mut C) -> QueryResult<()>
+fn execute_migrations_sync<C>(conn: &mut C, token: &CancellationToken) -> QueryResult<()>
 where
     C: MigrationHarness<super::connection::Backend>,
 {
@@ -116,7 +184,7 @@ where
         info!("no pending migrations; skipping apply");
         return Ok(());
     }
-    apply_pending_migrations(conn)
+    apply_pending_migrations(conn, token)
 }
 
 cfg_if! {
@@ -126,13 +194,19 @@ cfg_if! {
         /// # Errors
         /// Returns any error produced by Diesel while running migrations.
         #[must_use = "handle the result"]
-        pub async fn run_migrations(conn: &mut DbConnection) -> QueryResult<()> {
-            timeout(
-                MIGRATION_TIMEOUT,
-                conn.spawn_blocking(execute_migrations_sync),
+        pub async fn run_migrations(
+            conn: &mut DbConnection,
+            timeout_secs: Option<u64>,
+        ) -> QueryResult<()> {
+            let timeout = migration_timeout(timeout_secs);
+            let token = CancellationToken::new();
+            let migration_token = token.clone();
+            run_with_migration_timeout(
+                timeout,
+                token,
+                conn.spawn_blocking(move |inner| execute_migrations_sync(inner, &migration_token)),
             )
-            .await
-            .map_err(|_| wrap_timeout_error())??;
+                .await??;
             Ok(())
         }
     } else if #[cfg(all(feature = "postgres", not(feature = "sqlite")))] {
@@ -147,10 +221,10 @@ cfg_if! {
         }
 
         /// Establish a `PostgreSQL` connection and execute migrations.
-        fn establish_and_migrate(url: &str) -> QueryResult<()> {
+        fn establish_and_migrate(url: &str, token: &CancellationToken) -> QueryResult<()> {
             use diesel::pg::PgConnection;
             let mut conn = PgConnection::establish(url).map_err(wrap_connection_error)?;
-            execute_migrations_sync(&mut conn)
+            execute_migrations_sync(&mut conn, token)
         }
 
         /// Run embedded database migrations.
@@ -158,16 +232,22 @@ cfg_if! {
         /// # Errors
         /// Returns any error produced by Diesel while running migrations.
         #[must_use = "handle the result"]
-        pub async fn run_migrations(database_url: &str) -> QueryResult<()> {
+        pub async fn run_migrations(
+            database_url: &str,
+            timeout_secs: Option<u64>,
+        ) -> QueryResult<()> {
             use tokio::task;
             let url = database_url.to_owned();
-            timeout(
-                MIGRATION_TIMEOUT,
-                task::spawn_blocking(move || establish_and_migrate(&url)),
+            let timeout = migration_timeout(timeout_secs);
+            let token = CancellationToken::new();
+            let migration_token = token.clone();
+            run_with_migration_timeout(
+                timeout,
+                token,
+                task::spawn_blocking(move || establish_and_migrate(&url, &migration_token)),
             )
-            .await
-            .map_err(|_| wrap_timeout_error())?
-            .map_err(wrap_executor_error)??;
+                .await?
+                .map_err(wrap_executor_error)??;
             Ok(())
         }
     }
@@ -179,8 +259,12 @@ cfg_if! {
 /// Returns any error produced by Diesel while running migrations.
 #[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
-pub async fn apply_migrations(conn: &mut DbConnection, _database_url: &str) -> QueryResult<()> {
-    run_migrations(conn).await
+pub async fn apply_migrations(
+    conn: &mut DbConnection,
+    _database_url: &str,
+    timeout_secs: Option<u64>,
+) -> QueryResult<()> {
+    run_migrations(conn, timeout_secs).await
 }
 
 /// Apply embedded migrations for the current backend.
@@ -189,7 +273,63 @@ pub async fn apply_migrations(conn: &mut DbConnection, _database_url: &str) -> Q
 /// Returns any error produced by Diesel while running migrations.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[must_use = "handle the result"]
-pub async fn apply_migrations(conn: &mut DbConnection, url: &str) -> QueryResult<()> {
+pub async fn apply_migrations(
+    conn: &mut DbConnection,
+    url: &str,
+    timeout_secs: Option<u64>,
+) -> QueryResult<()> {
     let _ = conn;
-    run_migrations(url).await
+    run_migrations(url, timeout_secs).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migration_timeout_uses_default_when_config_value_is_missing() {
+        assert_eq!(migration_timeout(None), DEFAULT_MIGRATION_TIMEOUT);
+    }
+
+    #[test]
+    fn migration_timeout_uses_default_when_config_value_is_zero() {
+        assert_eq!(migration_timeout(Some(0)), DEFAULT_MIGRATION_TIMEOUT);
+    }
+
+    #[test]
+    fn migration_timeout_accepts_positive_config_override() {
+        assert_eq!(migration_timeout(Some(7)), Duration::from_secs(7));
+    }
+
+    #[tokio::test]
+    async fn migration_watchdog_allows_work_that_finishes_in_time() {
+        let result =
+            run_with_migration_timeout(Duration::from_millis(5), CancellationToken::new(), async {
+                Ok::<(), DieselError>(())
+            })
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "watchdog should not trip for completed work"
+        );
+    }
+
+    #[tokio::test]
+    async fn migration_watchdog_cancels_work_and_reports_the_applied_timeout() {
+        let token = CancellationToken::new();
+        let future_token = token.clone();
+        let err = run_with_migration_timeout(Duration::from_millis(1), token, async move {
+            future_token.cancelled().await;
+            Ok::<(), DieselError>(())
+        })
+        .await
+        .expect_err("cancelled work should time out");
+
+        let DieselError::SerializationError(inner) = err else {
+            panic!("timeout should be wrapped as a serialization error");
+        };
+
+        assert_eq!(inner.to_string(), "migration execution exceeded 1ms");
+    }
 }

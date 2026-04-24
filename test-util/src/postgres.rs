@@ -381,20 +381,30 @@ pub(crate) fn reset_postgres_db(url: &DatabaseUrl) -> Result<(), Box<dyn StdErro
     reason = "test cleanup: user should see cleanup failures"
 )]
 fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
-    if let Ok(mut client) = Client::connect(admin_url.as_ref(), NoTls) {
-        // Always force-terminate sessions before dropping test databases.
-        // This keeps cleanup reliable when fixtures leak pooled connections.
+    let admin_url_owned = admin_url.clone();
+    let db_name_owned = db_name.clone();
+    // Spawn a fresh OS thread so that the synchronous `postgres` crate does not
+    // attempt to block_on inside an already-active Tokio runtime, which would
+    // panic with "Cannot start a runtime from within a runtime."
+    let result = std::thread::spawn(move || {
+        let Ok(mut client) = Client::connect(admin_url_owned.as_ref(), NoTls) else {
+            return;
+        };
         if let Err(e) = client.execute(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> \
              pg_backend_pid()",
-            &[&db_name.as_ref()],
+            &[&db_name_owned.as_ref()],
         ) {
-            eprintln!("error terminating active connections for database {db_name}: {e}");
+            eprintln!("error terminating active connections for database {db_name_owned}: {e}");
         }
-        let query = format!("DROP DATABASE IF EXISTS \"{db_name}\"");
+        let query = format!("DROP DATABASE IF EXISTS \"{db_name_owned}\"");
         if let Err(e) = client.batch_execute(&query) {
-            eprintln!("error dropping database {db_name}: {e}");
+            eprintln!("error dropping database {db_name_owned}: {e}");
         }
+    })
+    .join();
+    if let Err(e) = result {
+        eprintln!("drop_database cleanup thread panicked: {e:?}");
     }
 }
 
@@ -566,6 +576,7 @@ impl PostgresTestDb {
 impl Drop for PostgresTestDb {
     #[expect(
         clippy::let_underscore_must_use,
+        clippy::print_stderr,
         reason = "best-effort cleanup; Drop cannot propagate errors"
     )]
     fn drop(&mut self) {
@@ -573,10 +584,16 @@ impl Drop for PostgresTestDb {
             drop(embedded);
             return;
         }
-        match (&self.admin_url, &self.db_name) {
-            (Some(admin), Some(name)) => drop_external_db(admin, name),
-            _ => {
-                let _ = reset_postgres_db(&self.url);
+        if let (Some(admin), Some(name)) = (&self.admin_url, &self.db_name) {
+            drop_external_db(admin, name);
+        } else {
+            let url = self.url.clone();
+            let result = std::thread::spawn(move || {
+                let _ = reset_postgres_db(&url);
+            })
+            .join();
+            if let Err(e) = result {
+                eprintln!("reset_postgres_db cleanup thread panicked: {e:?}");
             }
         }
     }

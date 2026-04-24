@@ -3,9 +3,10 @@
 //! Centralizes repeated setup flows (users, files, news content) so tests can
 //! compose databases with minimal boilerplate.
 
+mod file_sharing_fixtures;
 mod helpers;
 
-use std::{collections::HashMap, io};
+use std::io;
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -13,20 +14,19 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
 use helpers::{insert_article, insert_root_bundle};
 use mxd::{
-    db::{
-        DbConnection,
-        add_file_acl,
-        apply_migrations,
-        create_bundle,
-        create_category,
-        create_file,
-        create_user,
-    },
-    models::{NewArticle, NewBundle, NewCategory, NewFileAcl, NewFileEntry, NewUser},
-    schema::{files::dsl as files_dsl, users::dsl as users_dsl},
+    db::{DbConnection, apply_migrations, create_bundle, create_category, create_user},
+    models::{NewArticle, NewBundle, NewCategory, NewUser},
+    schema::users::dsl as users_dsl,
     users::hash_password,
 };
 
+use self::file_sharing_fixtures::{
+    ensure_everyone_group_membership,
+    fetch_test_user_id,
+    grant_fixture_download_visibility,
+    seed_download_file_permission,
+    seed_root_file_nodes,
+};
 use crate::AnyError;
 
 /// Database URL wrapper to make fixture APIs more explicit.
@@ -60,14 +60,6 @@ impl From<&crate::server::DbUrl> for DatabaseUrl {
 
 impl AsRef<str> for DatabaseUrl {
     fn as_ref(&self) -> &str { self.as_str() }
-}
-
-/// Resolve a file name to its ID from the lookup map.
-fn resolve_file_id(file_ids: &HashMap<String, i32>, name: &str) -> Result<i32, AnyError> {
-    file_ids
-        .get(name)
-        .copied()
-        .ok_or_else(|| anyhow::anyhow!("missing file id for {name}"))
 }
 
 /// Ensure the test user 'alice' exists in the database.
@@ -116,7 +108,7 @@ where
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let mut conn = DbConnection::establish(db.as_str()).await?;
-        apply_migrations(&mut conn, db.as_str()).await?;
+        apply_migrations(&mut conn, db.as_str(), None).await?;
         f(&mut conn).await
     })
 }
@@ -144,40 +136,11 @@ pub fn setup_files_db(db: DatabaseUrl) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
             ensure_test_user(conn).await?;
-            let user_id: i32 = users_dsl::users
-                .filter(users_dsl::username.eq("alice"))
-                .select(users_dsl::id)
-                .first(conn)
-                .await?;
-            let files = [
-                NewFileEntry {
-                    name: "fileA.txt",
-                    object_key: "1",
-                    size: 1,
-                },
-                NewFileEntry {
-                    name: "fileB.txt",
-                    object_key: "2",
-                    size: 1,
-                },
-                NewFileEntry {
-                    name: "fileC.txt",
-                    object_key: "3",
-                    size: 1,
-                },
-            ];
-            for file in &files {
-                create_file(conn, file).await?;
-            }
-            let file_rows = files_dsl::files
-                .select((files_dsl::name, files_dsl::id))
-                .load::<(String, i32)>(conn)
-                .await?;
-            let file_ids: HashMap<_, _> = file_rows.into_iter().collect();
-            for name in ["fileA.txt", "fileC.txt"] {
-                let file_id = resolve_file_id(&file_ids, name)?;
-                add_file_acl(conn, &NewFileAcl { file_id, user_id }).await?;
-            }
+            let user_id = fetch_test_user_id(conn).await?;
+            let permission_id = seed_download_file_permission(conn).await?;
+            ensure_everyone_group_membership(conn, user_id).await?;
+            let file_node_ids = seed_root_file_nodes(conn, user_id).await?;
+            grant_fixture_download_visibility(conn, user_id, permission_id, &file_node_ids).await?;
             Ok(())
         })
     })

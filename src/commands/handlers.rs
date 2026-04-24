@@ -50,7 +50,8 @@ impl Command {
                     ));
                 };
                 let mut conn = pool.get().await?;
-                let files = crate::db::list_files_for_user(&mut conn, uid).await?;
+                let files =
+                    crate::db::list_visible_root_file_nodes_for_user(&mut conn, uid).await?;
                 let params: Vec<(FieldId, &[u8])> = files
                     .iter()
                     .map(|f| (FieldId::FileName, f.name.as_bytes()))

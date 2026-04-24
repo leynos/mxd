@@ -82,6 +82,46 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
 - `make test-wireframe-only` exercises the Wireframe-first configuration and
   runs the behaviour scenarios that assert the feature gate.
 
+## Startup configuration reference
+
+Both server binaries share the same startup configuration surface through
+`AppConfig`.
+
+- `--bind` / `MXD_BIND` set the listener bind address. Example:
+  `cargo run --bin mxd -- --bind 0.0.0.0:5500`.
+- `--database` / `MXD_DATABASE` set the database URL or sqlite path. Example:
+  `MXD_DATABASE=postgres://localhost/mxd cargo run --bin mxd`.
+- `--migration-timeout-secs` / `MXD_MIGRATION_TIMEOUT_SECS` map to the
+  `migration_timeout_secs` field and set an optional migration timeout in
+  seconds as an integer. Example:
+  `cargo run --bin mxd -- --migration-timeout-secs 30` or
+  `MXD_MIGRATION_TIMEOUT_SECS=30 cargo run --bin mxd-wireframe-server`.
+
+When `--migration-timeout-secs` is unset, startup uses the built-in default
+migration timeout. A value of `0` is normalized back to that default rather
+than disabling the watchdog.
+
+## File metadata baseline
+
+Roadmap item 3.1.1 is an internal schema milestone rather than a new protocol
+feature. Fresh databases now create the additive `file_nodes`, `permissions`,
+`user_permissions`, `groups`, `user_groups`, and `resource_permissions` tables
+used by the new file-sharing adapter, while the legacy `files` and `file_acl`
+tables remain in place until roadmap item 3.1.2 backfills existing metadata.
+
+There is no user-visible command change at this milestone:
+`Get File Name List (200)` still behaves as before, but the backing lookup is
+additive during the upgrade window. Fresh databases resolve visible top-level
+entries from `file_nodes` and `resource_permissions` only, while upgraded or
+mixed-state databases merge visible entries from `file_nodes`/
+`resource_permissions` with legacy `files`/`file_acl` rows until roadmap item
+3.1.2 backfills the new tables. This union is implemented in `src/db/files.rs`;
+operators should treat mixed-state listings cautiously until backfill
+completes. Folder traversal, alias operations, file comments, and
+drop-box-specific transport behaviour remain scheduled for later roadmap items.
+For the schema split and the planned backfill path, refer to `docs/design.md`
+and `docs/file-sharing-design.md`.
+
 ## Creating users
 
 The `create-user` subcommand now runs entirely inside the library so that it is

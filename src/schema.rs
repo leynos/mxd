@@ -12,6 +12,7 @@ diesel::table! {
         password -> Text,
     }
 }
+
 diesel::table! {
     news_bundles (id) {
         id -> Integer,
@@ -19,6 +20,7 @@ diesel::table! {
         name -> Text,
     }
 }
+
 diesel::table! {
     news_categories (id) {
         id -> Integer,
@@ -26,12 +28,30 @@ diesel::table! {
         bundle_id -> Nullable<Integer>,
     }
 }
+
 diesel::table! {
     files (id) {
         id -> Integer,
         name -> Text,
         object_key -> Text,
         size -> BigInt,
+    }
+}
+
+diesel::table! {
+    file_nodes (id) {
+        id -> Integer,
+        kind -> Text,
+        name -> Text,
+        parent_id -> Nullable<Integer>,
+        alias_target_id -> Nullable<Integer>,
+        object_key -> Nullable<Text>,
+        size -> Nullable<BigInt>,
+        comment -> Nullable<Text>,
+        is_dropbox -> Bool,
+        creator_id -> Integer,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
     }
 }
 
@@ -59,4 +79,70 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(files, file_acl);
+diesel::table! {
+    groups (id) {
+        id -> Integer,
+        name -> Text,
+    }
+}
+
+diesel::table! {
+    permissions (id) {
+        id -> Integer,
+        code -> Integer,
+        name -> Text,
+        description -> Text,
+    }
+}
+
+diesel::table! {
+    resource_permissions (
+        resource_type,
+        resource_id,
+        principal_type,
+        principal_id,
+        permission_id
+    ) {
+        resource_type -> Text,
+        resource_id -> Integer,
+        principal_type -> Text,
+        principal_id -> Integer,
+        permission_id -> Integer,
+    }
+}
+
+diesel::table! {
+    user_groups (user_id, group_id) {
+        user_id -> Integer,
+        group_id -> Integer,
+    }
+}
+
+diesel::table! {
+    user_permissions (user_id, permission_id) {
+        user_id -> Integer,
+        permission_id -> Integer,
+    }
+}
+
+diesel::joinable!(file_nodes -> users (creator_id));
+diesel::joinable!(resource_permissions -> permissions (permission_id));
+diesel::joinable!(user_groups -> groups (group_id));
+diesel::joinable!(user_groups -> users (user_id));
+diesel::joinable!(user_permissions -> permissions (permission_id));
+diesel::joinable!(user_permissions -> users (user_id));
+
+diesel::allow_tables_to_appear_in_same_query!(
+    file_acl,
+    file_nodes,
+    files,
+    groups,
+    news_articles,
+    news_bundles,
+    news_categories,
+    permissions,
+    resource_permissions,
+    user_groups,
+    user_permissions,
+    users
+);

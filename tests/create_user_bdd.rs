@@ -80,6 +80,7 @@ impl CreateUserWorld {
         let config = AppConfig {
             database: db_path.to_string_lossy().into_owned(),
             bind: "127.0.0.1:0".to_owned(),
+            migration_timeout_secs: None,
             argon2_m_cost: Params::DEFAULT_M_COST,
             argon2_t_cost: Params::DEFAULT_T_COST,
             argon2_p_cost: Params::DEFAULT_P_COST,

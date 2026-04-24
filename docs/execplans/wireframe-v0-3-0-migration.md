@@ -145,8 +145,8 @@ changing behaviour.
 - Observation: `wireframe::testkit` is not a clear win for the current Hotline
   transport tests. Evidence: the suites most relevant to the migration already
   depend on Hotline-specific preamble bytes, frame reassembly, and bespoke
-  helpers, and the dependency bump plus app-factory refactor did not create
-  painful test boilerplate. Impact: the migration can stay a smaller and lower
+  helpers, and the dependency bump plus app-factory refactor did not create a
+  painful test boilerplate. Impact: the migration can stay smaller and lower
   risk by keeping the existing test helpers for now.
 
 ## Decision log
