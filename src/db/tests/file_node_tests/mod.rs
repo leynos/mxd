@@ -1,4 +1,4 @@
-//! Shared file-node test bodies and embedded-PostgreSQL harness helpers.
+//! Shared file-node test bodies and `PostgreSQL` harness helpers.
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use diesel::prelude::*;
@@ -112,6 +112,19 @@ where
     >,
 {
     use postgresql_embedded::PostgreSQL;
+
+    if std::env::var_os("POSTGRES_TEST_URL").is_some() {
+        let db = test_util::postgres::PostgresTestDb::new_async()
+            .await
+            .map_err(anyhow::Error::from)?;
+        crate::db::run_migrations(db.url.as_ref(), None)
+            .await
+            .map_err(anyhow::Error::from)?;
+        let mut conn = diesel_async::AsyncPgConnection::establish(db.url.as_ref())
+            .await
+            .map_err(anyhow::Error::from)?;
+        return f(&mut conn).await;
+    }
 
     let mut pg = PostgreSQL::default();
     pg.setup().await.map_err(anyhow::Error::from)?;
