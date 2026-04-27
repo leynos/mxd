@@ -1,4 +1,12 @@
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
+//! `SQLite` and `Postgres` database test entry points.
+//!
+//! This module keeps the public test surface for database behaviour while
+//! gating backend-specific cases with `#[cfg(feature = "sqlite")]` or
+//! `#[cfg(feature = "postgres")]`. Shared file-node scenarios and the
+//! embedded-Postgres harness live in `file_node_tests` so heavier,
+//! platform-specific setup stays isolated from the main test list.
+
+#[cfg(feature = "sqlite")]
 use diesel_async::AsyncConnection;
 #[cfg(feature = "sqlite")]
 use rstest::{fixture, rstest};
@@ -341,22 +349,16 @@ async fn test_audit_features(#[future] migrated_conn: Result<DbConnection, AnyEr
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[ignore = "requires embedded PostgreSQL server"]
+#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_audit_postgres() {
-    use postgresql_embedded::PostgreSQL;
-
-    let mut pg = PostgreSQL::default();
-    pg.setup().await.expect("failed to set up postgres");
-    pg.start().await.expect("failed to start postgres");
-    pg.create_database("test")
-        .await
-        .expect("failed to create db");
-    let url = pg.settings().url("test");
-    let mut conn = diesel_async::AsyncPgConnection::establish(&url)
-        .await
-        .expect("failed to connect to postgres");
-    audit_postgres_features(&mut conn)
-        .await
-        .expect("postgres feature audit failed");
-    pg.stop().await.expect("failed to stop postgres");
+    file_node_tests::with_embedded_pg("audit_postgres", |conn| {
+        Box::pin(async move {
+            audit_postgres_features(conn)
+                .await
+                .expect("postgres feature audit failed");
+            Ok(())
+        })
+    })
+    .await
+    .expect("postgres feature audit should run");
 }

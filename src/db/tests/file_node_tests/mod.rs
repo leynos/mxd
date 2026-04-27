@@ -132,7 +132,15 @@ where
     }
     .await;
 
-    let stop_result = pg.stop().await.map_err(anyhow::Error::from);
+    let stop_result = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(anyhow::Error::from)?;
+        runtime.block_on(pg.stop()).map_err(anyhow::Error::from)
+    })
+    .join()
+    .map_err(|_| anyhow::anyhow!("embedded postgres shutdown thread panicked"))?;
     result.and(stop_result)
 }
 

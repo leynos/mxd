@@ -71,7 +71,7 @@ use diesel_cte_ext::{
     cte::{RecursiveBackend, WithRecursive},
 };
 
-/// Normalise a slash-delimited path string for use as a recursive-CTE parameter.
+/// Normalize a slash-delimited path string for use as a recursive-CTE parameter.
 ///
 /// Trims leading and trailing `/` characters, splits the remainder on `/`,
 /// and serializes the resulting segments as a JSON array alongside the

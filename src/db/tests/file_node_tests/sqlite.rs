@@ -49,6 +49,9 @@ pub(crate) async fn file_node_acl_flow_body(conn: &mut DbConnection) -> Result<(
         creator_id: carol.id,
     };
     let file_id = create_file_node(conn, &file).await?;
+    let files_before_grant = list_visible_root_file_nodes_for_user(conn, carol.id).await?;
+    assert_eq!(files_before_grant.len(), 0);
+
     let permission_id = seed_download_permission(conn).await?;
 
     let acl = NewResourcePermission {
@@ -191,6 +194,9 @@ pub(crate) async fn group_acl_visibility_body(conn: &mut DbConnection) -> Result
         },
     )
     .await?;
+    let visible_before_grant = list_visible_root_file_nodes_for_user(conn, erin.id).await?;
+    assert_eq!(visible_before_grant.len(), 0);
+
     let permission_id = seed_download_permission(conn).await?;
 
     assert!(

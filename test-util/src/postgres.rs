@@ -387,8 +387,12 @@ fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
     // attempt to block_on inside an already-active Tokio runtime, which would
     // panic with "Cannot start a runtime from within a runtime."
     let result = std::thread::spawn(move || {
-        let Ok(mut client) = Client::connect(admin_url_owned.as_ref(), NoTls) else {
-            return;
+        let mut client = match Client::connect(admin_url_owned.as_ref(), NoTls) {
+            Ok(client) => client,
+            Err(err) => {
+                eprintln!("error connecting to admin database {admin_url_owned}: {err}");
+                return;
+            }
         };
         if let Err(e) = client.execute(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> \
