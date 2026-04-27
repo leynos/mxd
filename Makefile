@@ -8,6 +8,8 @@ ifneq ($(wildcard $(CARGO_FALLBACK)),)
     CARGO := $(CARGO_FALLBACK)
   endif
 endif
+CARGO_BIN_DIR := $(dir $(CARGO))
+LOCAL_BIN_DIR := $(HOME)/.local/bin
 BUILD_JOBS ?=
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
 WHITAKER ?= whitaker
@@ -74,15 +76,15 @@ lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy for all featur
 
 lint-postgres: ## Run Clippy with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES)
+	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES)
 
 lint-sqlite: ## Run Clippy with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES)
+	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES)
 
 lint-wireframe-only: ## Run Clippy with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES)
+	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES)
 
 markdownlint: ## Lint Markdown files
 	$(MDLINT) '**/*.md'
