@@ -19,6 +19,10 @@ cfg_if::cfg_if! {
             };
         }
 
+        /// Terminal `SELECT` clause for the recursive path CTE (Postgres).
+        ///
+        /// Selects the `id` column from the CTE anchor `tree` at the depth that
+        /// matches the path segment count, passed as Postgres bind parameter `$2`.
         pub(crate) const FILE_NODE_BODY_SQL: &str = "SELECT id FROM tree WHERE idx = $2";
     } else {
         macro_rules! step_sql {
@@ -33,6 +37,11 @@ cfg_if::cfg_if! {
             };
         }
 
+        /// Terminal `SELECT` clause for the recursive path CTE (`SQLite`).
+        ///
+        /// Selects the `id` column from the CTE anchor `tree` at the depth that
+        /// matches the path segment count, passed as `SQLite` positional bind
+        /// parameter `?`.
         pub(crate) const FILE_NODE_BODY_SQL: &str = "SELECT id FROM tree WHERE idx = ?";
     }
 }
