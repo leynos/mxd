@@ -37,17 +37,19 @@ cfg_if::cfg_if! {
     }
 }
 
-/// Seed row for the recursive CTE: starts at depth zero with no parent node.
+/// Seed row for the recursive `tree` CTE.
 ///
-/// Produces a single row `(idx = 0, id = NULL)` that anchors the first step
-/// of the path traversal.
+/// Produces a single `(idx = 0, id = NULL)` row that anchors the first step
+/// of the path traversal. Both the column name `idx` and the initial value
+/// zero are expected by `FILE_NODE_STEP_SQL`.
 pub(crate) const CTE_SEED_SQL: &str = "SELECT 0 AS idx, CAST(NULL AS INTEGER) AS id";
 /// Recursive step SQL for the file-node path CTE.
 ///
 /// Advances the traversal one path segment at a time by joining the current
-/// CTE row against the JSON path array and then against `file_nodes` on name
-/// and parent-id. Backend-specific: one query uses
-/// `json_array_elements_text ... WITH ORDINALITY`; the other uses `json_each`.
+/// `tree` row against the JSON path array and then against `file_nodes` on
+/// `name` and parent-id. The SQL is backend-specific: the `Postgres` variant
+/// uses `json_array_elements_text ... WITH ORDINALITY` keyed by ordinal;
+/// the `SQLite` variant uses `json_each` keyed by `key` (zero-based integer).
 pub(crate) const FILE_NODE_STEP_SQL: &str = step_sql!();
 
 use diesel::{query_builder::QueryFragment, sql_query};
@@ -58,10 +60,10 @@ use diesel_cte_ext::{
     cte::{RecursiveBackend, WithRecursive},
 };
 
-/// Normalise a slash-delimited path string for use as a CTE parameter.
+/// Normalise a slash-delimited path string for use as a recursive-CTE parameter.
 ///
 /// Trims leading and trailing `/` characters, splits the remainder on `/`,
-/// and serialises the resulting segments as a JSON array alongside the
+/// and serializes the resulting segments as a JSON array alongside the
 /// segment count. Returns `Ok(None)` when the path resolves to an empty root
 /// (i.e., the input is empty or contains only slashes).
 ///

@@ -32,8 +32,7 @@ fn resolve_file_node_id(file_node_ids: &HashMap<String, i32>, name: &str) -> Res
 ///
 /// # Errors
 ///
-/// Returns an error if the query fails or `alice` is not present in the
-/// database.
+/// Returns an error if the query fails or `alice` is absent from the database.
 pub(crate) async fn fetch_test_user_id(conn: &mut DbConnection) -> Result<i32, AnyError> {
     users_dsl::users
         .filter(users_dsl::username.eq("alice"))
@@ -45,7 +44,7 @@ pub(crate) async fn fetch_test_user_id(conn: &mut DbConnection) -> Result<i32, A
 
 /// Seed the canonical `download_file` permission row and return its ID.
 ///
-/// Uses `seed_permission` under the hood, so the call is idempotent: if the
+/// Delegates to [`seed_permission`], so the operation is idempotent: if the
 /// row already exists the existing ID is returned.
 ///
 /// # Errors
@@ -63,8 +62,8 @@ pub(crate) async fn seed_download_file_permission(
 ///
 /// # Errors
 ///
-/// Returns an error if either the group creation or the membership insert
-/// fails.
+/// Returns an error if either the group-creation or the membership-insert
+/// operation fails.
 pub(crate) async fn ensure_everyone_group_membership(
     conn: &mut DbConnection,
     user_id: i32,
@@ -86,7 +85,7 @@ pub(crate) async fn ensure_everyone_group_membership(
 ///
 /// # Errors
 ///
-/// Returns an error if any `create_file_node` call fails.
+/// Returns an error if any [`create_file_node`] call fails.
 pub(crate) async fn seed_root_file_nodes(
     conn: &mut DbConnection,
     creator_id: i32,

@@ -164,13 +164,22 @@ re-exports the public surface of each module.
 
 ### Module responsibilities
 
-| Module             | Responsibility                                                                                                                                                                                                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `config.rs`        | Loads `validator.toml` and applies environment-variable overrides to determine which pending validators are enabled.                                                                                                                                                            |
-| `policy.rs`        | Decides whether a missing prerequisite causes a hard test failure (`fail_closed = true`) or a graceful skip (`fail_closed = false`). Reads `MXD_VALIDATOR_FAIL_CLOSED`; falls back to `CI=true` detection.                                                                      |
-| `server_binary.rs` | Resolves the path to a prebuilt `mxd-wireframe-server` binary. Precedence: `MXD_VALIDATOR_SERVER_BINARY` → `CARGO_BIN_EXE_mxd-wireframe-server` → workspace `target/` candidates.                                                                                               |
-| `hx_client.rs`     | Discovers the `hx` binary (rejecting the Helix editor via a version probe), spawns a PTY session via `expectrl`, and provides helpers to wait for the Hotline prompt and terminate the session.                                                                                 |
-| `harness.rs`       | Orchestrates these pieces by running policy and prerequisite checks via `ValidatorHarness::prepare()`, launching the wireframe server with `start_server_with_setup()`, opening the PTY client with `spawn_hx()`, and exporting PTY expect/send helpers used directly by tests. |
+- `config.rs`: loads `validator.toml` and applies environment-variable
+  overrides to determine which pending validators are enabled.
+- `policy.rs`: decides whether a missing prerequisite causes a hard test
+  failure (`fail_closed = true`) or a graceful skip (`fail_closed = false`).
+  Reads `MXD_VALIDATOR_FAIL_CLOSED` and falls back to `CI=true` detection.
+- `server_binary.rs`: resolves the path to a prebuilt
+  `mxd-wireframe-server` binary. Precedence is
+  `MXD_VALIDATOR_SERVER_BINARY`, `CARGO_BIN_EXE_mxd-wireframe-server`, then
+  workspace `target/` candidates.
+- `hx_client.rs`: discovers the `hx` binary, rejecting the Helix editor via a
+  version probe. Spawns a PTY session via `expectrl` and provides helpers to
+  wait for the Hotline prompt and terminate the session.
+- `harness.rs`: orchestrates these pieces by running policy and prerequisite
+  checks via `ValidatorHarness::prepare()`, launching the wireframe server
+  with `start_server_with_setup()`, opening the PTY client with `spawn_hx()`,
+  and exporting PTY expect/send helpers used directly by tests.
 
 ### Key public types
 
@@ -342,92 +351,76 @@ been moved onto the intended v0.3.0 module path.
 
 ## Database module
 
-The database adapter groups file-sharing path traversal, file-node repository
-operations, and migration watchdog behaviour behind `src/db/mod.rs`.
+### Hierarchical path traversal (`src/db/file_path.rs`)
 
-### File-node path traversal
+The `file_path` module provides backend-agnostic helpers for resolving
+slash-delimited paths through the `file_nodes` hierarchy using recursive CTEs
+via `diesel-cte-ext`.
 
-`src/db/file_path.rs` contains the recursive-CTE helpers used to resolve a
-slash-delimited file-node path into the terminal `file_nodes.id`.
+Symbols:
 
-```rust,no_run
-CTE_SEED_SQL
-FILE_NODE_STEP_SQL
-FILE_NODE_BODY_SQL
-prepare_path
-build_path_cte
-build_path_cte_with_conn
-```
+- `CTE_SEED_SQL` (constant): seed row `(idx=0, id=NULL)` that anchors each
+  traversal.
+- `FILE_NODE_STEP_SQL` (constant): backend-specific recursive step. Postgres
+  uses `json_array_elements_text ... WITH ORDINALITY`, while SQLite uses
+  `json_each`.
+- `FILE_NODE_BODY_SQL` (constant): terminal select that picks the node whose
+  depth matches the segment count.
+- `prepare_path` (function): normalises a path string, trims slashes, and
+  serializes segments as a JSON array alongside the segment count. Returns
+  `None` for root paths.
+- `build_path_cte` (function): constructs the full
+  `WITH RECURSIVE tree ...` query from seed, step, and body fragments.
+- `build_path_cte_with_conn` (function): convenience wrapper that infers the
+  backend type from a `&mut C` connection parameter.
 
-`CTE_SEED_SQL` creates the anchor row for the recursive CTE with `idx = 0` and
-no parent node. `FILE_NODE_STEP_SQL` advances one segment at a time by joining
-the current CTE row to the JSON path array and then to `file_nodes`.
-`FILE_NODE_BODY_SQL` selects the row whose depth matches the requested segment
-count.
+Callers pair `prepare_path` with `build_path_cte_with_conn`: `prepare_path`
+validates and serializes the input; `build_path_cte_with_conn` builds the
+parameterized CTE that the Diesel query then drives.
 
-The step SQL is backend-specific:
+### File-node repository API (`src/db/files.rs`)
 
-- PostgreSQL expands the JSON path with
-  `json_array_elements_text($1::json) WITH ORDINALITY` and compares the
-  one-based ordinal to `tree.idx + 1`.
-- SQLite expands the JSON path with `json_each(?)` and compares the zero-based
-  key to `tree.idx`.
+The following functions are re-exported from `src/db/mod.rs`:
 
-Callers prepare path input before building the CTE. `prepare_path` trims
-leading and trailing slashes, serializes the remaining segments as JSON, and
-returns the JSON string plus the segment count. Empty roots such as `""`, `/`,
-and `///` return `Ok(None)`. Non-root paths then bind the JSON and length into
-the backend SQL and call `build_path_cte_with_conn`, allowing Diesel to infer
-the active backend from the connection type.
+- `create_file_node`: inserts a new file, folder, or alias node and returns
+  the generated ID.
+- `get_file_node`: fetches a single node by ID.
+- `list_child_file_nodes`: lists all direct children of a folder node.
+- `list_visible_root_file_nodes_for_user`: returns root nodes visible to a
+  user via direct or group `resource_permissions`, merged with legacy `files`
+  and `file_acl` rows.
+- `resolve_file_node_path`: walks a slash-delimited path through the CTE and
+  returns the terminal node.
+- `resolve_alias_target`: follows an alias node to its target file node.
+- `create_group`: inserts a principal group, idempotent by name.
+- `add_user_to_group`: assigns a user to a group.
+- `seed_permission`: inserts a permission catalogue row, idempotent by code.
+- `grant_resource_permission`: attaches a permission grant to a `file_node`
+  resource for a user or group principal.
+- `download_file_permission`: returns the `NewPermission` descriptor for the
+  canonical `download_file` entry (code 2).
 
-### File-node repository API
+`resolve_file_node_path` returns `Result<Option<FileNode>, FileNodeLookupError>`.
+`FileNodeLookupError` has three variants:
 
-`src/db/files.rs` owns the file-node repository operations exported from
-`src/db/mod.rs`:
+- `InvalidPath`: the path string resolves to an empty root.
+- `Diesel(diesel::result::Error)`: a database query error.
+- `Serde(serde_json::Error)`: a JSON serialization error during path
+  preparation.
 
-```rust,no_run
-create_file_node
-create_group
-seed_permission
-add_user_to_group
-grant_resource_permission
-list_child_file_nodes
-list_visible_root_file_nodes_for_user
-resolve_file_node_path
-resolve_alias_target
-get_file_node
-download_file_permission
-```
+### Migration timeout (`src/db/migrations.rs`)
 
-The API covers node creation, group and permission seeding, ACL grants, child
-listing, visibility-filtered root listing, direct node fetches, path
-resolution, and alias-target resolution. Permission seeding and group creation
-are idempotent so fixture and migration-oriented setup code can reuse them
-without duplicating rows.
+The `AppConfig` struct exposes a `migration_timeout_secs: Option<u64>` field,
+set via the `--migration-timeout-secs` CLI flag or the
+`MXD_MIGRATION_TIMEOUT_SECS` environment variable.
 
-Path lookup failures are represented by `FileNodeLookupError`:
+Behaviour:
 
-```rust,no_run
-FileNodeLookupError::InvalidPath
-FileNodeLookupError::Diesel
-FileNodeLookupError::Serde
-```
-
-`InvalidPath` covers malformed path input or impossible segment counts.
-`Diesel` wraps query failures. `Serde` wraps JSON serialization failures from
-`prepare_path`.
-
-### Migration timeout
-
-`AppConfig` includes `migration_timeout_secs: Option<u64>`, exposed as the
-`--migration-timeout-secs` CLI flag and the `MXD_MIGRATION_TIMEOUT_SECS`
-environment variable. When unset, migrations use the 15-second default in
-`src/db/migrations.rs`.
-
-`run_with_migration_timeout` wraps migration execution in a cancellation-aware
-watchdog. A configured value of zero is normalized to the default rather than
-disabling the watchdog, so accidental zero values keep the same safety margin
-as an omitted setting.
+- When unset or set to `0`, the built-in default of **15 seconds** is used.
+- Positive values override the watchdog duration directly.
+- On expiry, `run_with_migration_timeout` cancels the in-progress migration
+  loop via a `CancellationToken` and returns a `SerializationError` wrapping
+  `MigrationTimeoutError(duration)`.
 
 ## Quality gates
 
