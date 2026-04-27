@@ -2,6 +2,12 @@
 
 APP ?= mxd
 CARGO ?= cargo
+CARGO_FALLBACK := $(HOME)/.cargo/bin/cargo
+ifneq ($(wildcard $(CARGO_FALLBACK)),)
+  ifneq ($(shell command -v $(CARGO) >/dev/null 2>&1; echo $$?),0)
+    CARGO := $(CARGO_FALLBACK)
+  endif
+endif
 BUILD_JOBS ?=
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
 MDLINT ?= markdownlint-cli2
