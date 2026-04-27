@@ -10,6 +10,13 @@ ifneq ($(wildcard $(CARGO_FALLBACK)),)
 endif
 BUILD_JOBS ?=
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
+WHITAKER ?= whitaker
+WHITAKER_FALLBACK := $(HOME)/.local/bin/whitaker
+ifneq ($(wildcard $(WHITAKER_FALLBACK)),)
+  ifneq ($(shell command -v $(WHITAKER) >/dev/null 2>&1; echo $$?),0)
+    WHITAKER := $(WHITAKER_FALLBACK)
+  endif
+endif
 MDLINT ?= markdownlint-cli2
 MDLINT_FALLBACK := $(HOME)/.bun/bin/markdownlint-cli2
 ifneq ($(wildcard $(MDLINT_FALLBACK)),)
@@ -67,15 +74,15 @@ lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy for all featur
 
 lint-postgres: ## Run Clippy with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_POSTGRES_FEATURES)
+	RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES)
 
 lint-sqlite: ## Run Clippy with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_SQLITE_FEATURES)
+	RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES)
 
 lint-wireframe-only: ## Run Clippy with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(WIREFRAME_ONLY_FEATURES)
+	RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES)
 
 markdownlint: ## Lint Markdown files
 	$(MDLINT) '**/*.md'
