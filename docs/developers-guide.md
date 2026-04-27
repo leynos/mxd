@@ -366,7 +366,7 @@ Symbols:
   `json_each`.
 - `FILE_NODE_BODY_SQL` (constant): terminal select that picks the node whose
   depth matches the segment count.
-- `prepare_path` (function): normalises a path string, trims slashes, and
+- `prepare_path` (function): normalizes a path string, trims slashes, and
   serializes segments as a JSON array alongside the segment count. Returns
   `None` for root paths.
 - `build_path_cte` (function): constructs the full

@@ -37,6 +37,8 @@ cfg_if::cfg_if! {
     }
 }
 
+use super::files::FileNodeLookupError;
+
 /// Seed row for the recursive `tree` CTE.
 ///
 /// Produces a single `(idx = 0, id = NULL)` row that anchors the first step
@@ -69,14 +71,18 @@ use diesel_cte_ext::{
 ///
 /// # Errors
 ///
-/// Returns a [`serde_json::Error`] if JSON serialization of the path segments
-/// fails.
-pub(crate) fn prepare_path(path: &str) -> Result<Option<(String, usize)>, serde_json::Error> {
+/// Returns [`FileNodeLookupError::InvalidPath`] if the path contains an empty
+/// interior segment. Returns [`FileNodeLookupError::Serde`] if JSON
+/// serialization of the path segments fails.
+pub(crate) fn prepare_path(path: &str) -> Result<Option<(String, usize)>, FileNodeLookupError> {
     let trimmed = path.trim_matches('/');
     if trimmed.is_empty() {
         return Ok(None);
     }
     let parts: Vec<&str> = trimmed.split('/').collect();
+    if parts.iter().any(|part| part.is_empty()) {
+        return Err(FileNodeLookupError::InvalidPath);
+    }
     let len = parts.len();
     let json = serde_json::to_string(&parts)?;
     Ok(Some((json, len)))
@@ -164,6 +170,13 @@ mod tests {
             .expect("non-root path should produce path parameters");
         assert_eq!(len, 2);
         assert_eq!(json, r#"["Docs","guide.txt"]"#);
+    }
+
+    #[test]
+    fn prepare_path_rejects_empty_interior_segment() {
+        let err =
+            prepare_path("/Docs//guide.txt").expect_err("empty interior segment should be invalid");
+        assert!(matches!(err, super::FileNodeLookupError::InvalidPath));
     }
 
     #[test]

@@ -8,7 +8,8 @@ ifneq ($(wildcard $(CARGO_FALLBACK)),)
     CARGO := $(CARGO_FALLBACK)
   endif
 endif
-CARGO_BIN_DIR := $(dir $(CARGO))
+CARGO_RESOLVED := $(shell resolved=$$(command -v $(CARGO) 2>/dev/null); if [ -n "$$resolved" ]; then dir=$$(dirname "$$resolved"); base=$$(basename "$$resolved"); printf '%s/%s\n' "$$(cd "$$dir" && pwd)" "$$base"; fi)
+CARGO_BIN_DIR := $(if $(CARGO_RESOLVED),$(dir $(CARGO_RESOLVED)),$(dir $(CARGO)))
 LOCAL_BIN_DIR := $(HOME)/.local/bin
 BUILD_JOBS ?=
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings

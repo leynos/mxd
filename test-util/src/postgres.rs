@@ -575,7 +575,6 @@ impl PostgresTestDb {
 
 impl Drop for PostgresTestDb {
     #[expect(
-        clippy::let_underscore_must_use,
         clippy::print_stderr,
         reason = "best-effort cleanup; Drop cannot propagate errors"
     )]
@@ -588,12 +587,15 @@ impl Drop for PostgresTestDb {
             drop_external_db(admin, name);
         } else {
             let url = self.url.clone();
-            let result = std::thread::spawn(move || {
-                let _ = reset_postgres_db(&url);
-            })
-            .join();
-            if let Err(e) = result {
-                eprintln!("reset_postgres_db cleanup thread panicked: {e:?}");
+            let result = std::thread::spawn(move || reset_postgres_db(&url)).join();
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    eprintln!("reset_postgres_db cleanup failed: {err}");
+                }
+                Err(err) => {
+                    eprintln!("reset_postgres_db cleanup thread panicked: {err:?}");
+                }
             }
         }
     }
