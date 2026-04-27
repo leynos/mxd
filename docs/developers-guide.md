@@ -340,6 +340,95 @@ Keep these import-path changes explicit in migration patches so reviews can
 confirm whether a call site still depends on a compatibility re-export or has
 been moved onto the intended v0.3.0 module path.
 
+## Database module
+
+The database adapter groups file-sharing path traversal, file-node repository
+operations, and migration watchdog behaviour behind `src/db/mod.rs`.
+
+### File-node path traversal
+
+`src/db/file_path.rs` contains the recursive-CTE helpers used to resolve a
+slash-delimited file-node path into the terminal `file_nodes.id`.
+
+```rust,no_run
+CTE_SEED_SQL
+FILE_NODE_STEP_SQL
+FILE_NODE_BODY_SQL
+prepare_path
+build_path_cte
+build_path_cte_with_conn
+```
+
+`CTE_SEED_SQL` creates the anchor row for the recursive CTE with `idx = 0` and
+no parent node. `FILE_NODE_STEP_SQL` advances one segment at a time by joining
+the current CTE row to the JSON path array and then to `file_nodes`.
+`FILE_NODE_BODY_SQL` selects the row whose depth matches the requested segment
+count.
+
+The step SQL is backend-specific:
+
+- PostgreSQL expands the JSON path with
+  `json_array_elements_text($1::json) WITH ORDINALITY` and compares the
+  one-based ordinal to `tree.idx + 1`.
+- SQLite expands the JSON path with `json_each(?)` and compares the zero-based
+  key to `tree.idx`.
+
+Callers prepare path input before building the CTE. `prepare_path` trims
+leading and trailing slashes, serializes the remaining segments as JSON, and
+returns the JSON string plus the segment count. Empty roots such as `""`, `/`,
+and `///` return `Ok(None)`. Non-root paths then bind the JSON and length into
+the backend SQL and call `build_path_cte_with_conn`, allowing Diesel to infer
+the active backend from the connection type.
+
+### File-node repository API
+
+`src/db/files.rs` owns the file-node repository operations exported from
+`src/db/mod.rs`:
+
+```rust,no_run
+create_file_node
+create_group
+seed_permission
+add_user_to_group
+grant_resource_permission
+list_child_file_nodes
+list_visible_root_file_nodes_for_user
+resolve_file_node_path
+resolve_alias_target
+get_file_node
+download_file_permission
+```
+
+The API covers node creation, group and permission seeding, ACL grants, child
+listing, visibility-filtered root listing, direct node fetches, path
+resolution, and alias-target resolution. Permission seeding and group creation
+are idempotent so fixture and migration-oriented setup code can reuse them
+without duplicating rows.
+
+Path lookup failures are represented by `FileNodeLookupError`:
+
+```rust,no_run
+FileNodeLookupError::InvalidPath
+FileNodeLookupError::Diesel
+FileNodeLookupError::Serde
+```
+
+`InvalidPath` covers malformed path input or impossible segment counts.
+`Diesel` wraps query failures. `Serde` wraps JSON serialization failures from
+`prepare_path`.
+
+### Migration timeout
+
+`AppConfig` includes `migration_timeout_secs: Option<u64>`, exposed as the
+`--migration-timeout-secs` CLI flag and the `MXD_MIGRATION_TIMEOUT_SECS`
+environment variable. When unset, migrations use the 15-second default in
+`src/db/migrations.rs`.
+
+`run_with_migration_timeout` wraps migration execution in a cancellation-aware
+watchdog. A configured value of zero is normalized to the default rather than
+disabling the watchdog, so accidental zero values keep the same safety margin
+as an omitted setting.
+
 ## Quality gates
 
 Run the full suite from the repository root after making changes:

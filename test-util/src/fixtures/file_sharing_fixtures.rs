@@ -28,6 +28,12 @@ fn resolve_file_node_id(file_node_ids: &HashMap<String, i32>, name: &str) -> Res
         .ok_or_else(|| anyhow::anyhow!("missing file-node id for {name}"))
 }
 
+/// Return the user ID for the fixture user `alice`.
+///
+/// # Errors
+///
+/// Returns an error if the query fails or `alice` is not present in the
+/// database.
 pub(crate) async fn fetch_test_user_id(conn: &mut DbConnection) -> Result<i32, AnyError> {
     users_dsl::users
         .filter(users_dsl::username.eq("alice"))
@@ -37,6 +43,14 @@ pub(crate) async fn fetch_test_user_id(conn: &mut DbConnection) -> Result<i32, A
         .map_err(Into::into)
 }
 
+/// Seed the canonical `download_file` permission row and return its ID.
+///
+/// Uses `seed_permission` under the hood, so the call is idempotent: if the
+/// row already exists the existing ID is returned.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub(crate) async fn seed_download_file_permission(
     conn: &mut DbConnection,
 ) -> Result<i32, AnyError> {
@@ -45,6 +59,12 @@ pub(crate) async fn seed_download_file_permission(
         .map_err(Into::into)
 }
 
+/// Create the `everyone` group (idempotent) and add `user_id` to it.
+///
+/// # Errors
+///
+/// Returns an error if either the group creation or the membership insert
+/// fails.
 pub(crate) async fn ensure_everyone_group_membership(
     conn: &mut DbConnection,
     user_id: i32,
@@ -61,6 +81,12 @@ pub(crate) async fn ensure_everyone_group_membership(
     Ok(())
 }
 
+/// Insert the three canonical root file nodes (`fileA.txt`, `fileB.txt`,
+/// `fileC.txt`) owned by `creator_id` and return a map of name to node ID.
+///
+/// # Errors
+///
+/// Returns an error if any `create_file_node` call fails.
 pub(crate) async fn seed_root_file_nodes(
     conn: &mut DbConnection,
     creator_id: i32,
@@ -108,6 +134,17 @@ pub(crate) async fn seed_root_file_nodes(
     Ok(file_node_ids)
 }
 
+/// Grant the `download_file` permission to `user_id` for `fileA.txt` and
+/// `fileC.txt`, establishing the fixture visibility contract used by
+/// `fixture_download_visibility_contract` and related tests.
+///
+/// `fileB.txt` is intentionally excluded to provide a hidden-file control
+/// case.
+///
+/// # Errors
+///
+/// Returns an error if any permission grant fails or if a required file-node
+/// ID is absent from `file_node_ids`.
 pub(crate) async fn grant_fixture_download_visibility(
     conn: &mut DbConnection,
     user_id: i32,
