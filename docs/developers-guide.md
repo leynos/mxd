@@ -10,6 +10,29 @@ codebase, plus the PostgreSQL helper needed for integration coverage.
 - `cargo` and `make` available on your `PATH`.
 - Optional: `pg-embed-setup-unpriv` for PostgreSQL-backed tests.
 
+### Build-tool resolution
+
+The `Makefile` applies a conditional fallback for each build tool it invokes.
+When the named tool is not found on `PATH`, the Makefile checks a fixed
+well-known location and, if present, promotes it:
+
+| Variable | Default | Fallback location |
+| --- | --- | --- |
+| `CARGO` | `cargo` | `~/.cargo/bin/cargo` |
+| `WHITAKER` | `whitaker` | `~/.local/bin/whitaker` |
+| `MDLINT` | `markdownlint-cli2` | `~/.bun/bin/markdownlint-cli2` |
+
+This avoids silent failures when a tool is installed outside `PATH` and prevents
+the Makefile from inadvertently resolving to an unintended binary earlier in
+`PATH`. Override any variable at invocation time if the tool lives elsewhere:
+
+```sh
+make lint WHITAKER=/opt/custom/bin/whitaker
+```
+
+The fallback is a one-time check at parse time; it does not introduce a runtime
+dependency on shell availability.
+
 ## PostgreSQL test helper
 
 Install the helper once:
