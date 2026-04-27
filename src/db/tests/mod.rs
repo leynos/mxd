@@ -176,6 +176,17 @@ async fn test_file_node_acl_flow(
     file_node_tests::file_node_acl_flow_body(&mut conn).await
 }
 
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[serial_test::file_serial(postgres_embedded_setup)]
+async fn test_file_node_acl_flow() {
+    file_node_tests::with_embedded_pg("file_node_acl_flow", |conn| {
+        Box::pin(file_node_tests::file_node_acl_flow_body(conn))
+    })
+    .await
+    .expect("file-node ACL flow should pass on Postgres");
+}
+
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
@@ -188,6 +199,17 @@ async fn test_resolve_file_node_path_and_alias(
     file_node_tests::resolve_file_node_path_and_alias_body(&mut conn).await
 }
 
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[serial_test::file_serial(postgres_embedded_setup)]
+async fn test_resolve_file_node_path_and_alias() {
+    file_node_tests::with_embedded_pg("resolve_file_node_path_alias", |conn| {
+        Box::pin(file_node_tests::resolve_file_node_path_and_alias_body(conn))
+    })
+    .await
+    .expect("file-node path and alias resolution should pass on Postgres");
+}
+
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
@@ -198,6 +220,17 @@ async fn test_group_acl_visibility(
         .await
         .expect("failed to create migrated test database");
     file_node_tests::group_acl_visibility_body(&mut conn).await
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[serial_test::file_serial(postgres_embedded_setup)]
+async fn test_group_acl_visibility() {
+    file_node_tests::with_embedded_pg("group_acl_visibility", |conn| {
+        Box::pin(file_node_tests::group_acl_visibility_body(conn))
+    })
+    .await
+    .expect("group ACL visibility should pass on Postgres");
 }
 
 #[cfg(feature = "sqlite")]

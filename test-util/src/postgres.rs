@@ -390,7 +390,8 @@ fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
         let mut client = match Client::connect(admin_url_owned.as_ref(), NoTls) {
             Ok(client) => client,
             Err(err) => {
-                eprintln!("error connecting to admin database {admin_url_owned}: {err}");
+                let redacted_url = redacted_database_url(&admin_url_owned);
+                eprintln!("error connecting to admin database {redacted_url}: {err}");
                 return;
             }
         };
@@ -410,6 +411,19 @@ fn drop_database(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
     if let Err(e) = result {
         eprintln!("drop_database cleanup thread panicked: {e:?}");
     }
+}
+
+fn redacted_database_url(url: &DatabaseUrl) -> String {
+    let Ok(mut parsed_url) = Url::parse(url.as_ref()) else {
+        return "<invalid database URL>".to_owned();
+    };
+    if !parsed_url.username().is_empty() && parsed_url.set_username("<redacted>").is_err() {
+        return "<invalid database URL>".to_owned();
+    }
+    if parsed_url.password().is_some() && parsed_url.set_password(Some("<redacted>")).is_err() {
+        return "<invalid database URL>".to_owned();
+    }
+    parsed_url.to_string()
 }
 
 fn create_external_db(

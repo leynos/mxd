@@ -9,16 +9,16 @@ use diesel_async::RunQueryDsl;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use test_util::AnyError;
 
+mod shared;
 #[cfg(feature = "sqlite")]
 mod sqlite;
-#[cfg(feature = "sqlite")]
-pub(super) use sqlite::{
+pub(super) use shared::{
     file_node_acl_flow_body,
     group_acl_visibility_body,
-    legacy_file_acl_visibility_fallback_body,
     resolve_file_node_path_and_alias_body,
-    visible_root_files_merge_body,
 };
+#[cfg(feature = "sqlite")]
+pub(super) use sqlite::{legacy_file_acl_visibility_fallback_body, visible_root_files_merge_body};
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use crate::{

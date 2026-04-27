@@ -134,23 +134,16 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::prepare_path;
 
-    #[test]
-    fn prepare_path_returns_none_for_empty_string() {
-        let path = prepare_path("").expect("empty path should serialize");
-        assert_eq!(path, None);
-    }
-
-    #[test]
-    fn prepare_path_returns_none_for_slash_only() {
-        let path = prepare_path("/").expect("slash-only path should serialize");
-        assert_eq!(path, None);
-    }
-
-    #[test]
-    fn prepare_path_returns_none_for_multiple_slashes() {
-        let path = prepare_path("///").expect("slash-only path should serialize");
+    #[rstest]
+    #[case("")]
+    #[case("/")]
+    #[case("///")]
+    fn prepare_path_returns_none_for_root_like_inputs(#[case] input: &str) {
+        let path = prepare_path(input).expect("root-like path should serialize");
         assert_eq!(path, None);
     }
 
