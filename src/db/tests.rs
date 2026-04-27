@@ -528,27 +528,43 @@ async fn test_file_nodes_reject_self_parent(
 }
 
 #[cfg(feature = "postgres")]
-#[tokio::test]
-#[serial_test::file_serial(postgres_embedded_setup)]
-async fn test_file_nodes_reject_self_parent() {
+async fn with_embedded_pg<F>(db_name: &str, f: F) -> Result<(), test_util::AnyError>
+where
+    F: for<'conn> FnOnce(
+        &'conn mut DbConnection,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(), test_util::AnyError>> + 'conn>,
+    >,
+{
     use postgresql_embedded::PostgreSQL;
 
     let mut pg = PostgreSQL::default();
-    pg.setup().await.expect("failed to set up postgres");
-    pg.start().await.expect("failed to start postgres");
-    pg.create_database("self_parent")
+    pg.setup().await.map_err(anyhow::Error::from)?;
+    pg.start().await.map_err(anyhow::Error::from)?;
+    pg.create_database(db_name)
         .await
-        .expect("failed to create db");
-    let url = pg.settings().url("self_parent");
+        .map_err(anyhow::Error::from)?;
+    let url = pg.settings().url(db_name);
     run_migrations(&url, None)
         .await
-        .expect("failed to apply migrations");
+        .map_err(anyhow::Error::from)?;
     let mut conn = diesel_async::AsyncPgConnection::establish(&url)
         .await
-        .expect("failed to connect to postgres");
-    let result = test_file_nodes_reject_self_parent_body(&mut conn, "check").await;
-    pg.stop().await.expect("failed to stop postgres");
-    result.expect("self-parent guard should reject recursive parent links");
+        .map_err(anyhow::Error::from)?;
+    let result = f(&mut conn).await;
+    pg.stop().await.map_err(anyhow::Error::from)?;
+    result
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[serial_test::file_serial(postgres_embedded_setup)]
+async fn test_file_nodes_reject_self_parent() {
+    with_embedded_pg("self_parent", |conn| {
+        Box::pin(test_file_nodes_reject_self_parent_body(conn, "check"))
+    })
+    .await
+    .expect("self-parent guard should reject recursive parent links");
 }
 
 pub(super) async fn test_file_nodes_reject_invalid_basenames_body(
@@ -606,24 +622,11 @@ async fn test_file_nodes_reject_invalid_basenames(
 #[tokio::test]
 #[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_file_nodes_reject_invalid_basenames() {
-    use postgresql_embedded::PostgreSQL;
-
-    let mut pg = PostgreSQL::default();
-    pg.setup().await.expect("failed to set up postgres");
-    pg.start().await.expect("failed to start postgres");
-    pg.create_database("invalid_basenames")
-        .await
-        .expect("failed to create db");
-    let url = pg.settings().url("invalid_basenames");
-    run_migrations(&url, None)
-        .await
-        .expect("failed to apply migrations");
-    let mut conn = diesel_async::AsyncPgConnection::establish(&url)
-        .await
-        .expect("failed to connect to postgres");
-    let result = test_file_nodes_reject_invalid_basenames_body(&mut conn, "check").await;
-    pg.stop().await.expect("failed to stop postgres");
-    result.expect("basename guard should reject empty and slash-delimited names");
+    with_embedded_pg("invalid_basenames", |conn| {
+        Box::pin(test_file_nodes_reject_invalid_basenames_body(conn, "check"))
+    })
+    .await
+    .expect("basename guard should reject empty and slash-delimited names");
 }
 
 async fn grant_cleanup_permissions(conn: &mut DbConnection) -> Result<(i32, i32), AnyError> {
@@ -729,24 +732,13 @@ async fn test_resource_permissions_cleanup_on_principal_delete(
 #[tokio::test]
 #[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_resource_permissions_cleanup_on_principal_delete() {
-    use postgresql_embedded::PostgreSQL;
-
-    let mut pg = PostgreSQL::default();
-    pg.setup().await.expect("failed to set up postgres");
-    pg.start().await.expect("failed to start postgres");
-    pg.create_database("cleanup_principal_delete")
-        .await
-        .expect("failed to create db");
-    let url = pg.settings().url("cleanup_principal_delete");
-    run_migrations(&url, None)
-        .await
-        .expect("failed to apply migrations");
-    let mut conn = diesel_async::AsyncPgConnection::establish(&url)
-        .await
-        .expect("failed to connect to postgres");
-    let result = test_resource_permissions_cleanup_on_principal_delete_body(&mut conn).await;
-    pg.stop().await.expect("failed to stop postgres");
-    result.expect("principal deletes should clean up ACL rows");
+    with_embedded_pg("cleanup_principal_delete", |conn| {
+        Box::pin(test_resource_permissions_cleanup_on_principal_delete_body(
+            conn,
+        ))
+    })
+    .await
+    .expect("principal deletes should clean up ACL rows");
 }
 
 pub(super) async fn test_resource_permissions_reject_unknown_principal_body(
@@ -804,24 +796,13 @@ async fn test_resource_permissions_reject_unknown_principal(
 #[tokio::test]
 #[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_resource_permissions_reject_unknown_principal() {
-    use postgresql_embedded::PostgreSQL;
-
-    let mut pg = PostgreSQL::default();
-    pg.setup().await.expect("failed to set up postgres");
-    pg.start().await.expect("failed to start postgres");
-    pg.create_database("unknown_principal")
-        .await
-        .expect("failed to create db");
-    let url = pg.settings().url("unknown_principal");
-    run_migrations(&url, None)
-        .await
-        .expect("failed to apply migrations");
-    let mut conn = diesel_async::AsyncPgConnection::establish(&url)
-        .await
-        .expect("failed to connect to postgres");
-    let result = test_resource_permissions_reject_unknown_principal_body(&mut conn).await;
-    pg.stop().await.expect("failed to stop postgres");
-    result.expect("unknown principals should be rejected");
+    with_embedded_pg("unknown_principal", |conn| {
+        Box::pin(test_resource_permissions_reject_unknown_principal_body(
+            conn,
+        ))
+    })
+    .await
+    .expect("unknown principals should be rejected");
 }
 
 #[cfg(feature = "sqlite")]
