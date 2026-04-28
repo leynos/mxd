@@ -18,6 +18,16 @@ use crate::{
     schema::{file_acl::dsl as legacy_file_acl, files::dsl as legacy_files},
 };
 
+/// Verify that legacy `files`/`file_acl` rows surface through
+/// `list_visible_root_file_nodes_for_user` during the backfill window.
+///
+/// Inserts a record into the legacy `files` table, confirms no visibility,
+/// then inserts a matching `file_acl` row and asserts the file becomes visible
+/// with `kind = "file"`.
+///
+/// # Errors
+///
+/// Propagates any database error encountered during the scenario.
 #[expect(
     clippy::cognitive_complexity,
     reason = "scenario-style test body is clearer kept as a linear flow"
@@ -68,6 +78,16 @@ pub(crate) async fn legacy_file_acl_visibility_fallback_body(
     Ok(())
 }
 
+/// Verify that modern `file_nodes` and legacy `files` rows are merged and
+/// deduplicated correctly in `list_visible_root_file_nodes_for_user`.
+///
+/// Seeds one modern `file_node` with a download permission and one legacy
+/// `files`/`file_acl` pair for the same user, then asserts both names appear
+/// in the result in order.
+///
+/// # Errors
+///
+/// Propagates any database error encountered during the scenario.
 #[expect(
     clippy::cognitive_complexity,
     reason = "scenario-style test body is clearer kept as a linear flow"

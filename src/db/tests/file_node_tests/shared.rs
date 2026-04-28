@@ -20,6 +20,12 @@ use crate::{
     models::{FileNodeKind, NewFileNode, NewGroup, NewResourcePermission, NewUser, NewUserGroup},
 };
 
+/// Verify the full direct-user ACL flow: create, check no visibility, grant,
+/// check idempotency, then assert visibility.
+///
+/// # Errors
+///
+/// Propagates any database error encountered during the scenario.
 #[expect(
     clippy::cognitive_complexity,
     reason = "scenario-style test body is clearer kept as a linear flow"
@@ -67,6 +73,13 @@ pub(crate) async fn file_node_acl_flow_body(conn: &mut DbConnection) -> Result<(
     Ok(())
 }
 
+/// Verify that `resolve_file_node_path`, `list_child_file_nodes`, and
+/// `resolve_alias_target` work correctly over a two-level folder/file/alias
+/// hierarchy.
+///
+/// # Errors
+///
+/// Propagates any database error encountered during the scenario.
 #[expect(
     clippy::cognitive_complexity,
     reason = "scenario-style test body is clearer kept as a linear flow"
@@ -147,6 +160,12 @@ pub(crate) async fn resolve_file_node_path_and_alias_body(
     Ok(())
 }
 
+/// Verify that a group-scoped `resource_permissions` grant makes a root file
+/// node visible to group members.
+///
+/// # Errors
+///
+/// Propagates any database error encountered during the scenario.
 #[expect(
     clippy::cognitive_complexity,
     reason = "scenario-style test body is clearer kept as a linear flow"

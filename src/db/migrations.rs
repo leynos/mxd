@@ -106,6 +106,23 @@ fn migration_timeout(timeout_secs: Option<u64>) -> Duration {
         .map_or(DEFAULT_MIGRATION_TIMEOUT, Duration::from_secs)
 }
 
+async fn cancel_timed_out_migration<F, T>(
+    duration: Duration,
+    token: CancellationToken,
+    pending_migration: F,
+) -> Result<T, DieselError>
+where
+    F: Future<Output = T>,
+{
+    info!(
+        timeout_secs = duration.as_secs(),
+        "migration watchdog fired; cancelling in-progress work"
+    );
+    token.cancel();
+    let _ = pending_migration.await;
+    Err(wrap_timeout_error(duration))
+}
+
 async fn run_with_migration_timeout<F, T>(
     duration: Duration,
     token: CancellationToken,
@@ -122,9 +139,7 @@ where
     match futures_util::future::select(migration_future, timeout_sleep).await {
         Either::Left((result, _)) => Ok(result),
         Either::Right(((), pending_migration)) => {
-            token.cancel();
-            let _ = pending_migration.await;
-            Err(wrap_timeout_error(duration))
+            cancel_timed_out_migration(duration, token, pending_migration).await
         }
     }
 }

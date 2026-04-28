@@ -9,9 +9,16 @@ use diesel_async::RunQueryDsl;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use test_util::AnyError;
 
+mod additional;
 mod shared;
 #[cfg(feature = "sqlite")]
 mod sqlite;
+pub(super) use additional::{
+    file_node_check_kind_constraint_body,
+    nested_child_not_visible_without_explicit_grant_body,
+    non_download_permission_does_not_grant_visibility_body,
+    resolve_file_node_path_returns_none_for_missing_path_body,
+};
 pub(super) use shared::{
     file_node_acl_flow_body,
     group_acl_visibility_body,
@@ -36,6 +43,11 @@ use crate::{
     schema::file_nodes::dsl as file_nodes,
 };
 
+/// Seed the canonical `download_file` permission and return its ID.
+///
+/// # Errors
+///
+/// Propagates any database error.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(super) async fn seed_download_permission(conn: &mut DbConnection) -> Result<i32, AnyError> {
     seed_permission(conn, &download_file_permission())
@@ -102,6 +114,12 @@ async fn resource_permission_count(conn: &mut DbConnection) -> Result<i64, AnyEr
         .map_err(anyhow::Error::from)
 }
 
+/// Run `f` against a freshly migrated `PostgreSQL` database.
+///
+/// Uses `POSTGRES_TEST_URL` when set; otherwise starts embedded `PostgreSQL`.
+///
+/// # Errors
+/// Returns any setup, migration, closure, or shutdown error.
 #[cfg(feature = "postgres")]
 pub(super) async fn with_embedded_pg<F>(db_name: &str, f: F) -> Result<(), AnyError>
 where
@@ -157,6 +175,12 @@ where
     result.and(stop_result)
 }
 
+/// Verify that the database rejects an update that would make a node its own
+/// parent.
+///
+/// # Errors
+/// Returns an error if the constraint was not enforced or a database operation
+/// failed unexpectedly.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(super) async fn reject_self_parent_body(
     conn: &mut DbConnection,
@@ -196,6 +220,12 @@ pub(super) async fn reject_self_parent_body(
     Ok(())
 }
 
+/// Verify that the database rejects file nodes with invalid basenames.
+///
+/// # Errors
+///
+/// Returns an error if an invalid basename was accepted or a database operation
+/// failed unexpectedly.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(super) async fn reject_invalid_basenames_body(
     conn: &mut DbConnection,
@@ -295,6 +325,12 @@ async fn delete_cleanup_principals(
     Ok(())
 }
 
+/// Verify that deleting a user or group cascades to `resource_permissions`.
+///
+/// # Errors
+///
+/// Returns an error if the ACL count was unexpected or a database operation
+/// failed.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(super) async fn cleanup_on_principal_delete_body(
     conn: &mut DbConnection,
@@ -322,6 +358,11 @@ pub(super) async fn cleanup_on_principal_delete_body(
     Ok(())
 }
 
+/// Verify that `grant_resource_permission` rejects an unknown principal ID.
+///
+/// # Errors
+///
+/// Returns an error if the row was accepted or a database operation failed.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(super) async fn reject_unknown_principal_body(conn: &mut DbConnection) -> Result<(), AnyError> {
     let owner_id = create_test_user(conn, "principal-owner").await?;

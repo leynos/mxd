@@ -1,9 +1,7 @@
-//! File hierarchy and ACL helpers.
-//!
-//! This module provides repository functions for the hierarchical `file_nodes`
-//! schema and polymorphic `resource_permissions` ACL model. During the additive migration window,
-//! visibility queries merge new `file_nodes` rows with legacy `files`/`file_acl` data until
-//! backfill completes.
+//! File hierarchy and ACL repository helpers.
+#[path = "file_legacy_visibility.rs"]
+mod legacy_visibility;
+
 use cfg_if::cfg_if;
 use diesel::{
     OptionalExtension,
@@ -14,7 +12,9 @@ use diesel::{
     sql_types::{Integer, Nullable, Text},
 };
 use diesel_async::RunQueryDsl;
+use legacy_visibility::list_legacy_visible_root_files_for_user;
 use thiserror::Error;
+use tracing::{debug, info};
 
 #[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
 use super::insert::fetch_last_insert_rowid;
@@ -101,7 +101,11 @@ pub enum FileNodeLookupError {
     /// A database query error occurred.
     #[error(transparent)]
     Diesel(#[from] diesel::result::Error),
-    /// A JSON serialization error occurred while preparing the path.
+    /// A JSON serialization error while preparing path segments.
+    ///
+    /// In practice this variant is unreachable for well-formed UTF-8 path
+    /// strings; it exists to preserve the `Result` contract for the
+    /// `serde_json` call.
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 }
@@ -199,12 +203,21 @@ pub async fn grant_resource_permission(
 ) -> QueryResult<bool> {
     use crate::schema::resource_permissions::dsl::resource_permissions;
 
-    diesel::insert_into(resource_permissions)
+    let inserted = diesel::insert_into(resource_permissions)
         .values(permission)
         .on_conflict_do_nothing()
         .execute(conn)
         .await
-        .map(|rows| rows > 0)
+        .map(|rows| rows > 0)?;
+    if inserted {
+        info!(
+            resource_id = permission.resource_id,
+            principal_type = permission.principal_type,
+            principal_id = permission.principal_id,
+            "resource permission granted"
+        );
+    }
+    Ok(inserted)
 }
 
 async fn file_node_id_from_path(
@@ -227,6 +240,14 @@ async fn file_node_id_from_path(
     let query = build_path_cte_with_conn(conn, step, body);
     let result: Option<NodeId> = query.get_result(conn).await.optional()?;
     Ok(result.and_then(|row| row.id))
+}
+
+fn log_file_node_path_resolution(path: &str, node: Option<&FileNode>) {
+    debug!(
+        path,
+        resolved = node.is_some(),
+        "file-node path resolution completed"
+    );
 }
 
 /// Fetch a single file node by identifier.
@@ -253,12 +274,14 @@ pub async fn resolve_file_node_path(
     conn: &mut DbConnection,
     path: &str,
 ) -> Result<Option<FileNode>, FileNodeLookupError> {
-    let Some(node_id) = file_node_id_from_path(conn, path).await? else {
-        return Ok(None);
+    let node = match file_node_id_from_path(conn, path).await? {
+        Some(node_id) => get_file_node(conn, node_id)
+            .await
+            .map_err(FileNodeLookupError::from)?,
+        None => None,
     };
-    get_file_node(conn, node_id)
-        .await
-        .map_err(FileNodeLookupError::from)
+    log_file_node_path_resolution(path, node.as_ref());
+    Ok(node)
 }
 
 /// List the child nodes directly beneath the selected parent.
@@ -367,34 +390,10 @@ pub async fn list_visible_root_file_nodes_for_user(
             .filter(|node| !modern_keys.contains(&(node.name.clone(), node.kind.clone()))),
     );
     merged.sort_by(|left, right| left.name.cmp(&right.name).then(left.kind.cmp(&right.kind)));
+    debug!(
+        user_id,
+        file_count = merged.len(),
+        "visibility query completed"
+    );
     Ok(merged)
-}
-
-async fn list_legacy_visible_root_files_for_user(
-    conn: &mut DbConnection,
-    user_id: i32,
-) -> QueryResult<Vec<VisibleFileNode>> {
-    #[derive(Queryable)]
-    struct LegacyVisibleFile {
-        id: i32,
-        name: String,
-    }
-    use crate::schema::{file_acl::dsl as a, files::dsl as f};
-
-    let legacy_files = f::files
-        .inner_join(a::file_acl.on(a::file_id.eq(f::id)))
-        .filter(a::user_id.eq(user_id))
-        .order(f::name.asc())
-        .select((f::id, f::name))
-        .load::<LegacyVisibleFile>(conn)
-        .await?;
-
-    Ok(legacy_files
-        .into_iter()
-        .map(|file| VisibleFileNode {
-            id: file.id,
-            name: file.name,
-            kind: String::from("file"),
-        })
-        .collect())
 }
