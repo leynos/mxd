@@ -2,13 +2,16 @@
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
+use rstest::rstest;
 use test_util::AnyError;
 
+use super::super::{audit_sqlite_features, migrated_conn};
 use crate::{
     db::{
         DbConnection,
         create_file_node,
         create_user,
+        establish_pool,
         get_user_by_name,
         grant_resource_permission,
         list_visible_root_file_nodes_for_user,
@@ -163,4 +166,45 @@ pub(crate) async fn visible_root_files_merge_body(conn: &mut DbConnection) -> Re
         .collect::<Vec<_>>();
     assert_eq!(visible_names, vec!["legacy.txt", "modern.txt"]);
     Ok(())
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_legacy_file_acl_visibility_fallback(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) -> Result<(), AnyError> {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
+    legacy_file_acl_visibility_fallback_body(&mut conn).await
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_visible_root_files_merge_legacy_and_file_node_sources(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) -> Result<(), AnyError> {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
+    visible_root_files_merge_body(&mut conn).await
+}
+
+#[tokio::test]
+async fn test_establish_pool_returns_pool() {
+    let pool = establish_pool(":memory:")
+        .await
+        .expect("pool creation failed");
+    pool.get().await.expect("pool should yield connection");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_audit_features(#[future] migrated_conn: Result<DbConnection, AnyError>) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
+    audit_sqlite_features(&mut conn)
+        .await
+        .expect("sqlite feature audit failed");
 }

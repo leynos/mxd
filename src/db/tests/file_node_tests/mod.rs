@@ -11,21 +11,20 @@ use test_util::AnyError;
 
 mod additional;
 mod shared;
+mod shared_core;
 #[cfg(feature = "sqlite")]
 mod sqlite;
-pub(super) use additional::{
+pub(super) use shared::{
     file_node_check_kind_constraint_body,
     nested_child_not_visible_without_explicit_grant_body,
     non_download_permission_does_not_grant_visibility_body,
     resolve_file_node_path_returns_none_for_missing_path_body,
 };
-pub(super) use shared::{
+pub(super) use shared_core::{
     file_node_acl_flow_body,
     group_acl_visibility_body,
     resolve_file_node_path_and_alias_body,
 };
-#[cfg(feature = "sqlite")]
-pub(super) use sqlite::{legacy_file_acl_visibility_fallback_body, visible_root_files_merge_body};
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use crate::{

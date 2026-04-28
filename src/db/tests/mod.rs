@@ -222,6 +222,54 @@ async fn test_group_acl_visibility(
     file_node_tests::group_acl_visibility_body(&mut conn).await
 }
 
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_resolve_file_node_path_returns_none_for_missing_path(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn.await.expect("migrated db");
+    file_node_tests::resolve_file_node_path_returns_none_for_missing_path_body(&mut conn)
+        .await
+        .expect("missing-path should return None");
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_non_download_permission_does_not_grant_visibility(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn.await.expect("migrated db");
+    file_node_tests::non_download_permission_does_not_grant_visibility_body(&mut conn)
+        .await
+        .expect("non-download permission should not grant visibility");
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_nested_child_not_visible_without_explicit_grant(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn.await.expect("migrated db");
+    file_node_tests::nested_child_not_visible_without_explicit_grant_body(&mut conn)
+        .await
+        .expect("nested child should not appear without explicit grant");
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_file_node_check_kind_constraints(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn.await.expect("migrated db");
+    file_node_tests::file_node_check_kind_constraint_body(&mut conn)
+        .await
+        .expect("kind-specific CHECK constraints should be enforced");
+}
+
 #[cfg(feature = "postgres")]
 #[tokio::test]
 #[serial_test::file_serial(postgres_embedded_setup)]
@@ -333,51 +381,6 @@ async fn test_resource_permissions_reject_unknown_principal() {
     })
     .await
     .expect("unknown principals should be rejected");
-}
-
-#[cfg(feature = "sqlite")]
-#[rstest]
-#[tokio::test]
-async fn test_legacy_file_acl_visibility_fallback(
-    #[future] migrated_conn: Result<DbConnection, AnyError>,
-) -> Result<(), AnyError> {
-    let mut conn = migrated_conn
-        .await
-        .expect("failed to create migrated test database");
-    file_node_tests::legacy_file_acl_visibility_fallback_body(&mut conn).await
-}
-
-#[cfg(feature = "sqlite")]
-#[rstest]
-#[tokio::test]
-async fn test_visible_root_files_merge_legacy_and_file_node_sources(
-    #[future] migrated_conn: Result<DbConnection, AnyError>,
-) -> Result<(), AnyError> {
-    let mut conn = migrated_conn
-        .await
-        .expect("failed to create migrated test database");
-    file_node_tests::visible_root_files_merge_body(&mut conn).await
-}
-
-#[cfg(feature = "sqlite")]
-#[tokio::test]
-async fn test_establish_pool_returns_pool() {
-    let pool = establish_pool(":memory:")
-        .await
-        .expect("pool creation failed");
-    pool.get().await.expect("pool should yield connection");
-}
-
-#[cfg(feature = "sqlite")]
-#[rstest]
-#[tokio::test]
-async fn test_audit_features(#[future] migrated_conn: Result<DbConnection, AnyError>) {
-    let mut conn = migrated_conn
-        .await
-        .expect("failed to create migrated test database");
-    audit_sqlite_features(&mut conn)
-        .await
-        .expect("sqlite feature audit failed");
 }
 
 #[cfg(feature = "postgres")]
