@@ -120,9 +120,8 @@ where
         "migration watchdog fired; cancelling in-progress work"
     );
     token.cancel();
-    match tokio::time::timeout(MIGRATION_CANCEL_GRACE_TIMEOUT, pending_migration).await {
-        Ok(_) | Err(_) => {}
-    }
+    let _timeout_result =
+        tokio::time::timeout(MIGRATION_CANCEL_GRACE_TIMEOUT, pending_migration).await;
     Err(wrap_timeout_error(duration))
 }
 
