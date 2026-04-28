@@ -377,8 +377,8 @@ been moved onto the intended v0.3.0 module path.
 ### Hierarchical path traversal (`src/db/file_path.rs`)
 
 The `file_path` module provides backend-agnostic helpers for resolving
-slash-delimited paths through the `file_nodes` hierarchy using recursive CTEs
-via `diesel-cte-ext`.
+slash-delimited paths through the `file_nodes` hierarchy using recursive Common
+Table Expressions (CTEs) via `diesel-cte-ext`.
 
 Symbols:
 
@@ -426,7 +426,7 @@ The following functions are re-exported from `src/db/mod.rs`:
 `resolve_file_node_path` returns `Result<Option<FileNode>, FileNodeLookupError>`.
 `FileNodeLookupError` has three variants:
 
-- `InvalidPath`: the path string resolves to an empty root.
+- `InvalidPath`: invalid or malformed path.
 - `Diesel(diesel::result::Error)`: a database query error.
 - `Serde(serde_json::Error)`: a JSON serialization error during path
   preparation.
