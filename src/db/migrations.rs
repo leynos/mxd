@@ -85,6 +85,7 @@ impl StdError for MigrationCancelledError {}
 // creation. Keep the watchdog, but give embedded migrations enough headroom to
 // finish deterministically on loaded CI and developer machines.
 const DEFAULT_MIGRATION_TIMEOUT: Duration = Duration::from_secs(15);
+const MIGRATION_CANCEL_GRACE_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Wrap a migration harness error in a Diesel error.
 fn wrap_harness_error(e: Box<dyn StdError + Send + Sync>) -> DieselError {
@@ -119,7 +120,9 @@ where
         "migration watchdog fired; cancelling in-progress work"
     );
     token.cancel();
-    let _ = pending_migration.await;
+    match tokio::time::timeout(MIGRATION_CANCEL_GRACE_TIMEOUT, pending_migration).await {
+        Ok(_) | Err(_) => {}
+    }
     Err(wrap_timeout_error(duration))
 }
 

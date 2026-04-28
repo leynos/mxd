@@ -9,6 +9,16 @@ use crate::{
     schema::{file_acl::dsl as file_acl, files::dsl as files},
 };
 
+/// List legacy root files visible to `user_id` through `file_acl` rows.
+///
+/// Joins legacy `files` records to explicit legacy ACL grants for the selected
+/// user, orders visible files by name, and maps each result into a
+/// `VisibleFileNode` with `kind = "file"` for merge compatibility with modern
+/// `file_nodes` visibility queries.
+///
+/// # Errors
+///
+/// Returns `Err` if the database connection or visibility query fails.
 pub(super) async fn list_legacy_visible_root_files_for_user(
     conn: &mut DbConnection,
     user_id: i32,
