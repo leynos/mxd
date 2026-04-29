@@ -1376,21 +1376,21 @@ Additionally, we have **permissions** for news:
    This approach makes it easy to query which users have, say, “News Admin”
   rights, or to extend with new permissions.
 
-For roadmap item 4.1.1 we aligned the implemented schema to this design using
+For roadmap item 4.1.1 the implemented schema was aligned to this design using
 an additive migration pair (`00000000000006_align_news_schema`) rather than
-rewriting historical migrations in place. PostgreSQL can add the missing
-bundle and category metadata columns in place, but SQLite cannot safely reach
-the target defaults and scoped category uniqueness with `ALTER TABLE` alone.
-The SQLite migration therefore rebuilds `news_bundles`, `news_categories`, and
+rewriting historical migrations in place. PostgreSQL can add the missing bundle
+and category metadata columns in place, but SQLite cannot safely reach the
+target defaults and scoped category uniqueness with `ALTER TABLE` alone. The
+SQLite migration therefore rebuilds `news_bundles`, `news_categories`, and
 `news_articles`, copying rows forward with stable IDs and recreating the
 required indices explicitly.
 
 The same migration also backfills legacy rows so the aligned schema is usable
-immediately after upgrade. Bundles and categories receive generated legacy
-GUID surrogates plus `created_at` timestamps, and categories derive `add_sn`
-from the current article count while initializing `delete_sn` to `0`. We also
-create the normalized `permissions` and `user_permissions` tables in this step
-without yet wiring runtime privilege loading; that remains intentionally
+immediately after upgrade. Bundles and categories receive generated legacy GUID
+surrogates plus `created_at` timestamps, and categories derive `add_sn` from
+the current article count while initializing `delete_sn` to `0`. The migration
+also creates the normalized `permissions` and `user_permissions` tables in this
+step without yet wiring runtime privilege loading; that remains intentionally
 deferred to roadmap item 4.1.3 so schema alignment does not widen into
 behavioural permission enforcement.
 

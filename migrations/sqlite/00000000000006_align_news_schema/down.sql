@@ -32,7 +32,7 @@ CREATE INDEX idx_bundles_name_parent ON news_bundles(name, parent_bundle_id);
 
 CREATE TABLE news_categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
     bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE
 );
 

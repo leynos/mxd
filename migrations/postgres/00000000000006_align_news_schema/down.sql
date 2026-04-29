@@ -12,9 +12,6 @@ ALTER TABLE news_categories
     DROP CONSTRAINT IF EXISTS news_categories_name_bundle_id_key;
 
 ALTER TABLE news_categories
-    ADD CONSTRAINT news_categories_name_key UNIQUE (name);
-
-ALTER TABLE news_categories
     DROP COLUMN IF EXISTS created_at,
     DROP COLUMN IF EXISTS delete_sn,
     DROP COLUMN IF EXISTS add_sn,
