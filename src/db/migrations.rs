@@ -249,10 +249,8 @@ cfg_if! {
         /// # Errors
         ///
         /// Returns any error produced by Diesel while running migrations.
-        /// Returns a wrapped [`MigrationTimeoutError`] when the watchdog
-        /// cancels work that exceeds `timeout_secs`. [`MigrationCancelledError`]
-        /// is only returned if cancellation is observed separately inside the
-        /// migration loop.
+        /// Returns a wrapped [`MigrationTimeoutError`] when the watchdog cancels work
+        /// that exceeds `timeout_secs`.
         #[must_use = "handle the result"]
         pub async fn run_migrations(
             conn: &mut DbConnection,
@@ -297,10 +295,8 @@ cfg_if! {
         /// # Errors
         ///
         /// Returns any error produced by Diesel while running migrations.
-        /// Returns a wrapped [`MigrationTimeoutError`] when the watchdog
-        /// cancels work that exceeds `timeout_secs`. [`MigrationCancelledError`]
-        /// is only returned if cancellation is observed separately inside the
-        /// migration loop.
+        /// Returns a wrapped [`MigrationTimeoutError`] when the watchdog cancels work
+        /// that exceeds `timeout_secs`.
         #[must_use = "handle the result"]
         pub async fn run_migrations(
             database_url: &str,
@@ -334,8 +330,7 @@ cfg_if! {
 ///
 /// Returns any error produced by Diesel while running migrations. Returns a
 /// wrapped [`MigrationTimeoutError`] when the watchdog cancels work that
-/// exceeds `timeout_secs`. [`MigrationCancelledError`] is only returned if
-/// cancellation is observed separately inside the migration loop.
+/// exceeds `timeout_secs`.
 #[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
 pub async fn apply_migrations(
@@ -357,8 +352,7 @@ pub async fn apply_migrations(
 ///
 /// Returns any error produced by Diesel while running migrations. Returns a
 /// wrapped [`MigrationTimeoutError`] when the watchdog cancels work that
-/// exceeds `timeout_secs`. [`MigrationCancelledError`] is only returned if
-/// cancellation is observed separately inside the migration loop.
+/// exceeds `timeout_secs`.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[must_use = "handle the result"]
 pub async fn apply_migrations(

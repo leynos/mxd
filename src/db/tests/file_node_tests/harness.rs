@@ -76,5 +76,13 @@ where
     })
     .join()
     .map_err(|_| anyhow::anyhow!("embedded postgres shutdown thread panicked"))?;
-    result.and(stop_result)
+    match (result, stop_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(scenario_error), Ok(())) => Err(scenario_error),
+        (Ok(()), Err(stop_error)) => Err(stop_error),
+        (Err(scenario_error), Err(stop_error)) => Err(anyhow::anyhow!(
+            "postgres scenario failed: {scenario_error}; embedded postgres shutdown failed: \
+             {stop_error}"
+        )),
+    }
 }

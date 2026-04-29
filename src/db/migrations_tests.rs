@@ -28,10 +28,8 @@ async fn migration_watchdog_allows_work_that_finishes_in_time() {
         })
         .await;
 
-    assert!(
-        result.is_ok(),
-        "watchdog should not trip for completed work"
-    );
+    let inner = result.expect("watchdog should not trip for completed work");
+    assert_eq!(inner.expect("inner migration work should succeed"), ());
 }
 
 #[tokio::test]
