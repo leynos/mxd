@@ -1,9 +1,8 @@
 # Align the news schema and migrations (roadmap 4.1.1)
 
-This ExecPlan is a living document. The sections `Constraints`,
-`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as
-work proceeds.
+This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
+`Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
+`Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: IN_PROGRESS
 
@@ -14,9 +13,9 @@ PLANS.md does not exist in this repository.
 Roadmap item 4.1.1 requires the repository's news persistence layer to match
 `docs/news-schema.md` across both SQLite and PostgreSQL. The target state is
 not just "news tables exist"; it is a schema that supports hierarchical
-bundles, categories with GUID and sequence metadata, threaded articles with
-referential integrity, and normalized permission tables that later roadmap
-steps can seed and enforce.
+bundles, categories with globally unique identifier (GUID) and sequence
+metadata, threaded articles with referential integrity, and normalized
+permission tables that later roadmap steps can seed and enforce.
 
 Success is observable when:
 
@@ -37,8 +36,8 @@ Success is observable when:
   strategy;
 - `docs/users-guide.md` is updated only for user-visible changes, while
   material internal implementation or architectural decisions are recorded in
-  `docs/developers-guide.md` or an ADR with a call-out in the developer's
-  guide when the rationale is non-trivial;
+  `docs/developers-guide.md` or an ADR with a call-out in the developer's guide
+  when the rationale is non-trivial;
 - `docs/roadmap.md` item 4.1.1 is marked done only after implementation and
   all quality gates pass.
 
@@ -87,8 +86,8 @@ Success is observable when:
   replacement that risks data loss beyond controlled copy-forward, stop and
   document options before proceeding.
 - Behaviour: if implementing the schema requires changing protocol-visible news
-  behaviour or login privilege semantics now, stop and split that work into
-  the correct roadmap item.
+  behaviour or login privilege semantics now, stop and split that work into the
+  correct roadmap item.
 - Dependency: if any new crate beyond the already-published
   `diesel-cte-ext` and `pg-embed-setup-unpriv` usage is needed, stop and
   escalate.
@@ -101,8 +100,8 @@ Success is observable when:
 
 - Risk: SQLite's `ALTER TABLE` limitations may require table rebuilds for
   `news_categories` and `news_articles`. Severity: high. Likelihood: high.
-  Mitigation: use an additive migration that creates replacement tables,
-  copies data forward transactionally where possible, and recreates indices and
+  Mitigation: use an additive migration that creates replacement tables, copies
+  data forward transactionally where possible, and recreates indices and
   constraints explicitly.
 - Risk: current fixtures and models assume the old, smaller column set and may
   fail silently or produce partial rows after the schema expands or historical
@@ -161,8 +160,7 @@ Success is observable when:
 
 - The current news schema is already partially implemented, but it is missing
   the normalized permission tables and several columns required by
-  `docs/news-schema.md`:
-  `guid`, `created_at`, `add_sn`, and `delete_sn`.
+  `docs/news-schema.md`: `guid`, `created_at`, `add_sn`, and `delete_sn`.
 - The existing migration history is split across
   `00000000000001_create_news`, `00000000000002_add_bundles`,
   `00000000000003_add_articles`, and
@@ -175,22 +173,21 @@ Success is observable when:
   preserved rather than reinvented.
 - Runtime login still grants `Privileges::default_user()` after
   authentication, and the code contains an explicit TODO to load privileges
-  from the database later. That confirms 4.1.1 should stop at schema
-  alignment.
+  from the database later. That confirms 4.1.1 should stop at schema alignment.
 - The existing news tests and fixtures are useful regression anchors, but they
   all assume the legacy `NewBundle`, `NewCategory`, and `NewArticle` shapes and
   therefore must be updated in lock-step with the schema.
 - The current schema only indexes `news_articles.category_id`, so adding
-  explicit threading-link indices will be a real migration change rather than
-  a no-op.
+  explicit threading-link indices will be a real migration change rather than a
+  no-op.
 - SQLite cannot safely reach the target bundle/category defaults with simple
   `ALTER TABLE` statements because `ADD COLUMN ... DEFAULT CURRENT_TIMESTAMP`
   is not supported for this use case. The SQLite path therefore needs full
-  table recreation for `news_bundles`, `news_categories`, and
-  `news_articles`, with copy-forward preserving IDs and relationships.
+  table recreation for `news_bundles`, `news_categories`, and `news_articles`,
+  with copy-forward preserving IDs and relationships.
 - Backfilling `news_categories.add_sn` from the current article count per
-  category, while initializing `delete_sn` to `0`, is the narrowest data
-  repair that leaves legacy rows immediately usable without claiming historical
+  category, while initializing `delete_sn` to `0`, is the narrowest data repair
+  that leaves legacy rows immediately usable without claiming historical
   deletion knowledge the pre-4.1.1 schema never stored.
 - The formal repository lint and test Makefile targets are currently blocked by
   missing tooling in this shell (`whitaker`, `cargo-nextest`) and by unrelated
@@ -206,8 +203,8 @@ Success is observable when:
   historical-row backfill during upgrade. Date/Author: 2026-04-11 / Codex.
 - Decision: create `permissions` and `user_permissions` now, but defer
   catalogue seeding and runtime privilege loading to roadmap item 4.1.3.
-  Rationale: keeps 4.1.1 bounded to schema alignment while unblocking the
-  later permission work. Date/Author: 2026-04-11 / Codex.
+  Rationale: keeps 4.1.1 bounded to schema alignment while unblocking the later
+  permission work. Date/Author: 2026-04-11 / Codex.
 - Decision: backfill historical GUID-bearing fields in 4.1.1 rather than
   leaving legacy rows partially populated until 4.1.2. Rationale: the upgrade
   should leave existing content structurally complete on first boot after the
@@ -217,10 +214,10 @@ Success is observable when:
   explicit application logic and later invariants work, not implicit subtree
   deletion side effects. Date/Author: 2026-04-11 / Codex.
 - Decision: add explicit indices on `parent_article_id`, `prev_article_id`,
-  `next_article_id`, and `first_child_article_id` in 4.1.1. Rationale: the
-  task now explicitly requires threading-link index coverage rather than
-  deferring to later query-plan tuning. Date/Author: 2026-04-13 / User
-  direction captured by Codex.
+  `next_article_id`, and `first_child_article_id` in 4.1.1. Rationale: the task
+  now explicitly requires threading-link index coverage rather than deferring
+  to later query-plan tuning. Date/Author: 2026-04-13 / User direction captured
+  by Codex.
 - Decision: treat 4.1.1 as storage-alignment work with no intentional
   user-visible protocol change. Rationale: browsing, reading, and posting news
   already exist; this step realigns persistence so later GUID and permission
@@ -230,24 +227,24 @@ Success is observable when:
   explicitly required by the task. Date/Author: 2026-04-11 / Codex.
 - Decision: keep user-facing notes in `docs/users-guide.md` strictly limited
   to user-visible change, and document material internal changes in
-  `docs/developers-guide.md` or an ADR with a developer-guide call-out when
-  the rationale is non-trivial. Rationale: separates operational/user
-  guidance from implementation guidance cleanly. Date/Author: 2026-04-13 /
-  User direction captured by Codex.
+  `docs/developers-guide.md` or an ADR with a developer-guide call-out when the
+  rationale is non-trivial. Rationale: separates operational/user guidance from
+  implementation guidance cleanly. Date/Author: 2026-04-13 / User direction
+  captured by Codex.
 - Decision: rebuild the three SQLite news tables in 4.1.1 instead of mixing
   partial `ALTER TABLE` changes with schema drift. Rationale: it is the only
   practical way to introduce the target defaults and scoped uniqueness while
   preserving legacy rows and stable primary keys. Date/Author: 2026-04-13 /
   Codex.
 - Decision: backfill `news_categories.add_sn` from the current per-category
-  article count and initialize `delete_sn` to `0`. Rationale: that preserves
-  a coherent starting point for later serial-number work without inventing
+  article count and initialize `delete_sn` to `0`. Rationale: that preserves a
+  coherent starting point for later serial-number work without inventing
   historical deletion data. Date/Author: 2026-04-13 / Codex.
 - Decision: satisfy the PostgreSQL validation requirement with direct embedded
-  PostgreSQL test runs when `make test` is unavailable because
-  `cargo-nextest` is missing. Rationale: this preserves behavioural and
-  migration verification in the current environment while still recording the
-  blocked formal gate explicitly. Date/Author: 2026-04-13 / Codex.
+  PostgreSQL test runs when `make test` is unavailable because `cargo-nextest`
+  is missing. Rationale: this preserves behavioural and migration verification
+  in the current environment while still recording the blocked formal gate
+  explicitly. Date/Author: 2026-04-13 / Codex.
 
 ## Outcomes & Retrospective
 
@@ -297,8 +294,8 @@ Primary files and modules in current state:
 - `src/schema.rs`: Diesel table definitions that must be regenerated or updated
   to match the new schema.
 - `src/models.rs`: current Rust-side row and insert structs for news records.
-- `src/news_path.rs`: recursive CTE path lookup helper built on
-  `diesel-cte-ext`.
+- `src/news_path.rs`: recursive common table expression (CTE) path lookup
+  helper built on `diesel-cte-ext`.
 - `src/db/bundles.rs`, `src/db/categories.rs`, `src/db/articles.rs`: news
   persistence helpers that currently assume the old schema.
 - `src/login.rs` and `src/privileges.rs`: current privilege handling baseline,
@@ -498,7 +495,7 @@ BRANCH=$(git branch --show-current | tr '/ ' '__')
 1. Prepare the embedded PostgreSQL runtime:
 
    ```sh
-   pg_embedded_setup_unpriv \
+   pg-embed-setup-unpriv \
      | tee /tmp/pg-setup-$PROJECT-$BRANCH.log
    ```
 

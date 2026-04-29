@@ -22,39 +22,38 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "mxd"
-path = "src/main.rs"
-required-features = ["legacy-networking"]
+name = "mxd-wireframe-server"
+path = "src/bin/mxd_wireframe_server.rs"
 
 [lib]
 path = "src/lib.rs"
 
 [[bin]]
-name = "gen_corpus"
-path = "src/bin/gen_corpus.rs"
+name = "mxd-wireframe-server"
+path = "src/bin/mxd_wireframe_server.rs"
 
 [[bin]]
 name = "mxd-wireframe-server"
 path = "src/bin/mxd_wireframe_server.rs"
 
 [[test]]
-name = "transaction_streaming"
-path = "tests/transaction_streaming.rs"
+name = "wireframe_xor_compat"
+path = "tests/wireframe_xor_compat.rs"
 required-features = ["test-support"]
 
 [[test]]
-name = "wireframe_handshake_metadata"
-path = "tests/wireframe_handshake_metadata.rs"
+name = "wireframe_xor_compat"
+path = "tests/wireframe_xor_compat.rs"
 required-features = ["test-support"]
 
 [[test]]
-name = "wireframe_memory_budgets"
-path = "tests/wireframe_memory_budgets.rs"
+name = "wireframe_xor_compat"
+path = "tests/wireframe_xor_compat.rs"
 required-features = ["test-support"]
 
 [[test]]
-name = "wireframe_transaction"
-path = "tests/wireframe_transaction.rs"
+name = "wireframe_xor_compat"
+path = "tests/wireframe_xor_compat.rs"
 required-features = ["test-support"]
 
 [[test]]
@@ -78,7 +77,7 @@ cfg-if = "1"
 ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" }
 argon2 = { version = "0.5", features = ["std"] }
 rand = "0.8"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 diesel-cte-ext = { workspace = true }
 futures-util = "0.3"
 tracing = "0.1"

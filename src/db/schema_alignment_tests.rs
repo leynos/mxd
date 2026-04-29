@@ -27,6 +27,13 @@ struct NameRow {
     name: String,
 }
 
+#[cfg(feature = "postgres")]
+#[derive(QueryableByName)]
+struct CountRow {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    count: i64,
+}
+
 #[derive(QueryableByName)]
 struct BundleBackfillRow {
     #[diesel(sql_type = Nullable<Text>)]
@@ -63,6 +70,18 @@ async fn run_statements(conn: &mut DbConnection, statements: &[&str]) -> TestRes
 }
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn run_sql_script(conn: &mut DbConnection, script: &str) -> TestResult<()> {
+    for statement in script
+        .split(';')
+        .map(str::trim)
+        .filter(|sql| !sql.is_empty())
+    {
+        sql_query(statement).execute(conn).await?;
+    }
+    Ok(())
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
     let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
         .get_result::<BundleBackfillRow>(conn)
@@ -79,26 +98,6 @@ async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
     assert_eq!(category.delete_sn, Some(0));
     assert!(category.created_at.is_some());
     Ok(())
-}
-
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-async fn create_legacy_common_schema(conn: &mut DbConnection) -> TestResult<()> {
-    run_statements(
-        conn,
-        &[
-            "CREATE TABLE __diesel_schema_migrations (version VARCHAR(50) PRIMARY KEY NOT NULL, \
-             run_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
-            "CREATE INDEX idx_bundles_parent ON news_bundles(parent_bundle_id)",
-            "CREATE INDEX idx_categories_bundle ON news_categories(bundle_id)",
-            "CREATE INDEX idx_articles_category ON news_articles(category_id)",
-            "CREATE TABLE file_acl (file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE \
-             CASCADE, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, PRIMARY \
-             KEY (file_id, user_id))",
-            "CREATE INDEX idx_file_acl_user_file ON file_acl (user_id, file_id)",
-            "CREATE INDEX idx_bundles_name_parent ON news_bundles(name, parent_bundle_id)",
-        ],
-    )
-    .await
 }
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
@@ -124,10 +123,17 @@ async fn insert_legacy_seed_data(conn: &mut DbConnection) -> TestResult<()> {
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 async fn setup_legacy_schema(
     conn: &mut DbConnection,
-    dialect_statements: &[&str],
+    migration_scripts: &[&str],
 ) -> TestResult<()> {
-    run_statements(conn, dialect_statements).await?;
-    create_legacy_common_schema(conn).await?;
+    run_sql_script(
+        conn,
+        "CREATE TABLE __diesel_schema_migrations (version VARCHAR(50) PRIMARY KEY NOT NULL, \
+         run_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+    )
+    .await?;
+    for script in migration_scripts {
+        run_sql_script(conn, script).await?;
+    }
     insert_legacy_seed_data(conn).await
 }
 
@@ -136,22 +142,14 @@ async fn setup_sqlite_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
     setup_legacy_schema(
         conn,
         &[
-            "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL \
-             UNIQUE, password TEXT NOT NULL)",
-            "CREATE TABLE news_bundles (id INTEGER PRIMARY KEY AUTOINCREMENT, parent_bundle_id \
-             INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE, name TEXT NOT NULL, \
-             UNIQUE(name, parent_bundle_id))",
-            "CREATE TABLE news_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT \
-             NULL UNIQUE, bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE)",
-            "CREATE TABLE news_articles (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id \
-             INTEGER NOT NULL REFERENCES news_categories(id) ON DELETE CASCADE, parent_article_id \
-             INTEGER REFERENCES news_articles(id), prev_article_id INTEGER REFERENCES \
-             news_articles(id), next_article_id INTEGER REFERENCES news_articles(id), \
-             first_child_article_id INTEGER REFERENCES news_articles(id), title TEXT NOT NULL, \
-             poster TEXT, posted_at DATETIME NOT NULL, flags INTEGER DEFAULT 0, data_flavor TEXT \
-             DEFAULT 'text/plain', data TEXT, CHECK (category_id IS NOT NULL))",
-            "CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, \
-             object_key TEXT NOT NULL, size INTEGER NOT NULL DEFAULT 0)",
+            include_str!("../../migrations/sqlite/00000000000000_create_users/up.sql"),
+            include_str!("../../migrations/sqlite/00000000000001_create_news/up.sql"),
+            include_str!("../../migrations/sqlite/00000000000002_add_bundles/up.sql"),
+            include_str!("../../migrations/sqlite/00000000000003_add_articles/up.sql"),
+            include_str!("../../migrations/sqlite/00000000000004_create_files/up.sql"),
+            include_str!(
+                "../../migrations/sqlite/00000000000005_add_bundle_name_parent_index/up.sql"
+            ),
         ],
     )
     .await
@@ -240,6 +238,29 @@ async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "postgres")]
+async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()> {
+    run_statements(
+        conn,
+        &[
+            "INSERT INTO users (id, username, password) VALUES (42, 'schema-user', 'hash')",
+            "INSERT INTO permissions (id, code, name, scope) VALUES (42, 34, 'News Create \
+             Category', 'bundle')",
+            "INSERT INTO user_permissions (user_id, permission_id) VALUES (42, 42)",
+        ],
+    )
+    .await?;
+
+    let permissions = sql_query(
+        "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
+         up.permission_id = p.id WHERE p.code = 34 AND p.scope = 'bundle' AND up.user_id = 42",
+    )
+    .get_result::<CountRow>(conn)
+    .await?;
+    assert_eq!(permissions.count, 1);
+    Ok(())
+}
+
 #[cfg(feature = "sqlite")]
 async fn assert_sqlite_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_sqlite_permission_schema(conn).await?;
@@ -270,23 +291,14 @@ async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> TestResult<()>
     setup_legacy_schema(
         conn,
         &[
-            "CREATE TABLE users (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
-             username TEXT NOT NULL UNIQUE, password TEXT NOT NULL)",
-            "CREATE TABLE news_bundles (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
-             parent_bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE, name TEXT \
-             NOT NULL, UNIQUE(name, parent_bundle_id))",
-            "CREATE TABLE news_categories (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS \
-             IDENTITY, name TEXT NOT NULL UNIQUE, bundle_id INTEGER REFERENCES news_bundles(id) \
-             ON DELETE CASCADE)",
-            "CREATE TABLE news_articles (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, \
-             category_id INTEGER NOT NULL REFERENCES news_categories(id) ON DELETE CASCADE, \
-             parent_article_id INTEGER REFERENCES news_articles(id), prev_article_id INTEGER \
-             REFERENCES news_articles(id), next_article_id INTEGER REFERENCES news_articles(id), \
-             first_child_article_id INTEGER REFERENCES news_articles(id), title TEXT NOT NULL, \
-             poster TEXT, posted_at TIMESTAMP NOT NULL, flags INTEGER DEFAULT 0, data_flavor TEXT \
-             DEFAULT 'text/plain', data TEXT, CHECK (category_id IS NOT NULL))",
-            "CREATE TABLE files (id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY, name \
-             TEXT NOT NULL UNIQUE, object_key TEXT NOT NULL, size BIGINT NOT NULL DEFAULT 0)",
+            include_str!("../../migrations/postgres/00000000000000_create_users/up.sql"),
+            include_str!("../../migrations/postgres/00000000000001_create_news/up.sql"),
+            include_str!("../../migrations/postgres/00000000000002_add_bundles/up.sql"),
+            include_str!("../../migrations/postgres/00000000000003_add_articles/up.sql"),
+            include_str!("../../migrations/postgres/00000000000004_create_files/up.sql"),
+            include_str!(
+                "../../migrations/postgres/00000000000005_add_bundle_name_parent_index/up.sql"
+            ),
         ],
     )
     .await
@@ -331,6 +343,17 @@ async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResul
 
 #[cfg(feature = "postgres")]
 async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> {
+    let bundle_columns = postgres_names(
+        conn,
+        "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
+         'news_bundles' ORDER BY ordinal_position",
+    )
+    .await?;
+    assert_eq!(
+        bundle_columns,
+        vec!["id", "parent_bundle_id", "name", "guid", "created_at"]
+    );
+
     let category_columns = postgres_names(
         conn,
         "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
@@ -418,7 +441,8 @@ fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
         let mut conn = DbConnection::establish(&url).await?;
         apply_migrations(&mut conn, &url).await?;
 
-        assert_postgres_aligned_schema(&mut conn).await
+        assert_postgres_aligned_schema(&mut conn).await?;
+        assert_permission_round_trip(&mut conn).await
     })
 }
 
