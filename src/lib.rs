@@ -46,7 +46,18 @@ pub mod login;
 pub mod models;
 pub mod news_handlers;
 pub(crate) mod news_path;
-pub mod presence;
+mod presence;
+pub use presence::{
+    PresenceRegistry,
+    PresenceRemoval,
+    PresenceSnapshot,
+    PresenceUpsert,
+    SessionPhase,
+    build_client_info_text_reply,
+    build_notify_change_user,
+    build_notify_delete_user,
+    build_user_name_list_reply,
+};
 pub mod privileges;
 pub mod protocol;
 pub mod schema;

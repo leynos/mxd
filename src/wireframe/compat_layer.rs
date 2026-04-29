@@ -253,6 +253,7 @@ mod tests {
             transport: &mut transport,
             messaging: &messaging,
             presence: &presence,
+            presence_connection_id: Some(crate::server::outbound::OutboundConnectionId::new(1)),
         };
         let command = Command::Unknown {
             header: header(tx_type),

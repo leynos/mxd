@@ -67,10 +67,7 @@ impl PresenceSnapshot {
         [
             (FieldId::UserId, self.user_id.to_be_bytes().to_vec()),
             (FieldId::IconId, self.icon_id.to_be_bytes().to_vec()),
-            (
-                FieldId::UserFlags,
-                u32::from(self.status_flags).to_be_bytes().to_vec(),
-            ),
+            (FieldId::UserFlags, self.status_flags.to_be_bytes().to_vec()),
             (FieldId::Name, self.display_name.as_bytes().to_vec()),
         ]
     }
@@ -145,6 +142,10 @@ impl PresenceRegistry {
     }
 
     /// Look up a snapshot by user identifier.
+    ///
+    /// When multiple connections use the same identifier, this returns the
+    /// snapshot with the smallest `connection_id.as_u64()` value. The
+    /// tie-breaker is deterministic so callers can rely on stable selection.
     #[must_use]
     pub fn snapshot_for_user_id(&self, user_id: i32) -> Option<PresenceSnapshot> {
         let guard = self.lock_state();

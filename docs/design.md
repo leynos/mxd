@@ -2187,7 +2187,7 @@ this. The design:
 - Server-initiated 301 (Notify Change User): when someone logs in, send the
   other online clients a message with their presence ID, icon, colour / flags,
   and username. The same transaction is reused for later session-visible
-  changes from `304 Set Client User Info`. 302 (Notify Remove User) is emitted
+  changes from `304 Set Client User Info`. 302 (Notify Delete User) is emitted
   after a connection is removed from the presence registry on disconnect, so
   recipients see the post-removal roster.
 

@@ -11,12 +11,12 @@ use std::{
 };
 
 use mxd::{
+    PresenceRegistry,
     commands::ERR_NOT_AUTHENTICATED,
     db::DbPool,
     field_id::FieldId,
     handler::Session,
-    presence::PresenceRegistry,
-    server::outbound::NoopOutboundMessaging,
+    server::outbound::{NoopOutboundMessaging, OutboundConnectionId},
     transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{
@@ -40,6 +40,7 @@ struct GuardrailWorld {
     session: RefCell<Session>,
     reply: RefCell<Option<Result<Transaction, String>>>,
     router: RefCell<WireframeRouter>,
+    presence: PresenceRegistry,
     skipped: Cell<bool>,
 }
 
@@ -60,6 +61,7 @@ impl GuardrailWorld {
             session: RefCell::new(Session::default()),
             reply: RefCell::new(None),
             router: RefCell::new(router),
+            presence: PresenceRegistry::default(),
             skipped: Cell::new(false),
         }
     }
@@ -107,7 +109,6 @@ impl GuardrailWorld {
         let peer = self.peer;
         let mut session = self.session.borrow().clone();
         let messaging = NoopOutboundMessaging;
-        let presence = PresenceRegistry::default();
         let router = self.router.borrow();
         let reply = self.runtime.block_on(router.route(
             &frame,
@@ -116,7 +117,8 @@ impl GuardrailWorld {
                 pool,
                 session: &mut session,
                 messaging: &messaging,
-                presence: &presence,
+                presence: &self.presence,
+                presence_connection_id: OutboundConnectionId::new(1),
             },
         ));
         self.session.replace(session);

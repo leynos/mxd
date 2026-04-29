@@ -24,6 +24,17 @@ For release-note quality assurance (QA) sign-off workflow details, use
 | SynHX (XOR text mode)          | Same as SynHX plus XOR heuristic triggers on text fields            | Partial   | XOR login, XOR message payload detection, XOR news post payload decoding/encoding              | XOR mode is heuristic until a reliable handshake signal exists            | Client-side `encode` toggle enabled when using XOR payloads | `src/wireframe/compat.rs::decode_payload_enables_xor_on_invalid_utf8`; `src/wireframe/compat.rs::decode_payload_does_not_enable_xor_for_non_text_fields`; `tests/features/wireframe_xor_compat.feature` scenarios `XOR-encoded login succeeds`, `XOR-encoded message toggles compatibility`, `Plaintext message keeps XOR compatibility disabled` |
 | Unknown / legacy login version | Handshake `sub_version != 2`; login field 160 below `151` or absent | Supported | Safety behaviour: login reply omits Hotline banner extras and remains protocol-valid           | Client is treated conservatively as unknown until explicit mapping exists | None                                                        | `src/wireframe/compat_policy.rs::classifies_unknown_for_older_login_versions`; `src/wireframe/compat_policy.rs::does_not_augment_login_reply_for_unknown_client_kind`; `tests/features/wireframe_login_compat.feature` scenario `Unknown client version omits banner fields`                                                                      |
 
+## Recorded protocol deviations
+
+- Get User Name List (300) replies are the only transactions allowed to repeat
+  a field ID. Field 300 may repeat once per online user, and each value is the
+  SynHX-compatible packed User Name with Info record documented in
+  `docs/protocol.md`. Automated coverage:
+  `src/presence_tests.rs::user_name_list_reply_contains_repeated_field_300_entries`,
+  `src/wireframe/routes/tests/presence_routing_cases.rs::process_transaction_bytes_user_name_list_returns_online_snapshot`,
+   and `tests/features/wireframe_presence.feature` scenario
+  `Login, update, and disconnect notifications reach peers`.
+
 ## Behavioural guarantees captured by tests
 
 - Hotline 1.8.5 and 1.9 replies include fields 161/162.

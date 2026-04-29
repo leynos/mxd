@@ -14,7 +14,7 @@ use crate::{
     field_id::FieldId,
     handler::Session,
     presence::PresenceRegistry,
-    server::outbound::NoopOutboundMessaging,
+    server::outbound::{NoopOutboundMessaging, OutboundConnectionId},
     transaction::parse_transaction,
     transaction_type::TransactionType,
     wireframe::{
@@ -142,6 +142,7 @@ fn execute_login(
             session: &mut setup.session,
             messaging: &setup.messaging,
             presence: &setup.presence,
+            presence_connection_id: OutboundConnectionId::new(1),
         },
     ));
     let tx = parse_transaction(&reply)?;
@@ -241,6 +242,7 @@ fn non_login_hooks_fire_in_order(
             session: &mut setup.session,
             messaging: &setup.messaging,
             presence: &setup.presence,
+            presence_connection_id: OutboundConnectionId::new(1),
         },
     ));
     let login_tx = parse_transaction(&login_reply)?;
@@ -263,6 +265,7 @@ fn non_login_hooks_fire_in_order(
             session: &mut setup.session,
             messaging: &setup.messaging,
             presence: &setup.presence,
+            presence_connection_id: OutboundConnectionId::new(1),
         },
     ));
     let tx = parse_transaction(&reply)?;
@@ -314,6 +317,7 @@ fn parse_failure_does_not_trigger_hooks(
             session: &mut setup.session,
             messaging: &setup.messaging,
             presence: &setup.presence,
+            presence_connection_id: OutboundConnectionId::new(1),
         },
     ));
 

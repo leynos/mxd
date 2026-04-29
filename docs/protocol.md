@@ -74,8 +74,11 @@ Immediately afterwards, *Param-count* **records** follow:
 | 2      | 2            | Field size | Length of the data portion in bytes.                                                      |
 | 4      | *Field size* | Field data | Raw value. Interpretation rules: integer (16- or 32-bit), ASCII string, or opaque binary. |
 
-Field IDs never repeat within a single transaction. Integers are unsigned; the
-sender may use 16-bit encoding if the value ≤ 0xFFFF, otherwise 32-bit.
+Field IDs never repeat within a single transaction, except field 300 in a
+server-to-client Get User Name List (300) reply. That reply may repeat field
+300 once per roster entry, with each value encoded as the packed User Name with
+Info record described in the transaction-300 section. Integers are unsigned;
+the sender may use 16-bit encoding if the value ≤ 0xFFFF, otherwise 32-bit.
 
 #### 2.2 Date parameters
 
@@ -417,6 +420,10 @@ all users connected to the server (for display in the client’s user list).
   SynHX also accepts an optional **Chat Subject** field (115) in the same
   transaction-300 reply, which it uses to seed the main chat subject while the
   user list is loading.
+
+  Field 300 is the sole allowed repeated field in this protocol guide. It may
+  repeat only in a successful server-to-client Get User Name List (300) reply,
+  where one or more field-300 values represent the roster snapshot.
 
 **Server behavior:** On `GetUserNameList`, the server compiles all connected
 users’ info. This includes the user IDs (encoded as 16-bit values in the packed

@@ -170,7 +170,7 @@ mod tests {
 
     use super::TransactionType;
 
-    const ALL_TRANSACTION_TYPES: [TransactionType; 13] = [
+    const ALL_TRANSACTION_TYPES: [TransactionType; 17] = [
         TransactionType::Error,
         TransactionType::Login,
         TransactionType::Agreement,
@@ -178,6 +178,10 @@ mod tests {
         TransactionType::GetFileNameList,
         TransactionType::DownloadBanner,
         TransactionType::GetUserNameList,
+        TransactionType::NotifyChangeUser,
+        TransactionType::NotifyDeleteUser,
+        TransactionType::GetClientInfoText,
+        TransactionType::SetClientUserInfo,
         TransactionType::UserAccess,
         TransactionType::NewsCategoryNameList,
         TransactionType::NewsArticleNameList,
@@ -191,6 +195,10 @@ mod tests {
     #[case(TransactionType::NewsArticleData, false, false)]
     #[case(TransactionType::DownloadBanner, false, true)]
     #[case(TransactionType::GetUserNameList, false, true)]
+    #[case(TransactionType::NotifyChangeUser, false, false)]
+    #[case(TransactionType::NotifyDeleteUser, false, false)]
+    #[case(TransactionType::GetClientInfoText, false, false)]
+    #[case(TransactionType::SetClientUserInfo, false, false)]
     fn rejects_payload_matches_expected_policy(
         #[case] transaction_type: TransactionType,
         #[case] expected_for_empty_payload: bool,
@@ -214,6 +222,10 @@ mod tests {
     #[case(TransactionType::GetFileNameList, true)]
     #[case(TransactionType::DownloadBanner, true)]
     #[case(TransactionType::GetUserNameList, true)]
+    #[case(TransactionType::NotifyChangeUser, false)]
+    #[case(TransactionType::NotifyDeleteUser, false)]
+    #[case(TransactionType::GetClientInfoText, false)]
+    #[case(TransactionType::SetClientUserInfo, false)]
     #[case(TransactionType::UserAccess, false)]
     #[case(TransactionType::NewsCategoryNameList, false)]
     #[case(TransactionType::NewsArticleNameList, false)]

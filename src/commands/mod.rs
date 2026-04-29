@@ -163,6 +163,7 @@ impl Command {
             pool,
             session,
             presence,
+            presence_connection_id,
         } = context;
         let mut transport = crate::server::outbound::ReplyBuffer::new();
         let messaging = crate::server::outbound::NoopOutboundMessaging;
@@ -173,6 +174,7 @@ impl Command {
             transport: &mut transport,
             messaging: &messaging,
             presence,
+            presence_connection_id,
         })
         .await?;
         transport

@@ -111,8 +111,7 @@ impl Privileges {
                 | Self::NEWS_READ_ARTICLE.bits()
                 | Self::NEWS_POST_ARTICLE.bits()
                 | Self::GET_CLIENT_INFO.bits()
-                | Self::CHANGE_OWN_PASSWORD.bits()
-                | Self::NO_AGREEMENT.bits(),
+                | Self::CHANGE_OWN_PASSWORD.bits(),
         )
     }
 

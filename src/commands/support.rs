@@ -10,7 +10,7 @@ use crate::{
     header_util::reply_header,
     presence::PresenceRegistry,
     privileges::Privileges,
-    server::outbound::{OutboundMessaging, OutboundTransport},
+    server::outbound::{OutboundConnectionId, OutboundMessaging, OutboundTransport},
     transaction::{FrameHeader, Transaction},
 };
 
@@ -28,6 +28,8 @@ pub(crate) struct CommandContext<'a> {
     pub messaging: &'a dyn OutboundMessaging,
     /// Shared presence registry for online-user state.
     pub presence: &'a PresenceRegistry,
+    /// Adapter-owned connection identifier for presence snapshots.
+    pub presence_connection_id: Option<OutboundConnectionId>,
 }
 
 /// Execution context for command processing without external outbound adapters.
@@ -40,6 +42,8 @@ pub struct ProcessContext<'a> {
     pub session: &'a mut crate::handler::Session,
     /// Shared presence registry for online-user state.
     pub presence: &'a PresenceRegistry,
+    /// Adapter-owned connection identifier for presence snapshots.
+    pub presence_connection_id: Option<OutboundConnectionId>,
 }
 
 /// User-visible metadata updates accepted by `121` and `304`.

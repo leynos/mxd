@@ -3,7 +3,7 @@
 use std::{cell::RefCell, sync::Arc};
 
 use mxd::{
-    presence::PresenceRegistry,
+    PresenceRegistry,
     server::outbound::{OutboundError, OutboundMessaging, OutboundPriority, OutboundTarget},
     transaction::{FrameHeader, Transaction, parse_transaction},
     wireframe::outbound::{

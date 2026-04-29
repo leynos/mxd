@@ -321,10 +321,16 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 2.1. Harden session lifecycle management
 
-- [x] 2.1.1. Implement transactions 300–307 (user list, change notifications,
-  agree/disagree flows) exactly as described in `docs/protocol.md`. Acceptance:
-  Clients receive Notify Change User (301) and Notify Delete User (302)
-  broadcasts that reflect session joins, updates, and logouts. Dependencies: 1.
+- [x] 2.1.1a. Implement transactions 300–304 (user list, change notifications,
+  client-info lookup, and client-info updates) as described in
+  `docs/protocol.md`. Acceptance: Clients receive Notify Change User (301) and
+  Notify Delete User (302) broadcasts that reflect online session joins,
+  updates, and logouts. Dependencies: 1.
+- [ ] 2.1.1b. Implement transactions 305–307 and the agree/disagree flow.
+  Acceptance: agreement-gated accounts remain pending until the client
+  completes the Agreement Acceptance transaction (121), and the remaining
+  presence lifecycle transactions match `docs/protocol.md`. Dependencies:
+  2.1.1a.
 - [ ] 2.1.2. Track presence state, idle timers, and away flags in the shared
   session context. Acceptance: Auto-away and idle timeout thresholds trigger
   updates in the user list without manual refresh. Dependencies: 2.1.1.

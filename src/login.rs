@@ -50,9 +50,9 @@ pub(crate) async fn handle_login(
     let user = get_user_by_name(&mut conn, &req.username).await?;
     let (error, payload) = if let Some(u) = user {
         if verify_password(&u.password, &req.password) {
-            // Grant default user privileges on successful authentication.
-            // TODO(task 5.1): Load privileges from user account in database.
-            let privileges = Privileges::default_user();
+            // Apply the current server policy until account-level privilege
+            // persistence exists.
+            let privileges = Privileges::default_user() | Privileges::NO_AGREEMENT;
             session.apply_login(u.id, &u.username, privileges);
             let params = encode_params(&[(
                 FieldId::Version,

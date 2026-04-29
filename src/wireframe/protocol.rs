@@ -23,12 +23,14 @@
 //! ```rust,ignore
 //! use mxd::wireframe::{compat::XorCompatibility, protocol::HotlineProtocol};
 //! use mxd::wireframe::outbound::{WireframeOutboundConnection, WireframeOutboundRegistry};
+//! use mxd::PresenceRegistry;
 //! use std::sync::Arc;
 //!
 //! let registry = Arc::new(WireframeOutboundRegistry::default());
 //! let connection = Arc::new(WireframeOutboundConnection::new(
 //!     registry.allocate_id(),
 //!     Arc::clone(&registry),
+//!     Arc::new(PresenceRegistry::default()),
 //! ));
 //! let compat = Arc::new(XorCompatibility::disabled());
 //! let protocol = HotlineProtocol::new(pool.clone(), argon2.clone(), connection, compat);

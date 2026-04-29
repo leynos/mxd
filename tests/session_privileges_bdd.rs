@@ -9,15 +9,15 @@ use std::{
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
 use mxd::{
+    PresenceRegistry,
     commands::ERR_INSUFFICIENT_PRIVILEGES,
     connection_flags::ConnectionFlags,
     db::DbPool,
     field_id::FieldId,
     handler::Session,
-    presence::PresenceRegistry,
     privileges::Privileges,
     schema::users::dsl as users_dsl,
-    server::outbound::NoopOutboundMessaging,
+    server::outbound::{NoopOutboundMessaging, OutboundConnectionId},
     transaction::{Transaction, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{
@@ -49,6 +49,7 @@ struct PrivilegeWorld {
     session: RefCell<Session>,
     reply: RefCell<Option<Result<Transaction, String>>>,
     router: WireframeRouter,
+    presence: PresenceRegistry,
     skipped: Cell<bool>,
 }
 
@@ -73,6 +74,7 @@ impl PrivilegeWorld {
             session: RefCell::new(Session::default()),
             reply: RefCell::new(None),
             router,
+            presence: PresenceRegistry::default(),
             skipped: Cell::new(false),
         }
     }
@@ -113,7 +115,6 @@ impl PrivilegeWorld {
         let peer = self.peer;
         let mut session = self.session.borrow().clone();
         let messaging = NoopOutboundMessaging;
-        let presence = PresenceRegistry::default();
         let reply = self.runtime.block_on(self.router.route(
             &frame,
             RouteContext {
@@ -121,7 +122,8 @@ impl PrivilegeWorld {
                 pool,
                 session: &mut session,
                 messaging: &messaging,
-                presence: &presence,
+                presence: &self.presence,
+                presence_connection_id: OutboundConnectionId::new(1),
             },
         ));
         self.session.replace(session);
@@ -196,12 +198,10 @@ fn given_authenticated_but_unprivileged(world: &PrivilegeWorld) {
         return;
     }
     let user_id = world.get_test_user_id("alice");
-    world.session.replace(Session {
-        user_id: Some(user_id),
-        privileges: Privileges::empty(),
-        connection_flags: ConnectionFlags::default(),
-        ..Session::default()
-    });
+    let mut session = Session::default();
+    session.apply_login(user_id, "alice", Privileges::empty());
+    session.connection_flags = ConnectionFlags::default();
+    world.session.replace(session);
 }
 
 #[given("I send a login transaction for \"{username}\" with password \"{password}\"")]

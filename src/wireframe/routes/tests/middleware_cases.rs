@@ -25,7 +25,7 @@ use crate::{
     field_id::FieldId,
     handler::Session,
     presence::PresenceRegistry,
-    server::outbound::NoopOutboundMessaging,
+    server::outbound::{NoopOutboundMessaging, OutboundConnectionId},
     transaction::parse_transaction,
     transaction_type::TransactionType,
     wireframe::{
@@ -64,6 +64,7 @@ fn setup_middleware_test(
         peer,
         messaging,
         presence,
+        presence_connection_id: OutboundConnectionId::new(1),
     });
 
     let calls = Arc::new(AtomicUsize::new(0));

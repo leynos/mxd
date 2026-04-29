@@ -91,6 +91,7 @@ impl Command {
             transport,
             messaging,
             presence,
+            presence_connection_id,
         } = context;
         let presence_context = PresenceContext {
             transport,
@@ -99,9 +100,13 @@ impl Command {
         };
         let reply = handle_login(peer, session, pool, req).await?;
         presence_context.transport.send_reply(reply)?;
-        let Some(snapshot) = session.presence_snapshot() else {
+        let Some(connection_id) = presence_connection_id else {
             return Ok(());
         };
+        let Some(snapshot) = session.presence_snapshot(connection_id) else {
+            return Ok(());
+        };
+        build_notify_change_user(&snapshot)?;
         let upsert = presence_context.presence.upsert(snapshot)?;
         if upsert.peer_ids.is_empty() {
             return Ok(());
@@ -181,6 +186,7 @@ impl Command {
             transport,
             messaging,
             presence,
+            presence_connection_id,
             ..
         } = context;
         let presence_context = PresenceContext {
@@ -196,11 +202,16 @@ impl Command {
         }
 
         apply_user_info_update(session, update);
+        let maybe_snapshot = presence_connection_id
+            .and_then(|connection_id| session.presence_snapshot(connection_id));
+        if let Some(candidate_snapshot) = &maybe_snapshot {
+            build_notify_change_user(candidate_snapshot)?;
+        }
         presence_context
             .transport
             .send_reply(empty_success_reply(&header))?;
 
-        let Some(snapshot) = session.presence_snapshot() else {
+        let Some(snapshot) = maybe_snapshot else {
             return Ok(());
         };
         let upsert = presence_context.presence.upsert(snapshot)?;
@@ -254,14 +265,16 @@ fn apply_user_info_update(session: &mut crate::handler::Session, update: UserInf
     if let Some(icon_id) = update.icon_id {
         session.icon_id = icon_id;
     }
+    let final_flags = update.options.unwrap_or(session.connection_flags);
     if let Some(options) = update.options {
         session.connection_flags = options;
-        if !options.has_auto_response() {
-            session.auto_response = None;
-        }
     }
-    if let Some(auto_response) = update.auto_response {
-        session.auto_response = Some(auto_response);
+    if final_flags.has_auto_response() {
+        if let Some(auto_response) = update.auto_response {
+            session.auto_response = Some(auto_response);
+        }
+    } else {
+        session.auto_response = None;
     }
 }
 

@@ -34,6 +34,7 @@ pub(super) struct RouteTestContext {
     router: WireframeRouter,
     /// Shared presence registry used during routing tests.
     presence: PresenceRegistry,
+    presence_connection_id: OutboundConnectionId,
 }
 
 impl RouteTestContext {
@@ -56,13 +57,11 @@ impl RouteTestContext {
         );
         Ok(Self {
             pool,
-            session: Session {
-                outbound_connection_id: Some(OutboundConnectionId::new(1)),
-                ..Session::default()
-            },
+            session: Session::default(),
             peer,
             router,
             presence: PresenceRegistry::default(),
+            presence_connection_id: OutboundConnectionId::new(1),
         })
     }
 
@@ -79,7 +78,8 @@ impl RouteTestContext {
         self.session.privileges = Privileges::default_user();
         self.session.phase = SessionPhase::Online;
         self.session.display_name = format!("user-{user_id}");
-        self.session.outbound_connection_id = Some(OutboundConnectionId::new(connection_id));
+        self.presence_connection_id = OutboundConnectionId::new(connection_id);
+        self.refresh_presence(self.presence_connection_id);
     }
 
     /// Authenticate with custom privileges.
@@ -93,7 +93,17 @@ impl RouteTestContext {
         self.session.privileges = privileges;
         self.session.phase = SessionPhase::Online;
         self.session.display_name = format!("user-{user_id}");
-        self.session.outbound_connection_id = Some(OutboundConnectionId::new(connection_id));
+        self.presence_connection_id = OutboundConnectionId::new(connection_id);
+        self.refresh_presence(self.presence_connection_id);
+    }
+
+    fn refresh_presence(&self, connection_id: OutboundConnectionId) {
+        let _ = self.presence.remove(connection_id);
+        if let Some(snapshot) = self.session.presence_snapshot(connection_id) {
+            self.presence
+                .upsert(snapshot)
+                .unwrap_or_else(|error| panic!("upsert presence snapshot: {error}"));
+        }
     }
 
     /// Send a transaction through routing and parse the reply.
@@ -126,6 +136,7 @@ impl RouteTestContext {
                     session: &mut self.session,
                     messaging: &messaging,
                     presence: &self.presence,
+                    presence_connection_id: self.presence_connection_id,
                 },
             )
             .await;

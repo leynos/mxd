@@ -13,7 +13,7 @@ use super::super::{
 use crate::{
     handler::Session,
     presence::PresenceRegistry,
-    server::outbound::NoopOutboundMessaging,
+    server::outbound::{NoopOutboundMessaging, OutboundConnectionId},
     transaction::{FrameHeader, HEADER_LEN, Transaction},
     wireframe::{
         compat::XorCompatibility,
@@ -198,6 +198,7 @@ async fn process_transaction_bytes_truncated_input() {
                 session: &mut session,
                 messaging: &messaging,
                 presence: &presence,
+                presence_connection_id: OutboundConnectionId::new(1),
             },
         )
         .await;
@@ -231,6 +232,7 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
                 session: &mut session,
                 messaging: &messaging,
                 presence: &presence,
+                presence_connection_id: OutboundConnectionId::new(1),
             },
         )
         .await;

@@ -241,14 +241,12 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
         client_compat,
     } = context;
     let outbound_id = outbound_registry.allocate_id();
-    let session = Arc::new(TokioMutex::new(Session {
-        outbound_connection_id: Some(outbound_id),
-        ..Session::default()
-    }));
-    let outbound_connection = Arc::new(WireframeOutboundConnection::new(
+    let session = Arc::new(TokioMutex::new(Session::default()));
+    let outbound_connection = Arc::new(WireframeOutboundConnection::new_with_runtime_handle(
         outbound_id,
         Arc::clone(outbound_registry),
         Arc::clone(presence),
+        Some(tokio::runtime::Handle::current()),
     ));
     let outbound_messaging = WireframeOutboundMessaging::new(Arc::clone(&outbound_connection));
     let router = WireframeRouter::new(Arc::clone(&compat), client_compat);
@@ -271,6 +269,7 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
             peer,
             messaging: Arc::new(outbound_messaging),
             presence: Arc::clone(presence),
+            presence_connection_id: outbound_id,
         }))?;
 
     let handler = routing_placeholder_handler();

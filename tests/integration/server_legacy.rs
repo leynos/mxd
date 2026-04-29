@@ -7,7 +7,7 @@ use argon2::Argon2;
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use mxd::server::legacy::test_support::is_postgres_url;
 use mxd::{
-    presence::PresenceRegistry,
+    PresenceRegistry,
     protocol,
     server::legacy::test_support::{
         ServerResources,
