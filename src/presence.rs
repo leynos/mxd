@@ -141,11 +141,12 @@ impl PresenceRegistry {
         sorted_snapshots(guard.snapshots.values().cloned().collect())
     }
 
-    /// Look up a snapshot by user identifier.
+    /// Look up the presence snapshot for the given user identifier.
     ///
-    /// When multiple connections use the same identifier, this returns the
-    /// snapshot with the smallest `connection_id.as_u64()` value. The
-    /// tie-breaker is deterministic so callers can rely on stable selection.
+    /// If multiple connections are registered under the same `user_id` (for
+    /// example, duplicate logins), the snapshot with the numerically lowest
+    /// `connection_id` is returned. Returns `None` if the user is not currently
+    /// online.
     #[must_use]
     pub fn snapshot_for_user_id(&self, user_id: i32) -> Option<PresenceSnapshot> {
         let guard = self.lock_state();

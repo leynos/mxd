@@ -25,9 +25,8 @@ pub async fn get_user_by_name(
 /// Look up a user record by identifier.
 ///
 /// # Parameters
-///
-/// * `conn` - Mutable `DbConnection` used to execute the query.
-/// * `user_id_value` - `i32` user identifier used to filter the users table.
+/// - `conn` - mutable reference to an open database connection.
+/// - `user_id_value` - the integer primary key of the user to retrieve.
 ///
 /// # Errors
 /// Returns any error produced by the underlying database query.

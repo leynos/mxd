@@ -4,9 +4,8 @@
 //! enabling the wireframe transport to decode the 20-byte header, reassemble
 //! fragmented payloads, and emit outbound frames according to `docs/protocol.md`.
 //!
-//! The [`framed`] submodule provides a Tokio-compatible codec, while
-//! [`frame`] exposes a wireframe `FrameCodec` wrapper for the same Hotline
-//! framing rules.
+//! The `framed` submodule provides a Tokio-compatible codec, while `frame`
+//! exposes a wireframe `FrameCodec` wrapper for the same Hotline framing rules.
 
 mod frame;
 mod framed;

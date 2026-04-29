@@ -1,9 +1,9 @@
 //! Public routing entrypoint for wireframe transactions.
 //!
-//! `WireframeRouter` is the sole `pub` routing entrypoint. It
-//! embeds a [`CompatibilityLayer`] that orchestrates request and
-//! reply compatibility hooks, ensuring every routed transaction
-//! passes through the same compatibility pipeline.
+//! `WireframeRouter` is the sole `pub` routing entrypoint. It embeds a
+//! `CompatibilityLayer` that orchestrates request and reply compatibility
+//! hooks, ensuring every routed transaction passes through the same
+//! compatibility pipeline.
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -28,7 +28,7 @@ use crate::{
 /// Public routing entrypoint for wireframe transactions.
 ///
 /// The router owns the XOR and client compatibility state for the
-/// connection and creates a [`CompatibilityLayer`] on each call to
+/// connection and creates a `CompatibilityLayer` on each call to
 /// [`route`](Self::route). This guarantees that every transaction
 /// passes through the same request and reply hooks regardless of
 /// which code path dispatches it.
@@ -137,7 +137,7 @@ impl WireframeRouter {
 ///
 /// Unlike the previous `RouteContext`, this struct does not carry
 /// compatibility state — that is owned by the
-/// [`WireframeRouter`] and its embedded [`CompatibilityLayer`].
+/// [`WireframeRouter`] and its embedded `CompatibilityLayer`.
 pub struct RouteContext<'a> {
     /// Remote peer socket address.
     pub peer: SocketAddr,

@@ -2,9 +2,9 @@
 //! transactions.
 //!
 //! Transactions consist of a [`FrameHeader`] followed by an optional payload
-//! encoded using [`FieldId`] identifiers. The framing layer handles Hotline's
-//! 20-byte header and multi-fragment payload envelope described in
-//! `docs/protocol.md`.
+//! encoded using [`crate::field_id::FieldId`] identifiers. The framing layer
+//! handles Hotline's 20-byte header and multi-fragment payload envelope
+//! described in `docs/protocol.md`.
 
 use std::time::Duration;
 

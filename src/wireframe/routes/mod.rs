@@ -1,7 +1,7 @@
 //! Route handlers for Hotline transaction routing.
 //!
 //! This module provides route handler functions that bridge incoming
-//! [`HotlineTransaction`] frames to the domain [`Command`] dispatcher.
+//! `HotlineTransaction` frames to the domain `Command` dispatcher.
 //! Each handler extracts the transaction from raw bytes, converts it to
 //! a domain command, processes it, and returns the reply.
 //!
