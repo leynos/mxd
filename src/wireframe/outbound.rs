@@ -358,20 +358,24 @@ mod tests {
             .expect("push queues");
         remaining.register_handle(&handle);
 
-        let _ = presence.upsert(PresenceSnapshot {
-            connection_id: departing_id,
-            user_id: 7,
-            display_name: "alice".to_owned(),
-            icon_id: 0,
-            status_flags: 0,
-        });
-        let _ = presence.upsert(PresenceSnapshot {
-            connection_id: remaining_id,
-            user_id: 8,
-            display_name: "bob".to_owned(),
-            icon_id: 0,
-            status_flags: 0,
-        });
+        let departing_presence = presence
+            .upsert(PresenceSnapshot {
+                connection_id: departing_id,
+                user_id: 7,
+                display_name: "alice".to_owned(),
+                icon_id: 0,
+                status_flags: 0,
+            })
+            .expect("insert departing presence");
+        presence
+            .upsert(PresenceSnapshot {
+                connection_id: remaining_id,
+                user_id: 8,
+                display_name: "bob".to_owned(),
+                icon_id: 0,
+                status_flags: 0,
+            })
+            .expect("insert remaining presence");
 
         rt.block_on(async {
             drop(departing);
@@ -385,7 +389,7 @@ mod tests {
                 .find(|(field_id, _)| *field_id == FieldId::UserId)
                 .map(|(_, bytes)| i32::from_be_bytes(bytes.as_slice().try_into().expect("user id")))
                 .expect("user id field");
-            assert_eq!(user_id, 7);
+            assert_eq!(user_id, departing_presence.snapshot.user_id);
         });
 
         drop(remaining);

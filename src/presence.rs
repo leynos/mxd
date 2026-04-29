@@ -5,7 +5,7 @@
 //! re-encoding presence state in multiple branches.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Mutex, MutexGuard},
 };
 
@@ -34,7 +34,7 @@ pub enum SessionPhase {
 pub struct PresenceSnapshot {
     /// Outbound connection identifier used for push delivery.
     pub connection_id: OutboundConnectionId,
-    /// Logged-in account identifier.
+    /// Protocol-visible identifier assigned to this active presence session.
     pub user_id: i32,
     /// Session-visible nickname.
     pub display_name: String,
@@ -85,28 +85,52 @@ pub struct PresenceRemoval {
     pub remaining_peer_ids: Vec<OutboundConnectionId>,
 }
 
+/// Result of inserting or updating a presence snapshot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PresenceUpsert {
+    /// Snapshot stored in the registry, including its session-unique presence ID.
+    pub snapshot: PresenceSnapshot,
+    /// Other online peers that should receive update notifications.
+    pub peer_ids: Vec<OutboundConnectionId>,
+}
+
 /// Shared runtime registry of online presence snapshots.
 #[derive(Debug, Default)]
 pub struct PresenceRegistry {
-    snapshots: Mutex<HashMap<OutboundConnectionId, PresenceSnapshot>>,
+    state: Mutex<PresenceState>,
+}
+
+#[derive(Debug, Default)]
+struct PresenceState {
+    snapshots: HashMap<OutboundConnectionId, PresenceSnapshot>,
+    next_presence_id: u16,
 }
 
 impl PresenceRegistry {
     /// Insert or replace a connection snapshot and return peer targets.
-    #[must_use]
-    pub fn upsert(&self, snapshot: PresenceSnapshot) -> Vec<OutboundConnectionId> {
-        let mut guard = self.lock_snapshots();
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TransactionError::InvalidParamValue`] when all field-300 user
+    /// ID values are already assigned to active sessions.
+    pub fn upsert(
+        &self,
+        mut snapshot: PresenceSnapshot,
+    ) -> Result<PresenceUpsert, TransactionError> {
+        let mut guard = self.lock_state();
         let connection_id = snapshot.connection_id;
-        guard.insert(connection_id, snapshot);
-        peer_ids_from_guard(&guard, Some(connection_id))
+        snapshot.user_id = assigned_presence_id(&mut guard, connection_id)?;
+        guard.snapshots.insert(connection_id, snapshot.clone());
+        let peer_ids = peer_ids_from_guard(&guard.snapshots, Some(connection_id));
+        Ok(PresenceUpsert { snapshot, peer_ids })
     }
 
     /// Remove a connection snapshot if it was online.
     #[must_use]
     pub fn remove(&self, connection_id: OutboundConnectionId) -> Option<PresenceRemoval> {
-        let mut guard = self.lock_snapshots();
-        let departed = guard.remove(&connection_id)?;
-        let remaining_peer_ids = peer_ids_from_guard(&guard, None);
+        let mut guard = self.lock_state();
+        let departed = guard.snapshots.remove(&connection_id)?;
+        let remaining_peer_ids = peer_ids_from_guard(&guard.snapshots, None);
         Some(PresenceRemoval {
             departed,
             remaining_peer_ids,
@@ -116,23 +140,24 @@ impl PresenceRegistry {
     /// Return all currently online snapshots in deterministic order.
     #[must_use]
     pub fn online_snapshots(&self) -> Vec<PresenceSnapshot> {
-        let guard = self.lock_snapshots();
-        sorted_snapshots(guard.values().cloned().collect())
+        let guard = self.lock_state();
+        sorted_snapshots(guard.snapshots.values().cloned().collect())
     }
 
     /// Look up a snapshot by user identifier.
     #[must_use]
     pub fn snapshot_for_user_id(&self, user_id: i32) -> Option<PresenceSnapshot> {
-        let guard = self.lock_snapshots();
+        let guard = self.lock_state();
         guard
+            .snapshots
             .values()
             .filter(|snapshot| snapshot.user_id == user_id)
             .min_by_key(|snapshot| snapshot.connection_id.as_u64())
             .cloned()
     }
 
-    fn lock_snapshots(&self) -> MutexGuard<'_, HashMap<OutboundConnectionId, PresenceSnapshot>> {
-        self.snapshots
+    fn lock_state(&self) -> MutexGuard<'_, PresenceState> {
+        self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
@@ -248,6 +273,33 @@ fn peer_ids_from_guard(
         .collect();
     peer_ids.sort_by_key(|connection_id| connection_id.as_u64());
     peer_ids
+}
+
+fn assigned_presence_id(
+    state: &mut PresenceState,
+    connection_id: OutboundConnectionId,
+) -> Result<i32, TransactionError> {
+    if let Some(snapshot) = state.snapshots.get(&connection_id) {
+        return Ok(snapshot.user_id);
+    }
+    next_available_presence_id(state)
+        .map(i32::from)
+        .ok_or_else(invalid_field_300)
+}
+
+fn next_available_presence_id(state: &mut PresenceState) -> Option<u16> {
+    let active_ids: HashSet<u16> = state
+        .snapshots
+        .values()
+        .filter_map(|snapshot| u16::try_from(snapshot.user_id).ok())
+        .collect();
+    for _ in 0..u16::MAX {
+        state.next_presence_id = state.next_presence_id.wrapping_add(1).max(1);
+        if !active_ids.contains(&state.next_presence_id) {
+            return Some(state.next_presence_id);
+        }
+    }
+    None
 }
 
 const fn invalid_field_300() -> TransactionError {

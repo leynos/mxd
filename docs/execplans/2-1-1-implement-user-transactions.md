@@ -119,6 +119,9 @@ Success is observable when:
 - [x] Add unit, behavioural, and PostgreSQL-backed validation coverage.
 - [x] Update `docs/design.md`, `docs/users-guide.md`, and `docs/roadmap.md`.
 - [x] Run the full quality gates and capture logs with `tee`.
+- [x] (2026-04-29 12:00Z) Changed runtime presence IDs to be unique per active
+      connection, preserving account row IDs for authentication and database
+      lookups.
 
 ## Surprises and discoveries
 
@@ -235,6 +238,12 @@ Success is observable when:
   structure in `hotline.h` and parses it in `hx_commands.c` for both self-info
   and user-list responses, giving concrete client-side wire evidence. Date/
   Author: 2026-04-12 / Codex.
+
+- Decision: assign the field-300 `uid` from the shared runtime
+  `PresenceRegistry` per active outbound connection, rather than reusing the
+  authenticated account row ID. Rationale: duplicate simultaneous logins for
+  one account are currently allowed, so account IDs are not unique enough for
+  roster update/delete semantics. Date/Author: 2026-04-29 / Codex.
 
 ## Outcomes and retrospective
 

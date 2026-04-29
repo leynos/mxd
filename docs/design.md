@@ -2170,7 +2170,7 @@ chat/lobby: a client typically has a user list showing who’s online. When
 someone goes away or disconnects, those are broadcast. MXD will implement this
 by treating the main lobby as the space where presence is broadcast.
 Transactions 300 (request list) and the 301/302 (notifications) correspond to
-this. Our plan:
+this. The design:
 
 - 300 GetUserNameList: client asks for the list, server replies with a list of
   all online users encoded as repeated field-300 records. SynHX parses each
@@ -2180,14 +2180,16 @@ this. Our plan:
   Lobby room. SynHX also accepts an optional chat-subject field in the same
   reply for the main lobby. MXD now generates the roster from a shared runtime
   `PresenceRegistry` keyed by outbound connection ID rather than from database
-  state.
+  state. The packed `uid` is a session-unique presence ID assigned by the
+  registry, not the authenticated account row ID, so simultaneous logins for
+  one account remain distinct until each connection leaves.
 
 - Server-initiated 301 (Notify Change User): when someone logs in, send the
-  other online clients a message with their user ID, icon, colour / flags, and
-  username. The same transaction is reused for later session-visible changes
-  from `304 Set Client User Info`. 302 (Notify Remove User) is emitted after a
-  connection is removed from the presence registry on disconnect, so recipients
-  see the post-removal roster.
+  other online clients a message with their presence ID, icon, colour / flags,
+  and username. The same transaction is reused for later session-visible
+  changes from `304 Set Client User Info`. 302 (Notify Remove User) is emitted
+  after a connection is removed from the presence registry on disconnect, so
+  recipients see the post-removal roster.
 
 - Session lifecycle: MXD now models `Unauthenticated`, `PendingAgreement`, and
   `Online` phases explicitly. The current default-user privilege set includes

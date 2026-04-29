@@ -1,4 +1,4 @@
-//! Behavioural tests for presence flows through the router boundary.
+//! Behavioural tests for session-scoped presence flows through the router.
 
 #![expect(clippy::big_endian_bytes, reason = "protocol fixtures use big-endian")]
 

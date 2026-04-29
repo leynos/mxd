@@ -102,12 +102,12 @@ impl Command {
         let Some(snapshot) = session.presence_snapshot() else {
             return Ok(());
         };
-        let peer_ids = presence_context.presence.upsert(snapshot.clone());
-        if peer_ids.is_empty() {
+        let upsert = presence_context.presence.upsert(snapshot)?;
+        if upsert.peer_ids.is_empty() {
             return Ok(());
         }
-        let notification = build_notify_change_user(&snapshot)?;
-        push_with_retry_to_peers(presence_context.messaging, &peer_ids, notification).await;
+        let notification = build_notify_change_user(&upsert.snapshot)?;
+        push_with_retry_to_peers(presence_context.messaging, &upsert.peer_ids, notification).await;
         Ok(())
     }
 
@@ -203,12 +203,12 @@ impl Command {
         let Some(snapshot) = session.presence_snapshot() else {
             return Ok(());
         };
-        let peer_ids = presence_context.presence.upsert(snapshot.clone());
-        if peer_ids.is_empty() {
+        let upsert = presence_context.presence.upsert(snapshot)?;
+        if upsert.peer_ids.is_empty() {
             return Ok(());
         }
-        let notification = build_notify_change_user(&snapshot)?;
-        push_with_retry_to_peers(presence_context.messaging, &peer_ids, notification).await;
+        let notification = build_notify_change_user(&upsert.snapshot)?;
+        push_with_retry_to_peers(presence_context.messaging, &upsert.peer_ids, notification).await;
         Ok(())
     }
 
