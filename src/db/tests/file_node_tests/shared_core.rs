@@ -240,7 +240,6 @@ pub(crate) async fn group_acl_visibility_body(conn: &mut DbConnection) -> Result
 /// # Errors
 ///
 /// Propagates any database error encountered during the scenario.
-#[cfg(feature = "sqlite")]
 pub(crate) async fn grant_revocation_removes_visibility_body(
     conn: &mut DbConnection,
 ) -> Result<(), AnyError> {
@@ -290,7 +289,6 @@ pub(crate) async fn grant_revocation_removes_visibility_body(
 /// # Errors
 ///
 /// Propagates any database error encountered during the scenario.
-#[cfg(feature = "sqlite")]
 pub(crate) async fn group_membership_removal_revokes_visibility_body(
     conn: &mut DbConnection,
 ) -> Result<(), AnyError> {
@@ -336,7 +334,6 @@ pub(crate) async fn group_membership_removal_revokes_visibility_body(
     Ok(())
 }
 
-#[cfg(feature = "sqlite")]
 async fn create_user_id(conn: &mut DbConnection, name: &'static str) -> Result<i32, AnyError> {
     create_user(
         conn,
@@ -352,7 +349,6 @@ async fn create_user_id(conn: &mut DbConnection, name: &'static str) -> Result<i
         .ok_or_else(|| anyhow::anyhow!("user missing"))
 }
 
-#[cfg(feature = "sqlite")]
 async fn create_group_with_member(conn: &mut DbConnection, user_id: i32) -> Result<i32, AnyError> {
     let group_id = create_group(
         conn,
@@ -365,7 +361,6 @@ async fn create_group_with_member(conn: &mut DbConnection, user_id: i32) -> Resu
     Ok(group_id)
 }
 
-#[cfg(feature = "sqlite")]
 async fn create_visible_root_file(
     conn: &mut DbConnection,
     creator_id: i32,
@@ -389,7 +384,6 @@ async fn create_visible_root_file(
     .map_err(anyhow::Error::from)
 }
 
-#[cfg(feature = "sqlite")]
 async fn visible_root_contains(
     conn: &mut DbConnection,
     user_id: i32,

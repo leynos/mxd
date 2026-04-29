@@ -107,6 +107,40 @@ fn migration_timeout(timeout_secs: Option<u64>) -> Duration {
         .map_or(DEFAULT_MIGRATION_TIMEOUT, Duration::from_secs)
 }
 
+fn log_migration_completed_within_cancellation_grace() {
+    info!(
+        grace_timeout_secs = MIGRATION_CANCEL_GRACE_TIMEOUT.as_secs(),
+        "migration completed within cancellation grace period; returning timeout error"
+    );
+}
+
+fn log_migration_overran_cancellation_grace() {
+    info!(
+        grace_timeout_secs = MIGRATION_CANCEL_GRACE_TIMEOUT.as_secs(),
+        "migration overran cancellation grace period; returning timeout error"
+    );
+}
+
+async fn migration_completed_within_cancellation_grace<F, T>(pending_migration: F) -> bool
+where
+    F: Future<Output = T>,
+{
+    tokio::time::timeout(MIGRATION_CANCEL_GRACE_TIMEOUT, pending_migration)
+        .await
+        .is_ok()
+}
+
+async fn log_cancellation_grace_result<F, T>(pending_migration: F)
+where
+    F: Future<Output = T>,
+{
+    if migration_completed_within_cancellation_grace(pending_migration).await {
+        log_migration_completed_within_cancellation_grace();
+    } else {
+        log_migration_overran_cancellation_grace();
+    }
+}
+
 async fn cancel_timed_out_migration<F, T>(
     duration: Duration,
     token: CancellationToken,
@@ -120,8 +154,7 @@ where
         "migration watchdog fired; cancelling in-progress work"
     );
     token.cancel();
-    let _timeout_result =
-        tokio::time::timeout(MIGRATION_CANCEL_GRACE_TIMEOUT, pending_migration).await;
+    log_cancellation_grace_result(pending_migration).await;
     Err(wrap_timeout_error(duration))
 }
 
@@ -216,8 +249,10 @@ cfg_if! {
         /// # Errors
         ///
         /// Returns any error produced by Diesel while running migrations.
-        /// Returns a wrapped timeout or cancellation error when the watchdog
-        /// cancels work that exceeds `timeout_secs`.
+        /// Returns a wrapped [`MigrationTimeoutError`] when the watchdog
+        /// cancels work that exceeds `timeout_secs`. [`MigrationCancelledError`]
+        /// is only returned if cancellation is observed separately inside the
+        /// migration loop.
         #[must_use = "handle the result"]
         pub async fn run_migrations(
             conn: &mut DbConnection,
@@ -262,8 +297,10 @@ cfg_if! {
         /// # Errors
         ///
         /// Returns any error produced by Diesel while running migrations.
-        /// Returns a wrapped timeout or cancellation error when the watchdog
-        /// cancels work that exceeds `timeout_secs`.
+        /// Returns a wrapped [`MigrationTimeoutError`] when the watchdog
+        /// cancels work that exceeds `timeout_secs`. [`MigrationCancelledError`]
+        /// is only returned if cancellation is observed separately inside the
+        /// migration loop.
         #[must_use = "handle the result"]
         pub async fn run_migrations(
             database_url: &str,
@@ -296,8 +333,9 @@ cfg_if! {
 /// # Errors
 ///
 /// Returns any error produced by Diesel while running migrations. Returns a
-/// wrapped timeout or cancellation error when the watchdog cancels work that
-/// exceeds `timeout_secs`.
+/// wrapped [`MigrationTimeoutError`] when the watchdog cancels work that
+/// exceeds `timeout_secs`. [`MigrationCancelledError`] is only returned if
+/// cancellation is observed separately inside the migration loop.
 #[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
 pub async fn apply_migrations(
@@ -318,8 +356,9 @@ pub async fn apply_migrations(
 /// # Errors
 ///
 /// Returns any error produced by Diesel while running migrations. Returns a
-/// wrapped timeout or cancellation error when the watchdog cancels work that
-/// exceeds `timeout_secs`.
+/// wrapped [`MigrationTimeoutError`] when the watchdog cancels work that
+/// exceeds `timeout_secs`. [`MigrationCancelledError`] is only returned if
+/// cancellation is observed separately inside the migration loop.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[must_use = "handle the result"]
 pub async fn apply_migrations(
@@ -332,53 +371,5 @@ pub async fn apply_migrations(
 }
 
 #[cfg(test)]
-mod tests {
-    //! Tests for migration timeout configuration and watchdog cancellation.
-
-    use rstest::rstest;
-
-    use super::*;
-
-    #[rstest]
-    #[case(None, DEFAULT_MIGRATION_TIMEOUT)]
-    #[case(Some(0), DEFAULT_MIGRATION_TIMEOUT)]
-    #[case(Some(7), Duration::from_secs(7))]
-    fn migration_timeout_maps_configuration_to_duration(
-        #[case] input: Option<u64>,
-        #[case] expected: Duration,
-    ) {
-        assert_eq!(migration_timeout(input), expected);
-    }
-
-    #[tokio::test]
-    async fn migration_watchdog_allows_work_that_finishes_in_time() {
-        let result =
-            run_with_migration_timeout(Duration::from_secs(1), CancellationToken::new(), async {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                Ok::<(), DieselError>(())
-            })
-            .await;
-
-        assert!(
-            result.is_ok(),
-            "watchdog should not trip for completed work"
-        );
-    }
-
-    #[tokio::test]
-    async fn migration_watchdog_cancels_work_and_reports_the_applied_timeout() {
-        let err =
-            run_with_migration_timeout(Duration::from_millis(1), CancellationToken::new(), async {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                Ok::<(), DieselError>(())
-            })
-            .await
-            .expect_err("cancelled work should time out");
-
-        let DieselError::SerializationError(inner) = err else {
-            panic!("timeout should be wrapped as a serialization error");
-        };
-
-        assert_eq!(inner.to_string(), "migration execution exceeded 1ms");
-    }
-}
+#[path = "migrations_tests.rs"]
+mod tests;
