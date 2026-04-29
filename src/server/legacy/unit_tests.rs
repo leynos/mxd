@@ -15,7 +15,7 @@ use tokio::{
 };
 
 use super::{ServerResources, handle_accept_result, test_helpers};
-use crate::protocol;
+use crate::{presence::PresenceRegistry, protocol};
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[rstest]
@@ -37,6 +37,7 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
     let resources = ServerResources {
         pool,
         argon2: Arc::clone(&argon2),
+        presence: Arc::new(PresenceRegistry::default()),
     };
     // resources holds one clone; count is now strong_before + 1
     let after_resources = Arc::strong_count(&argon2);

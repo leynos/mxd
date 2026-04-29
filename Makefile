@@ -1,5 +1,7 @@
 .PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
 
+export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
+
 APP ?= mxd
 CARGO ?= cargo
 CARGO_FALLBACK := $(HOME)/.cargo/bin/cargo

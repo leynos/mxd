@@ -218,6 +218,71 @@ fn process_transaction_bytes_client_info_text_returns_name_and_blank_info() -> R
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
+fn process_transaction_bytes_client_info_text_unknown_user_uses_internal_error()
+-> Result<(), AnyError> {
+    let rt = runtime()?;
+    let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
+        return Ok(());
+    };
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
+    ctx.authenticate_with_privileges(1, Privileges::GET_CLIENT_INFO | Privileges::NO_AGREEMENT);
+
+    let unknown_user_id = 42u32.to_be_bytes();
+    let reply = rt.block_on(ctx.send(
+        TransactionType::GetClientInfoText,
+        24,
+        &[(FieldId::UserId, unknown_user_id.as_ref())],
+    ))?;
+
+    assert_eq!(reply.header.error, crate::commands::ERR_INTERNAL_SERVER);
+    assert!(reply.payload.is_empty());
+    Ok(())
+}
+
+#[expect(clippy::big_endian_bytes, reason = "network protocol")]
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
+fn process_transaction_bytes_client_info_text_accepts_mixed_width_user_id_encodings()
+-> Result<(), AnyError> {
+    let rt = runtime()?;
+    let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
+        return Ok(());
+    };
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
+    let login = rt.block_on(ctx.send(
+        TransactionType::Login,
+        25,
+        &[(FieldId::Login, b"alice"), (FieldId::Password, b"secret")],
+    ))?;
+    assert_eq!(login.header.error, 0);
+
+    let target_user_id_u16 = 1u16.to_be_bytes();
+    let reply_16 = rt.block_on(ctx.send(
+        TransactionType::GetClientInfoText,
+        26,
+        &[(FieldId::UserId, target_user_id_u16.as_ref())],
+    ))?;
+    assert_eq!(reply_16.header.error, 0);
+    let params_16 = decode_reply_params(&reply_16)?;
+    assert_eq!(find_string(&params_16, FieldId::Name)?, "alice");
+    assert_eq!(find_string(&params_16, FieldId::Data)?, "");
+
+    let target_user_id_u32 = 1u32.to_be_bytes();
+    let reply_32 = rt.block_on(ctx.send(
+        TransactionType::GetClientInfoText,
+        27,
+        &[(FieldId::UserId, target_user_id_u32.as_ref())],
+    ))?;
+    assert_eq!(reply_32.header.error, 0);
+    let params_32 = decode_reply_params(&reply_32)?;
+    assert_eq!(find_string(&params_32, FieldId::Name)?, "alice");
+    assert_eq!(find_string(&params_32, FieldId::Data)?, "");
+    Ok(())
+}
+
+#[expect(clippy::big_endian_bytes, reason = "network protocol")]
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
 fn process_transaction_bytes_set_client_user_info_updates_future_user_list_views()
 -> Result<(), AnyError> {
     let rt = runtime()?;

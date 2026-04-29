@@ -105,8 +105,8 @@ Success is observable when:
       reviewing `docs/roadmap.md`, `docs/protocol.md`, `docs/design.md`,
       testing guidance, and existing execplans.
 - [x] (2026-04-12 00:00Z) Derived the field `300` wire layout from the SynHX
-      client source (`hotline.h`, `hx_commands.c`), resolving the previous
-      protocol ambiguity for "User Name with Info".
+      (open-source Hotline client) source (`hotline.h`, `hx_commands.c`),
+      resolving the previous protocol ambiguity for "User Name with Info".
 - [x] (2026-04-17 10:20Z) Re-audited the current code paths before
       implementation and confirmed the main gaps: no shared presence runtime,
       no `301-304` command parsing, no flexible integer helper for 16-bit
@@ -146,8 +146,8 @@ Success is observable when:
   see `OutboundError::TargetUnavailable` before the receiving connection's push
   handle is fully visible. The production code now retries briefly on that
   specific error, while the acceptance BDD coverage was moved to a
-  deterministic router-plus-recording-outbound harness and paired with a
-  direct adapter unit test for disconnect-time `302`.
+  deterministic router-plus-recording-outbound harness and paired with a direct
+  adapter unit test for disconnect-time `302`.
 - The repository's `make lint` target includes a second `whitaker` pass beyond
   Clippy. That pass enforced two additional constraints during this work:
   `src/commands/mod.rs` had to be split below the module line budget, and the
@@ -225,8 +225,8 @@ Success is observable when:
   feature landed instead of suppressing the repository's module-size lint.
   Rationale: the added presence command family pushed the module past the
   enforced size budget, and extracting `parsing.rs` plus `support.rs` keeps the
-  command boundary readable without changing behaviour. Date/Author:
-  2026-04-17 / Codex.
+  command boundary readable without changing behaviour. Date/Author: 2026-04-17
+  / Codex.
 
 - Decision: encode and decode field `300` using the SynHX-observed
   `hl_userlist_hdr` layout: `uid:u16`, `icon:u16`, `colour:u16`,

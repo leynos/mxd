@@ -30,6 +30,18 @@ pub(crate) struct CommandContext<'a> {
     pub presence: &'a PresenceRegistry,
 }
 
+/// Execution context for command processing without external outbound adapters.
+pub struct ProcessContext<'a> {
+    /// Remote peer address.
+    pub peer: std::net::SocketAddr,
+    /// Database connection pool.
+    pub pool: DbPool,
+    /// Mutable session state for the connection.
+    pub session: &'a mut crate::handler::Session,
+    /// Shared presence registry for online-user state.
+    pub presence: &'a PresenceRegistry,
+}
+
 /// User-visible metadata updates accepted by `121` and `304`.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct UserInfoUpdate {

@@ -12,14 +12,8 @@ mod parsing;
 mod support;
 
 use diesel_async::pooled_connection::bb8::RunError;
-use handlers::{
-    ClientInfoContext,
-    LoginContext,
-    PresenceContext,
-    SessionPresenceContext,
-    UserListContext,
-};
 use parsing::parse_command;
+pub use support::ProcessContext;
 pub(crate) use support::{
     CommandContext,
     UserInfoUpdate,
@@ -33,7 +27,6 @@ use crate::{
     handler::PrivilegeError,
     login::LoginRequest,
     news_handlers::{self, ArticleDataRequest, PostArticleRequest},
-    presence::PresenceRegistry,
     server::outbound::OutboundError,
     transaction::{FrameHeader, Transaction, TransactionError},
 };
@@ -164,22 +157,22 @@ impl Command {
     /// # Errors
     /// Returns an error if database access fails or the command cannot be
     /// handled.
-    pub async fn process(
-        self,
-        peer: SocketAddr,
-        pool: DbPool,
-        session: &mut crate::handler::Session,
-    ) -> Result<Transaction, CommandError> {
+    pub async fn process(self, context: ProcessContext<'_>) -> Result<Transaction, CommandError> {
+        let ProcessContext {
+            peer,
+            pool,
+            session,
+            presence,
+        } = context;
         let mut transport = crate::server::outbound::ReplyBuffer::new();
         let messaging = crate::server::outbound::NoopOutboundMessaging;
-        let presence = PresenceRegistry::default();
         self.process_with_outbound(CommandContext {
             peer,
             pool,
             session,
             transport: &mut transport,
             messaging: &messaging,
-            presence: &presence,
+            presence,
         })
         .await?;
         transport
@@ -221,101 +214,19 @@ impl Command {
         context: CommandContext<'_>,
     ) -> Result<(), CommandError> {
         match self {
-            Self::Login { req } => Self::dispatch_login(context, req).await,
-            Self::GetUserNameList { header } => {
-                let CommandContext {
-                    session,
-                    transport,
-                    presence,
-                    ..
-                } = context;
-                Self::process_get_user_name_list(
-                    UserListContext {
-                        session,
-                        transport,
-                        presence,
-                    },
-                    &header,
-                )
-            }
+            Self::Login { req } => Self::process_login_with_presence(context, req).await,
+            Self::GetUserNameList { header } => Self::process_get_user_name_list(context, &header),
             Self::GetClientInfoText {
                 header,
                 target_user_id,
-            } => {
-                let CommandContext {
-                    pool,
-                    session,
-                    transport,
-                    presence,
-                    ..
-                } = context;
-                Self::process_get_client_info_text(
-                    ClientInfoContext {
-                        pool,
-                        session,
-                        transport,
-                        presence,
-                    },
-                    header,
-                    target_user_id,
-                )
-                .await
-            }
+            } => Self::process_get_client_info_text(context, header, target_user_id).await,
             Self::SetClientUserInfo { header, update } => {
-                Self::dispatch_set_client_user_info(context, header, update).await
+                Self::process_set_client_user_info(context, header, update).await
             }
             _ => Err(CommandError::Invariant(
                 "non-presence command passed to presence dispatcher",
             )),
         }
-    }
-
-    async fn dispatch_login(
-        context: CommandContext<'_>,
-        req: LoginRequest,
-    ) -> Result<(), CommandError> {
-        let CommandContext {
-            peer,
-            pool,
-            session,
-            transport,
-            messaging,
-            presence,
-        } = context;
-        let login_ctx = LoginContext {
-            peer,
-            pool,
-            session,
-            presence: PresenceContext {
-                transport,
-                messaging,
-                presence,
-            },
-        };
-        Self::process_login_with_presence(login_ctx, req).await
-    }
-
-    async fn dispatch_set_client_user_info(
-        context: CommandContext<'_>,
-        header: FrameHeader,
-        update: UserInfoUpdate,
-    ) -> Result<(), CommandError> {
-        let CommandContext {
-            session,
-            transport,
-            messaging,
-            presence,
-            ..
-        } = context;
-        let ctx = SessionPresenceContext {
-            session,
-            presence: PresenceContext {
-                transport,
-                messaging,
-                presence,
-            },
-        };
-        Self::process_set_client_user_info(ctx, header, update).await
     }
 
     async fn execute(

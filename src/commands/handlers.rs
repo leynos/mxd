@@ -10,6 +10,7 @@ use tracing::warn;
 
 use super::{
     Command,
+    CommandContext,
     CommandError,
     ERR_INTERNAL_SERVER,
     ERR_INVALID_PAYLOAD,
@@ -80,37 +81,45 @@ impl Command {
     }
 
     pub(super) async fn process_login_with_presence(
-        context: LoginContext<'_>,
+        context: CommandContext<'_>,
         req: LoginRequest,
     ) -> Result<(), CommandError> {
-        let LoginContext {
+        let CommandContext {
             peer,
             pool,
             session,
+            transport,
+            messaging,
             presence,
         } = context;
+        let presence_context = PresenceContext {
+            transport,
+            messaging,
+            presence,
+        };
         let reply = handle_login(peer, session, pool, req).await?;
-        presence.transport.send_reply(reply)?;
+        presence_context.transport.send_reply(reply)?;
         let Some(snapshot) = session.presence_snapshot() else {
             return Ok(());
         };
-        let peer_ids = presence.presence.upsert(snapshot.clone());
+        let peer_ids = presence_context.presence.upsert(snapshot.clone());
         if peer_ids.is_empty() {
             return Ok(());
         }
         let notification = build_notify_change_user(&snapshot)?;
-        push_to_connections(presence.messaging, &peer_ids, notification).await;
+        push_with_retry_to_peers(presence_context.messaging, &peer_ids, notification).await;
         Ok(())
     }
 
     pub(super) fn process_get_user_name_list(
-        context: UserListContext<'_>,
+        context: CommandContext<'_>,
         header: &FrameHeader,
     ) -> Result<(), CommandError> {
-        let UserListContext {
+        let CommandContext {
             session,
             transport,
             presence,
+            ..
         } = context;
         if !session.is_online() {
             transport.send_reply(privilege_error_reply(
@@ -125,15 +134,16 @@ impl Command {
     }
 
     pub(super) async fn process_get_client_info_text(
-        context: ClientInfoContext<'_>,
+        context: CommandContext<'_>,
         header: FrameHeader,
         target_user_id: i32,
     ) -> Result<(), CommandError> {
-        let ClientInfoContext {
+        let CommandContext {
             pool,
             session,
             transport,
             presence,
+            ..
         } = context;
         let header_reply = header.clone();
         let reply = check_privilege_and_run(
@@ -162,32 +172,43 @@ impl Command {
     }
 
     pub(super) async fn process_set_client_user_info(
-        context: SessionPresenceContext<'_>,
+        context: CommandContext<'_>,
         header: FrameHeader,
         update: UserInfoUpdate,
     ) -> Result<(), CommandError> {
-        let SessionPresenceContext { session, presence } = context;
+        let CommandContext {
+            session,
+            transport,
+            messaging,
+            presence,
+            ..
+        } = context;
+        let presence_context = PresenceContext {
+            transport,
+            messaging,
+            presence,
+        };
         if let Err(error) = session.require_authenticated() {
-            presence
+            presence_context
                 .transport
                 .send_reply(privilege_error_reply(&header, error))?;
             return Ok(());
         }
 
         apply_user_info_update(session, update);
-        presence
+        presence_context
             .transport
             .send_reply(empty_success_reply(&header))?;
 
         let Some(snapshot) = session.presence_snapshot() else {
             return Ok(());
         };
-        let peer_ids = presence.presence.upsert(snapshot.clone());
+        let peer_ids = presence_context.presence.upsert(snapshot.clone());
         if peer_ids.is_empty() {
             return Ok(());
         }
         let notification = build_notify_change_user(&snapshot)?;
-        push_to_connections(presence.messaging, &peer_ids, notification).await;
+        push_with_retry_to_peers(presence_context.messaging, &peer_ids, notification).await;
         Ok(())
     }
 
@@ -244,17 +265,17 @@ fn apply_user_info_update(session: &mut crate::handler::Session, update: UserInf
     }
 }
 
-async fn push_to_connections(
+async fn push_with_retry_to_peers(
     messaging: &dyn OutboundMessaging,
     connection_ids: &[crate::server::outbound::OutboundConnectionId],
     message: Transaction,
 ) {
-    for connection_id in connection_ids {
-        push_to_connection(messaging, *connection_id, message.clone()).await;
+    for &connection_id in connection_ids {
+        push_with_retry_to_peer(messaging, connection_id, message.clone()).await;
     }
 }
 
-async fn push_to_connection(
+async fn push_with_retry_to_peer(
     messaging: &dyn OutboundMessaging,
     connection_id: crate::server::outbound::OutboundConnectionId,
     message: Transaction,
@@ -267,16 +288,25 @@ async fn push_to_connection(
         );
     }
 }
-
+async fn push_with_retry_to_peer(
+    messaging: &dyn OutboundMessaging,
+    connection_id: crate::server::outbound::OutboundConnectionId,
+    message: Transaction,
+) {
+    if let Err(error) = push_with_retry(messaging, connection_id, message).await {
+        warn!(
+            ?error,
+            target = connection_id.as_u64(),
+            "presence notification delivery failed"
+        );
+    }
+}
 async fn push_with_retry(
     messaging: &dyn OutboundMessaging,
     connection_id: crate::server::outbound::OutboundConnectionId,
     message: Transaction,
 ) -> Result<(), crate::server::outbound::OutboundError> {
-    const RETRY_ATTEMPTS: usize = 5;
-    const RETRY_DELAY: Duration = Duration::from_millis(50);
-
-    for attempt in 0..RETRY_ATTEMPTS {
+    for attempt in 0..PRESENCE_PUSH_RETRY_ATTEMPTS {
         match messaging
             .push(
                 OutboundTarget::Connection(connection_id),
@@ -287,9 +317,9 @@ async fn push_with_retry(
         {
             Ok(()) => return Ok(()),
             Err(crate::server::outbound::OutboundError::TargetUnavailable)
-                if attempt + 1 < RETRY_ATTEMPTS =>
+                if attempt + 1 < PRESENCE_PUSH_RETRY_ATTEMPTS =>
             {
-                sleep(RETRY_DELAY).await;
+                sleep(PRESENCE_PUSH_RETRY_DELAY).await;
             }
             Err(error) => return Err(error),
         }
@@ -304,27 +334,7 @@ pub(super) struct PresenceContext<'a> {
     pub(super) presence: &'a PresenceRegistry,
 }
 
-pub(super) struct SessionPresenceContext<'a> {
-    pub(super) session: &'a mut crate::handler::Session,
-    pub(super) presence: PresenceContext<'a>,
-}
 
-pub(super) struct ClientInfoContext<'a> {
-    pub(super) pool: DbPool,
-    pub(super) session: &'a crate::handler::Session,
-    pub(super) transport: &'a mut dyn OutboundTransport,
-    pub(super) presence: &'a PresenceRegistry,
-}
+const PRESENCE_PUSH_RETRY_ATTEMPTS: usize = 5;
 
-pub(super) struct LoginContext<'a> {
-    pub(super) peer: SocketAddr,
-    pub(super) pool: DbPool,
-    pub(super) session: &'a mut crate::handler::Session,
-    pub(super) presence: PresenceContext<'a>,
-}
-
-pub(super) struct UserListContext<'a> {
-    pub(super) session: &'a crate::handler::Session,
-    pub(super) transport: &'a mut dyn OutboundTransport,
-    pub(super) presence: &'a PresenceRegistry,
-}
+const PRESENCE_PUSH_RETRY_DELAY: Duration = Duration::from_millis(50);

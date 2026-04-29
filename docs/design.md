@@ -2175,8 +2175,8 @@ this. Our plan:
 - 300 GetUserNameList: client asks for the list, server replies with a list of
   all online users encoded as repeated field-300 records. SynHX parses each
   field 300 payload as a packed structure of `uid:u16`, `icon:u16`,
-  `colour:u16`, `name_len:u16`, then `name_len` bytes of nickname. We can
-  generate this from active sessions or by querying `chat_participants` of the
+  `colour:u16`, `name_len:u16`, then `name_len` bytes of nickname. This can be
+  generated from active sessions or by querying `chat_participants` of the
   Lobby room. SynHX also accepts an optional chat-subject field in the same
   reply for the main lobby. MXD now generates the roster from a shared runtime
   `PresenceRegistry` keyed by outbound connection ID rather than from database

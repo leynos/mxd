@@ -7,6 +7,7 @@ use argon2::Argon2;
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use mxd::server::legacy::test_support::is_postgres_url;
 use mxd::{
+    presence::PresenceRegistry,
     protocol,
     server::legacy::test_support::{
         ServerResources,
@@ -40,6 +41,7 @@ fn accept_context() -> AcceptContext {
     let resources = ServerResources {
         pool,
         argon2: Arc::clone(&argon2),
+        presence: Arc::new(PresenceRegistry::default()),
     };
     AcceptContext {
         resources,

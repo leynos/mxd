@@ -1,17 +1,16 @@
 //! Connection-level request processing.
 //!
 //! The handler owns per-client [`Session`] state and dispatches incoming
-//! transactions to [`Command`] processors. Each connection runs in its own
-//! asynchronous task.
+//! transactions to [`Command`] processors.
 use std::{error::Error, fmt, net::SocketAddr, sync::Arc};
 
 use argon2::Argon2;
 
 use crate::{
-    commands::{Command, CommandError},
+    commands::{Command, CommandError, ProcessContext},
     connection_flags::ConnectionFlags,
     db::DbPool,
-    presence::{PresenceSnapshot, SessionPhase},
+    presence::{PresenceRegistry, PresenceSnapshot, SessionPhase},
     privileges::Privileges,
     server::outbound::OutboundConnectionId,
     transaction::{Transaction, parse_transaction},
@@ -26,6 +25,8 @@ pub struct Context {
     pub pool: DbPool,
     /// Shared Argon2 instance for password hashing.
     pub argon2: Arc<Argon2<'static>>,
+    /// Shared presence registry for legacy request processing.
+    pub presence: Arc<PresenceRegistry>,
 }
 
 /// Session state for a single connection.
@@ -199,13 +200,30 @@ impl Session {
 
 impl Context {
     /// Create a new connection context.
-    #[expect(
-        clippy::missing_const_for_fn,
-        reason = "const fn with Arc may not be portable across Rust versions"
-    )]
     #[must_use]
     pub fn new(peer: SocketAddr, pool: DbPool, argon2: Arc<Argon2<'static>>) -> Self {
-        Self { peer, pool, argon2 }
+        Self {
+            peer,
+            pool,
+            argon2,
+            presence: Arc::new(PresenceRegistry::default()),
+        }
+    }
+
+    /// Create a new connection context with shared presence.
+    #[must_use]
+    pub const fn with_presence(
+        peer: SocketAddr,
+        pool: DbPool,
+        argon2: Arc<Argon2<'static>>,
+        presence: Arc<PresenceRegistry>,
+    ) -> Self {
+        Self {
+            peer,
+            pool,
+            argon2,
+            presence,
+        }
     }
 }
 
@@ -221,7 +239,13 @@ pub async fn handle_request(
 ) -> Result<Transaction, CommandError> {
     let tx = parse_transaction(frame)?;
     let cmd = Command::from_transaction(tx)?;
-    cmd.process(ctx.peer, ctx.pool.clone(), session).await
+    cmd.process(ProcessContext {
+        peer: ctx.peer,
+        pool: ctx.pool.clone(),
+        session,
+        presence: ctx.presence.as_ref(),
+    })
+    .await
 }
 
 #[cfg(test)]
