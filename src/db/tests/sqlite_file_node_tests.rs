@@ -75,9 +75,7 @@ async fn test_file_node_shared_scenario(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
     #[case] body: ScenarioBody,
 ) -> Result<(), AnyError> {
-    let mut conn = migrated_conn
-        .await
-        .expect("failed to create migrated test database");
+    let mut conn = migrated_conn.await?;
     body(&mut conn).await
 }
 
@@ -85,24 +83,22 @@ async fn test_file_node_shared_scenario(
 #[tokio::test]
 async fn test_file_nodes_reject_self_parent(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
-) {
-    let mut conn = migrated_conn
-        .await
-        .expect("failed to create migrated test database");
+) -> Result<(), AnyError> {
+    let mut conn = migrated_conn.await?;
     file_node_tests::reject_self_parent_body(&mut conn, "CHECK constraint failed")
         .await
         .expect("self-parent guard should reject recursive parent links");
+    Ok(())
 }
 
 #[rstest]
 #[tokio::test]
 async fn test_file_nodes_reject_invalid_basenames(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
-) {
-    let mut conn = migrated_conn
-        .await
-        .expect("failed to create migrated test database");
+) -> Result<(), AnyError> {
+    let mut conn = migrated_conn.await?;
     file_node_tests::reject_invalid_basenames_body(&mut conn, "CHECK constraint failed")
         .await
         .expect("basename guard should reject empty and slash-delimited names");
+    Ok(())
 }
