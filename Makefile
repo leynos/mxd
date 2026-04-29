@@ -36,15 +36,6 @@ ifneq ($(wildcard $(MDLINT_FALLBACK)),)
     MDLINT := $(MDLINT_FALLBACK)
   endif
 endif
-WHITAKER ?= whitaker
-WHITAKER_FALLBACK := $(HOME)/.local/bin/whitaker
-ifeq ($(WHITAKER),whitaker)
-  ifneq ($(wildcard $(WHITAKER_FALLBACK)),)
-    ifneq ($(shell command -v $(WHITAKER) >/dev/null 2>&1; echo $$?),0)
-      WHITAKER := $(WHITAKER_FALLBACK)
-    endif
-  endif
-endif
 NIXIE ?= nixie
 TLC_RUNNER ?= ./scripts/run-tlc.sh
 TLC_IMAGE ?= ghcr.io/leynos/mxd/mxd-tlc:latest
