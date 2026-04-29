@@ -263,6 +263,35 @@ These methods replace the prior ad-hoc `!allows_payload()` checks in
 `src/commands/mod.rs`, `src/wireframe/compat_layer.rs`, and
 `src/transaction/params.rs`.
 
+
+## Presence lifecycle APIs
+
+Presence state is exposed through the stable crate-level API
+`mxd::{PresenceRegistry, PresenceSnapshot, SessionPhase}`. The internal
+`presence` module remains private so transport-specific helper functions do not
+become part of the public crate surface.
+
+`PresenceRegistry` stores online snapshots by outbound connection identifier.
+Each login or profile update builds a `PresenceSnapshot` from the adapter-owned
+connection identifier and the session domain state, validates that the snapshot
+can be encoded as Hotline field 300, then inserts it into the registry. This
+keeps duplicate account logins distinct: the protocol-visible presence ID is
+unique per active session rather than reused from the account row ID.
+
+`SessionPhase` controls when a snapshot is eligible for roster publication:
+
+- `Unauthenticated` means no account has completed login.
+- `PendingAgreement` means authentication succeeded, but Agreement Acceptance
+  (121) still needs to complete before the session becomes visible.
+- `Online` means the session may appear in Get User Name List (300) replies and
+  may trigger Notify Change User (301) or Notify Delete User (302) traffic.
+
+Sessions granted `NO_AGREEMENT` transition directly to `Online` at login.
+Agreement-gated sessions stay in `PendingAgreement` until the agreement flow
+finalizes. Handlers must not upsert pending sessions into `PresenceRegistry`;
+only adapter code that has a live outbound connection identifier should build a
+published `PresenceSnapshot`.
+
 ### Error-handling conventions
 
 - Both `HxClientError` and `ServerBinaryError` implement `std::error::Error`
