@@ -94,7 +94,7 @@ For protocol transaction 370 (`NewsCategoryNameList`), send the path parameter
 as `/` for the root or as a slash-separated bundle path for a nested bundle.
 For example:
 
-```text
+```plaintext
 /
 /Releases
 /Releases/2026

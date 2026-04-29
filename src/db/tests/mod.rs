@@ -15,6 +15,8 @@ use test_util::AnyError;
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 mod file_node_tests;
+#[cfg(feature = "sqlite")]
+mod permission_tests;
 #[cfg(feature = "postgres")]
 mod postgres_file_node_tests;
 #[cfg(feature = "sqlite")]
