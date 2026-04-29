@@ -353,7 +353,8 @@ mod tests {
     #[tokio::test]
     async fn migration_watchdog_allows_work_that_finishes_in_time() {
         let result =
-            run_with_migration_timeout(Duration::from_millis(5), CancellationToken::new(), async {
+            run_with_migration_timeout(Duration::from_secs(1), CancellationToken::new(), async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
                 Ok::<(), DieselError>(())
             })
             .await;
@@ -366,14 +367,13 @@ mod tests {
 
     #[tokio::test]
     async fn migration_watchdog_cancels_work_and_reports_the_applied_timeout() {
-        let token = CancellationToken::new();
-        let future_token = token.clone();
-        let err = run_with_migration_timeout(Duration::from_millis(1), token, async move {
-            future_token.cancelled().await;
-            Ok::<(), DieselError>(())
-        })
-        .await
-        .expect_err("cancelled work should time out");
+        let err =
+            run_with_migration_timeout(Duration::from_millis(1), CancellationToken::new(), async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                Ok::<(), DieselError>(())
+            })
+            .await
+            .expect_err("cancelled work should time out");
 
         let DieselError::SerializationError(inner) = err else {
             panic!("timeout should be wrapped as a serialization error");

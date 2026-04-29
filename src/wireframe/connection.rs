@@ -201,16 +201,6 @@ pub fn take_current_context() -> Option<ConnectionContext> {
     })
 }
 
-/// Return the number of connection-context entries retained in the registry.
-#[cfg(test)]
-#[must_use]
-fn registry_len() -> usize {
-    registry()
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .len()
-}
-
 /// Report whether a stored connection context entry is visible to this task.
 #[must_use]
 pub fn has_current_context() -> bool { current_context().is_some() }
@@ -229,6 +219,15 @@ mod tests {
             version: VERSION,
             sub_version,
         }
+    }
+
+    fn registry_count_for_metadata(metadata: &[HandshakeMetadata]) -> usize {
+        registry()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values()
+            .filter(|context| metadata.contains(context.handshake()))
+            .count()
     }
 
     #[rstest]
@@ -341,9 +340,9 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn reports_registry_entry_count() {
-        let starting_registry_len = registry_len();
-        let first = ConnectionContext::new(metadata(1, 1));
-        let second = ConnectionContext::new(metadata(2, 2));
+        let tracked_metadata = [metadata(0xfeed_0001, 1), metadata(0xfeed_0002, 2)];
+        let first = ConnectionContext::new(tracked_metadata[0].clone());
+        let second = ConnectionContext::new(tracked_metadata[1].clone());
         let registered_barrier = std::sync::Arc::new(Barrier::new(3));
         let release_barrier = std::sync::Arc::new(Barrier::new(3));
 
@@ -372,11 +371,11 @@ mod tests {
         });
 
         registered_barrier.wait().await;
-        assert_eq!(registry_len(), starting_registry_len + 2);
+        assert_eq!(registry_count_for_metadata(&tracked_metadata), 2);
         release_barrier.wait().await;
 
         first_task.await.expect("first task panicked");
         second_task.await.expect("second task panicked");
-        assert_eq!(registry_len(), starting_registry_len);
+        assert_eq!(registry_count_for_metadata(&tracked_metadata), 0);
     }
 }
