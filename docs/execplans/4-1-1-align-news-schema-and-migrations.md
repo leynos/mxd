@@ -520,16 +520,48 @@ BRANCH=$(git branch --show-current | tr '/ ' '__')
    make check-fmt | tee /tmp/check-fmt-$PROJECT-$BRANCH.log
    ```
 
+   Equivalent direct Rust gate:
+
+   ```sh
+   cargo fmt --workspace -- --check
+   ```
+
 4. Run lint checks:
 
    ```sh
    make lint | tee /tmp/lint-$PROJECT-$BRANCH.log
    ```
 
+   The Rust lint matrix must cover each mutually exclusive feature set with
+   test support enabled and warnings denied:
+
+   ```sh
+   cargo clippy --no-default-features \
+     --features "postgres test-support legacy-networking" \
+     --workspace --all-targets -- -D warnings
+   cargo clippy --features "sqlite test-support" \
+     --workspace --all-targets -- -D warnings
+   cargo clippy --no-default-features --features "sqlite toml test-support" \
+     --workspace --all-targets -- -D warnings
+   ```
+
 5. Run all tests:
 
    ```sh
    make test | tee /tmp/test-$PROJECT-$BRANCH.log
+   ```
+
+   The Rust test matrix must run `cargo nextest` for each feature set:
+
+   ```sh
+   RUSTFLAGS="-D warnings" cargo nextest run --no-default-features \
+     --features "postgres test-support legacy-networking" \
+     --workspace --all-targets
+   RUSTFLAGS="-D warnings" cargo nextest run --features "sqlite test-support" \
+     --workspace --all-targets
+   RUSTFLAGS="-D warnings" cargo nextest run --no-default-features \
+     --features "sqlite toml test-support" \
+     --workspace --all-targets
    ```
 
 6. Run type checks:
