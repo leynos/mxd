@@ -1,17 +1,20 @@
-//! SQLite-only legacy file-node test bodies.
+//! Legacy file-node test bodies and `SQLite` entry points.
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
+#[cfg(feature = "sqlite")]
 use rstest::rstest;
 use test_util::AnyError;
 
+#[cfg(feature = "sqlite")]
 use super::super::{audit_sqlite_features, migrated_conn};
+#[cfg(feature = "sqlite")]
+use crate::db::establish_pool;
 use crate::{
     db::{
         DbConnection,
         create_file_node,
         create_user,
-        establish_pool,
         get_user_by_name,
         grant_resource_permission,
         list_visible_root_file_nodes_for_user,
@@ -35,6 +38,7 @@ use crate::{
     clippy::cognitive_complexity,
     reason = "scenario-style test body is clearer kept as a linear flow"
 )]
+#[cfg(feature = "sqlite")]
 pub(crate) async fn legacy_file_acl_visibility_fallback_body(
     conn: &mut DbConnection,
 ) -> Result<(), AnyError> {
@@ -168,6 +172,7 @@ pub(crate) async fn visible_root_files_merge_body(conn: &mut DbConnection) -> Re
     Ok(())
 }
 
+#[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
 async fn test_legacy_file_acl_visibility_fallback(
@@ -179,6 +184,7 @@ async fn test_legacy_file_acl_visibility_fallback(
     legacy_file_acl_visibility_fallback_body(&mut conn).await
 }
 
+#[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
 async fn test_visible_root_files_merge_legacy_and_file_node_sources(
@@ -190,6 +196,7 @@ async fn test_visible_root_files_merge_legacy_and_file_node_sources(
     visible_root_files_merge_body(&mut conn).await
 }
 
+#[cfg(feature = "sqlite")]
 #[tokio::test]
 async fn test_establish_pool_returns_pool() {
     let pool = establish_pool(":memory:")
@@ -198,6 +205,7 @@ async fn test_establish_pool_returns_pool() {
     pool.get().await.expect("pool should yield connection");
 }
 
+#[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
 async fn test_audit_features(#[future] migrated_conn: Result<DbConnection, AnyError>) {

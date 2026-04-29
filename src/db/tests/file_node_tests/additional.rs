@@ -45,3 +45,14 @@ async fn test_file_node_check_kind_constraints() {
     .await
     .expect("kind-specific CHECK constraints should be enforced");
 }
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+#[serial_test::file_serial(postgres_embedded_setup)]
+async fn test_visible_root_files_merge_postgres() {
+    super::with_embedded_pg("visible_root_merge", |conn| {
+        Box::pin(async move { super::visible_root_files_merge_body(conn).await })
+    })
+    .await
+    .expect("postgres: legacy + modern visibility results should be merged and ordered");
+}

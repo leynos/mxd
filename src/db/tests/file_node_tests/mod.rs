@@ -12,7 +12,7 @@ use test_util::AnyError;
 mod additional;
 mod shared;
 mod shared_core;
-#[cfg(feature = "sqlite")]
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 mod sqlite;
 pub(super) use shared::{
     file_node_check_kind_constraint_body,
@@ -30,6 +30,8 @@ pub(super) use shared_core::{
     grant_revocation_removes_visibility_body,
     group_membership_removal_revokes_visibility_body,
 };
+#[cfg(feature = "postgres")]
+pub(super) use sqlite::visible_root_files_merge_body;
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use crate::{
