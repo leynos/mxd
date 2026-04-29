@@ -34,9 +34,11 @@ CREATE TABLE news_categories (
     guid TEXT,
     add_sn INTEGER,
     delete_sn INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(name, bundle_id)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX idx_news_categories_unique
+    ON news_categories(name, IFNULL(bundle_id, -1));
 
 INSERT INTO news_categories (id, bundle_id, name, guid, add_sn, delete_sn, created_at)
 SELECT
@@ -55,9 +57,6 @@ FROM news_categories_old c;
 DROP INDEX IF EXISTS idx_articles_category;
 
 CREATE INDEX idx_categories_bundle ON news_categories(bundle_id);
-CREATE UNIQUE INDEX idx_categories_root_name_unique
-    ON news_categories(name)
-    WHERE bundle_id IS NULL;
 
 CREATE TABLE news_articles (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -27,7 +27,6 @@ struct NameRow {
     name: String,
 }
 
-#[cfg(feature = "postgres")]
 #[derive(QueryableByName)]
 struct CountRow {
     #[diesel(sql_type = diesel::sql_types::BigInt)]
@@ -82,13 +81,17 @@ async fn run_sql_script(conn: &mut DbConnection, script: &str) -> TestResult<()>
 }
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
+async fn assert_bundle_backfill(conn: &mut DbConnection) -> TestResult<()> {
     let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
         .get_result::<BundleBackfillRow>(conn)
         .await?;
     assert!(bundle.guid.is_some());
     assert!(bundle.created_at.is_some());
+    Ok(())
+}
 
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn assert_category_backfill(conn: &mut DbConnection) -> TestResult<()> {
     let category =
         sql_query("SELECT guid, add_sn, delete_sn, created_at FROM news_categories WHERE id = 1")
             .get_result::<CategoryBackfillRow>(conn)
@@ -97,6 +100,18 @@ async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
     assert_eq!(category.add_sn, Some(1));
     assert_eq!(category.delete_sn, Some(0));
     assert!(category.created_at.is_some());
+    Ok(())
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
+    assert_bundle_backfill(conn).await?;
+    assert_category_backfill(conn).await?;
+    assert_permission_round_trip_with_ids(conn, 84, 84, 84).await?;
+    #[cfg(feature = "sqlite")]
+    assert_sqlite_article_indices(conn).await?;
+    #[cfg(feature = "postgres")]
+    assert_postgres_article_indices(conn).await?;
     Ok(())
 }
 
@@ -220,31 +235,14 @@ async fn assert_sqlite_permission_schema(conn: &mut DbConnection) -> TestResult<
 
 #[cfg(feature = "sqlite")]
 async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
-    let article_indices = sqlite_names(
-        conn,
-        "SELECT name FROM pragma_index_list('news_articles') ORDER BY name",
-    )
-    .await?;
-    for expected in [
-        "idx_articles_category",
-        "idx_articles_first_child_article",
-        "idx_articles_next_article",
-        "idx_articles_parent_article",
-        "idx_articles_prev_article",
-    ] {
-        assert!(article_indices.iter().any(|name| name == expected));
-    }
+    assert_sqlite_article_indices(conn).await?;
 
     let category_indices = sqlite_names(
         conn,
         "SELECT name FROM pragma_index_list('news_categories') ORDER BY name",
     )
     .await?;
-    for expected in [
-        "idx_categories_bundle",
-        "idx_categories_root_name_unique",
-        "sqlite_autoindex_news_categories_1",
-    ] {
+    for expected in ["idx_categories_bundle", "idx_news_categories_unique"] {
         assert!(category_indices.iter().any(|name| name == expected));
     }
 
@@ -268,27 +266,63 @@ async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
     Ok(())
 }
 
-#[cfg(feature = "postgres")]
-async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()> {
-    run_statements(
+#[cfg(feature = "sqlite")]
+async fn assert_sqlite_article_indices(conn: &mut DbConnection) -> TestResult<()> {
+    let article_indices = sqlite_names(
         conn,
-        &[
-            "INSERT INTO users (id, username, password) VALUES (42, 'schema-user', 'hash')",
-            "INSERT INTO permissions (id, code, name, scope) VALUES (42, 34, 'News Create \
-             Category', 'bundle')",
-            "INSERT INTO user_permissions (user_id, permission_id) VALUES (42, 42)",
-        ],
+        "SELECT name FROM pragma_index_list('news_articles') ORDER BY name",
     )
     .await?;
+    for expected in [
+        "idx_articles_category",
+        "idx_articles_first_child_article",
+        "idx_articles_next_article",
+        "idx_articles_parent_article",
+        "idx_articles_prev_article",
+    ] {
+        assert!(article_indices.iter().any(|name| name == expected));
+    }
+    Ok(())
+}
 
-    let permissions = sql_query(
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn assert_permission_round_trip_with_ids(
+    conn: &mut DbConnection,
+    user_id: i32,
+    permission_id: i32,
+    code: i32,
+) -> TestResult<()> {
+    for statement in [
+        format!(
+            "INSERT INTO users (id, username, password) VALUES ({user_id}, \
+             'schema-user-{user_id}', 'hash')"
+        ),
+        format!(
+            "INSERT INTO permissions (id, code, name, scope) VALUES ({permission_id}, {code}, \
+             'News Create Category {code}', 'bundle')"
+        ),
+        format!(
+            "INSERT INTO user_permissions (user_id, permission_id) VALUES ({user_id}, \
+             {permission_id})"
+        ),
+    ] {
+        sql_query(statement).execute(conn).await?;
+    }
+
+    let permissions = sql_query(format!(
         "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
-         up.permission_id = p.id WHERE p.code = 34 AND p.scope = 'bundle' AND up.user_id = 42",
-    )
+         up.permission_id = p.id WHERE p.code = {code} AND p.scope = 'bundle' AND up.user_id = \
+         {user_id}"
+    ))
     .get_result::<CountRow>(conn)
     .await?;
     assert_eq!(permissions.count, 1);
     Ok(())
+}
+
+#[cfg(feature = "postgres")]
+async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()> {
+    assert_permission_round_trip_with_ids(conn, 42, 42, 34).await
 }
 
 #[cfg(feature = "sqlite")]
@@ -417,7 +451,7 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
     for expected in [
         "idx_categories_bundle",
         "idx_categories_root_name_unique",
-        "news_categories_name_bundle_id_key",
+        "idx_categories_name_bundle_unique",
     ] {
         assert!(category_indices.iter().any(|name| name == expected));
     }
@@ -459,12 +493,10 @@ async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> TestResult<(
 }
 
 #[cfg(feature = "postgres")]
-fn should_skip_embedded_postgres() -> bool {
-    if std::env::var_os("POSTGRES_TEST_URL").is_some() {
-        tracing::warn!("SKIP-TEST-CLUSTER: POSTGRES_TEST_URL set, skipping embedded postgres test");
-        return true;
-    }
-    false
+fn postgres_test_url_from_env() -> Option<String> {
+    std::env::var("POSTGRES_TEST_URL")
+        .ok()
+        .filter(|url| !url.trim().is_empty())
 }
 
 #[cfg(feature = "postgres")]
@@ -485,6 +517,13 @@ where
     F: FnOnce(String) -> Fut + Send + 'static,
     Fut: Future<Output = TestResult<()>> + Send + 'static,
 {
+    if let Some(url) = postgres_test_url_from_env() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        return runtime.block_on(async move { test(url).await });
+    }
+
     let Some(db) = embedded_postgres_db()? else {
         return Ok(());
     };
@@ -521,9 +560,4 @@ fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
 }
 
 #[cfg(feature = "postgres")]
-fn embedded_postgres_db() -> TestResult<Option<PostgresTestDb>> {
-    if should_skip_embedded_postgres() {
-        return Ok(None);
-    }
-    start_embedded_postgres_db()
-}
+fn embedded_postgres_db() -> TestResult<Option<PostgresTestDb>> { start_embedded_postgres_db() }

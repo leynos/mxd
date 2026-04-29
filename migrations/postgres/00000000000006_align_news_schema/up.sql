@@ -29,7 +29,11 @@ SET
     created_at = COALESCE(created_at, CURRENT_TIMESTAMP);
 
 ALTER TABLE news_categories
-    ADD CONSTRAINT news_categories_name_bundle_id_key UNIQUE (name, bundle_id);
+    DROP CONSTRAINT IF EXISTS news_categories_name_bundle_id_key;
+
+CREATE UNIQUE INDEX idx_categories_name_bundle_unique
+    ON news_categories(name, bundle_id)
+    WHERE bundle_id IS NOT NULL;
 
 CREATE UNIQUE INDEX idx_categories_root_name_unique
     ON news_categories(name)
