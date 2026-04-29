@@ -245,6 +245,10 @@ Success is observable when:
   both supported databases treat `NULL` values as distinct in composite unique
   constraints, so root category lookup needs an explicit invariant to remain
   deterministic. Date/Author: 2026-04-29 / Codex.
+- Decision: keep SQLite's legacy `idx_articles_category` index available until
+  after `add_sn` backfill has counted articles per category. Rationale: the
+  correlated count can otherwise degrade into repeated full scans during
+  upgrade. Date/Author: 2026-04-29 / Codex.
 - Decision: satisfy the PostgreSQL validation requirement with direct embedded
   PostgreSQL test runs when `make test` is unavailable because `cargo-nextest`
   is missing. Rationale: this preserves behavioural and migration verification

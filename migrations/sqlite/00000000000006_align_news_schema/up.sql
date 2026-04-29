@@ -1,4 +1,3 @@
-DROP INDEX IF EXISTS idx_articles_category;
 DROP INDEX IF EXISTS idx_categories_bundle;
 DROP INDEX IF EXISTS idx_bundles_name_parent;
 DROP INDEX IF EXISTS idx_bundles_parent;
@@ -49,6 +48,11 @@ SELECT
     0,
     CURRENT_TIMESTAMP
 FROM news_categories_old c;
+
+-- Keep the legacy article/category index available for the correlated
+-- add_sn backfill above, then drop it before recreating the index on the
+-- replacement news_articles table.
+DROP INDEX IF EXISTS idx_articles_category;
 
 CREATE INDEX idx_categories_bundle ON news_categories(bundle_id);
 CREATE UNIQUE INDEX idx_categories_root_name_unique
