@@ -234,3 +234,167 @@ pub(crate) async fn group_acl_visibility_body(conn: &mut DbConnection) -> Result
     assert_eq!(visible[0].name, "shared.txt");
     Ok(())
 }
+
+/// Verify that revoking a `resource_permissions` row removes root visibility.
+///
+/// # Errors
+///
+/// Propagates any database error encountered during the scenario.
+#[cfg(feature = "sqlite")]
+pub(crate) async fn grant_revocation_removes_visibility_body(
+    conn: &mut DbConnection,
+) -> Result<(), AnyError> {
+    use diesel::prelude::*;
+    use diesel_async::RunQueryDsl;
+
+    use crate::schema::resource_permissions::dsl as rp;
+
+    let user_id = create_user_id(conn, "revoke-user").await?;
+    let permission_id = seed_download_permission(conn).await?;
+    let node_id = create_visible_root_file(conn, user_id, "revoke-me.txt").await?;
+
+    grant_resource_permission(
+        conn,
+        &NewResourcePermission {
+            resource_type: "file_node",
+            resource_id: node_id,
+            principal_type: "user",
+            principal_id: user_id,
+            permission_id,
+        },
+    )
+    .await?;
+
+    anyhow::ensure!(
+        visible_root_contains(conn, user_id, "revoke-me.txt").await?,
+        "node should be visible after grant"
+    );
+
+    diesel::delete(
+        rp::resource_permissions
+            .filter(rp::resource_id.eq(node_id))
+            .filter(rp::principal_id.eq(user_id)),
+    )
+    .execute(conn)
+    .await?;
+
+    anyhow::ensure!(
+        !visible_root_contains(conn, user_id, "revoke-me.txt").await?,
+        "node should not be visible after grant revocation"
+    );
+    Ok(())
+}
+
+/// Verify that removing a user from a group revokes group-scoped visibility.
+///
+/// # Errors
+///
+/// Propagates any database error encountered during the scenario.
+#[cfg(feature = "sqlite")]
+pub(crate) async fn group_membership_removal_revokes_visibility_body(
+    conn: &mut DbConnection,
+) -> Result<(), AnyError> {
+    use diesel::prelude::*;
+    use diesel_async::RunQueryDsl;
+
+    use crate::schema::user_groups::dsl as ug;
+
+    let user_id = create_user_id(conn, "group-remove-user").await?;
+    let permission_id = seed_download_permission(conn).await?;
+    let group_id = create_group_with_member(conn, user_id).await?;
+    let node_id = create_visible_root_file(conn, user_id, "group-file.txt").await?;
+
+    grant_resource_permission(
+        conn,
+        &NewResourcePermission {
+            resource_type: "file_node",
+            resource_id: node_id,
+            principal_type: "group",
+            principal_id: group_id,
+            permission_id,
+        },
+    )
+    .await?;
+
+    anyhow::ensure!(
+        visible_root_contains(conn, user_id, "group-file.txt").await?,
+        "node should be visible while user is a group member"
+    );
+
+    diesel::delete(
+        ug::user_groups
+            .filter(ug::user_id.eq(user_id))
+            .filter(ug::group_id.eq(group_id)),
+    )
+    .execute(conn)
+    .await?;
+
+    anyhow::ensure!(
+        !visible_root_contains(conn, user_id, "group-file.txt").await?,
+        "node should not be visible after user removed from group"
+    );
+    Ok(())
+}
+
+#[cfg(feature = "sqlite")]
+async fn create_user_id(conn: &mut DbConnection, name: &'static str) -> Result<i32, AnyError> {
+    create_user(
+        conn,
+        &NewUser {
+            username: name,
+            password: "hash",
+        },
+    )
+    .await?;
+    get_user_by_name(conn, name)
+        .await?
+        .map(|user| user.id)
+        .ok_or_else(|| anyhow::anyhow!("user missing"))
+}
+
+#[cfg(feature = "sqlite")]
+async fn create_group_with_member(conn: &mut DbConnection, user_id: i32) -> Result<i32, AnyError> {
+    let group_id = create_group(
+        conn,
+        &NewGroup {
+            name: "revoke-group",
+        },
+    )
+    .await?;
+    add_user_to_group(conn, &NewUserGroup { user_id, group_id }).await?;
+    Ok(group_id)
+}
+
+#[cfg(feature = "sqlite")]
+async fn create_visible_root_file(
+    conn: &mut DbConnection,
+    creator_id: i32,
+    name: &str,
+) -> Result<i32, AnyError> {
+    create_file_node(
+        conn,
+        &NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name,
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some(name),
+            size: Some(1),
+            comment: None,
+            is_dropbox: false,
+            creator_id,
+        },
+    )
+    .await
+    .map_err(anyhow::Error::from)
+}
+
+#[cfg(feature = "sqlite")]
+async fn visible_root_contains(
+    conn: &mut DbConnection,
+    user_id: i32,
+    name: &str,
+) -> Result<bool, AnyError> {
+    let visible = list_visible_root_file_nodes_for_user(conn, user_id).await?;
+    Ok(visible.iter().any(|node| node.name == name))
+}

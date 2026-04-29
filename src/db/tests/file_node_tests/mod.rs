@@ -25,6 +25,11 @@ pub(super) use shared_core::{
     group_acl_visibility_body,
     resolve_file_node_path_and_alias_body,
 };
+#[cfg(feature = "sqlite")]
+pub(super) use shared_core::{
+    grant_revocation_removes_visibility_body,
+    group_membership_removal_revokes_visibility_body,
+};
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use crate::{

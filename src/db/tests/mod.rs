@@ -20,6 +20,17 @@ use super::*;
 #[cfg(feature = "sqlite")]
 use crate::models::{NewBundle, NewCategory, NewUser};
 
+/// Rstest fixture that provides a migrated in-memory `SQLite` `DbConnection`.
+///
+/// Creates a `:memory:` `SQLite` database, runs all pending migrations via
+/// [`apply_migrations`], and returns the live connection. Intended for use as a
+/// `#[future]` argument in async rstest cases that require a fully migrated
+/// database.
+///
+/// # Errors
+///
+/// Returns an error if the in-memory connection cannot be established or if
+/// any migration fails.
 #[cfg(feature = "sqlite")]
 #[fixture]
 async fn migrated_conn() -> Result<DbConnection, AnyError> {
@@ -220,6 +231,30 @@ async fn test_group_acl_visibility(
         .await
         .expect("failed to create migrated test database");
     file_node_tests::group_acl_visibility_body(&mut conn).await
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_grant_revocation_removes_visibility(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn.await.expect("migrated db");
+    file_node_tests::grant_revocation_removes_visibility_body(&mut conn)
+        .await
+        .expect("revoked grant should remove visibility");
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
+async fn test_group_membership_removal_revokes_visibility(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn.await.expect("migrated db");
+    file_node_tests::group_membership_removal_revokes_visibility_body(&mut conn)
+        .await
+        .expect("group membership removal should revoke visibility");
 }
 
 #[cfg(feature = "sqlite")]
