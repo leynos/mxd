@@ -4,8 +4,6 @@
 //! pre-4.1.1 news schema so later roadmap work can rely on the aligned
 //! persistence contract.
 
-#![expect(clippy::panic_in_result_fn, reason = "test assertions")]
-
 #[cfg(feature = "postgres")]
 use std::future::Future;
 
@@ -170,20 +168,45 @@ async fn sqlite_names(conn: &mut DbConnection, sql: &str) -> TestResult<Vec<Stri
 }
 
 #[cfg(feature = "sqlite")]
-#[tokio::test]
-async fn sqlite_fresh_migration_creates_aligned_schema() -> TestResult<()> {
-    let mut conn = sqlite_conn().await?;
-
+async fn assert_sqlite_permission_schema(conn: &mut DbConnection) -> TestResult<()> {
     let tables = sqlite_names(
-        &mut conn,
+        conn,
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('permissions', \
          'user_permissions') ORDER BY name",
     )
     .await?;
     assert_eq!(tables, vec!["permissions", "user_permissions"]);
 
+    let permission_indices = sqlite_names(
+        conn,
+        "SELECT name FROM pragma_index_list('permissions') ORDER BY name",
+    )
+    .await?;
+    assert!(
+        permission_indices
+            .iter()
+            .any(|name| name == "sqlite_autoindex_permissions_1")
+    );
+
+    let user_permission_indices = sqlite_names(
+        conn,
+        "SELECT name FROM pragma_index_list('user_permissions') ORDER BY name",
+    )
+    .await?;
+    for expected in [
+        "idx_user_permissions_perm",
+        "idx_user_permissions_user",
+        "sqlite_autoindex_user_permissions_1",
+    ] {
+        assert!(user_permission_indices.iter().any(|name| name == expected));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "sqlite")]
+async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
     let article_indices = sqlite_names(
-        &mut conn,
+        conn,
         "SELECT name FROM pragma_index_list('news_articles') ORDER BY name",
     )
     .await?;
@@ -198,7 +221,7 @@ async fn sqlite_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     }
 
     let category_columns = sqlite_names(
-        &mut conn,
+        conn,
         "SELECT name FROM pragma_table_info('news_categories') ORDER BY cid",
     )
     .await?;
@@ -218,13 +241,28 @@ async fn sqlite_fresh_migration_creates_aligned_schema() -> TestResult<()> {
 }
 
 #[cfg(feature = "sqlite")]
+async fn assert_sqlite_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
+    assert_sqlite_permission_schema(conn).await?;
+    assert_sqlite_news_schema(conn).await
+}
+
+#[cfg(feature = "sqlite")]
+#[tokio::test]
+async fn sqlite_fresh_migration_creates_aligned_schema() -> TestResult<()> {
+    let mut conn = sqlite_conn().await?;
+
+    assert_sqlite_aligned_schema(&mut conn).await
+}
+
+#[cfg(feature = "sqlite")]
 #[tokio::test]
 async fn sqlite_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     let mut conn = DbConnection::establish(":memory:").await?;
     setup_sqlite_legacy_schema(&mut conn).await?;
     apply_migrations(&mut conn, "").await?;
 
-    assert_upgrade_backfills(&mut conn).await
+    assert_upgrade_backfills(&mut conn).await?;
+    assert_sqlite_aligned_schema(&mut conn).await
 }
 
 #[cfg(feature = "postgres")]
@@ -262,6 +300,78 @@ async fn postgres_names(conn: &mut DbConnection, sql: &str) -> TestResult<Vec<St
         .into_iter()
         .map(|row| row.name)
         .collect())
+}
+
+#[cfg(feature = "postgres")]
+async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResult<()> {
+    let permission_tables = postgres_names(
+        conn,
+        "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' \
+         AND table_name IN ('permissions', 'user_permissions') ORDER BY table_name",
+    )
+    .await?;
+    assert_eq!(permission_tables, vec!["permissions", "user_permissions"]);
+
+    let permission_indices = postgres_names(
+        conn,
+        "SELECT indexname AS name FROM pg_indexes WHERE schemaname = 'public' AND tablename IN \
+         ('permissions', 'user_permissions') ORDER BY indexname",
+    )
+    .await?;
+    for expected in [
+        "idx_user_permissions_perm",
+        "idx_user_permissions_user",
+        "permissions_code_key",
+        "user_permissions_pkey",
+    ] {
+        assert!(permission_indices.iter().any(|name| name == expected));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "postgres")]
+async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> {
+    let category_columns = postgres_names(
+        conn,
+        "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
+         'news_categories' ORDER BY ordinal_position",
+    )
+    .await?;
+    assert_eq!(
+        category_columns,
+        vec![
+            "id",
+            "bundle_id",
+            "name",
+            "guid",
+            "add_sn",
+            "delete_sn",
+            "created_at"
+        ]
+    );
+
+    let article_indices = postgres_names(
+        conn,
+        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_articles' ORDER BY \
+         indexname",
+    )
+    .await?;
+    for expected in [
+        "idx_articles_category",
+        "idx_articles_first_child_article",
+        "idx_articles_next_article",
+        "idx_articles_parent_article",
+        "idx_articles_prev_article",
+    ] {
+        assert!(article_indices.iter().any(|name| name == expected));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "postgres")]
+async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
+    assert_postgres_permission_schema(conn).await?;
+    assert_postgres_news_schema(conn).await
 }
 
 #[cfg(feature = "postgres")]
@@ -308,49 +418,7 @@ fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
         let mut conn = DbConnection::establish(&url).await?;
         apply_migrations(&mut conn, &url).await?;
 
-        let category_columns = postgres_names(
-            &mut conn,
-            "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
-             'news_categories' ORDER BY ordinal_position",
-        )
-        .await?;
-        assert_eq!(
-            category_columns,
-            vec![
-                "id",
-                "bundle_id",
-                "name",
-                "guid",
-                "add_sn",
-                "delete_sn",
-                "created_at"
-            ]
-        );
-
-        let article_indices = postgres_names(
-            &mut conn,
-            "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_articles' ORDER BY \
-             indexname",
-        )
-        .await?;
-        for expected in [
-            "idx_articles_category",
-            "idx_articles_first_child_article",
-            "idx_articles_next_article",
-            "idx_articles_parent_article",
-            "idx_articles_prev_article",
-        ] {
-            assert!(article_indices.iter().any(|name| name == expected));
-        }
-
-        let permission_tables = postgres_names(
-            &mut conn,
-            "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = \
-             'public' AND table_name IN ('permissions', 'user_permissions') ORDER BY table_name",
-        )
-        .await?;
-        assert_eq!(permission_tables, vec!["permissions", "user_permissions"]);
-        Ok(())
+        assert_postgres_aligned_schema(&mut conn).await
     })
 }
 
@@ -362,7 +430,8 @@ fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
         setup_postgres_legacy_schema(&mut conn).await?;
         apply_migrations(&mut conn, &url).await?;
 
-        assert_upgrade_backfills(&mut conn).await
+        assert_upgrade_backfills(&mut conn).await?;
+        assert_postgres_aligned_schema(&mut conn).await
     })
 }
 

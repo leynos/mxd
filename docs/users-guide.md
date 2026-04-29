@@ -82,6 +82,30 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
 - `make test-wireframe-only` exercises the Wireframe-first configuration and
   runs the behaviour scenarios that assert the feature gate.
 
+
+## Listing nested news categories
+
+News category list requests can target the root news hierarchy or a nested
+bundle path. A root request lists every top-level bundle and category.
+Supplying a bundle path lists only the bundles and categories directly below
+that bundle, which lets clients browse a hierarchy one level at a time.
+
+For protocol transaction 370 (`NewsCategoryNameList`), send the path parameter
+as `/` for the root or as a slash-separated bundle path for a nested bundle.
+For example:
+
+```text
+/
+/Releases
+/Releases/2026
+```
+
+If the hierarchy contains bundle `/Releases/2026` with categories
+`Announcements` and `Maintenance`, a category-list request for `/Releases/2026`
+returns those two names and omits sibling categories from `/Releases` or `/`. A
+request for a missing path returns the same unsupported path error as other
+invalid news lookups.
+
 ## Startup configuration reference
 
 Both server binaries share the same startup configuration surface through
