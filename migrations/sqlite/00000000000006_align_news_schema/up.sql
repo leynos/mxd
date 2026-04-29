@@ -51,6 +51,9 @@ SELECT
 FROM news_categories_old c;
 
 CREATE INDEX idx_categories_bundle ON news_categories(bundle_id);
+CREATE UNIQUE INDEX idx_categories_root_name_unique
+    ON news_categories(name)
+    WHERE bundle_id IS NULL;
 
 CREATE TABLE news_articles (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,
