@@ -240,6 +240,11 @@ Success is observable when:
   article count and initialize `delete_sn` to `0`. Rationale: that preserves a
   coherent starting point for later serial-number work without inventing
   historical deletion data. Date/Author: 2026-04-13 / Codex.
+- Decision: enforce top-level category-name uniqueness with a partial unique
+  index on root categories in addition to `UNIQUE(name, bundle_id)`. Rationale:
+  both supported databases treat `NULL` values as distinct in composite unique
+  constraints, so root category lookup needs an explicit invariant to remain
+  deterministic. Date/Author: 2026-04-29 / Codex.
 - Decision: satisfy the PostgreSQL validation requirement with direct embedded
   PostgreSQL test runs when `make test` is unavailable because `cargo-nextest`
   is missing. Rationale: this preserves behavioural and migration verification

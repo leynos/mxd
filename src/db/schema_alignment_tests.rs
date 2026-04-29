@@ -101,6 +101,23 @@ async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
 }
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn assert_root_category_names_are_unique(conn: &mut DbConnection) -> TestResult<()> {
+    sql_query(
+        "INSERT INTO news_categories (id, bundle_id, name) VALUES (9001, NULL, 'Root Duplicate')",
+    )
+    .execute(conn)
+    .await?;
+
+    let duplicate = sql_query(
+        "INSERT INTO news_categories (id, bundle_id, name) VALUES (9002, NULL, 'Root Duplicate')",
+    )
+    .execute(conn)
+    .await;
+    assert!(duplicate.is_err());
+    Ok(())
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 async fn insert_legacy_seed_data(conn: &mut DbConnection) -> TestResult<()> {
     run_statements(
         conn,
@@ -218,6 +235,19 @@ async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
         assert!(article_indices.iter().any(|name| name == expected));
     }
 
+    let category_indices = sqlite_names(
+        conn,
+        "SELECT name FROM pragma_index_list('news_categories') ORDER BY name",
+    )
+    .await?;
+    for expected in [
+        "idx_categories_bundle",
+        "idx_categories_root_name_unique",
+        "sqlite_autoindex_news_categories_1",
+    ] {
+        assert!(category_indices.iter().any(|name| name == expected));
+    }
+
     let category_columns = sqlite_names(
         conn,
         "SELECT name FROM pragma_table_info('news_categories') ORDER BY cid",
@@ -264,7 +294,8 @@ async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()>
 #[cfg(feature = "sqlite")]
 async fn assert_sqlite_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_sqlite_permission_schema(conn).await?;
-    assert_sqlite_news_schema(conn).await
+    assert_sqlite_news_schema(conn).await?;
+    assert_root_category_names_are_unique(conn).await
 }
 
 #[cfg(feature = "sqlite")]
@@ -342,7 +373,7 @@ async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResul
 }
 
 #[cfg(feature = "postgres")]
-async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> {
+async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()> {
     let bundle_columns = postgres_names(
         conn,
         "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
@@ -353,7 +384,11 @@ async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> 
         bundle_columns,
         vec!["id", "parent_bundle_id", "name", "guid", "created_at"]
     );
+    Ok(())
+}
 
+#[cfg(feature = "postgres")]
+async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<()> {
     let category_columns = postgres_names(
         conn,
         "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
@@ -373,6 +408,24 @@ async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> 
         ]
     );
 
+    let category_indices = postgres_names(
+        conn,
+        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_categories' ORDER BY \
+         indexname",
+    )
+    .await?;
+    for expected in [
+        "idx_categories_bundle",
+        "idx_categories_root_name_unique",
+        "news_categories_name_bundle_id_key",
+    ] {
+        assert!(category_indices.iter().any(|name| name == expected));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "postgres")]
+async fn assert_postgres_article_indices(conn: &mut DbConnection) -> TestResult<()> {
     let article_indices = postgres_names(
         conn,
         "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_articles' ORDER BY \
@@ -392,9 +445,17 @@ async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> 
 }
 
 #[cfg(feature = "postgres")]
+async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> {
+    assert_postgres_bundle_schema(conn).await?;
+    assert_postgres_category_schema(conn).await?;
+    assert_postgres_article_indices(conn).await
+}
+
+#[cfg(feature = "postgres")]
 async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_postgres_permission_schema(conn).await?;
-    assert_postgres_news_schema(conn).await
+    assert_postgres_news_schema(conn).await?;
+    assert_root_category_names_are_unique(conn).await
 }
 
 #[cfg(feature = "postgres")]

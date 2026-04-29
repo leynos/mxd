@@ -8,6 +8,7 @@ DROP INDEX IF EXISTS idx_articles_next_article;
 DROP INDEX IF EXISTS idx_articles_prev_article;
 DROP INDEX IF EXISTS idx_articles_parent_article;
 DROP INDEX IF EXISTS idx_articles_category;
+DROP INDEX IF EXISTS idx_categories_root_name_unique;
 DROP INDEX IF EXISTS idx_categories_bundle;
 DROP INDEX IF EXISTS idx_bundles_name_parent;
 DROP INDEX IF EXISTS idx_bundles_parent;
