@@ -1926,9 +1926,10 @@ planned:
 
 - On login success, we would add this session to a global list and potentially
   send a “Notify New User” (transaction 300 series) to all existing users to
-  inform them of the new login. Hotline protocol defines transaction 300 (User
-  Login Notify), 301 (User Change), 302 (User Logout Notify), etc. Our
-  `TransactionType::GetUserNameList` (300) and related types hint at
+  inform them of the new login. Hotline-compatible presence traffic uses
+  transaction 300 (Get User Name List), 301 (Notify Change User), 302 (Notify
+  Delete User), etc. `TransactionType::GetUserNameList` (300) and related types
+  hint at
   this([5](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/transaction_type.rs#L44-L51)).
    For now, `GetUserNameList` (transaction 300) handling is stubbed (it returns
   Unknown if called), but we have plans to implement it such that it returns
@@ -2192,9 +2193,9 @@ this. The design:
   recipients see the post-removal roster.
 
 - Session lifecycle: MXD now models `Unauthenticated`, `PendingAgreement`, and
-  `Online` phases explicitly. The current default-user privilege set includes
-  `NO_AGREEMENT`, so authenticated users become publicly online immediately
-  after login unless future account-backed privilege loading says otherwise.
+  `Online` phases explicitly. The current login policy grants `NO_AGREEMENT`,
+  so authenticated users become publicly online immediately after login unless
+  future account-backed privilege loading says otherwise.
 
 - User-visible defaults: until richer account metadata exists, login seeds the
   session nickname from the account username, icon `0`, and blank info text for

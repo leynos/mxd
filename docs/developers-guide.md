@@ -264,19 +264,12 @@ These methods replace the prior ad-hoc `!allows_payload()` checks in
 `src/transaction/params.rs`.
 
 
-## Presence lifecycle APIs
+## Presence Runtime
 
 Presence state is exposed through the stable crate-level API
 `mxd::{PresenceRegistry, PresenceSnapshot, SessionPhase}`. The internal
 `presence` module remains private so transport-specific helper functions do not
 become part of the public crate surface.
-
-`PresenceRegistry` stores online snapshots by outbound connection identifier.
-Each login or profile update builds a `PresenceSnapshot` from the adapter-owned
-connection identifier and the session domain state, validates that the snapshot
-can be encoded as Hotline field 300, then inserts it into the registry. This
-keeps duplicate account logins distinct: the protocol-visible presence ID is
-unique per active session rather than reused from the account row ID.
 
 `SessionPhase` controls when a snapshot is eligible for roster publication:
 
@@ -288,9 +281,30 @@ unique per active session rather than reused from the account row ID.
 
 Sessions granted `NO_AGREEMENT` transition directly to `Online` at login.
 Agreement-gated sessions stay in `PendingAgreement` until the agreement flow
-finalizes. Handlers must not upsert pending sessions into `PresenceRegistry`;
-only adapter code that has a live outbound connection identifier should build a
-published `PresenceSnapshot`.
+finalizes. Only `Online` sessions should participate in the presence registry.
+
+`PresenceSnapshot` is the transport-agnostic value published for an online
+session. It carries `connection_id`, `user_id`, `display_name`, `icon_id`, and
+`status_flags`. Adapter code supplies the connection identifier, then calls
+`Session::presence_snapshot()` to combine that identifier with session state.
+The snapshot is validated before insertion so field 300 replies and
+notifications cannot contain unencodable user identifiers or display names.
+
+`PresenceRegistry` stores online snapshots by outbound connection identifier.
+`upsert` inserts or replaces a snapshot and returns the peer connection IDs that
+should receive a change notification. `remove` deletes a snapshot by connection
+ID and returns the removed snapshot plus the remaining peer IDs.
+`online_snapshots` returns all online snapshots in deterministic order.
+`snapshot_for_user_id` looks up a visible user and, when multiple sessions share
+the same account user ID, selects the snapshot with the lowest connection ID.
+
+The presence transaction builders convert snapshots into protocol replies and
+server pushes. `build_user_name_list_reply` produces Get User Name List (300)
+replies with repeated field-300 records. `build_notify_change_user` produces
+Notify Change User (301) notifications. `build_notify_delete_user` produces
+Notify Delete User (302) notifications. `build_client_info_text_reply`
+produces Get Client Info Text (303) replies with the visible name and
+placeholder info text.
 
 ### Error-handling conventions
 
