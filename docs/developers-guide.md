@@ -391,7 +391,8 @@ Symbols:
   depth matches the segment count.
 - `prepare_path` (function): normalizes a path string, trims slashes, and
   serializes segments as a JSON array alongside the segment count. Returns
-  `None` for root paths.
+  `None` for root paths, and rejects empty interior path segments with
+  `FileNodeLookupError::InvalidPath`.
 - `build_path_cte` (function): constructs the full
   `WITH RECURSIVE tree ...` query from seed, step, and body fragments.
 - `build_path_cte_with_conn` (function): convenience wrapper that infers the
