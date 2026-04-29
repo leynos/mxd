@@ -3,21 +3,28 @@
 APP ?= mxd
 CARGO ?= cargo
 CARGO_FALLBACK := $(HOME)/.cargo/bin/cargo
-ifneq ($(wildcard $(CARGO_FALLBACK)),)
-  ifneq ($(shell command -v $(CARGO) >/dev/null 2>&1; echo $$?),0)
+CARGO_CMD := $(firstword $(CARGO))
+CARGO_PATH := $(shell command -v $(CARGO_CMD) 2>/dev/null)
+ifeq ($(CARGO_PATH),)
+  ifneq ($(wildcard $(CARGO_FALLBACK)),)
     CARGO := $(CARGO_FALLBACK)
+    CARGO_CMD := $(firstword $(CARGO))
+    CARGO_PATH := $(shell command -v $(CARGO_CMD) 2>/dev/null)
   endif
 endif
-CARGO_RESOLVED := $(shell resolved=$$(command -v $(CARGO) 2>/dev/null); if [ -n "$$resolved" ]; then dir=$$(dirname "$$resolved"); base=$$(basename "$$resolved"); printf '%s/%s\n' "$$(cd "$$dir" && pwd)" "$$base"; fi)
-CARGO_BIN_DIR := $(if $(CARGO_RESOLVED),$(dir $(CARGO_RESOLVED)),$(dir $(CARGO)))
+CARGO_BIN_DIR := $(if $(CARGO_PATH),$(dir $(CARGO_PATH)))
 LOCAL_BIN_DIR := $(HOME)/.local/bin
 BUILD_JOBS ?=
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
 WHITAKER ?= whitaker
 WHITAKER_FALLBACK := $(HOME)/.local/bin/whitaker
-ifneq ($(wildcard $(WHITAKER_FALLBACK)),)
-  ifneq ($(shell command -v $(WHITAKER) >/dev/null 2>&1; echo $$?),0)
+WHITAKER_CMD := $(firstword $(WHITAKER))
+WHITAKER_PATH := $(shell command -v $(WHITAKER_CMD) 2>/dev/null)
+ifeq ($(WHITAKER_PATH),)
+  ifneq ($(wildcard $(WHITAKER_FALLBACK)),)
     WHITAKER := $(WHITAKER_FALLBACK)
+    WHITAKER_CMD := $(firstword $(WHITAKER))
+    WHITAKER_PATH := $(shell command -v $(WHITAKER_CMD) 2>/dev/null)
   endif
 endif
 MDLINT ?= markdownlint-cli2
@@ -25,6 +32,15 @@ MDLINT_FALLBACK := $(HOME)/.bun/bin/markdownlint-cli2
 ifneq ($(wildcard $(MDLINT_FALLBACK)),)
   ifneq ($(shell command -v $(MDLINT) >/dev/null 2>&1; echo $$?),0)
     MDLINT := $(MDLINT_FALLBACK)
+  endif
+endif
+WHITAKER ?= whitaker
+WHITAKER_FALLBACK := $(HOME)/.local/bin/whitaker
+ifeq ($(WHITAKER),whitaker)
+  ifneq ($(wildcard $(WHITAKER_FALLBACK)),)
+    ifneq ($(shell command -v $(WHITAKER) >/dev/null 2>&1; echo $$?),0)
+      WHITAKER := $(WHITAKER_FALLBACK)
+    endif
   endif
 endif
 NIXIE ?= nixie
