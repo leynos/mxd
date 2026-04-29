@@ -208,8 +208,16 @@ cfg_if! {
     if #[cfg(feature = "sqlite")] {
         /// Run embedded database migrations.
         ///
+        /// # Parameters
+        ///
+        /// - `timeout_secs`: optional watchdog duration, in seconds. `None` or `Some(0)`
+        ///   uses the built-in default timeout.
+        ///
         /// # Errors
+        ///
         /// Returns any error produced by Diesel while running migrations.
+        /// Returns a wrapped timeout or cancellation error when the watchdog
+        /// cancels work that exceeds `timeout_secs`.
         #[must_use = "handle the result"]
         pub async fn run_migrations(
             conn: &mut DbConnection,
@@ -246,8 +254,16 @@ cfg_if! {
 
         /// Run embedded database migrations.
         ///
+        /// # Parameters
+        ///
+        /// - `timeout_secs`: optional watchdog duration, in seconds. `None` or `Some(0)`
+        ///   uses the built-in default timeout.
+        ///
         /// # Errors
+        ///
         /// Returns any error produced by Diesel while running migrations.
+        /// Returns a wrapped timeout or cancellation error when the watchdog
+        /// cancels work that exceeds `timeout_secs`.
         #[must_use = "handle the result"]
         pub async fn run_migrations(
             database_url: &str,
@@ -272,8 +288,16 @@ cfg_if! {
 
 /// Apply embedded migrations for the current backend.
 ///
+/// # Parameters
+///
+/// - `timeout_secs`: optional watchdog duration, in seconds. `None` or `Some(0)` uses the built-in
+///   default timeout.
+///
 /// # Errors
-/// Returns any error produced by Diesel while running migrations.
+///
+/// Returns any error produced by Diesel while running migrations. Returns a
+/// wrapped timeout or cancellation error when the watchdog cancels work that
+/// exceeds `timeout_secs`.
 #[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
 pub async fn apply_migrations(
@@ -286,8 +310,16 @@ pub async fn apply_migrations(
 
 /// Apply embedded migrations for the current backend.
 ///
+/// # Parameters
+///
+/// - `timeout_secs`: optional watchdog duration, in seconds. `None` or `Some(0)` uses the built-in
+///   default timeout.
+///
 /// # Errors
-/// Returns any error produced by Diesel while running migrations.
+///
+/// Returns any error produced by Diesel while running migrations. Returns a
+/// wrapped timeout or cancellation error when the watchdog cancels work that
+/// exceeds `timeout_secs`.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[must_use = "handle the result"]
 pub async fn apply_migrations(
@@ -301,21 +333,21 @@ pub async fn apply_migrations(
 
 #[cfg(test)]
 mod tests {
+    //! Tests for migration timeout configuration and watchdog cancellation.
+
+    use rstest::rstest;
+
     use super::*;
 
-    #[test]
-    fn migration_timeout_uses_default_when_config_value_is_missing() {
-        assert_eq!(migration_timeout(None), DEFAULT_MIGRATION_TIMEOUT);
-    }
-
-    #[test]
-    fn migration_timeout_uses_default_when_config_value_is_zero() {
-        assert_eq!(migration_timeout(Some(0)), DEFAULT_MIGRATION_TIMEOUT);
-    }
-
-    #[test]
-    fn migration_timeout_accepts_positive_config_override() {
-        assert_eq!(migration_timeout(Some(7)), Duration::from_secs(7));
+    #[rstest]
+    #[case(None, DEFAULT_MIGRATION_TIMEOUT)]
+    #[case(Some(0), DEFAULT_MIGRATION_TIMEOUT)]
+    #[case(Some(7), Duration::from_secs(7))]
+    fn migration_timeout_maps_configuration_to_duration(
+        #[case] input: Option<u64>,
+        #[case] expected: Duration,
+    ) {
+        assert_eq!(migration_timeout(input), expected);
     }
 
     #[tokio::test]
