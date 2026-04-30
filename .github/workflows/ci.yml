@@ -43,6 +43,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      WHITAKER_INSTALLER_REV: f768c2e53c47df13658af1168a67851d388750bf
     steps:
       - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
@@ -76,8 +77,11 @@ jobs:
       - name: Lint with Whitaker
         run: |
           if ! command -v whitaker >/dev/null 2>&1; then
-            cargo install --locked whitaker-installer --version 0.2.0
-            whitaker-installer --experimental
+            cargo install --locked \
+              --git https://github.com/leynos/whitaker \
+              --rev "${WHITAKER_INSTALLER_REV}" \
+              whitaker-installer
+            whitaker-installer
           fi
           RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }}
       - name: Test
