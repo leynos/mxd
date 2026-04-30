@@ -1381,7 +1381,7 @@ Additionally, we have **permissions** for news:
   rights, or to extend with new permissions.
 
 For roadmap item 4.1.1 the implemented schema was aligned to this design using
-an additive migration pair (`00000000000006_align_news_schema`) rather than
+an additive migration pair (`00000000000007_align_news_schema`) rather than
 rewriting historical migrations in place. PostgreSQL can add the missing bundle
 and category metadata columns in place, but SQLite cannot safely reach the
 target defaults and scoped category uniqueness with `ALTER TABLE` alone. The

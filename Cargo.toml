@@ -28,34 +28,6 @@ path = "src/bin/mxd_wireframe_server.rs"
 [lib]
 path = "src/lib.rs"
 
-[[bin]]
-name = "mxd-wireframe-server"
-path = "src/bin/mxd_wireframe_server.rs"
-
-[[bin]]
-name = "mxd-wireframe-server"
-path = "src/bin/mxd_wireframe_server.rs"
-
-[[test]]
-name = "wireframe_xor_compat"
-path = "tests/wireframe_xor_compat.rs"
-required-features = ["test-support"]
-
-[[test]]
-name = "wireframe_xor_compat"
-path = "tests/wireframe_xor_compat.rs"
-required-features = ["test-support"]
-
-[[test]]
-name = "wireframe_xor_compat"
-path = "tests/wireframe_xor_compat.rs"
-required-features = ["test-support"]
-
-[[test]]
-name = "wireframe_xor_compat"
-path = "tests/wireframe_xor_compat.rs"
-required-features = ["test-support"]
-
 [[test]]
 name = "wireframe_xor_compat"
 path = "tests/wireframe_xor_compat.rs"

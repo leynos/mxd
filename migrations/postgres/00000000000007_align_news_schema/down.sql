@@ -1,8 +1,3 @@
-DROP INDEX IF EXISTS idx_user_permissions_perm;
-DROP INDEX IF EXISTS idx_user_permissions_user;
-DROP TABLE IF EXISTS user_permissions;
-DROP TABLE IF EXISTS permissions;
-
 DROP INDEX IF EXISTS idx_articles_first_child_article;
 DROP INDEX IF EXISTS idx_articles_next_article;
 DROP INDEX IF EXISTS idx_articles_prev_article;

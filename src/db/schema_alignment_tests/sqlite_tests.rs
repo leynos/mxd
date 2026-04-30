@@ -15,7 +15,7 @@ use super::{
 
 async fn sqlite_conn() -> TestResult<DbConnection> {
     let mut conn = DbConnection::establish(":memory:").await?;
-    apply_migrations(&mut conn, "").await?;
+    apply_migrations(&mut conn, "", None).await?;
     Ok(conn)
 }
 
@@ -70,13 +70,8 @@ async fn assert_sqlite_permission_schema(conn: &mut DbConnection) -> TestResult<
         "SELECT name FROM pragma_index_list('user_permissions') ORDER BY name",
     )
     .await?;
-    for expected in [
-        "idx_user_permissions_perm",
-        "idx_user_permissions_user",
-        "sqlite_autoindex_user_permissions_1",
-    ] {
-        assert!(user_permission_indices.iter().any(|name| name == expected));
-    }
+    let expected = "sqlite_autoindex_user_permissions_1";
+    assert!(user_permission_indices.iter().any(|name| name == expected));
     Ok(())
 }
 
@@ -182,7 +177,7 @@ async fn sqlite_fresh_migration_creates_aligned_schema() -> TestResult<()> {
 async fn sqlite_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     let mut conn = DbConnection::establish(":memory:").await?;
     setup_sqlite_legacy_schema(&mut conn).await?;
-    apply_migrations(&mut conn, "").await?;
+    apply_migrations(&mut conn, "", None).await?;
 
     assert_upgrade_backfills(&mut conn).await?;
     assert_sqlite_aligned_schema(&mut conn).await

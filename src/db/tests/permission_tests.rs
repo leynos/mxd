@@ -31,7 +31,7 @@ enum DeleteTarget {
 async fn permission_fixture(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
 ) -> Result<PermissionFixture, anyhow::Error> {
-    let mut conn = migrated_conn.await.map_err(anyhow::Error::from)?;
+    let mut conn = migrated_conn.await?;
     diesel::sql_query("PRAGMA foreign_keys = ON")
         .execute(&mut conn)
         .await?;

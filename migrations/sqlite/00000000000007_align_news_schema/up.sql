@@ -112,20 +112,3 @@ CREATE INDEX idx_articles_first_child_article ON news_articles(first_child_artic
 DROP TABLE news_articles_old;
 DROP TABLE news_categories_old;
 DROP TABLE news_bundles_old;
-
-CREATE TABLE permissions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    scope TEXT NOT NULL CHECK (scope IN ('general', 'folder', 'bundle')),
-    UNIQUE(code)
-);
-
-CREATE TABLE user_permissions (
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-    PRIMARY KEY (user_id, permission_id)
-);
-
-CREATE INDEX idx_user_permissions_user ON user_permissions(user_id);
-CREATE INDEX idx_user_permissions_perm ON user_permissions(permission_id);

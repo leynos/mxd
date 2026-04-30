@@ -58,12 +58,7 @@ async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResul
          ('permissions', 'user_permissions') ORDER BY indexname",
     )
     .await?;
-    for expected in [
-        "idx_user_permissions_perm",
-        "idx_user_permissions_user",
-        "permissions_code_key",
-        "user_permissions_pkey",
-    ] {
+    for expected in ["permissions_code_key", "user_permissions_pkey"] {
         assert!(permission_indices.iter().any(|name| name == expected));
     }
     Ok(())
@@ -218,7 +213,7 @@ where
 fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
         let mut conn = DbConnection::establish(&url).await?;
-        apply_migrations(&mut conn, &url).await?;
+        apply_migrations(&mut conn, &url, None).await?;
 
         assert_postgres_aligned_schema(&mut conn).await?;
         assert_permission_round_trip(&mut conn).await
@@ -230,7 +225,7 @@ fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
         let mut conn = DbConnection::establish(&url).await?;
         setup_postgres_legacy_schema(&mut conn).await?;
-        apply_migrations(&mut conn, &url).await?;
+        apply_migrations(&mut conn, &url, None).await?;
 
         assert_upgrade_backfills(&mut conn).await?;
         assert_postgres_aligned_schema(&mut conn).await

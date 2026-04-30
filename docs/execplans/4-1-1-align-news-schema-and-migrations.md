@@ -134,7 +134,7 @@ Success is observable when:
 - [x] (2026-04-13 02:35Z) Captured the finalized additive migration strategy
       and backfill rationale in `docs/design.md`.
 - [x] (2026-04-13 02:10Z) Added aligned SQLite and PostgreSQL migration pair
-      under `00000000000006_align_news_schema`.
+      under `00000000000007_align_news_schema`.
 - [x] (2026-04-13 02:10Z) Implemented historical backfill for legacy bundle and
       category metadata during upgrade.
 - [x] (2026-04-13 02:12Z) Updated Diesel schema, models, and related helpers to
@@ -268,7 +268,7 @@ Intended outcomes once implemented:
 Retrospective placeholder:
 
 - Implemented:
-  - additive migration pair `00000000000006_align_news_schema` for SQLite and
+  - additive migration pair `00000000000007_align_news_schema` for SQLite and
     PostgreSQL;
   - legacy-row backfill for bundle/category GUID and timestamp metadata, plus
     category serial counters;
@@ -327,7 +327,7 @@ Primary files and modules in current state:
   - historical-row backfill required during upgrade, especially for GUID fields
     and any new metadata columns.
 - Decide the exact migration version to add in both trees, expected to be
-  `00000000000006_align_news_schema`.
+  `00000000000007_align_news_schema`.
 - Write the migration strategy into `docs/design.md`, especially where SQLite
   requires table recreation rather than simple `ALTER TABLE`.
 

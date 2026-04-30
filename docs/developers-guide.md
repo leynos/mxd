@@ -318,7 +318,6 @@ placeholder info text.
 - `close_hx()` demotes session-cleanup errors to stderr diagnostics rather than
   failing the test, consistent with best-effort teardown.
 
-
 ## News schema alignment maintenance
 
 Roadmap item 4.1.1 aligned the implemented news storage schema with
@@ -329,7 +328,7 @@ historical migration directories.
   version number and equivalent semantics.
 - When a news schema change requires scoped uniqueness changes or defaulted
   timestamp columns, prefer explicit SQLite table rebuilds with copy-forward
-  over incremental `ALTER TABLE` drift. The `00000000000006_align_news_schema`
+  over incremental `ALTER TABLE` drift. The `00000000000007_align_news_schema`
   migration is the reference pattern.
 - Preserve stable primary keys during copy-forward migrations so existing
   threaded article links and bundle/category relationships survive upgrades.
