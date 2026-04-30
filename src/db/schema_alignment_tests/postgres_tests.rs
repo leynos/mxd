@@ -115,8 +115,8 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
         category_columns,
         vec![
             "id",
-            "bundle_id",
             "name",
+            "bundle_id",
             "guid",
             "add_sn",
             "delete_sn",
