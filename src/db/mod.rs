@@ -14,7 +14,9 @@ mod files;
 mod insert;
 mod migrations;
 mod paths;
+#[cfg(test)]
 mod schema_alignment_tests;
+#[cfg(test)]
 mod tests;
 mod users;
 

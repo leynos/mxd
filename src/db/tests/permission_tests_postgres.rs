@@ -6,9 +6,8 @@ use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use test_util::postgres::{PostgresTestDb, PostgresTestDbError};
 
-use super::{DbConnection, apply_migrations};
 use crate::{
-    db::{create_user, get_user_by_name},
+    db::{DbConnection, apply_migrations, create_user, get_user_by_name},
     models::{NewPermission, NewUser, NewUserPermission, Permission, UserPermission},
     schema::{
         permissions::dsl as permissions,
@@ -54,7 +53,7 @@ async fn insert_permission_assignment(
     let permission = NewPermission {
         code,
         name,
-        scope: "bundle",
+        description: "PostgreSQL permission cascade test permission",
     };
     diesel::insert_into(permissions::permissions)
         .values(&permission)
@@ -131,7 +130,7 @@ async fn assert_user_delete_cascades_to_assignments(
 fn test_user_permission_cascades() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
         let mut conn = DbConnection::establish(&url).await?;
-        apply_migrations(&mut conn, &url).await?;
+        apply_migrations(&mut conn, &url, None).await?;
 
         let user = NewUser {
             username: "postgres-dana",

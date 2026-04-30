@@ -82,7 +82,6 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
 - `make test-wireframe-only` exercises the Wireframe-first configuration and
   runs the behaviour scenarios that assert the feature gate.
 
-
 ## Listing nested news categories
 
 News category list requests can target the root news hierarchy or a nested

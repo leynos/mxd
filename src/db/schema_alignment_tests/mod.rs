@@ -201,8 +201,8 @@ pub(crate) async fn assert_permission_round_trip_with_ids(
              'schema-user-{user_id}', 'hash')"
         ),
         format!(
-            "INSERT INTO permissions (id, code, name, scope) VALUES ({permission_id}, {code}, \
-             'News Create Category {code}', 'bundle')"
+            "INSERT INTO permissions (id, code, name, description) VALUES ({permission_id}, \
+             {code}, 'News Create Category {code}', 'News category permission {code}')"
         ),
         format!(
             "INSERT INTO user_permissions (user_id, permission_id) VALUES ({user_id}, \
@@ -214,8 +214,8 @@ pub(crate) async fn assert_permission_round_trip_with_ids(
 
     let permissions = sql_query(format!(
         "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
-         up.permission_id = p.id WHERE p.code = {code} AND p.scope = 'bundle' AND up.user_id = \
-         {user_id}"
+         up.permission_id = p.id WHERE p.code = {code} AND p.description = 'News category \
+         permission {code}' AND up.user_id = {user_id}"
     ))
     .get_result::<CountRow>(conn)
     .await?;
