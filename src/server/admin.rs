@@ -72,7 +72,7 @@ async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
         password: &hashed,
     };
     let mut conn = DbConnection::establish(&cfg.database).await?;
-    apply_migrations(&mut conn, &cfg.database).await?;
+    apply_migrations(&mut conn, &cfg.database, cfg.migration_timeout_secs).await?;
     create_user(&mut conn, &new_user)
         .await
         .with_context(|| format!("failed to create user '{username}'"))?;

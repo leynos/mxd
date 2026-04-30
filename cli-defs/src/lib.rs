@@ -77,6 +77,9 @@ pub struct AppConfig {
     #[ortho_config(default = "mxd.db".to_owned())]
     #[arg(long)]
     pub database: String,
+    /// Optional migration timeout in seconds.
+    #[arg(long)]
+    pub migration_timeout_secs: Option<u64>,
     /// Argon2 memory cost parameter.
     #[ortho_config(default = DEFAULT_ARGON2_M_COST)]
     #[arg(long)]

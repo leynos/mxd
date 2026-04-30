@@ -106,11 +106,12 @@ pub async fn dispatch(cli: ResolvedCli) -> Result<()> {
 pub async fn run_daemon(cfg: AppConfig) -> Result<()> {
     let bind = cfg.bind.clone();
     let database = cfg.database.clone();
+    let migration_timeout_secs = cfg.migration_timeout_secs;
 
     // Build the Argon2 instance once so it can be shared by all worker tasks.
     let argon2 = Arc::new(admin::argon2_from_config(&cfg)?);
 
-    let pool = setup_database(&database).await?;
+    let pool = setup_database(&database, migration_timeout_secs).await?;
 
     let listener = TcpListener::bind(&bind).await?;
     println!("mxd listening on {bind}");
@@ -156,7 +157,7 @@ async fn create_pool(database: &str) -> Result<DbPool, PoolError> {
 /// # Returns
 ///
 /// A result containing the initialised database connection pool, or an error if setup fails.
-async fn setup_database(database: &str) -> Result<DbPool> {
+async fn setup_database(database: &str, migration_timeout_secs: Option<u64>) -> Result<DbPool> {
     let pool: DbPool = create_pool(database).await?;
     {
         let mut conn = pool.get().await.context("failed to get db connection")?;
@@ -166,7 +167,7 @@ async fn setup_database(database: &str) -> Result<DbPool> {
         if is_postgres_url(database) {
             crate::db::audit_postgres_features(&mut conn).await?;
         }
-        apply_migrations(&mut conn, database).await?;
+        apply_migrations(&mut conn, database, migration_timeout_secs).await?;
     }
     Ok(pool)
 }

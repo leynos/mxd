@@ -1,0 +1,12 @@
+DROP TRIGGER cleanup_group_resource_permissions ON groups;
+DROP FUNCTION delete_group_resource_permissions();
+DROP TRIGGER cleanup_user_resource_permissions ON users;
+DROP FUNCTION delete_user_resource_permissions();
+DROP TRIGGER validate_resource_permissions_principal ON resource_permissions;
+DROP FUNCTION validate_resource_permission_principal();
+DROP TABLE resource_permissions;
+DROP TABLE file_nodes;
+DROP TABLE user_groups;
+DROP TABLE groups;
+DROP TABLE user_permissions;
+DROP TABLE permissions;

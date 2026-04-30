@@ -10,6 +10,29 @@ codebase, plus the PostgreSQL helper needed for integration coverage.
 - `cargo` and `make` available on your `PATH`.
 - Optional: `pg-embed-setup-unpriv` for PostgreSQL-backed tests.
 
+### Build-tool resolution
+
+The `Makefile` applies a conditional fallback for each build tool it invokes.
+When the named tool is not found on `PATH`, the Makefile checks a fixed
+well-known location and, if present, promotes it:
+
+| Variable | Default | Fallback location |
+| --- | --- | --- |
+| `CARGO` | `cargo` | `~/.cargo/bin/cargo` |
+| `WHITAKER` | `whitaker` | `~/.local/bin/whitaker` |
+| `MDLINT` | `markdownlint-cli2` | `~/.bun/bin/markdownlint-cli2` |
+
+This avoids silent failures when a tool is installed outside `PATH` and prevents
+the Makefile from inadvertently resolving to an unintended binary earlier in
+`PATH`. Override any variable at invocation time if the tool lives elsewhere:
+
+```sh
+make lint WHITAKER=/opt/custom/bin/whitaker
+```
+
+The fallback is a one-time check at parse time; it does not introduce a runtime
+dependency on shell availability.
+
 ## PostgreSQL test helper
 
 Install the helper once:
@@ -164,13 +187,22 @@ re-exports the public surface of each module.
 
 ### Module responsibilities
 
-| Module | Responsibility |
-| ------ | -------------- |
-| `config.rs` | Loads `validator.toml` and applies environment-variable overrides to determine which pending validators are enabled. |
-| `policy.rs` | Decides whether a missing prerequisite causes a hard test failure (`fail_closed = true`) or a graceful skip (`fail_closed = false`). Reads `MXD_VALIDATOR_FAIL_CLOSED`; falls back to `CI=true` detection. |
-| `server_binary.rs` | Resolves the path to a prebuilt `mxd-wireframe-server` binary. Precedence: `MXD_VALIDATOR_SERVER_BINARY` → `CARGO_BIN_EXE_mxd-wireframe-server` → workspace `target/` candidates. |
-| `hx_client.rs` | Discovers the `hx` binary (rejecting the Helix editor via a version probe), spawns a PTY session via `expectrl`, and provides helpers to wait for the Hotline prompt and terminate the session. |
-| `harness.rs` | Orchestrates the above: `ValidatorHarness::prepare()` runs policy and prerequisite checks, `start_server_with_setup()` launches the wireframe server, and `spawn_hx()` opens the PTY client. Also exports PTY expect/send helpers used directly by tests. |
+- `config.rs`: loads `validator.toml` and applies environment-variable
+  overrides to determine which pending validators are enabled.
+- `policy.rs`: decides whether a missing prerequisite causes a hard test
+  failure (`fail_closed = true`) or a graceful skip (`fail_closed = false`).
+  Reads `MXD_VALIDATOR_FAIL_CLOSED` and falls back to `CI=true` detection.
+- `server_binary.rs`: resolves the path to a prebuilt
+  `mxd-wireframe-server` binary. Precedence is
+  `MXD_VALIDATOR_SERVER_BINARY`, `CARGO_BIN_EXE_mxd-wireframe-server`, then
+  workspace `target/` candidates.
+- `hx_client.rs`: discovers the `hx` binary, rejecting the Helix editor via a
+  version probe. Spawns a PTY session via `expectrl` and provides helpers to
+  wait for the Hotline prompt and terminate the session.
+- `harness.rs`: orchestrates these pieces by running policy and prerequisite
+  checks via `ValidatorHarness::prepare()`, launching the wireframe server
+  with `start_server_with_setup()`, opening the PTY client with `spawn_hx()`,
+  and exporting PTY expect/send helpers used directly by tests.
 
 ### Key public types
 
@@ -339,6 +371,81 @@ impl FrameCodec for HotlineFrameCodec {
 Keep these import-path changes explicit in migration patches so reviews can
 confirm whether a call site still depends on a compatibility re-export or has
 been moved onto the intended v0.3.0 module path.
+
+## Database module
+
+### Hierarchical path traversal (`src/db/file_path.rs`)
+
+The `file_path` module provides backend-agnostic helpers for resolving
+slash-delimited paths through the `file_nodes` hierarchy using recursive Common
+Table Expressions (CTEs) via `diesel-cte-ext`.
+
+Symbols:
+
+- `CTE_SEED_SQL` (constant): seed row `(idx=0, id=NULL)` that anchors each
+  traversal.
+- `FILE_NODE_STEP_SQL` (constant): backend-specific recursive step. Postgres
+  uses `json_array_elements_text ... WITH ORDINALITY`, while SQLite uses
+  `json_each`.
+- `FILE_NODE_BODY_SQL` (constant): terminal select that picks the node whose
+  depth matches the segment count.
+- `prepare_path` (function): normalizes a path string, trims leading and
+  trailing slashes, and serializes segments as a JSON array alongside the
+  segment count. Returns `None` for root-only paths. Returns
+  `FileNodeLookupError::InvalidPath` for paths containing empty interior
+  segments, such as `/Docs//guide.txt`.
+- `build_path_cte` (function): constructs the full
+  `WITH RECURSIVE tree ...` query from seed, step, and body fragments.
+- `build_path_cte_with_conn` (function): convenience wrapper that infers the
+  backend type from a `&mut C` connection parameter.
+
+Callers pair `prepare_path` with `build_path_cte_with_conn`: `prepare_path`
+validates and serializes the input; `build_path_cte_with_conn` builds the
+parameterized CTE that the Diesel query then drives.
+
+### File-node repository API (`src/db/files.rs`)
+
+The following functions are re-exported from `src/db/mod.rs`:
+
+- `create_file_node`: inserts a new file, folder, or alias node and returns
+  the generated ID.
+- `get_file_node`: fetches a single node by ID.
+- `list_child_file_nodes`: lists all direct children of a folder node.
+- `list_visible_root_file_nodes_for_user`: returns root nodes visible to a
+  user via direct or group `resource_permissions`, merged with legacy `files`
+  and `file_acl` rows.
+- `resolve_file_node_path`: walks a slash-delimited path through the CTE and
+  returns the terminal node.
+- `resolve_alias_target`: follows an alias node to its target file node.
+- `create_group`: inserts a principal group, idempotent by name.
+- `add_user_to_group`: assigns a user to a group.
+- `seed_permission`: inserts a permission catalogue row, idempotent by code.
+- `grant_resource_permission`: attaches a permission grant to a `file_node`
+  resource for a user or group principal.
+- `download_file_permission`: returns the `NewPermission` descriptor for the
+  canonical `download_file` entry (code 2).
+
+`resolve_file_node_path` returns `Result<Option<FileNode>, FileNodeLookupError>`.
+`FileNodeLookupError` has three variants:
+
+- `InvalidPath`: invalid or malformed path.
+- `Diesel(diesel::result::Error)`: a database query error.
+- `Serde(serde_json::Error)`: a JSON serialization error during path
+  preparation.
+
+### Migration timeout (`src/db/migrations.rs`)
+
+The `AppConfig` struct exposes a `migration_timeout_secs: Option<u64>` field,
+set via the `--migration-timeout-secs` CLI flag or the
+`MXD_MIGRATION_TIMEOUT_SECS` environment variable.
+
+Behaviour:
+
+- When unset or set to `0`, the built-in default of **15 seconds** is used.
+- Positive values override the watchdog duration directly.
+- On expiry, `run_with_migration_timeout` cancels the in-progress migration
+  loop via a `CancellationToken` and returns a `SerializationError` wrapping
+  `MigrationTimeoutError(duration)`.
 
 ## Quality gates
 

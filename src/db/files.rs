@@ -1,56 +1,399 @@
-//! File metadata helpers.
+//! File hierarchy and ACL repository helpers.
+#[path = "file_legacy_visibility.rs"]
+mod legacy_visibility;
 
-use diesel::{prelude::*, result::QueryResult};
+use cfg_if::cfg_if;
+use diesel::{
+    OptionalExtension,
+    QueryableByName,
+    prelude::*,
+    result::QueryResult,
+    sql_query,
+    sql_types::{Integer, Nullable, Text},
+};
 use diesel_async::RunQueryDsl;
+use legacy_visibility::list_legacy_visible_root_files_for_user;
+use thiserror::Error;
+use tracing::{debug, info};
 
-use super::connection::DbConnection;
+#[cfg(all(feature = "sqlite", not(feature = "returning_clauses_for_sqlite_3_35")))]
+use super::insert::fetch_last_insert_rowid;
+use super::{
+    connection::DbConnection,
+    file_path::{FILE_NODE_BODY_SQL, FILE_NODE_STEP_SQL, build_path_cte_with_conn, prepare_path},
+};
+use crate::models::{
+    FileNode,
+    NewFileNode,
+    NewGroup,
+    NewPermission,
+    NewResourcePermission,
+    NewUserGroup,
+    VisibleFileNode,
+};
+const RESOURCE_TYPE_FILE_NODE: &str = "file_node";
+const PRINCIPAL_USER: &str = "user";
+const PRINCIPAL_GROUP: &str = "group";
+const DOWNLOAD_FILE_PERMISSION_CODE: i32 = 2;
+const DOWNLOAD_FILE_PERMISSION_NAME: &str = "download_file";
+const DOWNLOAD_FILE_PERMISSION_DESCRIPTION: &str = "List or download a file node";
 
-/// Insert a new file metadata entry.
-///
-/// # Errors
-/// Returns any error produced by the database.
-#[must_use = "handle the result"]
-pub async fn create_file(
-    conn: &mut DbConnection,
-    file: &crate::models::NewFileEntry<'_>,
-) -> QueryResult<usize> {
-    use crate::schema::files::dsl::files;
-    diesel::insert_into(files).values(file).execute(conn).await
+macro_rules! insert_or_get_id {
+    (
+        conn =
+        $conn:expr,table =
+        $table:expr,values =
+        $values:expr,conflict_col =
+        $conflict_col:expr,conflict_val =
+        $conflict_val:expr,id_col =
+        $id_col:expr $(,)?
+    ) => {{
+        diesel::insert_into($table)
+            .values($values)
+            .on_conflict($conflict_col)
+            .do_nothing()
+            .execute($conn)
+            .await?;
+
+        $table
+            .filter($conflict_col.eq($conflict_val))
+            .select($id_col)
+            .first($conn)
+            .await
+    }};
+}
+macro_rules! insert_returning_id {
+    (conn = $conn:expr,table = $table:expr,values = $values:expr,id_col = $id_col:expr $(,)?) => {{
+        cfg_if! {
+            if #[cfg(any(
+                feature = "postgres",
+                feature = "returning_clauses_for_sqlite_3_35"
+            ))] {
+                diesel::insert_into($table)
+                    .values($values)
+                    .returning($id_col)
+                    .get_result($conn)
+                    .await
+            } else if #[cfg(all(
+                feature = "sqlite",
+                not(feature = "returning_clauses_for_sqlite_3_35")
+            ))] {
+                diesel::insert_into($table)
+                    .values($values)
+                    .execute($conn)
+                    .await?;
+                fetch_last_insert_rowid($conn).await
+            } else {
+                compile_error!(
+                    "Either 'sqlite' or 'postgres' feature must be enabled"
+                );
+            }
+        }
+    }};
 }
 
-/// Add a file access control entry for a user.
+/// Errors that can occur when resolving file-node paths.
+#[derive(Debug, Error)]
+pub enum FileNodeLookupError {
+    /// The provided file path is invalid or malformed.
+    #[error("invalid file path")]
+    InvalidPath,
+    /// A database query error occurred.
+    #[error(transparent)]
+    Diesel(#[from] diesel::result::Error),
+    /// A JSON serialization error while preparing path segments.
+    ///
+    /// In practice this variant is unreachable for well-formed UTF-8 path
+    /// strings; it exists to preserve the `Result` contract for the
+    /// `serde_json` call.
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
+}
+
+/// Build the seeded permission row used for file downloads and listings.
+#[must_use]
+pub const fn download_file_permission() -> NewPermission<'static> {
+    NewPermission {
+        code: DOWNLOAD_FILE_PERMISSION_CODE,
+        name: DOWNLOAD_FILE_PERMISSION_NAME,
+        description: DOWNLOAD_FILE_PERMISSION_DESCRIPTION,
+    }
+}
+
+/// Insert a permission row if needed and return its identifier.
 ///
 /// # Errors
 /// Returns any error produced by the database.
 #[must_use = "handle the result"]
-pub async fn add_file_acl(
+pub async fn seed_permission(
     conn: &mut DbConnection,
-    acl: &crate::models::NewFileAcl,
+    permission: &NewPermission<'_>,
+) -> QueryResult<i32> {
+    use crate::schema::permissions::dsl as p;
+    insert_or_get_id!(
+        conn = conn,
+        table = p::permissions,
+        values = permission,
+        conflict_col = p::code,
+        conflict_val = permission.code,
+        id_col = p::id,
+    )
+}
+
+/// Insert a group row if needed and return its identifier.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn create_group(conn: &mut DbConnection, group: &NewGroup<'_>) -> QueryResult<i32> {
+    use crate::schema::groups::dsl as g;
+    insert_or_get_id!(
+        conn = conn,
+        table = g::groups,
+        values = group,
+        conflict_col = g::name,
+        conflict_val = group.name,
+        id_col = g::id,
+    )
+}
+
+/// Link a user to a group.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn add_user_to_group(
+    conn: &mut DbConnection,
+    membership: &NewUserGroup,
 ) -> QueryResult<bool> {
-    use crate::schema::file_acl::dsl::file_acl;
-    diesel::insert_into(file_acl)
-        .values(acl)
+    use crate::schema::user_groups::dsl::user_groups;
+
+    diesel::insert_into(user_groups)
+        .values(membership)
         .on_conflict_do_nothing()
         .execute(conn)
         .await
         .map(|rows| rows > 0)
 }
 
-/// List all files accessible by the specified user.
+/// Insert a new file node and return its identifier.
 ///
 /// # Errors
 /// Returns any error produced by the database.
 #[must_use = "handle the result"]
-pub async fn list_files_for_user(
+pub async fn create_file_node(conn: &mut DbConnection, node: &NewFileNode<'_>) -> QueryResult<i32> {
+    use crate::schema::file_nodes::dsl::file_nodes;
+
+    insert_returning_id!(
+        conn = conn,
+        table = file_nodes,
+        values = node,
+        id_col = crate::schema::file_nodes::dsl::id,
+    )
+}
+
+/// Grant a resource-scoped permission to a principal.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn grant_resource_permission(
     conn: &mut DbConnection,
-    uid: i32,
-) -> QueryResult<Vec<crate::models::FileEntry>> {
-    use crate::schema::{file_acl::dsl as a, files::dsl as f};
-    f::files
-        .inner_join(a::file_acl.on(a::file_id.eq(f::id)))
-        .filter(a::user_id.eq(uid))
-        .order(f::name.asc())
-        .select((f::id, f::name, f::object_key, f::size))
-        .load::<crate::models::FileEntry>(conn)
+    permission: &NewResourcePermission<'_>,
+) -> QueryResult<bool> {
+    use crate::schema::resource_permissions::dsl::resource_permissions;
+
+    let inserted = diesel::insert_into(resource_permissions)
+        .values(permission)
+        .on_conflict_do_nothing()
+        .execute(conn)
         .await
+        .map(|rows| rows > 0)?;
+    if inserted {
+        info!(
+            resource_id = permission.resource_id,
+            principal_type = permission.principal_type,
+            principal_id = permission.principal_id,
+            "resource permission granted"
+        );
+    }
+    Ok(inserted)
+}
+
+async fn file_node_id_from_path(
+    conn: &mut DbConnection,
+    path: &str,
+) -> Result<Option<i32>, FileNodeLookupError> {
+    #[derive(QueryableByName)]
+    struct NodeId {
+        #[diesel(sql_type = Nullable<Integer>)]
+        id: Option<i32>,
+    }
+
+    let Some((json, len)) = prepare_path(path)? else {
+        return Ok(None);
+    };
+
+    let step = sql_query(FILE_NODE_STEP_SQL).bind::<Text, _>(json);
+    let len_i32 = i32::try_from(len).map_err(|_| FileNodeLookupError::InvalidPath)?;
+    let body = sql_query(FILE_NODE_BODY_SQL).bind::<Integer, _>(len_i32);
+    let query = build_path_cte_with_conn(conn, step, body);
+    let result: Option<NodeId> = query.get_result(conn).await.optional()?;
+    Ok(result.and_then(|row| row.id))
+}
+
+fn log_file_node_path_resolution(path: &str, node: Option<&FileNode>) {
+    debug!(
+        path,
+        resolved = node.is_some(),
+        "file-node path resolution completed"
+    );
+}
+
+/// Fetch a single file node by identifier.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn get_file_node(conn: &mut DbConnection, node_id: i32) -> QueryResult<Option<FileNode>> {
+    use crate::schema::file_nodes::dsl as f;
+
+    f::file_nodes
+        .filter(f::id.eq(node_id))
+        .first::<FileNode>(conn)
+        .await
+        .optional()
+}
+
+/// Resolve a file path to its terminal file node.
+///
+/// # Errors
+/// Returns an error if the path is malformed or if the lookup fails.
+#[must_use = "handle the result"]
+pub async fn resolve_file_node_path(
+    conn: &mut DbConnection,
+    path: &str,
+) -> Result<Option<FileNode>, FileNodeLookupError> {
+    let node = match file_node_id_from_path(conn, path).await? {
+        Some(node_id) => get_file_node(conn, node_id)
+            .await
+            .map_err(FileNodeLookupError::from)?,
+        None => None,
+    };
+    log_file_node_path_resolution(path, node.as_ref());
+    Ok(node)
+}
+
+/// List the child nodes directly beneath the selected parent.
+///
+/// Pass `None` to list the top-level namespace.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn list_child_file_nodes(
+    conn: &mut DbConnection,
+    parent_id: Option<i32>,
+) -> QueryResult<Vec<FileNode>> {
+    use crate::schema::file_nodes::dsl as f;
+
+    let query = parent_id.map_or_else(
+        || f::file_nodes.into_boxed().filter(f::parent_id.is_null()),
+        |selected_parent_id| {
+            f::file_nodes
+                .into_boxed()
+                .filter(f::parent_id.eq(selected_parent_id))
+        },
+    );
+
+    query.order(f::name.asc()).load::<FileNode>(conn).await
+}
+
+/// Resolve the alias target for a file node, if one exists.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn resolve_alias_target(
+    conn: &mut DbConnection,
+    node_id: i32,
+) -> QueryResult<Option<FileNode>> {
+    use crate::schema::file_nodes::dsl as f;
+
+    let target_id = f::file_nodes
+        .filter(f::id.eq(node_id))
+        .select(f::alias_target_id)
+        .first::<Option<i32>>(conn)
+        .await
+        .optional()?
+        .flatten();
+
+    match target_id {
+        Some(alias_target_id) => get_file_node(conn, alias_target_id).await,
+        None => Ok(None),
+    }
+}
+
+/// List the visible top-level file nodes for the selected user.
+/// Visibility is granted by protocol privilege code `2` (*Download File*)
+/// either directly to the user or indirectly via one of their groups.
+///
+/// # Errors
+/// Returns any error produced by the database.
+#[must_use = "handle the result"]
+pub async fn list_visible_root_file_nodes_for_user(
+    conn: &mut DbConnection,
+    user_id: i32,
+) -> QueryResult<Vec<VisibleFileNode>> {
+    use crate::schema::{
+        file_nodes::dsl as f,
+        permissions::dsl as p,
+        resource_permissions::dsl as rp,
+        user_groups::dsl as ug,
+    };
+
+    let group_ids = ug::user_groups
+        .filter(ug::user_id.eq(user_id))
+        .select(ug::group_id);
+
+    let visible = f::file_nodes
+        .inner_join(
+            rp::resource_permissions.on(rp::resource_type
+                .eq(RESOURCE_TYPE_FILE_NODE)
+                .and(rp::resource_id.eq(f::id))),
+        )
+        .inner_join(p::permissions.on(p::id.eq(rp::permission_id)))
+        .filter(f::parent_id.is_null())
+        .filter(p::code.eq(DOWNLOAD_FILE_PERMISSION_CODE))
+        .filter(
+            rp::principal_type
+                .eq(PRINCIPAL_USER)
+                .and(rp::principal_id.eq(user_id))
+                .or(rp::principal_type
+                    .eq(PRINCIPAL_GROUP)
+                    .and(rp::principal_id.eq_any(group_ids))),
+        )
+        .select((f::id, f::name, f::kind))
+        .distinct()
+        .order(f::name.asc())
+        .load::<VisibleFileNode>(conn)
+        .await?;
+    let legacy_visible = list_legacy_visible_root_files_for_user(conn, user_id).await?;
+    let mut merged = visible;
+    let modern_keys = merged
+        .iter()
+        .map(|node| (node.name.clone(), node.kind.clone()))
+        .collect::<std::collections::BTreeSet<_>>();
+    merged.extend(
+        legacy_visible
+            .into_iter()
+            .filter(|node| !modern_keys.contains(&(node.name.clone(), node.kind.clone()))),
+    );
+    merged.sort_by(|left, right| left.name.cmp(&right.name).then(left.kind.cmp(&right.kind)));
+    debug!(
+        user_id,
+        file_count = merged.len(),
+        "visibility query completed"
+    );
+    Ok(merged)
 }

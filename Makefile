@@ -2,8 +2,24 @@
 
 APP ?= mxd
 CARGO ?= cargo
+CARGO_FALLBACK := $(HOME)/.cargo/bin/cargo
+ifneq ($(wildcard $(CARGO_FALLBACK)),)
+  ifneq ($(shell command -v $(CARGO) >/dev/null 2>&1; echo $$?),0)
+    CARGO := $(CARGO_FALLBACK)
+  endif
+endif
+CARGO_RESOLVED := $(shell resolved=$$(command -v $(CARGO) 2>/dev/null); if [ -n "$$resolved" ]; then dir=$$(dirname "$$resolved"); base=$$(basename "$$resolved"); printf '%s/%s\n' "$$(cd "$$dir" && pwd)" "$$base"; fi)
+CARGO_BIN_DIR := $(if $(CARGO_RESOLVED),$(dir $(CARGO_RESOLVED)),$(dir $(CARGO)))
+LOCAL_BIN_DIR := $(HOME)/.local/bin
 BUILD_JOBS ?=
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
+WHITAKER ?= whitaker
+WHITAKER_FALLBACK := $(HOME)/.local/bin/whitaker
+ifneq ($(wildcard $(WHITAKER_FALLBACK)),)
+  ifneq ($(shell command -v $(WHITAKER) >/dev/null 2>&1; echo $$?),0)
+    WHITAKER := $(WHITAKER_FALLBACK)
+  endif
+endif
 MDLINT ?= markdownlint-cli2
 MDLINT_FALLBACK := $(HOME)/.bun/bin/markdownlint-cli2
 ifneq ($(wildcard $(MDLINT_FALLBACK)),)
@@ -61,15 +77,15 @@ lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy for all featur
 
 lint-postgres: ## Run Clippy with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_POSTGRES_FEATURES)
+	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES)
 
 lint-sqlite: ## Run Clippy with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_SQLITE_FEATURES)
+	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES)
 
 lint-wireframe-only: ## Run Clippy with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(WIREFRAME_ONLY_FEATURES)
+	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES)
 
 markdownlint: ## Lint Markdown files
 	$(MDLINT) '**/*.md'
