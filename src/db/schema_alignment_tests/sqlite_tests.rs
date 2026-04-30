@@ -139,6 +139,14 @@ async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
     Ok(())
 }
 
+/// Verifies the expected `SQLite` indexes on the `news_articles` table.
+///
+/// The helper queries `PRAGMA index_list` through `sqlite_names` using
+/// `conn: &mut DbConnection`, returns `TestResult<()>` for database errors, and
+/// asserts that `idx_articles_category`, `idx_articles_first_child_article`,
+/// `idx_articles_next_article`, `idx_articles_parent_article`, and
+/// `idx_articles_prev_article` are present. Missing indexes panic through the
+/// assertions.
 pub(super) async fn assert_sqlite_article_indices(conn: &mut DbConnection) -> TestResult<()> {
     let article_indices = sqlite_names(
         conn,

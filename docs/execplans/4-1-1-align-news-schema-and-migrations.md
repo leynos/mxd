@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: COMPLETED
+Status: COMPLETE
 
 PLANS.md does not exist in this repository.
 
@@ -189,11 +189,9 @@ Success is observable when:
   category, while initializing `delete_sn` to `0`, is the narrowest data repair
   that leaves legacy rows immediately usable without claiming historical
   deletion knowledge the pre-4.1.1 schema never stored.
-- The formal repository lint and test Makefile targets are currently blocked by
-  missing tooling in this shell (`whitaker`, `cargo-nextest`) and by unrelated
-  pre-existing repository-wide Markdown lint findings outside 4.1.1. Targeted
-  backend validation still succeeded via `cargo check`, `cargo clippy`, and
-  direct `cargo test` runs for the new schema tests and routing BDD coverage.
+- The formal repository lint and test Makefile targets now pass in this shell,
+  including formatting, Clippy, type checking, Markdown lint, and the full
+  `cargo nextest` matrix wrapped by the Makefile gates.
 
 ## Decision Log
 
@@ -279,10 +277,7 @@ Retrospective placeholder:
   - backend-specific migration verification tests and an added nested-category
     routing BDD scenario.
 - Did not implement:
-  - runtime privilege loading or permission catalogue seeding;
-  - roadmap close-out in `docs/roadmap.md`, because the full repository gates
-    are currently blocked by missing external tools and unrelated pre-existing
-    Markdown lint failures.
+  - runtime privilege loading or permission catalogue seeding.
 - Lesson:
   - SQLite's migration limitations are best handled by explicit table rebuilds
     when defaults and scoped uniqueness both change; trying to stage that work

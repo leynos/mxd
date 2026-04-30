@@ -45,6 +45,88 @@ where
     runtime.block_on(async move { test(db.url.to_string()).await })
 }
 
+async fn insert_permission_assignment(
+    conn: &mut DbConnection,
+    user_id: i32,
+    code: i32,
+    name: &str,
+) -> TestResult<i32> {
+    let permission = NewPermission {
+        code,
+        name,
+        scope: "bundle",
+    };
+    diesel::insert_into(permissions::permissions)
+        .values(&permission)
+        .execute(conn)
+        .await?;
+    let permission_id = permissions::permissions
+        .filter(permissions::code.eq(code))
+        .select(permissions::id)
+        .first::<i32>(conn)
+        .await?;
+
+    let user_permission = NewUserPermission {
+        user_id,
+        permission_id,
+    };
+    diesel::insert_into(user_permissions::user_permissions)
+        .values(&user_permission)
+        .execute(conn)
+        .await?;
+    Ok(permission_id)
+}
+
+async fn assert_permission_delete_cascades_to_assignments(
+    conn: &mut DbConnection,
+    user_id: i32,
+    permission_id: i32,
+) -> TestResult<()> {
+    diesel::delete(permissions::permissions.filter(permissions::id.eq(permission_id)))
+        .execute(&mut *conn)
+        .await?;
+
+    let assignments = user_permissions::user_permissions
+        .load::<UserPermission>(conn)
+        .await?;
+    anyhow::ensure!(
+        assignments.is_empty(),
+        "permission deletion left assignments behind"
+    );
+
+    users::users
+        .filter(users::id.eq(user_id))
+        .select(users::id)
+        .first::<i32>(conn)
+        .await?;
+    Ok(())
+}
+
+async fn assert_user_delete_cascades_to_assignments(
+    conn: &mut DbConnection,
+    user_id: i32,
+    permission_id: i32,
+) -> TestResult<()> {
+    diesel::delete(users::users.filter(users::id.eq(user_id)))
+        .execute(&mut *conn)
+        .await?;
+
+    let assignments = user_permissions::user_permissions
+        .load::<UserPermission>(&mut *conn)
+        .await?;
+    anyhow::ensure!(assignments.is_empty(), "cascade left assignments behind");
+
+    let stored_permission = permissions::permissions
+        .filter(permissions::id.eq(permission_id))
+        .first::<Permission>(conn)
+        .await?;
+    anyhow::ensure!(
+        stored_permission.code == 3402,
+        "permission changed after user deletion"
+    );
+    Ok(())
+}
+
 #[test]
 fn test_user_permission_cascades() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
@@ -61,47 +143,25 @@ fn test_user_permission_cascades() -> TestResult<()> {
             .map_err(anyhow::Error::from)?
             .ok_or_else(|| anyhow::anyhow!("postgres permission test user missing"))?;
 
-        let permission = NewPermission {
-            code: 3401,
-            name: "News Create Category",
-            scope: "bundle",
-        };
-        diesel::insert_into(permissions::permissions)
-            .values(&permission)
-            .execute(&mut conn)
-            .await?;
-        let permission_id = permissions::permissions
-            .filter(permissions::code.eq(3401))
-            .select(permissions::id)
-            .first::<i32>(&mut conn)
-            .await?;
+        let deleted_permission_id =
+            insert_permission_assignment(&mut conn, stored_user.id, 3401, "News Create Category")
+                .await?;
+        assert_permission_delete_cascades_to_assignments(
+            &mut conn,
+            stored_user.id,
+            deleted_permission_id,
+        )
+        .await?;
 
-        let user_permission = NewUserPermission {
-            user_id: stored_user.id,
-            permission_id,
-        };
-        diesel::insert_into(user_permissions::user_permissions)
-            .values(&user_permission)
-            .execute(&mut conn)
-            .await?;
-
-        diesel::delete(users::users.filter(users::id.eq(stored_user.id)))
-            .execute(&mut conn)
-            .await?;
-
-        let assignments = user_permissions::user_permissions
-            .load::<UserPermission>(&mut conn)
-            .await?;
-        anyhow::ensure!(assignments.is_empty(), "cascade left assignments behind");
-
-        let stored_permission = permissions::permissions
-            .filter(permissions::id.eq(permission_id))
-            .first::<Permission>(&mut conn)
-            .await?;
-        anyhow::ensure!(
-            stored_permission.code == 3401,
-            "permission changed after user deletion"
-        );
+        let retained_permission_id =
+            insert_permission_assignment(&mut conn, stored_user.id, 3402, "News Delete Category")
+                .await?;
+        assert_user_delete_cascades_to_assignments(
+            &mut conn,
+            stored_user.id,
+            retained_permission_id,
+        )
+        .await?;
         Ok(())
     })
 }
