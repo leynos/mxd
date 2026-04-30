@@ -43,7 +43,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
-      WHITAKER_INSTALLER_REV: f768c2e53c47df13658af1168a67851d388750bf
+      WHITAKER_INSTALLER_REV: 9c154ead8d72dc4b26b5c67f2575fd891bc99962
     steps:
       - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
@@ -73,7 +73,7 @@ jobs:
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-whitaker-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-whitaker-${{ env.WHITAKER_INSTALLER_REV }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Lint with Whitaker
         run: |
           if ! command -v whitaker-installer >/dev/null 2>&1; then
