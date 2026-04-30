@@ -34,6 +34,8 @@ pub(super) async fn insert_root_bundle(conn: &mut DbConnection) -> Result<i32, A
         &NewBundle {
             parent_bundle_id: None,
             name: "Bundle",
+            guid: None,
+            created_at: None,
         },
     )
     .await?;

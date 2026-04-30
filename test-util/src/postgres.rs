@@ -207,6 +207,12 @@ fn create_external_db_if_available(
     create_external_db(admin_url).map_err(PostgresTestDbError::InitFailed)
 }
 
+fn postgres_test_url_from_env() -> Option<String> {
+    std::env::var("POSTGRES_TEST_URL")
+        .ok()
+        .map(|url| url.trim().to_owned())
+        .filter(|url| !url.is_empty())
+}
 /// Generates a stable template name based on migration content hash.
 /// Template name changes when migrations change, forcing template recreation.
 fn migration_template_name() -> Result<DatabaseName, Box<dyn StdError + Send + Sync>> {
@@ -467,8 +473,8 @@ impl PostgresTestDb {
     /// Returns [`PostgresTestDbError::InitFailed`] for other errors
     /// (URL parsing, database creation, etc.).
     pub fn new() -> Result<Self, PostgresTestDbError> {
-        if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-            let admin_url = DatabaseUrl::parse(&value.to_string_lossy())
+        if let Some(value) = postgres_test_url_from_env() {
+            let admin_url = DatabaseUrl::parse(&value)
                 .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
             let (url, db_name) = create_external_db_if_available(&admin_url)?;
             return Ok(Self {
@@ -509,8 +515,8 @@ impl PostgresTestDb {
     /// Returns [`PostgresTestDbError::InitFailed`] for other errors
     /// (URL parsing, database creation, etc.).
     pub async fn new_async() -> Result<Self, PostgresTestDbError> {
-        if let Some(value) = std::env::var_os("POSTGRES_TEST_URL") {
-            let admin_url = DatabaseUrl::parse(&value.to_string_lossy())
+        if let Some(value) = postgres_test_url_from_env() {
+            let admin_url = DatabaseUrl::parse(&value)
                 .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
             let admin_url_for_blocking = admin_url.clone();
             let (url, db_name) = tokio::task::spawn_blocking(move || {

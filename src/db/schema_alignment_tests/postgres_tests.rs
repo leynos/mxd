@@ -80,6 +80,32 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
         bundle_columns,
         vec!["id", "parent_bundle_id", "name", "guid", "created_at"]
     );
+
+    let bundle_indices = postgres_names(
+        conn,
+        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_bundles' ORDER BY \
+         indexname",
+    )
+    .await?;
+    for expected in [
+        "idx_bundles_name_parent",
+        "idx_bundles_parent",
+        "news_bundles_name_parent_bundle_id_key",
+    ] {
+        assert!(bundle_indices.iter().any(|name| name == expected));
+    }
+
+    let bundle_constraints = postgres_names(
+        conn,
+        "SELECT conname AS name FROM pg_constraint WHERE conrelid = 'news_bundles'::regclass AND \
+         contype = 'u' ORDER BY conname",
+    )
+    .await?;
+    assert!(
+        bundle_constraints
+            .iter()
+            .any(|name| name == "news_bundles_name_parent_bundle_id_key")
+    );
     Ok(())
 }
 
@@ -154,12 +180,6 @@ async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()>
     assert_permission_round_trip_with_ids(conn, 42, 42, 34).await
 }
 
-fn postgres_test_url_from_env() -> Option<String> {
-    std::env::var("POSTGRES_TEST_URL")
-        .ok()
-        .filter(|url| !url.trim().is_empty())
-}
-
 fn start_embedded_postgres_db() -> TestResult<Option<PostgresTestDb>> {
     match PostgresTestDb::new() {
         Ok(db) => Ok(Some(db)),
@@ -176,13 +196,6 @@ where
     F: FnOnce(String) -> Fut + Send + 'static,
     Fut: Future<Output = TestResult<()>> + Send + 'static,
 {
-    if let Some(url) = postgres_test_url_from_env() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
-        return runtime.block_on(async move { test(url).await });
-    }
-
     let Some(db) = embedded_postgres_db()? else {
         return Ok(());
     };

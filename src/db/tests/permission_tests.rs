@@ -16,6 +16,8 @@ use crate::{
     },
 };
 
+type TestResult<T> = anyhow::Result<T>;
+
 struct PermissionFixture {
     conn: DbConnection,
     user_id: i32,
@@ -30,8 +32,8 @@ enum DeleteTarget {
 #[fixture]
 async fn permission_fixture(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
-) -> Result<PermissionFixture, AnyError> {
-    let mut conn = migrated_conn.await?;
+) -> TestResult<PermissionFixture> {
+    let mut conn = migrated_conn.await.map_err(anyhow::Error::from)?;
     diesel::sql_query("PRAGMA foreign_keys = ON")
         .execute(&mut conn)
         .await?;
@@ -53,14 +55,15 @@ async fn permission_fixture(
     })
 }
 
-async fn seed_user_permission(conn: &mut DbConnection) -> Result<(i32, i32), AnyError> {
+async fn seed_user_permission(conn: &mut DbConnection) -> TestResult<(i32, i32)> {
     let user = NewUser {
         username: "dana",
         password: "hash",
     };
     create_user(conn, &user).await?;
     let stored_user = get_user_by_name(conn, "dana")
-        .await?
+        .await
+        .map_err(anyhow::Error::from)?
         .ok_or_else(|| anyhow::anyhow!("permission test user missing"))?;
 
     let permission = NewPermission {
@@ -84,8 +87,8 @@ async fn seed_user_permission(conn: &mut DbConnection) -> Result<(i32, i32), Any
 #[rstest]
 #[tokio::test]
 async fn test_permission_model_round_trip(
-    #[future] permission_fixture: Result<PermissionFixture, AnyError>,
-) -> Result<(), AnyError> {
+    #[future] permission_fixture: TestResult<PermissionFixture>,
+) -> TestResult<()> {
     let PermissionFixture {
         mut conn,
         user_id,
@@ -96,18 +99,24 @@ async fn test_permission_model_round_trip(
         .filter(permissions::id.eq(permission_id))
         .first::<Permission>(&mut conn)
         .await?;
-    assert_eq!(permission.code, 34);
-    assert_eq!(permission.name, "News Create Category");
-    assert_eq!(
-        permission.description,
-        "News category creation permission"
+    anyhow::ensure!(permission.code == 34, "unexpected permission code");
+    anyhow::ensure!(
+        permission.name == "News Create Category",
+        "unexpected permission name"
+    );
+    anyhow::ensure!(
+        permission.description == "News category creation permission",
+        "unexpected permission description"
     );
 
     let assigned = user_permissions::user_permissions
         .first::<UserPermission>(&mut conn)
         .await?;
-    assert_eq!(assigned.user_id, user_id);
-    assert_eq!(assigned.permission_id, permission_id);
+    anyhow::ensure!(assigned.user_id == user_id, "unexpected assigned user");
+    anyhow::ensure!(
+        assigned.permission_id == permission_id,
+        "unexpected assigned permission"
+    );
     Ok(())
 }
 
@@ -116,9 +125,9 @@ async fn test_permission_model_round_trip(
 #[case::delete_permission(DeleteTarget::Permission)]
 #[tokio::test]
 async fn test_user_permission_cascades(
-    #[future] permission_fixture: Result<PermissionFixture, AnyError>,
+    #[future] permission_fixture: TestResult<PermissionFixture>,
     #[case] delete_target: DeleteTarget,
-) -> Result<(), AnyError> {
+) -> TestResult<()> {
     let PermissionFixture {
         mut conn,
         user_id,
@@ -143,26 +152,30 @@ async fn test_user_permission_cascades(
     let assignments = user_permissions::user_permissions
         .load::<UserPermission>(&mut conn)
         .await?;
-    assert!(assignments.is_empty());
+    anyhow::ensure!(assignments.is_empty(), "cascade left assignments behind");
     Ok(())
 }
 
-async fn assert_permission_remains(
-    conn: &mut DbConnection,
-    permission_id: i32,
-) -> Result<(), AnyError> {
+async fn assert_permission_remains(conn: &mut DbConnection, permission_id: i32) -> TestResult<()> {
     let permission = permissions::permissions
         .filter(permissions::id.eq(permission_id))
         .first::<Permission>(conn)
         .await?;
-    assert_eq!(permission.code, 34);
+    anyhow::ensure!(
+        permission.code == 34,
+        "permission changed after user deletion"
+    );
     Ok(())
 }
 
-async fn assert_user_remains(conn: &mut DbConnection, user_id: i32) -> Result<(), AnyError> {
+async fn assert_user_remains(conn: &mut DbConnection, user_id: i32) -> TestResult<()> {
     let user = get_user_by_name(conn, "dana")
-        .await?
+        .await
+        .map_err(anyhow::Error::from)?
         .ok_or_else(|| anyhow::anyhow!("user should remain after permission deletion"))?;
-    assert_eq!(user.id, user_id);
+    anyhow::ensure!(
+        user.id == user_id,
+        "unexpected user after permission deletion"
+    );
     Ok(())
 }

@@ -17,6 +17,7 @@ use test_util::AnyError;
 mod file_node_tests;
 #[cfg(feature = "sqlite")]
 mod permission_tests;
+mod permission_tests_postgres;
 #[cfg(feature = "postgres")]
 mod postgres_file_node_tests;
 #[cfg(feature = "sqlite")]
@@ -79,6 +80,8 @@ async fn test_create_bundle_and_category(#[future] migrated_conn: Result<DbConne
     let bun = NewBundle {
         parent_bundle_id: None,
         name: "Bundle",
+        guid: None,
+        created_at: None,
     };
     let _ = create_bundle(&mut conn, &bun)
         .await
@@ -86,6 +89,10 @@ async fn test_create_bundle_and_category(#[future] migrated_conn: Result<DbConne
     let cat = NewCategory {
         name: "General",
         bundle_id: None,
+        guid: None,
+        add_sn: None,
+        delete_sn: None,
+        created_at: None,
     };
     create_category(&mut conn, &cat)
         .await
@@ -100,6 +107,10 @@ async fn seed_root_category(conn: &mut DbConnection, name: &'static str) -> Resu
     let cat = NewCategory {
         name,
         bundle_id: None,
+        guid: None,
+        add_sn: None,
+        delete_sn: None,
+        created_at: None,
     };
     create_category(conn, &cat).await?;
     Ok(())
@@ -116,6 +127,8 @@ async fn test_list_names_invalid_path(#[future] migrated_conn: Result<DbConnecti
     let bun = NewBundle {
         parent_bundle_id: None,
         name: "RootBundle",
+        guid: None,
+        created_at: None,
     };
     create_bundle(&mut conn, &bun)
         .await
