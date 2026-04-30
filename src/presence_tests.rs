@@ -66,12 +66,17 @@ fn registry_returns_sorted_snapshots() {
     assert_eq!(snapshots[2].connection_id, OutboundConnectionId::new(2));
 }
 
-#[test]
-fn registry_assigns_unique_presence_ids_for_duplicate_account_logins() {
+fn registry_with_first_alice_upsert() -> (PresenceRegistry, PresenceUpsert) {
     let registry = PresenceRegistry::default();
     let first = registry
         .upsert(snapshot(1, 42, "alice"))
-        .expect("insert first login");
+        .expect("insert alice");
+    (registry, first)
+}
+
+#[test]
+fn registry_assigns_unique_presence_ids_for_duplicate_account_logins() {
+    let (registry, first) = registry_with_first_alice_upsert();
     let second = registry
         .upsert(snapshot(2, 42, "alice"))
         .expect("insert second login");
@@ -82,10 +87,7 @@ fn registry_assigns_unique_presence_ids_for_duplicate_account_logins() {
 
 #[test]
 fn registry_preserves_presence_id_when_session_updates() {
-    let registry = PresenceRegistry::default();
-    let first = registry
-        .upsert(snapshot(1, 42, "alice"))
-        .expect("insert first snapshot");
+    let (registry, first) = registry_with_first_alice_upsert();
     let second = registry
         .upsert(snapshot(1, 42, "Alice A."))
         .expect("update snapshot");
