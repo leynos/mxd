@@ -85,9 +85,7 @@ async fn test_file_nodes_reject_self_parent(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
 ) -> Result<(), AnyError> {
     let mut conn = migrated_conn.await?;
-    file_node_tests::reject_self_parent_body(&mut conn, "CHECK constraint failed")
-        .await
-        .expect("self-parent guard should reject recursive parent links");
+    file_node_tests::reject_self_parent_body(&mut conn, "CHECK constraint failed").await?;
     Ok(())
 }
 
@@ -97,8 +95,6 @@ async fn test_file_nodes_reject_invalid_basenames(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
 ) -> Result<(), AnyError> {
     let mut conn = migrated_conn.await?;
-    file_node_tests::reject_invalid_basenames_body(&mut conn, "CHECK constraint failed")
-        .await
-        .expect("basename guard should reject empty and slash-delimited names");
+    file_node_tests::reject_invalid_basenames_body(&mut conn, "CHECK constraint failed").await?;
     Ok(())
 }
