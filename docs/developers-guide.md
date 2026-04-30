@@ -297,7 +297,7 @@ historical migration directories.
   privilege loading and catalogue seeding. Schema alignment belongs to 4.1.1;
   enforcement and seed data belong to later roadmap items.
 - Validate news schema changes with the backend-specific migration regression
-  tests in `src/db/schema_alignment_tests.rs` and with the routing behaviour
+  tests in `src/db/schema_alignment_tests/` and with the routing behaviour
   scenarios that exercise migrated databases.
 
 ## Wireframe adapter context handoff
