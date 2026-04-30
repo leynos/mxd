@@ -57,10 +57,13 @@ use crate::{
 /// the `test-support` feature is enabled for integration testing.
 #[derive(Clone)]
 #[cfg(feature = "test-support")]
-struct ServerResources {
-    pool: DbPool,
-    argon2: Arc<Argon2<'static>>,
-    presence: Arc<PresenceRegistry>,
+pub struct ServerResources {
+    /// Database connection pool.
+    pub pool: DbPool,
+    /// Argon2 password hasher instance.
+    pub argon2: Arc<Argon2<'static>>,
+    /// Shared presence registry for legacy connection handlers.
+    pub presence: Arc<PresenceRegistry>,
 }
 
 /// Shared server resources passed to connection handlers.

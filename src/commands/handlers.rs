@@ -301,19 +301,7 @@ async fn push_with_retry_to_peer(
         );
     }
 }
-async fn push_with_retry_to_peer(
-    messaging: &dyn OutboundMessaging,
-    connection_id: crate::server::outbound::OutboundConnectionId,
-    message: Transaction,
-) {
-    if let Err(error) = push_with_retry(messaging, connection_id, message).await {
-        warn!(
-            ?error,
-            target = connection_id.as_u64(),
-            "presence notification delivery failed"
-        );
-    }
-}
+
 async fn push_with_retry(
     messaging: &dyn OutboundMessaging,
     connection_id: crate::server::outbound::OutboundConnectionId,
@@ -346,7 +334,6 @@ pub(super) struct PresenceContext<'a> {
     pub(super) messaging: &'a dyn OutboundMessaging,
     pub(super) presence: &'a PresenceRegistry,
 }
-
 
 const PRESENCE_PUSH_RETRY_ATTEMPTS: usize = 5;
 
