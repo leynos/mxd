@@ -263,7 +263,6 @@ These methods replace the prior ad-hoc `!allows_payload()` checks in
 `src/commands/mod.rs`, `src/wireframe/compat_layer.rs`, and
 `src/transaction/params.rs`.
 
-
 ## Presence Runtime
 
 Presence state is exposed through the stable crate-level API
@@ -503,13 +502,11 @@ make lint
 make test
 ```
 
-
 ## Presence runtime
 
 The presence runtime is the in-memory authority for which users are currently
 online. It lives in `src/presence.rs` and is threaded through the wireframe
 server via `Arc<PresenceRegistry>`.
-
 
 ### `SessionPhase`
 
@@ -525,7 +522,6 @@ server via `Arc<PresenceRegistry>`.
 Only `Online` sessions are included in the presence registry. Sessions in
 `Unauthenticated` or `PendingAgreement` remain absent from roster replies and
 presence fan-out.
-
 
 ### `PresenceSnapshot`
 
@@ -545,7 +541,6 @@ Build snapshots from a `Session` with `Session::presence_snapshot()`. The
 method returns `None` unless the session phase is `Online`, keeping
 agreement-gated users out of the roster until they complete the login
 lifecycle.
-
 
 ### `PresenceRegistry`
 
@@ -567,7 +562,6 @@ and mutation operations:
   snapshot for the given database user ID. If duplicate sessions share the same
   user ID, the snapshot with the numerically lowest `connection_id` is
   returned.
-
 
 ### Transaction builders
 
