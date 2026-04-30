@@ -71,15 +71,7 @@ impl RouteTestContext {
     /// handlers requiring authentication will succeed. Use this before testing
     /// privileged operations without going through the full login flow.
     pub(super) fn authenticate(&mut self, user_id: i32) {
-        let Ok(connection_id) = u64::try_from(user_id) else {
-            panic!("test user id must be non-negative");
-        };
-        self.session.user_id = Some(user_id);
-        self.session.privileges = Privileges::default_user();
-        self.session.phase = SessionPhase::Online;
-        self.session.display_name = format!("user-{user_id}");
-        self.presence_connection_id = OutboundConnectionId::new(connection_id);
-        self.refresh_presence(self.presence_connection_id);
+        self.authenticate_with_privileges(user_id, Privileges::default_user());
     }
 
     /// Authenticate with custom privileges.
