@@ -162,6 +162,10 @@ pub fn setup_news_db(db: DatabaseUrl) -> Result<(), AnyError> {
                 &NewCategory {
                     name: "General",
                     bundle_id: None,
+                    guid: None,
+                    add_sn: None,
+                    delete_sn: None,
+                    created_at: None,
                 },
             )
             .await?;
@@ -239,6 +243,10 @@ pub fn setup_news_with_article(db: DatabaseUrl) -> Result<i32, AnyError> {
                 &NewCategory {
                     name: "General",
                     bundle_id: None,
+                    guid: None,
+                    add_sn: None,
+                    delete_sn: None,
+                    created_at: None,
                 },
             )
             .await?;
@@ -286,6 +294,10 @@ pub fn setup_news_categories_root_db(db: DatabaseUrl) -> Result<(), AnyError> {
                 &NewCategory {
                     name: "General",
                     bundle_id: None,
+                    guid: None,
+                    add_sn: None,
+                    delete_sn: None,
+                    created_at: None,
                 },
             )
             .await?;
@@ -294,6 +306,10 @@ pub fn setup_news_categories_root_db(db: DatabaseUrl) -> Result<(), AnyError> {
                 &NewCategory {
                     name: "Updates",
                     bundle_id: None,
+                    guid: None,
+                    add_sn: None,
+                    delete_sn: None,
+                    created_at: None,
                 },
             )
             .await?;
@@ -315,6 +331,8 @@ pub fn setup_news_categories_nested_db(db: DatabaseUrl) -> Result<(), AnyError> 
                 &NewBundle {
                     parent_bundle_id: Some(root_id),
                     name: "Sub",
+                    guid: None,
+                    created_at: None,
                 },
             )
             .await?;
@@ -324,6 +342,10 @@ pub fn setup_news_categories_nested_db(db: DatabaseUrl) -> Result<(), AnyError> 
                 &NewCategory {
                     name: "Inside",
                     bundle_id: Some(sub_id),
+                    guid: None,
+                    add_sn: None,
+                    delete_sn: None,
+                    created_at: None,
                 },
             )
             .await?;

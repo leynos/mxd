@@ -134,6 +134,10 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
                     &NewCategory {
                         name: "General",
                         bundle_id: None,
+                        guid: None,
+                        add_sn: None,
+                        delete_sn: None,
+                        created_at: None,
                     },
                 )
                 .await?;
@@ -243,6 +247,10 @@ fn post_news_article_root() -> Result<(), AnyError> {
                     &NewCategory {
                         name: "General",
                         bundle_id: None,
+                        guid: None,
+                        add_sn: None,
+                        delete_sn: None,
+                        created_at: None,
                     },
                 )
                 .await?;

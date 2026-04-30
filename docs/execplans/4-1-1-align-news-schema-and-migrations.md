@@ -165,9 +165,9 @@ Success is observable when:
   `00000000000001_create_news`, `00000000000002_add_bundles`,
   `00000000000003_add_articles`, and
   `00000000000005_add_bundle_name_parent_index` for both backends.
-- `src/schema.rs` currently exposes only `users`, `news_bundles`,
-  `news_categories`, `news_articles`, `files`, and `file_acl`; there are no
-  Diesel definitions yet for `permissions` or `user_permissions`.
+- Resolved: `src/schema.rs` now defines Diesel tables for `permissions` and
+  `user_permissions` alongside `users`, `news_bundles`, `news_categories`,
+  `news_articles`, `files`, and `file_acl`.
 - `src/news_path.rs` already uses `diesel_cte_ext` for recursive path walking,
   so the hierarchical-query requirement is partly satisfied today and should be
   preserved rather than reinvented.
@@ -240,11 +240,12 @@ Success is observable when:
   article count and initialize `delete_sn` to `0`. Rationale: that preserves a
   coherent starting point for later serial-number work without inventing
   historical deletion data. Date/Author: 2026-04-13 / Codex.
-- Decision: enforce top-level category-name uniqueness with a partial unique
-  index on root categories in addition to `UNIQUE(name, bundle_id)`. Rationale:
-  both supported databases treat `NULL` values as distinct in composite unique
-  constraints, so root category lookup needs an explicit invariant to remain
-  deterministic. Date/Author: 2026-04-29 / Codex.
+- Decision: enforce top-level category-name uniqueness with backend-specific
+  indexes because `UNIQUE(name, bundle_id)` alone treats root `NULL`
+  `bundle_id` values as distinct. PostgreSQL uses partial unique indexes for
+  root rows and scoped non-root rows, while SQLite uses the
+  `idx_news_categories_unique` expression index on
+  `(name, IFNULL(bundle_id, -1))`. Date/Author: 2026-04-29 / Codex.
 - Decision: keep SQLite's legacy `idx_articles_category` index available until
   after `add_sn` backfill has counted articles per category. Rationale: the
   correlated count can otherwise degrade into repeated full scans during

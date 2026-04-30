@@ -82,6 +82,7 @@ async fn assert_sqlite_permission_schema(conn: &mut DbConnection) -> TestResult<
 
 async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_sqlite_article_indices(conn).await?;
+    assert_sqlite_bundle_schema(conn).await?;
 
     let category_indices = sqlite_names(
         conn,
@@ -109,6 +110,32 @@ async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
             "created_at"
         ]
     );
+    Ok(())
+}
+
+async fn assert_sqlite_bundle_schema(conn: &mut DbConnection) -> TestResult<()> {
+    let bundle_columns = sqlite_names(
+        conn,
+        "SELECT name FROM pragma_table_info('news_bundles') ORDER BY cid",
+    )
+    .await?;
+    assert_eq!(
+        bundle_columns,
+        vec!["id", "parent_bundle_id", "name", "guid", "created_at"]
+    );
+
+    let bundle_indices = sqlite_names(
+        conn,
+        "SELECT name FROM pragma_index_list('news_bundles') ORDER BY name",
+    )
+    .await?;
+    for expected in [
+        "idx_bundles_name_parent",
+        "idx_bundles_parent",
+        "sqlite_autoindex_news_bundles_1",
+    ] {
+        assert!(bundle_indices.iter().any(|name| name == expected));
+    }
     Ok(())
 }
 
