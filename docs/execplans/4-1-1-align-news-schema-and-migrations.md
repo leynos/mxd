@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: IN_PROGRESS
+Status: COMPLETED
 
 PLANS.md does not exist in this repository.
 
@@ -154,7 +154,7 @@ Success is observable when:
 - [x] (2026-04-16 00:22Z) Reconfirmed that `docs/users-guide.md` does not need
       a 4.1.1 update because the work intentionally introduced no user-visible
       or operator-visible behaviour change.
-- [ ] Mark `docs/roadmap.md` item 4.1.1 done after all gates pass.
+- [x] Mark `docs/roadmap.md` item 4.1.1 done after all gates pass.
 
 ## Surprises & Discoveries
 
