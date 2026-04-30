@@ -76,11 +76,13 @@ jobs:
           key: ${{ runner.os }}-cargo-whitaker-${{ hashFiles('**/Cargo.lock') }}
       - name: Lint with Whitaker
         run: |
-          if ! command -v whitaker >/dev/null 2>&1; then
+          if ! command -v whitaker-installer >/dev/null 2>&1; then
             cargo install --locked \
               --git https://github.com/leynos/whitaker \
               --rev "${WHITAKER_INSTALLER_REV}" \
               whitaker-installer
+          fi
+          if ! command -v whitaker >/dev/null 2>&1; then
             whitaker-installer
           fi
           RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }}
