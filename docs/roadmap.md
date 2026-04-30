@@ -465,7 +465,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 4.1. Align the news schema and migrations
 
-- [ ] 4.1.1. Apply the schema from `docs/news-schema.md` (bundles, categories,
+- [x] 4.1.1. Apply the schema from `docs/news-schema.md` (bundles, categories,
   threaded articles, permissions). Acceptance: Schema exists in both SQLite and
   PostgreSQL migrations with referential integrity and required indices.
   Dependencies: 1.

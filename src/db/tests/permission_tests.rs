@@ -16,8 +16,6 @@ use crate::{
     },
 };
 
-type TestResult<T> = anyhow::Result<T>;
-
 struct PermissionFixture {
     conn: DbConnection,
     user_id: i32,
@@ -32,7 +30,7 @@ enum DeleteTarget {
 #[fixture]
 async fn permission_fixture(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
-) -> TestResult<PermissionFixture> {
+) -> Result<PermissionFixture, anyhow::Error> {
     let mut conn = migrated_conn.await.map_err(anyhow::Error::from)?;
     diesel::sql_query("PRAGMA foreign_keys = ON")
         .execute(&mut conn)
@@ -55,7 +53,7 @@ async fn permission_fixture(
     })
 }
 
-async fn seed_user_permission(conn: &mut DbConnection) -> TestResult<(i32, i32)> {
+async fn seed_user_permission(conn: &mut DbConnection) -> Result<(i32, i32), anyhow::Error> {
     let user = NewUser {
         username: "dana",
         password: "hash",
@@ -87,8 +85,8 @@ async fn seed_user_permission(conn: &mut DbConnection) -> TestResult<(i32, i32)>
 #[rstest]
 #[tokio::test]
 async fn test_permission_model_round_trip(
-    #[future] permission_fixture: TestResult<PermissionFixture>,
-) -> TestResult<()> {
+    #[future] permission_fixture: Result<PermissionFixture, anyhow::Error>,
+) -> Result<(), anyhow::Error> {
     let PermissionFixture {
         mut conn,
         user_id,
@@ -125,9 +123,9 @@ async fn test_permission_model_round_trip(
 #[case::delete_permission(DeleteTarget::Permission)]
 #[tokio::test]
 async fn test_user_permission_cascades(
-    #[future] permission_fixture: TestResult<PermissionFixture>,
+    #[future] permission_fixture: Result<PermissionFixture, anyhow::Error>,
     #[case] delete_target: DeleteTarget,
-) -> TestResult<()> {
+) -> Result<(), anyhow::Error> {
     let PermissionFixture {
         mut conn,
         user_id,
@@ -156,7 +154,10 @@ async fn test_user_permission_cascades(
     Ok(())
 }
 
-async fn assert_permission_remains(conn: &mut DbConnection, permission_id: i32) -> TestResult<()> {
+async fn assert_permission_remains(
+    conn: &mut DbConnection,
+    permission_id: i32,
+) -> Result<(), anyhow::Error> {
     let permission = permissions::permissions
         .filter(permissions::id.eq(permission_id))
         .first::<Permission>(conn)
@@ -168,7 +169,7 @@ async fn assert_permission_remains(conn: &mut DbConnection, permission_id: i32) 
     Ok(())
 }
 
-async fn assert_user_remains(conn: &mut DbConnection, user_id: i32) -> TestResult<()> {
+async fn assert_user_remains(conn: &mut DbConnection, user_id: i32) -> Result<(), anyhow::Error> {
     let user = get_user_by_name(conn, "dana")
         .await
         .map_err(anyhow::Error::from)?

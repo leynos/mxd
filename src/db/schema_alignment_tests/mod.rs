@@ -53,6 +53,8 @@ struct CategoryBackfillRow {
     created_at: Option<NaiveDateTime>,
 }
 
+/// Executes each SQL statement in `statements` against `conn` in order,
+/// returning the first error encountered.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn run_statements(conn: &mut DbConnection, statements: &[&str]) -> TestResult<()> {
     for &statement in statements {
@@ -61,6 +63,8 @@ pub(crate) async fn run_statements(conn: &mut DbConnection, statements: &[&str])
     Ok(())
 }
 
+/// Splits `script` on `;`, trims whitespace, discards empty fragments, and
+/// executes each fragment against `conn` in order.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn run_sql_script(conn: &mut DbConnection, script: &str) -> TestResult<()> {
     for statement in script
@@ -73,6 +77,8 @@ pub(crate) async fn run_sql_script(conn: &mut DbConnection, script: &str) -> Tes
     Ok(())
 }
 
+/// Asserts that the `news_bundles` row with `id = 1` has non-null `guid` and
+/// `created_at` values after migration backfill.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn assert_bundle_backfill(conn: &mut DbConnection) -> TestResult<()> {
     let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
@@ -83,6 +89,8 @@ pub(crate) async fn assert_bundle_backfill(conn: &mut DbConnection) -> TestResul
     Ok(())
 }
 
+/// Asserts that the `news_categories` row with `id = 1` has non-null `guid`
+/// and `created_at`, `add_sn = 1`, and `delete_sn = 0` after migration backfill.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn assert_category_backfill(conn: &mut DbConnection) -> TestResult<()> {
     let category =
@@ -96,6 +104,8 @@ pub(crate) async fn assert_category_backfill(conn: &mut DbConnection) -> TestRes
     Ok(())
 }
 
+/// Runs all post-upgrade backfill assertions: bundle, category, permission
+/// round-trip, and backend-specific article-index checks.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
     assert_bundle_backfill(conn).await?;
@@ -108,6 +118,9 @@ pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestRes
     Ok(())
 }
 
+/// Inserts a root category named `'Root Duplicate'` and asserts that a second
+/// insert with the same name and a `NULL` `bundle_id` fails with a constraint
+/// error, validating the partial unique index on root categories.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn assert_root_category_names_are_unique(
     conn: &mut DbConnection,
@@ -127,6 +140,8 @@ pub(crate) async fn assert_root_category_names_are_unique(
     Ok(())
 }
 
+/// Inserts the six legacy migration-version rows, one user, one bundle, one
+/// category, and one article required by the legacy-schema upgrade tests.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn insert_legacy_seed_data(conn: &mut DbConnection) -> TestResult<()> {
     run_statements(
@@ -147,6 +162,11 @@ pub(crate) async fn insert_legacy_seed_data(conn: &mut DbConnection) -> TestResu
     .await
 }
 
+/// Runs the `__diesel_schema_migrations` DDL, then each script in
+/// `migration_scripts`, then inserts the shared legacy seed data.
+///
+/// Used by `setup_sqlite_legacy_schema` and `setup_postgres_legacy_schema` to
+/// establish a pre-4.1.1 database state before exercising the upgrade path.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn setup_legacy_schema(
     conn: &mut DbConnection,
@@ -164,6 +184,10 @@ pub(crate) async fn setup_legacy_schema(
     insert_legacy_seed_data(conn).await
 }
 
+/// Inserts a user, a permission, and a `user_permissions` join row using the
+/// supplied `user_id`, `permission_id`, and `code`, then asserts the join
+/// returns exactly one matching row.  Used to validate the permissions schema
+/// after both fresh migration and upgrade paths.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn assert_permission_round_trip_with_ids(
     conn: &mut DbConnection,

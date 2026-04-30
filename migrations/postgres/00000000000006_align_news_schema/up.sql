@@ -14,6 +14,8 @@ ALTER TABLE news_categories
     ADD COLUMN delete_sn INTEGER,
     ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
+CREATE INDEX IF NOT EXISTS idx_articles_category ON news_articles(category_id);
+
 UPDATE news_categories AS c
 SET
     guid = COALESCE(guid, md5('news-category:' || c.id::text || ':' || clock_timestamp()::text)),
@@ -56,7 +58,6 @@ CREATE TABLE user_permissions (
 CREATE INDEX IF NOT EXISTS idx_bundles_parent ON news_bundles(parent_bundle_id);
 CREATE INDEX IF NOT EXISTS idx_bundles_name_parent ON news_bundles(name, parent_bundle_id);
 CREATE INDEX IF NOT EXISTS idx_categories_bundle ON news_categories(bundle_id);
-CREATE INDEX IF NOT EXISTS idx_articles_category ON news_articles(category_id);
 CREATE INDEX idx_articles_parent_article ON news_articles(parent_article_id);
 CREATE INDEX idx_articles_prev_article ON news_articles(prev_article_id);
 CREATE INDEX idx_articles_next_article ON news_articles(next_article_id);
