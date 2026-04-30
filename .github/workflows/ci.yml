@@ -85,6 +85,14 @@ jobs:
           if ! command -v whitaker >/dev/null 2>&1; then
             whitaker-installer
           fi
+          if [[ -d "${HOME}/.local/share/whitaker/lints" ]]; then
+            find "${HOME}/.local/share/whitaker/lints" \
+              -type f \
+              \( -name 'lib*@*.so' -o -name 'lib*@*.dylib' -o -name '*@*.dll' \) \
+              ! -name 'libwhitaker_suite@*' \
+              ! -name 'whitaker_suite@*' \
+              -delete
+          fi
           RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }}
       - name: Test
         run: |
