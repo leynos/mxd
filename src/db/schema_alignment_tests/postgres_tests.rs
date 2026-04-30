@@ -145,6 +145,14 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
     Ok(())
 }
 
+/// Verifies that `news_articles` has the expected `PostgreSQL` indexes.
+///
+/// The check is order-agnostic: it queries index names with `postgres_names`
+/// through the supplied `DbConnection` and asserts that `idx_articles_category`,
+/// `idx_articles_first_child_article`, `idx_articles_next_article`,
+/// `idx_articles_parent_article`, and `idx_articles_prev_article` are present.
+/// Database query failures are returned as `TestResult<()>`; missing indexes
+/// panic through the assertions.
 pub(super) async fn assert_postgres_article_indices(conn: &mut DbConnection) -> TestResult<()> {
     let article_indices = postgres_names(
         conn,
