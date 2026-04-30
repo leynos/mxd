@@ -22,6 +22,15 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
+name = "mxd"
+path = "src/main.rs"
+required-features = ["legacy-networking"]
+
+[[bin]]
+name = "gen_corpus"
+path = "src/bin/gen_corpus.rs"
+
+[[bin]]
 name = "mxd-wireframe-server"
 path = "src/bin/mxd_wireframe_server.rs"
 

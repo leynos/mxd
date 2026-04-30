@@ -93,15 +93,30 @@ pub(crate) async fn assert_bundle_backfill(conn: &mut DbConnection) -> TestResul
 /// and `created_at`, `add_sn = 1`, and `delete_sn = 0` after migration backfill.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn assert_category_backfill(conn: &mut DbConnection) -> TestResult<()> {
-    let category =
-        sql_query("SELECT guid, add_sn, delete_sn, created_at FROM news_categories WHERE id = 1")
-            .get_result::<CategoryBackfillRow>(conn)
-            .await?;
+    assert_category_backfill_for_id(conn, 1, 1).await
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn assert_category_backfill_for_id(
+    conn: &mut DbConnection,
+    category_id: i32,
+    expected_add_sn: i32,
+) -> TestResult<()> {
+    let category = sql_query(format!(
+        "SELECT guid, add_sn, delete_sn, created_at FROM news_categories WHERE id = {category_id}"
+    ))
+    .get_result::<CategoryBackfillRow>(conn)
+    .await?;
     assert!(category.guid.is_some());
-    assert_eq!(category.add_sn, Some(1));
+    assert_eq!(category.add_sn, Some(expected_add_sn));
     assert_eq!(category.delete_sn, Some(0));
     assert!(category.created_at.is_some());
     Ok(())
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn assert_empty_category_backfill(conn: &mut DbConnection) -> TestResult<()> {
+    assert_category_backfill_for_id(conn, 2, 0).await
 }
 
 /// Runs all post-upgrade backfill assertions: bundle, category, permission
@@ -110,6 +125,7 @@ pub(crate) async fn assert_category_backfill(conn: &mut DbConnection) -> TestRes
 pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
     assert_bundle_backfill(conn).await?;
     assert_category_backfill(conn).await?;
+    assert_empty_category_backfill(conn).await?;
     assert_permission_round_trip_with_ids(conn, 84, 84, 84).await?;
     #[cfg(feature = "sqlite")]
     sqlite_tests::assert_sqlite_article_indices(conn).await?;
@@ -153,6 +169,7 @@ pub(crate) async fn insert_legacy_seed_data(conn: &mut DbConnection) -> TestResu
             "INSERT INTO users (id, username, password) VALUES (1, 'alice', 'hash')",
             "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'Bundle')",
             "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'General', 1)",
+            "INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'Empty', 1)",
             "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
              next_article_id, first_child_article_id, title, poster, posted_at, flags, \
              data_flavor, data) VALUES (1, 1, NULL, NULL, NULL, NULL, 'First', 'alice', \

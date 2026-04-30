@@ -68,7 +68,7 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
     let bundle_columns = postgres_names(
         conn,
         "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
-         'news_bundles' ORDER BY ordinal_position",
+         'news_bundles' AND table_schema = 'public' ORDER BY ordinal_position",
     )
     .await?;
     assert_eq!(
@@ -78,8 +78,8 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
 
     let bundle_indices = postgres_names(
         conn,
-        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_bundles' ORDER BY \
-         indexname",
+        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_bundles' AND schemaname \
+         = 'public' ORDER BY indexname",
     )
     .await?;
     for expected in [
@@ -92,8 +92,8 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
 
     let bundle_constraints = postgres_names(
         conn,
-        "SELECT conname AS name FROM pg_constraint WHERE conrelid = 'news_bundles'::regclass AND \
-         contype = 'u' ORDER BY conname",
+        "SELECT conname AS name FROM pg_constraint WHERE conrelid = \
+         'public.news_bundles'::regclass AND contype = 'u' ORDER BY conname",
     )
     .await?;
     assert!(
@@ -108,7 +108,7 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
     let category_columns = postgres_names(
         conn,
         "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
-         'news_categories' ORDER BY ordinal_position",
+         'news_categories' AND table_schema = 'public' ORDER BY ordinal_position",
     )
     .await?;
     assert_eq!(
@@ -126,8 +126,8 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
 
     let category_indices = postgres_names(
         conn,
-        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_categories' ORDER BY \
-         indexname",
+        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_categories' AND \
+         schemaname = 'public' ORDER BY indexname",
     )
     .await?;
     for expected in [
@@ -151,8 +151,8 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
 pub(super) async fn assert_postgres_article_indices(conn: &mut DbConnection) -> TestResult<()> {
     let article_indices = postgres_names(
         conn,
-        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_articles' ORDER BY \
-         indexname",
+        "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_articles' AND \
+         schemaname = 'public' ORDER BY indexname",
     )
     .await?;
     for expected in [
