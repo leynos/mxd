@@ -377,3 +377,105 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
         Ok(())
     })
 }
+
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[serial_test::file_serial(postgres_embedded_setup)]
+#[test]
+fn postgres_article_threading_enforces_referential_integrity() -> TestResult<()> {
+    with_postgres_test_db(|url| async move {
+        let mut conn = DbConnection::establish(&url).await?;
+        apply_migrations(&mut conn, &url, None).await?;
+
+        sql_query(
+            "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'ThreadBundle')",
+        )
+        .execute(&mut conn)
+        .await?;
+
+        let bundle_ids = postgres_names(
+            &mut conn,
+            "SELECT id::text AS name FROM news_bundles ORDER BY id",
+        )
+        .await?;
+        let bid = &bundle_ids[0];
+
+        sql_query(format!(
+            "INSERT INTO news_categories (name, bundle_id) VALUES ('ThreadCat', {bid})"
+        ))
+        .execute(&mut conn)
+        .await?;
+
+        let cat_ids = postgres_names(
+            &mut conn,
+            "SELECT id::text AS name FROM news_categories ORDER BY id",
+        )
+        .await?;
+        let cid = &cat_ids[0];
+
+        // Root article
+        sql_query(format!(
+            "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
+             next_article_id, first_child_article_id, title, posted_at) VALUES ({cid}, NULL, \
+             NULL, NULL, NULL, 'Root', NOW())"
+        ))
+        .execute(&mut conn)
+        .await?;
+
+        let root_ids = postgres_names(
+            &mut conn,
+            "SELECT id::text AS name FROM news_articles ORDER BY id",
+        )
+        .await?;
+        let rid = &root_ids[0];
+
+        // Child article referencing root via parent_article_id
+        sql_query(format!(
+            "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
+             next_article_id, first_child_article_id, title, posted_at) VALUES ({cid}, {rid}, \
+             NULL, NULL, NULL, 'Child', NOW())"
+        ))
+        .execute(&mut conn)
+        .await?;
+
+        let child_ids = postgres_names(
+            &mut conn,
+            "SELECT id::text AS name FROM news_articles WHERE parent_article_id IS NOT NULL ORDER \
+             BY id",
+        )
+        .await?;
+        assert_eq!(child_ids.len(), 1, "expected one child article");
+        let chid = &child_ids[0];
+
+        // Update root to point first_child_article_id at child
+        sql_query(format!(
+            "UPDATE news_articles SET first_child_article_id = {chid} WHERE id = {rid}"
+        ))
+        .execute(&mut conn)
+        .await?;
+
+        // Verify the threading link via a JOIN query
+        let linked = postgres_names(
+            &mut conn,
+            &format!(
+                "SELECT a.id::text AS name FROM news_articles a INNER JOIN news_articles child ON \
+                 child.id = a.first_child_article_id WHERE a.id = {rid}"
+            ),
+        )
+        .await?;
+        assert_eq!(linked.len(), 1, "root article must link to its child");
+        assert_eq!(linked[0], *rid, "linked root id must match");
+
+        // Referential integrity: non-existent parent_article_id must be rejected
+        let bad_insert = sql_query(format!(
+            "INSERT INTO news_articles (category_id, parent_article_id, title, posted_at) VALUES \
+             ({cid}, 999999, 'Orphan', NOW())"
+        ))
+        .execute(&mut conn)
+        .await;
+        assert!(
+            bad_insert.is_err(),
+            "insert with non-existent parent_article_id must be rejected"
+        );
+        Ok(())
+    })
+}
