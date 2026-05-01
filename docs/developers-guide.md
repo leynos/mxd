@@ -33,10 +33,12 @@ make lint WHITAKER=/opt/custom/bin/whitaker
 The fallback is a one-time check at parse time; it does not introduce a runtime
 dependency on shell availability.
 
-### Makefile PATH handling
+### Makefile PATH handling via `TOOL_PATH_PREFIX`
 
 `TOOL_PATH_PREFIX` is built from the resolved Cargo binary directory, the
-resolved Whitaker binary directory, and `~/.local/bin`:
+resolved Whitaker binary directory, and `~/.local/bin`. The Makefile resolves
+the executable token first, records the directory only when lookup succeeds, and
+then joins the non-empty entries:
 
 ```make
 TOOL_PATH_PREFIX := $(shell printf '%s\n' \
@@ -55,14 +57,26 @@ PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" \
 This keeps the same Cargo executable family, the resolved Whitaker binary, and
 user-local tools ahead of the ambient shell `PATH` while avoiding an empty
 current-directory entry. The Clippy lines still use `$(CARGO)` directly; the
-PATH override is specifically for tools that are invoked as subprocesses during
-lint runs.
+PATH override is specifically for Whitaker and tools it invokes as
+subprocesses during lint runs. Test targets use the resolved `$(CARGO)` path
+directly rather than rewriting `PATH`.
 
 To inspect the effective prefix for a local shell, ask `make` to print it:
 
 ```sh
 make -pn | grep '^TOOL_PATH_PREFIX :='
 ```
+
+For a local lint invocation, the effective command shape is:
+
+```sh
+PATH="$TOOL_PATH_PREFIX:$PATH" RUSTFLAGS="-D warnings" \
+  whitaker --all -- --features "sqlite test-support"
+```
+
+That prefix means Cargo subcommands installed under `~/.cargo/bin`, Whitaker
+installed under its resolved directory, and user-local tools under
+`~/.local/bin` are found before system defaults during the Whitaker lint pass.
 
 ## PostgreSQL test helper
 
@@ -337,9 +351,10 @@ The schema-alignment tests are split by shared helpers and backend-specific
 behaviour:
 
 - `mod.rs`: shared migration runners, seed helpers, backfill assertions, and
-  common row types used by both backends.
-- `sqlite_tests.rs`: in-memory SQLite setup, legacy-schema rebuilds, catalogue
-  checks through SQLite PRAGMA queries, and SQLite-specific behaviour tests.
+  read-only backfill verifiers used by both backends.
+- `sqlite_tests.rs`: isolated in-memory SQLite setup, legacy-schema rebuilds,
+  catalogue checks through SQLite PRAGMA queries, and SQLite-specific behaviour
+  tests.
 - `postgres_tests/mod.rs`: PostgreSQL test entry points for fresh migration,
   legacy upgrade, scoped category uniqueness, and GUID behaviour.
 - `postgres_tests/catalogue_helpers.rs`: PostgreSQL catalogue readers and
@@ -353,19 +368,21 @@ The shared helper surface is intentionally split between writers and readers:
 - `run_statements` executes a sequence of SQL statements in order.
 - `run_sql_script` splits migration SQL into individual statements before
   execution.
+- `assert_upgrade_backfills` performs read-only bundle, category, permission,
+  and article-index checks after an upgrade.
 - `verify_root_category_names_are_unique_with_constraint_insert` performs an
-  insert-based constraint verification and is named `verify_` because it writes
-  test rows.
+  insert-based constraint verification and is mutation-driven by design.
 - `seed_permission_round_trip` inserts the user, permission, and join rows used
-  by permission smoke tests.
+  by permission smoke tests; it is the write path.
 - `assert_permission_join_count` is the read-only assertion that checks the
   seeded permission join.
 
 SQLite tests run against a fresh in-memory database per test or fixture.
 PostgreSQL tests run through `with_postgres_test_db`, which creates an isolated
 database using `POSTGRES_TEST_URL` when supplied or an embedded PostgreSQL
-cluster otherwise. PostgreSQL tests use `serial_test::file_serial` locks so the
-embedded cluster setup and teardown are not raced by concurrent tests.
+cluster otherwise. PostgreSQL tests use
+`serial_test::file_serial(postgres_embedded_setup)` locks so the embedded
+cluster setup and teardown are not raced by concurrent tests.
 
 Run only the SQLite schema-alignment tests with:
 
@@ -384,29 +401,33 @@ RUSTFLAGS="-D warnings" \
   db::schema_alignment_tests::postgres_tests
 ```
 
-### Model field semantics (`guid`, `created_at`, `add_sn`, `delete_sn`)
+### News model metadata semantics
 
 The aligned news schema adds metadata fields that make legacy rows structurally
 complete after migration:
 
-- `guid`: stable external identifier for bundles and categories. It is
-  non-null at rest after migration and is populated for legacy rows during the
-  backfill. Fresh inserts use database defaults or write-model values when
-  provided.
+- `guid`: stable external identifier for bundles and categories. It is generated
+  or backfilled during migration, non-empty at rest, and unique per row. Fresh
+  inserts use database defaults or write-model values when provided.
 - `created_at`: creation timestamp for bundles and categories. It is non-null
   at rest after migration and is backfilled for legacy rows at migration time.
-  Fresh inserts use the database timestamp default unless the caller provides a
-  value through the write model.
-- `add_sn`: category add serial number. During migration it is set from the
-  article count that exists for the category at that moment. There is no
-  trigger that increments it when later articles are inserted.
-- `delete_sn`: category delete serial number. The migration backfills it to
+  Write models keep the field optional for inserts until runtime enforcement
+  work lands, so callers may rely on the database timestamp default.
+- `add_sn`: category add serial number. During migration it is initialized from
+  the article count that exists for the category at that moment. No trigger
+  increments it when later articles are inserted, so fresh inserts do not
+  auto-increment `add_sn`.
+- `delete_sn`: category delete serial number. The migration initializes it to
   zero for existing categories and new rows rely on schema/write-model defaults
-  unless an explicit value is supplied.
+  unless an explicit value is supplied. No trigger updates it automatically.
 
 Tests should distinguish migration-time backfill semantics from runtime insert
 semantics. A fresh database category can have `add_sn = 0` even after articles
 are inserted in the same test because no trigger updates the field.
+
+Diesel joinables are defined for bundle, category, and article relationships so
+query code can traverse `news_bundles`, `news_categories`, and `news_articles`
+without relying on ad-hoc SQL joins for the common schema edges.
 
 ## Wireframe adapter context handoff
 
