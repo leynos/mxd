@@ -88,7 +88,7 @@ async fn insert_root_and_child(
          id",
     )
     .await?;
-    assert_eq!(child_ids.len(), 1, "expected one child article");
+    anyhow::ensure!(child_ids.len() == 1, "expected one child article");
     let child_article = child_ids
         .into_iter()
         .next()
@@ -126,8 +126,8 @@ async fn assert_threading_integrity(
         ),
     )
     .await?;
-    assert_eq!(linked.len(), 1, "root article must link to its child");
-    assert_eq!(linked[0], *chid, "linked child id must match");
+    anyhow::ensure!(linked.len() == 1, "root article must link to its child");
+    anyhow::ensure!(linked[0] == *chid, "linked child id must match");
     Ok(())
 }
 
@@ -142,7 +142,7 @@ async fn assert_missing_references_are_rejected(
     ))
     .execute(conn)
     .await;
-    assert!(
+    anyhow::ensure!(
         bad_insert.is_err(),
         "insert with non-existent parent_article_id must be rejected"
     );
@@ -152,7 +152,7 @@ async fn assert_missing_references_are_rejected(
     ))
     .execute(conn)
     .await;
-    assert!(
+    anyhow::ensure!(
         bad_update.is_err(),
         "update with non-existent first_child_article_id must be rejected"
     );
