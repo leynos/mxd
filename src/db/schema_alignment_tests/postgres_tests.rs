@@ -183,9 +183,12 @@ async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()>
     assert_permission_round_trip_with_ids(conn, 42, 42, 34).await
 }
 
+fn is_ci() -> bool { std::env::var("CI").is_ok_and(|value| !value.is_empty()) }
+
 fn start_embedded_postgres_db() -> TestResult<Option<PostgresTestDb>> {
     match PostgresTestDb::new() {
         Ok(db) => Ok(Some(db)),
+        Err(error @ PostgresTestDbError::Unavailable(_)) if is_ci() => Err(error.into()),
         Err(PostgresTestDbError::Unavailable(_)) => {
             tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
             Ok(None)
@@ -200,6 +203,9 @@ where
     Fut: Future<Output = TestResult<()>> + Send + 'static,
 {
     let Some(db) = embedded_postgres_db()? else {
+        if is_ci() {
+            return Err(anyhow::anyhow!("PostgreSQL unavailable in CI"));
+        }
         return Ok(());
     };
 
