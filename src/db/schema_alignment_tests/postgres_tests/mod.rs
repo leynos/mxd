@@ -1,4 +1,11 @@
-//! `PostgreSQL` schema alignment regression tests.
+//! `PostgreSQL` schema alignment regression tests for roadmap item 4.1.1.
+//!
+//! Validates that both a fresh application of the current migration set and an
+//! upgrade from the pre-4.1.1 schema produce the expected table structure,
+//! column order, indexes, constraints, and backfill values on the `PostgreSQL`
+//! backend.  Tests are run against either a `POSTGRES_TEST_URL` connection or
+//! an embedded `PostgreSQL` cluster started by `pg-embed-setup-unpriv`; they
+//! skip gracefully when neither is available.
 
 mod catalogue_helpers;
 mod threading;
