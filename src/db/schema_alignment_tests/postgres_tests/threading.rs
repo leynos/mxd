@@ -21,29 +21,23 @@ struct ThreadSeedIds {
 }
 
 async fn seed_bundle_and_category(conn: &mut DbConnection) -> TestResult<String> {
-    sql_query("INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'ThreadBundle')")
-        .execute(conn)
-        .await?;
-
     let bundle_ids = postgres_names(
         conn,
-        "SELECT id::text AS name FROM news_bundles ORDER BY id",
+        "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'ThreadBundle') \
+         RETURNING id::text AS name",
     )
     .await?;
     let bid = bundle_ids
-        .as_slice()
-        .first()
+        .into_iter()
+        .next()
         .ok_or_else(|| anyhow::anyhow!("missing seeded bundle id for threading test"))?;
-
-    sql_query(format!(
-        "INSERT INTO news_categories (name, bundle_id) VALUES ('ThreadCat', {bid})"
-    ))
-    .execute(conn)
-    .await?;
 
     let cat_ids = postgres_names(
         conn,
-        "SELECT id::text AS name FROM news_categories ORDER BY id",
+        &format!(
+            "INSERT INTO news_categories (name, bundle_id) VALUES ('ThreadCat', {bid}) RETURNING \
+             id::text AS name"
+        ),
     )
     .await?;
     cat_ids
@@ -56,37 +50,27 @@ async fn insert_root_and_child(
     conn: &mut DbConnection,
     category_id: &str,
 ) -> TestResult<ThreadSeedIds> {
-    sql_query(format!(
-        "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
-         next_article_id, first_child_article_id, title, posted_at) VALUES ({category_id}, NULL, \
-         NULL, NULL, NULL, 'Root', NOW())"
-    ))
-    .execute(conn)
-    .await?;
-
     let root_ids = postgres_names(
         conn,
-        "SELECT id::text AS name FROM news_articles ORDER BY id",
+        &format!(
+            "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
+             next_article_id, first_child_article_id, title, posted_at) VALUES ({category_id}, \
+             NULL, NULL, NULL, NULL, 'Root', NOW()) RETURNING id::text AS name"
+        ),
     )
     .await?;
     let rid = root_ids
-        .as_slice()
-        .first()
-        .cloned()
+        .into_iter()
+        .next()
         .ok_or_else(|| anyhow::anyhow!("missing seeded root article id for threading test"))?;
-
-    sql_query(format!(
-        "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
-         next_article_id, first_child_article_id, title, posted_at) VALUES ({category_id}, {rid}, \
-         NULL, NULL, NULL, 'Child', NOW())"
-    ))
-    .execute(conn)
-    .await?;
 
     let child_ids = postgres_names(
         conn,
-        "SELECT id::text AS name FROM news_articles WHERE parent_article_id IS NOT NULL ORDER BY \
-         id",
+        &format!(
+            "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
+             next_article_id, first_child_article_id, title, posted_at) VALUES ({category_id}, \
+             {rid}, NULL, NULL, NULL, 'Child', NOW()) RETURNING id::text AS name"
+        ),
     )
     .await?;
     anyhow::ensure!(child_ids.len() == 1, "expected one child article");
@@ -165,7 +149,6 @@ async fn assert_missing_references_are_rejected(
     Ok(())
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_article_threading_enforces_referential_integrity() -> TestResult<()> {
@@ -175,7 +158,7 @@ fn postgres_article_threading_enforces_referential_integrity() -> TestResult<()>
 
         let category_id = seed_bundle_and_category(&mut conn).await?;
         let ids = insert_root_and_child(&mut conn, &category_id).await?;
-        assert!(
+        anyhow::ensure!(
             !ids.root_article.is_empty(),
             "root article id must be captured"
         );
