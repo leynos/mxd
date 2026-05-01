@@ -288,11 +288,15 @@ async fn assert_permission_join_count(
     conn: &mut DbConnection,
     ids: PermissionTestIds,
 ) -> TestResult<()> {
-    let PermissionTestIds { user_id, code, .. } = ids;
+    let PermissionTestIds {
+        user_id,
+        permission_id,
+        code,
+    } = ids;
     let permissions = sql_query(format!(
         "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
          up.permission_id = p.id WHERE p.code = {code} AND p.description = 'News category \
-         permission {code}' AND up.user_id = {user_id}"
+         permission {code}' AND up.user_id = {user_id} AND up.permission_id = {permission_id}"
     ))
     .get_result::<CountRow>(conn)
     .await?;

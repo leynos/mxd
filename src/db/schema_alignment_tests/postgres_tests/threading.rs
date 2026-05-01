@@ -72,6 +72,7 @@ async fn insert_root_and_child(
     let rid = root_ids
         .as_slice()
         .first()
+        .cloned()
         .ok_or_else(|| anyhow::anyhow!("missing seeded root article id for threading test"))?;
 
     sql_query(format!(
@@ -96,7 +97,7 @@ async fn insert_root_and_child(
 
     Ok(ThreadSeedIds {
         category: category_id.to_owned(),
-        root_article: rid.clone(),
+        root_article: rid,
         child_article,
     })
 }
@@ -127,7 +128,12 @@ async fn assert_threading_integrity(
     )
     .await?;
     anyhow::ensure!(linked.len() == 1, "root article must link to its child");
-    anyhow::ensure!(linked[0] == *chid, "linked child id must match");
+    let linked_first = linked
+        .as_slice()
+        .first()
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("no linked child found"))?;
+    anyhow::ensure!(linked_first == *chid, "linked child id must match");
     Ok(())
 }
 
