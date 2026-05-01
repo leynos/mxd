@@ -15,6 +15,15 @@ CREATE TABLE news_bundles (
     UNIQUE(name, parent_bundle_id)
 );
 
+CREATE TRIGGER news_bundles_guid_after_insert
+AFTER INSERT ON news_bundles
+WHEN NEW.guid IS NULL
+BEGIN
+    UPDATE news_bundles
+    SET guid = lower(hex(randomblob(16)))
+    WHERE id = NEW.id;
+END;
+
 INSERT INTO news_bundles (id, parent_bundle_id, name, guid, created_at)
 SELECT
     id,
@@ -32,10 +41,19 @@ CREATE TABLE news_categories (
     bundle_id INTEGER REFERENCES news_bundles(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     guid TEXT,
-    add_sn INTEGER,
-    delete_sn INTEGER,
+    add_sn INTEGER DEFAULT 0,
+    delete_sn INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TRIGGER news_categories_guid_after_insert
+AFTER INSERT ON news_categories
+WHEN NEW.guid IS NULL
+BEGIN
+    UPDATE news_categories
+    SET guid = lower(hex(randomblob(16)))
+    WHERE id = NEW.id;
+END;
 
 CREATE UNIQUE INDEX idx_news_categories_unique
     ON news_categories(name, IFNULL(bundle_id, -1));

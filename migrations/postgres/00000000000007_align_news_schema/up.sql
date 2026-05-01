@@ -1,5 +1,5 @@
 ALTER TABLE news_bundles
-    ADD COLUMN guid TEXT,
+    ADD COLUMN guid TEXT DEFAULT md5(random()::text || clock_timestamp()::text),
     ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
 UPDATE news_bundles
@@ -9,9 +9,9 @@ SET
 
 ALTER TABLE news_categories
     DROP CONSTRAINT IF EXISTS news_categories_name_key,
-    ADD COLUMN guid TEXT,
+    ADD COLUMN guid TEXT DEFAULT md5(random()::text || clock_timestamp()::text),
     ADD COLUMN add_sn INTEGER,
-    ADD COLUMN delete_sn INTEGER,
+    ADD COLUMN delete_sn INTEGER DEFAULT 0,
     ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
 CREATE INDEX IF NOT EXISTS idx_articles_category ON news_articles(category_id);
@@ -29,6 +29,9 @@ SET
     ),
     delete_sn = COALESCE(delete_sn, 0),
     created_at = COALESCE(created_at, CURRENT_TIMESTAMP);
+
+ALTER TABLE news_categories
+    ALTER COLUMN add_sn SET DEFAULT 0;
 
 ALTER TABLE news_categories
     DROP CONSTRAINT IF EXISTS news_categories_name_bundle_id_key;
