@@ -280,7 +280,10 @@ async fn sqlite_add_sn_defaults_zero() -> TestResult<()> {
     let add_sn_row = diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 1")
         .get_result::<super::NameRow>(&mut conn)
         .await?;
-    let add_sn_1: i32 = add_sn_row.name.parse().unwrap_or(-1);
+    let add_sn_1: i32 = add_sn_row
+        .name
+        .parse()
+        .expect("failed to parse add_sn for id=1");
     assert_eq!(
         add_sn_1, 0,
         "add_sn is set at migration time; fresh inserts do not auto-increment it"
@@ -290,7 +293,10 @@ async fn sqlite_add_sn_defaults_zero() -> TestResult<()> {
         diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 2")
             .get_result::<super::NameRow>(&mut conn)
             .await?;
-    let add_sn_empty: i32 = add_sn_empty_row.name.parse().unwrap_or(-1);
+    let add_sn_empty: i32 = add_sn_empty_row
+        .name
+        .parse()
+        .expect("failed to parse add_sn for id=2");
     assert_eq!(add_sn_empty, 0, "empty category add_sn must be 0");
 
     Ok(())
