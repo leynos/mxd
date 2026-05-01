@@ -100,6 +100,7 @@ async fn threaded_articles_db() -> TestResult<DbConnection> {
     Ok(conn)
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 async fn setup_sqlite_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
     setup_legacy_schema(
         conn,
@@ -126,6 +127,7 @@ async fn sqlite_names(conn: &mut DbConnection, sql: &str) -> TestResult<Vec<Stri
         .collect())
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 async fn assert_sqlite_permission_schema(conn: &mut DbConnection) -> TestResult<()> {
     let tables = sqlite_names(
         conn,
@@ -156,6 +158,7 @@ async fn assert_sqlite_permission_schema(conn: &mut DbConnection) -> TestResult<
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 async fn assert_sqlite_bundle_schema(conn: &mut DbConnection) -> TestResult<()> {
     let bundle_columns = sqlite_names(
         conn,
@@ -182,6 +185,7 @@ async fn assert_sqlite_bundle_schema(conn: &mut DbConnection) -> TestResult<()> 
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_sqlite_bundle_schema(conn).await?;
     assert_sqlite_article_indices(conn).await?;
@@ -223,6 +227,7 @@ async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
 /// `idx_articles_next_article`, `idx_articles_parent_article`, and
 /// `idx_articles_prev_article` are present. Missing indexes panic through the
 /// assertions.
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 pub(super) async fn assert_sqlite_article_indices(conn: &mut DbConnection) -> TestResult<()> {
     let article_indices = sqlite_names(
         conn,
@@ -241,12 +246,14 @@ pub(super) async fn assert_sqlite_article_indices(conn: &mut DbConnection) -> Te
     Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 async fn assert_sqlite_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_sqlite_permission_schema(conn).await?;
     assert_sqlite_news_schema(conn).await?;
     verify_root_category_names_are_unique_with_constraint_insert(conn).await
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[tokio::test]
 async fn sqlite_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     let mut conn = sqlite_conn().await?;
@@ -254,6 +261,7 @@ async fn sqlite_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     assert_sqlite_aligned_schema(&mut conn).await
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[tokio::test]
 async fn sqlite_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     let mut conn = DbConnection::establish(":memory:").await?;
