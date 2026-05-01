@@ -308,7 +308,12 @@ async fn sqlite_guids_are_non_empty_and_unique(
     for guid in &guids {
         assert!(!guid.is_empty(), "GUID must not be empty");
     }
-    assert_ne!(guids[0], guids[1], "GUIDs must be unique across rows");
+    let guid_set: std::collections::HashSet<_> = guids.iter().collect();
+    assert_eq!(
+        guid_set.len(),
+        guids.len(),
+        "GUIDs must be unique across rows"
+    );
 
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'CA', 1)")
         .execute(&mut conn)
@@ -326,9 +331,11 @@ async fn sqlite_guids_are_non_empty_and_unique(
     for guid in &category_guids {
         assert!(!guid.is_empty(), "category GUID must not be empty");
     }
-    assert_ne!(
-        category_guids[0], category_guids[1],
-        "category GUIDs must be unique across rows"
+    let category_guid_set: std::collections::HashSet<_> = category_guids.iter().collect();
+    assert_eq!(
+        category_guid_set.len(),
+        category_guids.len(),
+        "category GUIDs must be unique"
     );
     Ok(())
 }

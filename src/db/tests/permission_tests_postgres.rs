@@ -65,6 +65,7 @@ async fn assert_permission_delete_cascades_to_assignments(
         .await?;
 
     let assignment_count = user_permissions::user_permissions
+        .filter(user_permissions::user_id.eq(user_id))
         .filter(user_permissions::permission_id.eq(permission_id))
         .count()
         .get_result::<i64>(conn)
@@ -92,6 +93,7 @@ async fn assert_user_delete_cascades_to_assignments(
         .await?;
 
     let assignment_count = user_permissions::user_permissions
+        .filter(user_permissions::user_id.eq(user_id))
         .filter(user_permissions::permission_id.eq(permission_id))
         .count()
         .get_result::<i64>(&mut *conn)

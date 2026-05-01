@@ -71,7 +71,15 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
             "SELECT id::text AS name FROM news_bundles ORDER BY id",
         )
         .await?;
-        let (bid1, bid2) = (&bundle_ids[0], &bundle_ids[1]);
+        let bid1 = bundle_ids
+            .as_slice()
+            .first()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("missing bundle id 1"))?;
+        let bid2 = bundle_ids
+            .get(1)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("missing bundle id 2"))?;
 
         // Same name in different bundles must succeed
         sql_query(format!(
@@ -122,7 +130,12 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
         for guid in &guids {
             assert!(!guid.is_empty(), "GUID must not be empty");
         }
-        assert_ne!(guids[0], guids[1], "GUIDs must be unique across rows");
+        let guid_set: std::collections::HashSet<_> = guids.iter().collect();
+        assert_eq!(
+            guid_set.len(),
+            guids.len(),
+            "GUIDs must be unique across rows"
+        );
 
         let bundle_created_at = postgres_names(
             &mut conn,
@@ -139,7 +152,15 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
             "SELECT id::text AS name FROM news_bundles ORDER BY id",
         )
         .await?;
-        let (bid1, bid2) = (&bundle_ids[0], &bundle_ids[1]);
+        let bid1 = bundle_ids
+            .as_slice()
+            .first()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("missing bundle id 1"))?;
+        let bid2 = bundle_ids
+            .get(1)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("missing bundle id 2"))?;
         sql_query(format!(
             "INSERT INTO news_categories (name, bundle_id) VALUES ('CA', {bid1}), ('CB', {bid2})"
         ))
@@ -155,9 +176,11 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
         for guid in &category_guids {
             assert!(!guid.is_empty(), "category GUID must not be empty");
         }
-        assert_ne!(
-            category_guids[0], category_guids[1],
-            "category GUIDs must be unique across rows"
+        let category_guid_set: std::collections::HashSet<_> = category_guids.iter().collect();
+        assert_eq!(
+            category_guid_set.len(),
+            category_guids.len(),
+            "category GUIDs must be unique"
         );
         let category_created_at = postgres_names(
             &mut conn,
