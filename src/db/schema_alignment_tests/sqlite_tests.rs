@@ -277,14 +277,87 @@ async fn sqlite_add_sn_reflects_article_count() -> TestResult<()> {
         .await?;
     }
 
-    // add_sn for category 1 should equal 2 (two articles); category 2 should equal 0
-    let add_sn_1: i32 =
-        diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 1")
-            .get_result::<super::NameRow>(&mut conn)
-            .await
-            .map(|r| r.name.parse().unwrap_or(-1))?;
-    // SQLite stores the value set by the migration; verify it is a non-negative integer
-    assert!(add_sn_1 >= 0, "add_sn must be non-negative");
+    let add_sn_row = diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 1")
+        .get_result::<super::NameRow>(&mut conn)
+        .await?;
+    let add_sn_1: i32 = add_sn_row.name.parse().unwrap_or(-1);
+    assert_eq!(
+        add_sn_1, 0,
+        "add_sn is set at migration time; fresh inserts do not auto-increment it"
+    );
 
+    let add_sn_empty_row =
+        diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 2")
+            .get_result::<super::NameRow>(&mut conn)
+            .await?;
+    let add_sn_empty: i32 = add_sn_empty_row.name.parse().unwrap_or(-1);
+    assert_eq!(add_sn_empty, 0, "empty category add_sn must be 0");
+
+    Ok(())
+}
+
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[tokio::test]
+async fn sqlite_article_threading_enforces_referential_integrity() -> TestResult<()> {
+    let mut conn = sqlite_conn().await?;
+
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'ThreadBundle')",
+    )
+    .execute(&mut conn)
+    .await?;
+    diesel::sql_query(
+        "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'ThreadCat', 1)",
+    )
+    .execute(&mut conn)
+    .await?;
+
+    // Root article
+    diesel::sql_query(
+        "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
+         next_article_id, first_child_article_id, title, posted_at) VALUES (1, 1, NULL, NULL, \
+         NULL, NULL, 'Root', '2026-01-01 00:00:00')",
+    )
+    .execute(&mut conn)
+    .await?;
+
+    // Child article referencing root via parent_article_id
+    diesel::sql_query(
+        "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
+         next_article_id, first_child_article_id, title, posted_at) VALUES (2, 1, 1, NULL, NULL, \
+         NULL, 'Child', '2026-01-02 00:00:00')",
+    )
+    .execute(&mut conn)
+    .await?;
+
+    // Update root to point first_child_article_id at child
+    diesel::sql_query("UPDATE news_articles SET first_child_article_id = 2 WHERE id = 1")
+        .execute(&mut conn)
+        .await?;
+
+    // Verify the threading link via a JOIN query
+    let linked = diesel::sql_query(
+        "SELECT a.id AS name FROM news_articles a INNER JOIN news_articles child ON child.id = \
+         a.first_child_article_id WHERE a.id = 1",
+    )
+    .get_result::<super::NameRow>(&mut conn)
+    .await?;
+    assert_eq!(linked.name, "1", "root article must link to its child");
+
+    // Referential integrity: inserting an article with a non-existent parent must fail
+    // (PRAGMA foreign_keys must be ON; SQLite pragmas are connection-scoped)
+    diesel::sql_query("PRAGMA foreign_keys = ON")
+        .execute(&mut conn)
+        .await?;
+    let bad_insert = diesel::sql_query(
+        "INSERT INTO news_articles (id, category_id, parent_article_id, title, posted_at) VALUES \
+         (99, 1, 9999, 'Orphan', '2026-01-03 00:00:00')",
+    )
+    .execute(&mut conn)
+    .await;
+    assert!(
+        bad_insert.is_err(),
+        "insert with non-existent parent_article_id must be rejected when FK enforcement is on"
+    );
     Ok(())
 }
