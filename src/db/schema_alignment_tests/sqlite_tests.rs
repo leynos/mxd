@@ -1,4 +1,10 @@
-//! `SQLite` schema alignment regression tests.
+//! `SQLite` schema alignment regression tests for roadmap item 4.1.1.
+//!
+//! Validates that both a fresh application of the current migration set and an
+//! upgrade from the pre-4.1.1 schema produce the expected table structure,
+//! column lists, indexes, constraints, and backfill values on the `SQLite`
+//! backend using an in-memory database.  Each test function creates a new
+//! connection and migration state in isolation.
 
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -305,7 +311,7 @@ async fn sqlite_guids_are_non_empty_and_unique(
 
 #[rstest]
 #[tokio::test]
-async fn sqlite_add_sn_defaults_zero(
+async fn sqlite_add_sn_defaults_to_zero_for_fresh_inserts(
     #[future] add_sn_db: TestResult<DbConnection>,
 ) -> TestResult<()> {
     let mut conn = add_sn_db.await?;
