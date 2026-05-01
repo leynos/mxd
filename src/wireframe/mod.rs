@@ -6,13 +6,13 @@
 //!
 //! # Module Structure
 //!
-//! - [`auth_strategy`]: Login authentication strategy abstractions
+//! - `auth_strategy`: Login authentication strategy abstractions
 //! - [`codec`]: Transaction framing codec (`HotlineTransaction`, `HotlineCodec`)
 //! - [`compat_policy`]: Client compatibility policy for login reply gating
 //! - [`connection`]: Handshake metadata storage
 //! - [`context`]: Per-connection state management
 //! - [`handshake`]: Preamble success/failure hooks
-//! - [`login_reply_augmenter`]: Login reply augmentation abstractions
+//! - `login_reply_augmenter`: Login reply augmentation abstractions
 //! - [`outbound`]: Outbound messaging adapters
 //! - [`preamble`]: 12-byte handshake decoder
 //! - [`protocol`]: `WireframeProtocol` adapter implementation

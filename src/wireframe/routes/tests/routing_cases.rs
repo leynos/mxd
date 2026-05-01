@@ -145,6 +145,34 @@ fn process_transaction_bytes_file_list_success() -> Result<(), AnyError> {
     Ok(())
 }
 
+#[expect(clippy::big_endian_bytes, reason = "network protocol")]
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
+fn process_transaction_bytes_client_info_text_requires_privilege() -> Result<(), AnyError> {
+    let rt = runtime()?;
+    let Some(test_db) = build_test_db(&rt, setup_files_db)? else {
+        return Ok(());
+    };
+    let mut ctx = RouteTestContext::new(test_db.pool())?;
+    ctx.authenticate_with_privileges(
+        1,
+        Privileges::DOWNLOAD_FILE | Privileges::SHOW_IN_LIST | Privileges::NO_AGREEMENT,
+    );
+
+    let target_user_id = 1u16.to_be_bytes();
+    let reply = rt.block_on(ctx.send(
+        TransactionType::GetClientInfoText,
+        28,
+        &[(FieldId::UserId, target_user_id.as_ref())],
+    ))?;
+
+    assert_eq!(
+        reply.header.error,
+        crate::commands::ERR_INSUFFICIENT_PRIVILEGES
+    );
+    Ok(())
+}
+
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[rstest]
 fn process_transaction_bytes_news_category_list_success() -> Result<(), AnyError> {

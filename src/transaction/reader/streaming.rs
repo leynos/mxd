@@ -88,7 +88,7 @@ pub struct TransactionFragment {
 
 /// Incremental view over a multi-fragment transaction.
 ///
-/// Returned by [`TransactionReader::read_streaming_transaction`] or
+/// Returned by [`super::TransactionReader::read_streaming_transaction`] or
 /// [`TransactionStreamReader::start_transaction`]. Call
 /// [`next_fragment`](Self::next_fragment) repeatedly to consume the payload
 /// without buffering the entire content in memory.

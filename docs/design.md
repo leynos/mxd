@@ -1926,9 +1926,10 @@ planned:
 
 - On login success, we would add this session to a global list and potentially
   send a “Notify New User” (transaction 300 series) to all existing users to
-  inform them of the new login. Hotline protocol defines transaction 300 (User
-  Login Notify), 301 (User Change), 302 (User Logout Notify), etc. Our
-  `TransactionType::GetUserNameList` (300) and related types hint at
+  inform them of the new login. Hotline-compatible presence traffic uses
+  transaction 300 (Get User Name List), 301 (Notify Change User), 302 (Notify
+  Delete User), etc. `TransactionType::GetUserNameList` (300) and related types
+  hint at
   this([5](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/transaction_type.rs#L44-L51)).
    For now, `GetUserNameList` (transaction 300) handling is stubbed (it returns
   Unknown if called), but we have plans to implement it such that it returns
@@ -2170,17 +2171,37 @@ chat/lobby: a client typically has a user list showing who’s online. When
 someone goes away or disconnects, those are broadcast. MXD will implement this
 by treating the main lobby as the space where presence is broadcast.
 Transactions 300 (request list) and the 301/302 (notifications) correspond to
-this. Our plan:
+this. The design:
 
 - 300 GetUserNameList: client asks for the list, server replies with a list of
-  all usernames currently online. We can generate this from active sessions or
-  by querying `chat_participants` of the Lobby room.
+  all online users encoded as repeated field-300 records. SynHX parses each
+  field 300 payload as a packed structure of `uid:u16`, `icon:u16`,
+  `colour:u16`, `name_len:u16`, then `name_len` bytes of nickname. This can be
+  generated from active sessions or by querying `chat_participants` of the
+  Lobby room. SynHX also accepts an optional chat-subject field in the same
+  reply for the main lobby. MXD now generates the roster from a shared runtime
+  `PresenceRegistry` keyed by outbound connection ID rather than from database
+  state. The packed `uid` is a session-unique presence ID assigned by the
+  registry, not the authenticated account row ID, so simultaneous logins for
+  one account remain distinct until each connection leaves.
 
-- Server-initiated 301 (Notify Add User): when someone logs in, send others a
-  message with their username and maybe user ID. Similarly 302 (Notify Remove
-  User) on logout. The code to do this will likely live in the login/logout
-  flow, not in chat per se, but it’s part of the “presence” subsystem which is
-  closely tied to chat.
+- Server-initiated 301 (Notify Change User): when someone logs in, send the
+  other online clients a message with their presence ID, icon, colour / flags,
+  and username. The same transaction is reused for later session-visible
+  changes from `304 Set Client User Info`. 302 (Notify Delete User) is emitted
+  after a connection is removed from the presence registry on disconnect, so
+  recipients see the post-removal roster.
+
+- Session lifecycle: MXD now models `Unauthenticated`, `PendingAgreement`, and
+  `Online` phases explicitly. The current login policy grants `NO_AGREEMENT`,
+  so authenticated users become publicly online immediately after login unless
+  future account-backed privilege loading says otherwise.
+
+- User-visible defaults: until richer account metadata exists, login seeds the
+  session nickname from the account username, icon `0`, and blank info text for
+  `303 Get Client Info Text`. `304 Set Client User Info` updates only in-memory
+  session state; it does not persist nickname, icon, options, or auto-response
+  text back to the `users` table.
 
 **Idle/Away**: Hotline also had “idle” and “away” statuses (with transactions
 303 to update user flags). We foresee adding fields to Session like `is_away`

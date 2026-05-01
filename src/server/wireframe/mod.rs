@@ -49,6 +49,7 @@ use super::{AppConfig, ResolvedCli, load_cli};
 use crate::{
     db::{DbPool, establish_pool},
     handler::Session,
+    presence::PresenceRegistry,
     protocol,
     server::admin,
     wireframe::{
@@ -139,13 +140,15 @@ impl WireframeBootstrap {
         let argon2 = Arc::new(admin::argon2_from_config(&config)?);
 
         let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
-        validate_app_factory(&pool, &argon2, &outbound_registry)
+        let presence = Arc::new(PresenceRegistry::default());
+        validate_app_factory(&pool, &argon2, &outbound_registry, &presence)
             .context("failed to validate wireframe app factory")?;
         let app_factory = {
             let pool = pool.clone();
             let argon2 = Arc::clone(&argon2);
             let outbound_registry = Arc::clone(&outbound_registry);
-            move || build_app_for_connection(&pool, &argon2, &outbound_registry)
+            let presence = Arc::clone(&presence);
+            move || build_app_for_connection(&pool, &argon2, &outbound_registry, &presence)
         };
 
         let server = WireframeServer::new(app_factory).with_preamble::<HotlinePreamble>();
@@ -177,16 +180,18 @@ fn build_app_for_connection(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
+    presence: &Arc<PresenceRegistry>,
 ) -> std::result::Result<HotlineApp, AppFactoryError> {
-    try_build_app(pool, argon2, outbound_registry)
+    try_build_app(pool, argon2, outbound_registry, presence)
 }
 
 fn try_build_app(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
+    presence: &Arc<PresenceRegistry>,
 ) -> std::result::Result<HotlineApp, AppFactoryError> {
-    let build_context = build_app_context(pool, argon2, outbound_registry)?;
+    let build_context = build_app_context(pool, argon2, outbound_registry, presence)?;
     map_build_application_result(build_app(build_context))
 }
 
@@ -194,6 +199,7 @@ fn build_app_context<'a>(
     pool: &'a DbPool,
     argon2: &'a Arc<Argon2<'static>>,
     outbound_registry: &'a Arc<WireframeOutboundRegistry>,
+    presence: &'a Arc<PresenceRegistry>,
 ) -> std::result::Result<AppBuildContext<'a>, AppFactoryError> {
     // Missing connection context indicates handshake setup failed; abort the
     // connection rather than running without routing state. Returning a
@@ -207,6 +213,7 @@ fn build_app_context<'a>(
         pool,
         argon2,
         outbound_registry,
+        presence,
         peer,
         compat,
         client_compat,
@@ -217,6 +224,7 @@ struct AppBuildContext<'a> {
     pool: &'a DbPool,
     argon2: &'a Arc<Argon2<'static>>,
     outbound_registry: &'a Arc<WireframeOutboundRegistry>,
+    presence: &'a Arc<PresenceRegistry>,
     peer: SocketAddr,
     compat: Arc<XorCompatibility>,
     client_compat: Arc<ClientCompatibility>,
@@ -227,15 +235,18 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
         pool,
         argon2,
         outbound_registry,
+        presence,
         peer,
         compat,
         client_compat,
     } = context;
-    let session = Arc::new(TokioMutex::new(Session::default()));
     let outbound_id = outbound_registry.allocate_id();
-    let outbound_connection = Arc::new(WireframeOutboundConnection::new(
+    let session = Arc::new(TokioMutex::new(Session::default()));
+    let outbound_connection = Arc::new(WireframeOutboundConnection::new_with_runtime_handle(
         outbound_id,
         Arc::clone(outbound_registry),
+        Arc::clone(presence),
+        Some(tokio::runtime::Handle::current()),
     ));
     let outbound_messaging = WireframeOutboundMessaging::new(Arc::clone(&outbound_connection));
     let router = WireframeRouter::new(Arc::clone(&compat), client_compat);
@@ -257,6 +268,8 @@ fn build_app(context: AppBuildContext<'_>) -> wireframe::app::Result<HotlineApp>
             session: Arc::clone(&session),
             peer,
             messaging: Arc::new(outbound_messaging),
+            presence: Arc::clone(presence),
+            presence_connection_id: outbound_id,
         }))?;
 
     let handler = routing_placeholder_handler();
@@ -276,12 +289,14 @@ fn validate_app_factory(
     pool: &DbPool,
     argon2: &Arc<Argon2<'static>>,
     outbound_registry: &Arc<WireframeOutboundRegistry>,
+    presence: &Arc<PresenceRegistry>,
 ) -> Result<()> {
     let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
     let build_context = AppBuildContext {
         pool,
         argon2,
         outbound_registry,
+        presence,
         peer,
         compat: Arc::new(XorCompatibility::disabled()),
         client_compat: Arc::new(ClientCompatibility::from_handshake(

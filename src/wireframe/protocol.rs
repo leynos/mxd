@@ -23,12 +23,14 @@
 //! ```rust,ignore
 //! use mxd::wireframe::{compat::XorCompatibility, protocol::HotlineProtocol};
 //! use mxd::wireframe::outbound::{WireframeOutboundConnection, WireframeOutboundRegistry};
+//! use mxd::PresenceRegistry;
 //! use std::sync::Arc;
 //!
 //! let registry = Arc::new(WireframeOutboundRegistry::default());
 //! let connection = Arc::new(WireframeOutboundConnection::new(
 //!     registry.allocate_id(),
 //!     Arc::clone(&registry),
+//!     Arc::new(PresenceRegistry::default()),
 //! ));
 //! let compat = Arc::new(XorCompatibility::disabled());
 //! let protocol = HotlineProtocol::new(pool.clone(), argon2.clone(), connection, compat);
@@ -172,17 +174,24 @@ mod tests {
     use wireframe::hooks::ConnectionContext;
 
     use super::*;
-    use crate::wireframe::{
-        compat::XorCompatibility,
-        outbound::{WireframeOutboundConnection, WireframeOutboundRegistry},
-        test_helpers::{dummy_pool, xor_bytes},
+    use crate::{
+        presence::PresenceRegistry,
+        wireframe::{
+            compat::XorCompatibility,
+            outbound::{WireframeOutboundConnection, WireframeOutboundRegistry},
+            test_helpers::{dummy_pool, xor_bytes},
+        },
     };
 
     #[fixture]
     fn outbound_connection() -> Arc<WireframeOutboundConnection> {
         let registry = Arc::new(WireframeOutboundRegistry::default());
         let id = registry.allocate_id();
-        Arc::new(WireframeOutboundConnection::new(id, registry))
+        Arc::new(WireframeOutboundConnection::new(
+            id,
+            registry,
+            Arc::new(PresenceRegistry::default()),
+        ))
     }
 
     #[fixture]

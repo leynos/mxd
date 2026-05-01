@@ -11,15 +11,19 @@ use tokio::runtime::Builder;
 use wireframe::WireframeError;
 
 use super::*;
-use crate::wireframe::{
-    connection::{
-        ConnectionContext,
-        HandshakeMetadata,
-        scope_current_context,
-        store_current_context,
-        take_current_context,
+use crate::{
+    presence::PresenceRegistry,
+    wireframe::{
+        connection::{
+            ConnectionContext,
+            HandshakeMetadata,
+            scope_current_context,
+            store_current_context,
+            take_current_context,
+        },
+        outbound::WireframeOutboundRegistry,
+        test_helpers::dummy_pool,
     },
-    test_helpers::dummy_pool,
 };
 
 #[fixture]
@@ -79,6 +83,7 @@ where
     let pool = dummy_pool();
     let argon2 = Arc::new(Argon2::default());
     let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
+    let presence = Arc::new(PresenceRegistry::default());
     let runtime = Builder::new_current_thread()
         .enable_all()
         .build()
@@ -91,7 +96,7 @@ where
                 let _ = take_current_context();
             }
         }
-        let app = build_app_for_connection(&pool, &argon2, &outbound_registry);
+        let app = build_app_for_connection(&pool, &argon2, &outbound_registry, &presence);
         assertions();
         app
     }))

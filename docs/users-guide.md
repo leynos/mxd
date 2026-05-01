@@ -58,6 +58,16 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
 - Compatibility behaviour is unchanged by roadmap item 1.5.4; that milestone
   adds bounded Kani verification for XOR round-trips and login
   sub-version/version gating invariants.
+- Presence parity is now available in the wireframe server. After a successful
+  login, users whose account carries the `NO_AGREEMENT` privilege are
+  immediately visible to peers. Users who must accept the server agreement
+  first become visible only after sending the Agreed transaction (121) and the
+  session reaches `Online`. `Get User Name List` (300) and `Notify Change User`
+  (301) are emitted only once the session is `Online`. Once online, `Notify
+  Delete User` (302), `Get Client Info Text` (303), and `Set Client User Info`
+  (304) behave as before: disconnects remove the user, info lookup returns the
+  visible name with blank info text, and session nickname/icon/options updates
+  notify peers.
 - Internal release validation uses
   `docs/internal-compatibility-matrix.md` as the compatibility source of truth.
   Release-note QA sign-off must reference that matrix using the checklist in
@@ -172,4 +182,7 @@ Stateright model live in `tests/features/session_gating_verification.feature`
 and are bound by the `mxd-verification` test harness. Compatibility
 verification also includes Kani harnesses in `src/wireframe/compat/kani.rs` and
 `src/wireframe/compat_policy/kani.rs`, which prove bounded XOR and login-gating
-invariants without changing runtime behaviour.
+invariants without changing runtime behaviour. Presence validation now also
+includes `rstest` routing coverage for `300/303/304`, a router-level
+`rstest-bdd` scenario for join/update/delete flows, and a direct unit test of
+the wireframe disconnect hook that emits `302`.

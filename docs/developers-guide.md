@@ -263,6 +263,48 @@ These methods replace the prior ad-hoc `!allows_payload()` checks in
 `src/commands/mod.rs`, `src/wireframe/compat_layer.rs`, and
 `src/transaction/params.rs`.
 
+## Presence Runtime
+
+Presence state is exposed through the stable crate-level API
+`mxd::{PresenceRegistry, PresenceSnapshot, SessionPhase}`. The internal
+`presence` module remains private so transport-specific helper functions do not
+become part of the public crate surface.
+
+`SessionPhase` controls when a snapshot is eligible for roster publication:
+
+- `Unauthenticated` means no account has completed login.
+- `PendingAgreement` means authentication succeeded, but Agreement Acceptance
+  (121) still needs to complete before the session becomes visible.
+- `Online` means the session may appear in Get User Name List (300) replies and
+  may trigger Notify Change User (301) or Notify Delete User (302) traffic.
+
+Sessions granted `NO_AGREEMENT` transition directly to `Online` at login.
+Agreement-gated sessions stay in `PendingAgreement` until the agreement flow
+finalizes. Only `Online` sessions should participate in the presence registry.
+
+`PresenceSnapshot` is the transport-agnostic value published for an online
+session. It carries `connection_id`, `user_id`, `display_name`, `icon_id`, and
+`status_flags`. Adapter code supplies the connection identifier, then calls
+`Session::presence_snapshot()` to combine that identifier with session state.
+The snapshot is validated before insertion so field 300 replies and
+notifications cannot contain unencodable user identifiers or display names.
+
+`PresenceRegistry` stores online snapshots by outbound connection identifier.
+`upsert` inserts or replaces a snapshot and returns the peer connection IDs that
+should receive a change notification. `remove` deletes a snapshot by connection
+ID and returns the removed snapshot plus the remaining peer IDs.
+`online_snapshots` returns all online snapshots in deterministic order.
+`snapshot_for_user_id` looks up a visible user and, when multiple sessions share
+the same account user ID, selects the snapshot with the lowest connection ID.
+
+The presence transaction builders convert snapshots into protocol replies and
+server pushes. `build_user_name_list_reply` produces Get User Name List (300)
+replies with repeated field-300 records. `build_notify_change_user` produces
+Notify Change User (301) notifications. `build_notify_delete_user` produces
+Notify Delete User (302) notifications. `build_client_info_text_reply`
+produces Get Client Info Text (303) replies with the visible name and
+placeholder info text.
+
 ### Error-handling conventions
 
 - Both `HxClientError` and `ServerBinaryError` implement `std::error::Error`
@@ -459,3 +501,75 @@ make check-fmt
 make lint
 make test
 ```
+
+## Presence runtime
+
+The presence runtime is the in-memory authority for which users are currently
+online. It lives in `src/presence.rs` and is threaded through the wireframe
+server via `Arc<PresenceRegistry>`.
+
+### `SessionPhase`
+
+`SessionPhase` records whether a connection can participate in presence:
+
+- `Unauthenticated`: the connection is established, but no credentials have
+  been verified.
+- `PendingAgreement`: login credentials have been accepted, but the user must
+  still send the Agreed transaction (121) before becoming visible to peers.
+- `Online`: the agreement has been accepted, or bypassed via `NO_AGREEMENT`;
+  the user is visible in the roster and receives presence notifications.
+
+Only `Online` sessions are included in the presence registry. Sessions in
+`Unauthenticated` or `PendingAgreement` remain absent from roster replies and
+presence fan-out.
+
+### `PresenceSnapshot`
+
+`PresenceSnapshot` is the transport-facing presence record built from an online
+session. It carries:
+
+- `connection_id: OutboundConnectionId`: the unique per-connection handle used
+  for notification fan-out and registry removal.
+- `user_id: i32`: the authenticated user's database identifier.
+- `display_name: String`: the visible nickname, defaulting to the account
+  username.
+- `icon_id: u16`: the client-selected icon index, defaulting to 0.
+- `status_flags: u16`: packed presence flags such as admin, away, and
+  refuse-private-message state.
+
+Build snapshots from a `Session` with `Session::presence_snapshot()`. The
+method returns `None` unless the session phase is `Online`, keeping
+agreement-gated users out of the roster until they complete the login
+lifecycle.
+
+### `PresenceRegistry`
+
+`PresenceRegistry` owns the online snapshot set and exposes deterministic query
+and mutation operations:
+
+- `upsert(snapshot) -> Vec<OutboundConnectionId>` inserts or replaces the
+  snapshot keyed by `connection_id`. It returns the connection IDs of all other
+  registered peers so the caller can fan out a `301 Notify Change User`
+  notification.
+- `remove(connection_id) -> Option<PresenceRemoval>` removes the entry for the
+  given connection. It returns a `PresenceRemoval` containing the departed
+  snapshot and the remaining peer connection IDs for `302 Notify Delete User`
+  fan-out, or `None` when the connection was not registered.
+- `online_snapshots() -> Vec<PresenceSnapshot>` returns all registered
+  snapshots in deterministic ascending `connection_id` order. Roster replies
+  use this to build the `300 Get User Name List` response.
+- `snapshot_for_user_id(user_id) -> Option<PresenceSnapshot>` returns the
+  snapshot for the given database user ID. If duplicate sessions share the same
+  user ID, the snapshot with the numerically lowest `connection_id` is
+  returned.
+
+### Transaction builders
+
+The presence module also exposes builders for the roster and notification
+transactions:
+
+- `build_user_name_list_reply(header, snapshots)` produces transaction 300.
+- `build_notify_change_user(snapshot)` produces transaction 301.
+- `build_notify_delete_user(user_id)` produces transaction 302.
+- `build_client_info_text_reply(header, display_name, info_text)` produces
+  transaction 303.

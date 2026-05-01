@@ -1,9 +1,9 @@
 //! Public routing entrypoint for wireframe transactions.
 //!
-//! `WireframeRouter` is the sole `pub` routing entrypoint. It
-//! embeds a [`CompatibilityLayer`] that orchestrates request and
-//! reply compatibility hooks, ensuring every routed transaction
-//! passes through the same compatibility pipeline.
+//! `WireframeRouter` is the sole `pub` routing entrypoint. It embeds a
+//! `CompatibilityLayer` that orchestrates request and reply compatibility
+//! hooks, ensuring every routed transaction passes through the same
+//! compatibility pipeline.
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -11,7 +11,8 @@ use crate::{
     commands::{Command, CommandContext},
     db::DbPool,
     handler::Session,
-    server::outbound::{OutboundMessaging, ReplyBuffer},
+    presence::PresenceRegistry,
+    server::outbound::{OutboundConnectionId, OutboundMessaging, ReplyBuffer},
     transaction::parse_transaction,
     transaction_type::TransactionType,
     wireframe::{
@@ -27,7 +28,7 @@ use crate::{
 /// Public routing entrypoint for wireframe transactions.
 ///
 /// The router owns the XOR and client compatibility state for the
-/// connection and creates a [`CompatibilityLayer`] on each call to
+/// connection and creates a `CompatibilityLayer` on each call to
 /// [`route`](Self::route). This guarantees that every transaction
 /// passes through the same request and reply hooks regardless of
 /// which code path dispatches it.
@@ -60,6 +61,8 @@ impl WireframeRouter {
             pool,
             session,
             messaging,
+            presence,
+            presence_connection_id,
         } = context;
         let request_compat = compat_layer::RequestCompatibility::new(&self.xor, &self.client);
 
@@ -90,6 +93,8 @@ impl WireframeRouter {
             session,
             transport: &mut transport,
             messaging,
+            presence,
+            presence_connection_id: Some(presence_connection_id),
         };
         tracing::trace!(
             auth_strategy = auth_strategy_label(client_kind),
@@ -132,7 +137,7 @@ impl WireframeRouter {
 ///
 /// Unlike the previous `RouteContext`, this struct does not carry
 /// compatibility state — that is owned by the
-/// [`WireframeRouter`] and its embedded [`CompatibilityLayer`].
+/// [`WireframeRouter`] and its embedded `CompatibilityLayer`.
 pub struct RouteContext<'a> {
     /// Remote peer socket address.
     pub peer: SocketAddr,
@@ -142,6 +147,10 @@ pub struct RouteContext<'a> {
     pub session: &'a mut Session,
     /// Outbound messaging adapter for push notifications.
     pub messaging: &'a dyn OutboundMessaging,
+    /// Shared online presence registry.
+    pub presence: &'a PresenceRegistry,
+    /// Adapter-owned connection identifier for presence snapshots.
+    pub presence_connection_id: OutboundConnectionId,
 }
 
 #[cfg(test)]

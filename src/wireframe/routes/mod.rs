@@ -1,7 +1,7 @@
 //! Route handlers for Hotline transaction routing.
 //!
 //! This module provides route handler functions that bridge incoming
-//! [`HotlineTransaction`] frames to the domain [`Command`] dispatcher.
+//! `HotlineTransaction` frames to the domain `Command` dispatcher.
 //! Each handler extracts the transaction from raw bytes, converts it to
 //! a domain command, processes it, and returns the reply.
 //!
@@ -37,7 +37,8 @@ use crate::transaction::Transaction;
 use crate::wireframe::codec::HotlineTransaction;
 use crate::{
     db::DbPool,
-    server::outbound::OutboundMessaging,
+    presence::PresenceRegistry,
+    server::outbound::{OutboundConnectionId, OutboundMessaging},
     transaction::FrameHeader,
     wireframe::router::{RouteContext as RouterRouteContext, WireframeRouter},
 };
@@ -164,6 +165,8 @@ pub(crate) struct TransactionMiddleware {
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
+    presence: Arc<PresenceRegistry>,
+    presence_connection_id: OutboundConnectionId,
 }
 
 /// Construction parameters for [`TransactionMiddleware`].
@@ -178,6 +181,10 @@ pub(crate) struct TransactionMiddlewareConfig {
     pub(crate) peer: SocketAddr,
     /// Outbound messaging adapter for push notifications.
     pub(crate) messaging: Arc<dyn OutboundMessaging>,
+    /// Shared online presence registry.
+    pub(crate) presence: Arc<PresenceRegistry>,
+    /// Adapter-owned connection identifier for presence snapshots.
+    pub(crate) presence_connection_id: OutboundConnectionId,
 }
 
 impl TransactionMiddleware {
@@ -190,6 +197,8 @@ impl TransactionMiddleware {
             session: config.session,
             peer: config.peer,
             messaging: config.messaging,
+            presence: config.presence,
+            presence_connection_id: config.presence_connection_id,
         }
     }
 }
@@ -202,6 +211,8 @@ struct TransactionHandler {
     session: Arc<tokio::sync::Mutex<crate::handler::Session>>,
     peer: SocketAddr,
     messaging: Arc<dyn OutboundMessaging>,
+    presence: Arc<PresenceRegistry>,
+    presence_connection_id: OutboundConnectionId,
 }
 
 #[async_trait]
@@ -219,6 +230,8 @@ impl Service for TransactionHandler {
                         pool: self.pool.clone(),
                         session: &mut session_guard,
                         messaging: self.messaging.as_ref(),
+                        presence: self.presence.as_ref(),
+                        presence_connection_id: self.presence_connection_id,
                     },
                 )
                 .await
@@ -245,6 +258,8 @@ impl Transform<HandlerService<Envelope>> for TransactionMiddleware {
             session: Arc::clone(&self.session),
             peer: self.peer,
             messaging: Arc::clone(&self.messaging),
+            presence: Arc::clone(&self.presence),
+            presence_connection_id: self.presence_connection_id,
         };
         HandlerService::from_service(id, wrapped)
     }

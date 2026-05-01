@@ -10,30 +10,52 @@ use super::{FrameHeader, Transaction, errors::TransactionError, read_u16};
 use crate::{field_id::FieldId, transaction_type::TransactionType};
 
 /// Determine whether duplicate instances of the given field id are permitted.
-const fn duplicate_allowed(fid: FieldId) -> bool {
-    matches!(
-        fid,
-        FieldId::NewsCategory | FieldId::NewsArticle | FieldId::FileName
-    )
+const fn duplicate_allowed(fid: FieldId, context: DuplicateContext) -> bool {
+    match fid {
+        FieldId::UserNameWithInfo => context.allows_repeated_user_name_with_info,
+        FieldId::NewsCategory | FieldId::NewsArticle | FieldId::FileName => true,
+        _ => false,
+    }
 }
 
-fn check_duplicate(fid: FieldId, seen: &mut HashSet<u16>) -> Result<(), TransactionError> {
+#[derive(Clone, Copy)]
+struct DuplicateContext {
+    allows_repeated_user_name_with_info: bool,
+}
+
+impl DuplicateContext {
+    const DECODE_ONLY: Self = Self {
+        allows_repeated_user_name_with_info: true,
+    };
+
+    const fn from_header(header: &FrameHeader) -> Self {
+        Self {
+            allows_repeated_user_name_with_info: header.is_reply != 0
+                && header.ty == crate::transaction_type::USER_NAME_LIST_ID,
+        }
+    }
+}
+
+fn check_duplicate(
+    fid: FieldId,
+    seen: &mut HashSet<u16>,
+    context: DuplicateContext,
+) -> Result<(), TransactionError> {
     let raw: u16 = fid.into();
-    if !duplicate_allowed(fid) && !seen.insert(raw) {
+    if !duplicate_allowed(fid, context) && !seen.insert(raw) {
         return Err(TransactionError::DuplicateField(raw));
     }
     Ok(())
 }
 
-/// Iterate over parameters in a buffer, yielding (`field_id`, start, len) tuples.
-///
-/// This is the shared parsing logic used by both `validate_payload` and
-/// `decode_params` to avoid duplication.
 #[expect(
     clippy::indexing_slicing,
     reason = "bounds are validated before each slice"
 )]
-fn iter_params(buf: &[u8]) -> Result<ParamIter<'_>, TransactionError> {
+fn iter_params(
+    buf: &[u8],
+    duplicate_context: DuplicateContext,
+) -> Result<ParamIter<'_>, TransactionError> {
     if buf.is_empty() {
         return Ok(ParamIter {
             buf,
@@ -41,6 +63,7 @@ fn iter_params(buf: &[u8]) -> Result<ParamIter<'_>, TransactionError> {
             remaining: 0,
             seen: HashSet::new(),
             error: None,
+            duplicate_context,
         });
     }
     if buf.len() < 2 {
@@ -53,6 +76,7 @@ fn iter_params(buf: &[u8]) -> Result<ParamIter<'_>, TransactionError> {
         remaining: param_count,
         seen: HashSet::new(),
         error: None,
+        duplicate_context,
     })
 }
 
@@ -63,6 +87,7 @@ struct ParamIter<'a> {
     remaining: usize,
     seen: HashSet<u16>,
     error: Option<TransactionError>,
+    duplicate_context: DuplicateContext,
 }
 
 impl Iterator for ParamIter<'_> {
@@ -101,7 +126,7 @@ impl Iterator for ParamIter<'_> {
             return None;
         }
         let fid = FieldId::from(field_id);
-        if let Err(e) = check_duplicate(fid, &mut self.seen) {
+        if let Err(e) = check_duplicate(fid, &mut self.seen, self.duplicate_context) {
             self.error = Some(e);
             return None;
         }
@@ -155,7 +180,7 @@ pub fn validate_payload_parts(
     if header.is_reply == 0 && TransactionType::from(header.ty).bypass_payload_decode() {
         return Ok(());
     }
-    let mut iter = iter_params(payload)?;
+    let mut iter = iter_params(payload, DuplicateContext::from_header(header))?;
     // Consume the iterator to validate all parameters
     for _ in &mut iter {}
     iter.finish(payload.len())
@@ -174,7 +199,7 @@ pub fn decode_params(buf: &[u8]) -> Result<Vec<(FieldId, Vec<u8>)>, TransactionE
     if buf.is_empty() {
         return Ok(Vec::new());
     }
-    let mut iter = iter_params(buf)?;
+    let mut iter = iter_params(buf, DuplicateContext::DECODE_ONLY)?;
     let mut params = Vec::new();
     for (fid, start, len) in &mut iter {
         params.push((fid, buf[start..start + len].to_vec()));
@@ -315,4 +340,60 @@ pub fn first_param_i32<S: std::hash::BuildHasher>(
         }
         None => Ok(None),
     }
+}
+
+/// Decode the first value for `field` as a big-endian `u32`, accepting either
+/// 16-bit or 32-bit protocol encodings.
+///
+/// # Errors
+/// Returns [`TransactionError::MissingField`] if the field is absent, or
+/// [`TransactionError::InvalidParamValue`] if the value cannot be parsed as a
+/// 16-bit or 32-bit big-endian unsigned integer.
+#[must_use = "handle the result"]
+pub fn required_param_u32<S: std::hash::BuildHasher>(
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
+    field: FieldId,
+) -> Result<u32, TransactionError> {
+    first_param_u32(map, field)?.ok_or(TransactionError::MissingField(field))
+}
+
+/// Decode the first value for `field` as a `u32` if present, accepting either
+/// 16-bit or 32-bit protocol encodings.
+///
+/// # Errors
+/// Returns [`TransactionError::InvalidParamValue`] if the value length is not
+/// two or four bytes.
+#[must_use = "handle the result"]
+pub fn first_param_u32<S: std::hash::BuildHasher>(
+    map: &HashMap<FieldId, Vec<Vec<u8>>, S>,
+    field: FieldId,
+) -> Result<Option<u32>, TransactionError> {
+    match first_value(map, field) {
+        Some(bytes) => Ok(Some(parse_protocol_u32(bytes, field)?)),
+        None => Ok(None),
+    }
+}
+
+fn parse_protocol_u32(bytes: &[u8], field: FieldId) -> Result<u32, TransactionError> {
+    match bytes.len() {
+        2 => parse_protocol_u16(bytes, field).map(u32::from),
+        4 => parse_protocol_u32_exact(bytes, field),
+        _ => Err(TransactionError::InvalidParamValue(field)),
+    }
+}
+
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+fn parse_protocol_u16(bytes: &[u8], field: FieldId) -> Result<u16, TransactionError> {
+    let arr: [u8; 2] = bytes
+        .try_into()
+        .map_err(|_| TransactionError::InvalidParamValue(field))?;
+    Ok(u16::from_be_bytes(arr))
+}
+
+#[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
+fn parse_protocol_u32_exact(bytes: &[u8], field: FieldId) -> Result<u32, TransactionError> {
+    let arr: [u8; 4] = bytes
+        .try_into()
+        .map_err(|_| TransactionError::InvalidParamValue(field))?;
+    Ok(u32::from_be_bytes(arr))
 }

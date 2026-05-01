@@ -10,8 +10,9 @@ use crate::{
     db::DbPool,
     field_id::FieldId,
     handler::Session,
+    presence::{PresenceRegistry, SessionPhase},
     privileges::Privileges,
-    server::outbound::NoopOutboundMessaging,
+    server::outbound::{NoopOutboundMessaging, OutboundConnectionId},
     transaction::{Transaction, decode_params, parse_transaction},
     transaction_type::TransactionType,
     wireframe::{
@@ -31,6 +32,9 @@ pub(super) struct RouteTestContext {
     peer: SocketAddr,
     /// Wireframe router owning compatibility state.
     router: WireframeRouter,
+    /// Shared presence registry used during routing tests.
+    presence: PresenceRegistry,
+    presence_connection_id: OutboundConnectionId,
 }
 
 impl RouteTestContext {
@@ -56,6 +60,8 @@ impl RouteTestContext {
             session: Session::default(),
             peer,
             router,
+            presence: PresenceRegistry::default(),
+            presence_connection_id: OutboundConnectionId::new(1),
         })
     }
 
@@ -65,16 +71,31 @@ impl RouteTestContext {
     /// handlers requiring authentication will succeed. Use this before testing
     /// privileged operations without going through the full login flow.
     pub(super) fn authenticate(&mut self, user_id: i32) {
-        self.session.user_id = Some(user_id);
-        self.session.privileges = Privileges::default_user();
+        self.authenticate_with_privileges(user_id, Privileges::default_user());
     }
 
     /// Authenticate with custom privileges.
     ///
     /// Sets the session's user ID and grants the specified privileges.
     pub(super) fn authenticate_with_privileges(&mut self, user_id: i32, privileges: Privileges) {
+        let Ok(connection_id) = u64::try_from(user_id) else {
+            panic!("test user id must be non-negative");
+        };
         self.session.user_id = Some(user_id);
         self.session.privileges = privileges;
+        self.session.phase = SessionPhase::Online;
+        self.session.display_name = format!("user-{user_id}");
+        self.presence_connection_id = OutboundConnectionId::new(connection_id);
+        self.refresh_presence(self.presence_connection_id);
+    }
+
+    fn refresh_presence(&self, connection_id: OutboundConnectionId) {
+        let _ = self.presence.remove(connection_id);
+        if let Some(snapshot) = self.session.presence_snapshot(connection_id) {
+            self.presence
+                .upsert(snapshot)
+                .unwrap_or_else(|error| panic!("upsert presence snapshot: {error}"));
+        }
     }
 
     /// Send a transaction through routing and parse the reply.
@@ -106,6 +127,8 @@ impl RouteTestContext {
                     pool: self.pool.clone(),
                     session: &mut self.session,
                     messaging: &messaging,
+                    presence: &self.presence,
+                    presence_connection_id: self.presence_connection_id,
                 },
             )
             .await;

@@ -7,7 +7,7 @@
 pub const FALLBACK_ROUTE_ID: u32 = 0;
 
 /// Transaction route IDs supported by the wireframe routing layer.
-pub const ROUTE_IDS: [u32; 6] = [107, 200, 370, 371, 400, 410];
+pub const ROUTE_IDS: [u32; 10] = [107, 121, 200, 300, 303, 304, 370, 371, 400, 410];
 
 /// Resolve the route ID for a transaction type.
 #[must_use]

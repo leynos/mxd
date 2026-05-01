@@ -43,6 +43,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      WHITAKER_INSTALLER_REV: 9c154ead8d72dc4b26b5c67f2575fd891bc99962
     steps:
       - uses: actions/checkout@v5
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
@@ -72,12 +73,25 @@ jobs:
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-whitaker-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-whitaker-${{ env.WHITAKER_INSTALLER_REV }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Lint with Whitaker
         run: |
+          if ! command -v whitaker-installer >/dev/null 2>&1; then
+            cargo install --locked \
+              --git https://github.com/leynos/whitaker \
+              --rev "${WHITAKER_INSTALLER_REV}" \
+              whitaker-installer
+          fi
           if ! command -v whitaker >/dev/null 2>&1; then
-            cargo install --locked whitaker-installer --version 0.2.0
-            whitaker-installer --experimental
+            whitaker-installer
+          fi
+          if [[ -d "${HOME}/.local/share/whitaker/lints" ]]; then
+            find "${HOME}/.local/share/whitaker/lints" \
+              -type f \
+              \( -name 'lib*@*.so' -o -name 'lib*@*.dylib' -o -name '*@*.dll' \) \
+              ! -name 'libwhitaker_suite@*' \
+              ! -name 'whitaker_suite@*' \
+              -delete
           fi
           RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }}
       - name: Test

@@ -17,6 +17,7 @@ use wireframe::{
 };
 
 use crate::{
+    presence::{PresenceRegistry, build_notify_delete_user},
     server::outbound::{
         OutboundConnectionId,
         OutboundError,
@@ -75,16 +76,40 @@ impl WireframeOutboundRegistry {
 pub struct WireframeOutboundConnection {
     id: OutboundConnectionId,
     registry: Arc<WireframeOutboundRegistry>,
+    presence: Arc<PresenceRegistry>,
+    runtime_handle: Option<tokio::runtime::Handle>,
     handle: OnceLock<PushHandle<Vec<u8>>>,
 }
 
 impl WireframeOutboundConnection {
     /// Create a new outbound connection state.
     #[must_use]
-    pub const fn new(id: OutboundConnectionId, registry: Arc<WireframeOutboundRegistry>) -> Self {
+    pub fn new(
+        id: OutboundConnectionId,
+        registry: Arc<WireframeOutboundRegistry>,
+        presence: Arc<PresenceRegistry>,
+    ) -> Self {
+        Self::new_with_runtime_handle(
+            id,
+            registry,
+            presence,
+            tokio::runtime::Handle::try_current().ok(),
+        )
+    }
+
+    /// Create a new outbound connection state with an explicit runtime handle.
+    #[must_use]
+    pub const fn new_with_runtime_handle(
+        id: OutboundConnectionId,
+        registry: Arc<WireframeOutboundRegistry>,
+        presence: Arc<PresenceRegistry>,
+        runtime_handle: Option<tokio::runtime::Handle>,
+    ) -> Self {
         Self {
             id,
             registry,
+            presence,
+            runtime_handle,
             handle: OnceLock::new(),
         }
     }
@@ -105,10 +130,70 @@ impl WireframeOutboundConnection {
     fn handle(&self) -> Option<PushHandle<Vec<u8>>> { self.handle.get().cloned() }
 
     fn registry(&self) -> &WireframeOutboundRegistry { &self.registry }
+
+    fn take_disconnect_notification(&self) -> Option<(i32, Vec<OutboundConnectionId>, Vec<u8>)> {
+        let removal_result = self.presence.remove(self.id);
+        self.registry.remove(self.id);
+        let removal = removal_result?;
+        let user_id = removal.departed.user_id;
+        let encoded_message = build_notify_delete_user(user_id).map_err(|error| {
+            warn!(?error, user_id, "failed to encode notify-delete-user");
+        });
+        let message = encoded_message.ok()?;
+        Some((user_id, removal.remaining_peer_ids, message.to_bytes()))
+    }
+
+    fn spawn_disconnect_notification(
+        &self,
+        registry: Arc<WireframeOutboundRegistry>,
+        peer_ids: Vec<OutboundConnectionId>,
+        bytes: Vec<u8>,
+    ) {
+        let Some(runtime_handle) = &self.runtime_handle else {
+            warn!("no runtime handle available for disconnect notification");
+            return;
+        };
+        runtime_handle.spawn(async move {
+            push_disconnect_notifications(registry, peer_ids, bytes).await;
+        });
+    }
 }
 
 impl Drop for WireframeOutboundConnection {
-    fn drop(&mut self) { self.registry.remove(self.id); }
+    fn drop(&mut self) {
+        let Some((_user_id, peer_ids, bytes)) = self.take_disconnect_notification() else {
+            return;
+        };
+        let registry = Arc::clone(&self.registry);
+        self.spawn_disconnect_notification(registry, peer_ids, bytes);
+    }
+}
+
+async fn push_disconnect_notifications(
+    registry: Arc<WireframeOutboundRegistry>,
+    peer_ids: Vec<OutboundConnectionId>,
+    bytes: Vec<u8>,
+) {
+    for connection_id in peer_ids {
+        push_disconnect_notification(&registry, connection_id, &bytes).await;
+    }
+}
+
+async fn push_disconnect_notification(
+    registry: &WireframeOutboundRegistry,
+    connection_id: OutboundConnectionId,
+    bytes: &[u8],
+) {
+    let Some(handle) = registry.handle_for(connection_id) else {
+        return;
+    };
+    if let Err(error) = handle.push_high_priority(bytes.to_vec()).await {
+        warn!(
+            ?error,
+            target = connection_id.as_u64(),
+            "disconnect push failed"
+        );
+    }
 }
 
 /// Wireframe implementation of outbound messaging.
@@ -182,72 +267,5 @@ const fn map_push_error(error: PushError) -> OutboundError {
 }
 
 #[cfg(test)]
-mod tests {
-    use rstest::{fixture, rstest};
-    use tokio::runtime::Runtime;
-    use wireframe::push::PushQueues;
-
-    use super::*;
-    use crate::transaction::FrameHeader;
-
-    #[fixture]
-    fn reply() -> Transaction {
-        Transaction {
-            header: FrameHeader {
-                flags: 0,
-                is_reply: 1,
-                ty: 1,
-                id: 7,
-                error: 0,
-                total_size: 0,
-                data_size: 0,
-            },
-            payload: Vec::new(),
-        }
-    }
-
-    #[rstest]
-    fn push_to_current_requires_handle(reply: Transaction) {
-        let registry = Arc::new(WireframeOutboundRegistry::default());
-        let id = registry.allocate_id();
-        let connection = Arc::new(WireframeOutboundConnection::new(id, registry));
-        let messaging = WireframeOutboundMessaging::new(connection);
-        let rt = Runtime::new().expect("runtime");
-
-        let err = rt
-            .block_on(messaging.push(OutboundTarget::Current, reply, OutboundPriority::High))
-            .expect_err("missing handle");
-
-        assert_eq!(err, OutboundError::TargetUnavailable);
-    }
-
-    #[rstest]
-    fn push_to_current_enqueues_frame(reply: Transaction) {
-        let registry = Arc::new(WireframeOutboundRegistry::default());
-        let id = registry.allocate_id();
-        let connection = Arc::new(WireframeOutboundConnection::new(id, Arc::clone(&registry)));
-        let messaging = WireframeOutboundMessaging::new(Arc::clone(&connection));
-        let rt = Runtime::new().expect("runtime");
-
-        let (mut queues, handle) = PushQueues::<Vec<u8>>::builder()
-            .high_capacity(1)
-            .low_capacity(1)
-            .build()
-            .expect("push queues");
-        connection.register_handle(&handle);
-
-        rt.block_on(messaging.push(
-            OutboundTarget::Current,
-            reply.clone(),
-            OutboundPriority::High,
-        ))
-        .expect("push ok");
-
-        let (priority, frame) = rt
-            .block_on(async { queues.recv().await })
-            .expect("frame queued");
-        assert_eq!(priority, wireframe::push::PushPriority::High);
-        let parsed = crate::transaction::parse_transaction(&frame).expect("parse reply");
-        assert_eq!(parsed, reply);
-    }
-}
+#[path = "outbound_tests.rs"]
+mod tests;

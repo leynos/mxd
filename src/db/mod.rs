@@ -44,5 +44,5 @@ pub use self::{
     },
     migrations::{apply_migrations, run_migrations},
     paths::PathLookupError,
-    users::{create_user, get_user_by_name},
+    users::{create_user, get_user_by_id, get_user_by_name},
 };

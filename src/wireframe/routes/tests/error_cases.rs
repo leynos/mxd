@@ -12,7 +12,8 @@ use super::super::{
 };
 use crate::{
     handler::Session,
-    server::outbound::NoopOutboundMessaging,
+    presence::PresenceRegistry,
+    server::outbound::{NoopOutboundMessaging, OutboundConnectionId},
     transaction::{FrameHeader, HEADER_LEN, Transaction},
     wireframe::{
         compat::XorCompatibility,
@@ -183,6 +184,7 @@ async fn process_transaction_bytes_truncated_input() {
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
+    let presence = PresenceRegistry::default();
     let router = test_router();
 
     // Send only 10 bytes (less than HEADER_LEN = 20).
@@ -195,6 +197,8 @@ async fn process_transaction_bytes_truncated_input() {
                 pool,
                 session: &mut session,
                 messaging: &messaging,
+                presence: &presence,
+                presence_connection_id: OutboundConnectionId::new(1),
             },
         )
         .await;
@@ -214,6 +218,7 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
     let mut session = Session::default();
     let peer = "127.0.0.1:12345".parse().expect("valid address");
     let messaging = NoopOutboundMessaging;
+    let presence = PresenceRegistry::default();
     let router = test_router();
 
     let frame = transaction_bytes(&header, payload);
@@ -226,6 +231,8 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
                 pool,
                 session: &mut session,
                 messaging: &messaging,
+                presence: &presence,
+                presence_connection_id: OutboundConnectionId::new(1),
             },
         )
         .await;

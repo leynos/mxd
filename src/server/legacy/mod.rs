@@ -46,6 +46,7 @@ use super::{
 use crate::{
     db::{DbPool, apply_migrations, establish_pool},
     handler::{Context as HandlerContext, Session, handle_request},
+    presence::PresenceRegistry,
     protocol,
     transaction::{TransactionError, TransactionReader, TransactionWriter},
 };
@@ -61,6 +62,8 @@ pub struct ServerResources {
     pub pool: DbPool,
     /// Argon2 password hasher instance.
     pub argon2: Arc<Argon2<'static>>,
+    /// Shared presence registry for legacy connection handlers.
+    pub presence: Arc<PresenceRegistry>,
 }
 
 /// Shared server resources passed to connection handlers.
@@ -69,6 +72,7 @@ pub struct ServerResources {
 struct ServerResources {
     pool: DbPool,
     argon2: Arc<Argon2<'static>>,
+    presence: Arc<PresenceRegistry>,
 }
 
 /// An accepted TCP connection with its peer address.
@@ -181,7 +185,11 @@ async fn accept_connections(
     let mut join_set = JoinSet::new();
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
-    let resources = ServerResources { pool, argon2 };
+    let resources = ServerResources {
+        pool,
+        argon2,
+        presence: Arc::new(PresenceRegistry::default()),
+    };
 
     loop {
         tokio::select! {
@@ -223,7 +231,12 @@ fn spawn_client_handler(
     mut shutdown_rx: watch::Receiver<bool>,
     join_set: &mut JoinSet<()>,
 ) {
-    let ctx = HandlerContext::new(conn.peer, resources.pool, resources.argon2);
+    let ctx = HandlerContext::with_presence(
+        conn.peer,
+        resources.pool,
+        resources.argon2,
+        resources.presence,
+    );
     join_set.spawn(async move {
         if let Err(e) = handle_client(conn.socket, ctx, &mut shutdown_rx).await {
             eprintln!("connection error from {}: {e}", conn.peer);
