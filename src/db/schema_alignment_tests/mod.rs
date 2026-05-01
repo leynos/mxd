@@ -99,84 +99,118 @@ pub(crate) async fn run_sql_script(conn: &mut DbConnection, script: &str) -> Tes
     Ok(())
 }
 
-/// Asserts that the `news_bundles` row with `id = 1` has non-null `guid` and
-/// `created_at` values after migration backfill.
+/// Returns `true` when the `news_bundles` row with `id = 1` has a non-empty
+/// `guid` and a non-null `created_at` after migration backfill.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-pub(crate) async fn assert_bundle_backfill(conn: &mut DbConnection) -> TestResult<()> {
+pub(crate) async fn bundle_backfill_is_valid(conn: &mut DbConnection) -> TestResult<bool> {
     let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
         .get_result::<BundleBackfillRow>(conn)
-        .await
-        .context("LOAD news_bundles backfill row")?;
-    anyhow::ensure!(
-        bundle
-            .guid
-            .as_deref()
-            .is_some_and(|guid| !guid.trim().is_empty()),
-        "expected non-empty bundle GUID after migration backfill"
-    );
-    anyhow::ensure!(
-        bundle.created_at.is_some(),
-        "expected created_at to be present after backfill"
-    );
-    Ok(())
+        .await?;
+    Ok(bundle
+        .guid
+        .as_deref()
+        .is_some_and(|guid| !guid.trim().is_empty())
+        && bundle.created_at.is_some())
 }
 
-/// Asserts that the `news_categories` row with `id = 1` has non-null `guid`
-/// and `created_at`, `add_sn = 1`, and `delete_sn = 0` after migration backfill.
+/// Returns `true` when the `news_categories` row with `id = 1` has a non-empty
+/// `guid`, `add_sn = 1`, `delete_sn = 0`, and a non-null `created_at`.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-pub(crate) async fn assert_category_backfill(conn: &mut DbConnection) -> TestResult<()> {
-    assert_category_backfill_for_id(conn, 1, 1).await
+pub(crate) async fn category_backfill_is_valid(conn: &mut DbConnection) -> TestResult<bool> {
+    category_backfill_is_valid_for_id(conn, 1, 1).await
 }
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-async fn assert_category_backfill_for_id(
+async fn category_backfill_is_valid_for_id(
     conn: &mut DbConnection,
     category_id: i32,
     expected_add_sn: i32,
-) -> TestResult<()> {
+) -> TestResult<bool> {
     let category = sql_query(format!(
         "SELECT guid, add_sn, delete_sn, created_at FROM news_categories WHERE id = {category_id}"
     ))
     .get_result::<CategoryBackfillRow>(conn)
-    .await
-    .with_context(|| format!("LOAD news_categories backfill row id={category_id}"))?;
-    anyhow::ensure!(
-        category
-            .guid
-            .as_deref()
-            .is_some_and(|guid| !guid.trim().is_empty()),
-        "expected non-empty category GUID after migration backfill"
-    );
-    anyhow::ensure!(
-        category.add_sn == Some(expected_add_sn),
-        "expected category add_sn to be {expected_add_sn}; got {add_sn:?}",
-        add_sn = category.add_sn
-    );
-    anyhow::ensure!(
-        category.delete_sn == Some(0),
-        "expected category delete_sn to be 0; got {delete_sn:?}",
-        delete_sn = category.delete_sn
-    );
-    anyhow::ensure!(
-        category.created_at.is_some(),
-        "expected category created_at to be present after backfill"
-    );
-    Ok(())
+    .await?;
+    Ok(category
+        .guid
+        .as_deref()
+        .is_some_and(|guid| !guid.trim().is_empty())
+        && category.add_sn == Some(expected_add_sn)
+        && category.delete_sn == Some(0)
+        && category.created_at.is_some())
 }
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-async fn assert_empty_category_backfill(conn: &mut DbConnection) -> TestResult<()> {
-    assert_category_backfill_for_id(conn, 2, 0).await
+async fn empty_category_backfill_is_valid(conn: &mut DbConnection) -> TestResult<bool> {
+    category_backfill_is_valid_for_id(conn, 2, 0).await
 }
 
-/// Runs all post-upgrade backfill assertions: bundle, category, permission
-/// round-trip, and backend-specific article-index checks.
+/// Returns the count of rows matching the permission join query for `ids`.
+///
+/// This is a pure query; it makes no modifications to `conn`.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
+pub(crate) async fn permission_join_count(
+    conn: &mut DbConnection,
+    ids: PermissionTestIds,
+) -> TestResult<i64> {
+    let PermissionTestIds {
+        user_id,
+        permission_id,
+        code,
+    } = ids;
+    let row = sql_query(format!(
+        "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
+         up.permission_id = p.id WHERE p.code = {code} AND p.description = 'News category \
+         permission {code}' AND up.user_id = {user_id} AND up.permission_id = {permission_id}"
+    ))
+    .get_result::<CountRow>(conn)
+    .await?;
+    Ok(row.count)
+}
+
+/// Returns `true` when exactly one row in `permissions JOIN user_permissions`
+/// matches `code`, `'News category permission {code}'`, and `user_id`.
+///
+/// This is a pure predicate; it makes no modifications to `conn`.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+pub(crate) async fn permission_round_trip_is_valid(
+    conn: &mut DbConnection,
+    ids: PermissionTestIds,
+) -> TestResult<bool> {
+    let count = permission_join_count(
+        conn,
+        PermissionTestIds {
+            user_id: ids.user_id,
+            permission_id: ids.permission_id,
+            code: ids.code,
+        },
+    )
+    .await?;
+    Ok(count == 1)
+}
+
+/// Runs all post-upgrade backfill checks using predicates, then asserts each
+/// result. Validates bundle, category, permission round-trip, and
+/// backend-specific article-index checks.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test assertion helper; assert! is the intended failure mode"
+)]
 pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
-    assert_bundle_backfill(conn).await?;
-    assert_category_backfill(conn).await?;
-    assert_empty_category_backfill(conn).await?;
-    assert_permission_round_trip_with_ids(
+    assert!(
+        bundle_backfill_is_valid(conn).await?,
+        "bundle backfill validation failed after upgrade"
+    );
+    assert!(
+        category_backfill_is_valid(conn).await?,
+        "category backfill validation failed after upgrade"
+    );
+    assert!(
+        empty_category_backfill_is_valid(conn).await?,
+        "empty category backfill validation failed after upgrade"
+    );
+    seed_permission_round_trip(
         conn,
         PermissionTestIds {
             user_id: 84,
@@ -185,41 +219,51 @@ pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestRes
         },
     )
     .await?;
+    assert!(
+        permission_round_trip_is_valid(
+            conn,
+            PermissionTestIds {
+                user_id: 84,
+                permission_id: 84,
+                code: 84,
+            },
+        )
+        .await?,
+        "permission round-trip predicate failed after upgrade"
+    );
     #[cfg(feature = "sqlite")]
-    sqlite_tests::assert_sqlite_article_indices(conn).await?;
+    assert!(
+        sqlite_tests::sqlite_article_indices_are_present(conn).await?,
+        "SQLite article indices missing after upgrade"
+    );
     #[cfg(feature = "postgres")]
-    postgres_tests::assert_postgres_article_indices(conn).await?;
+    assert!(
+        postgres_tests::postgres_article_indices_are_present(conn).await?,
+        "PostgreSQL article indices missing after upgrade"
+    );
     Ok(())
 }
 
-/// Inserts a root category named `'Root Duplicate'`, then attempts a second
-/// insert with the same name and a `NULL` `bundle_id`.
+/// Inserts a root category named `'Root Duplicate'` and verifies that a second
+/// insert with the same name and a `NULL` `bundle_id` fails with a constraint
+/// error, validating the partial unique index on root categories.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-pub(crate) async fn seed_root_category_name_conflict(conn: &mut DbConnection) -> TestResult<()> {
+pub(crate) async fn verify_root_category_names_are_unique_with_constraint_insert(
+    conn: &mut DbConnection,
+) -> TestResult<()> {
     sql_query(
         "INSERT INTO news_categories (id, bundle_id, name) VALUES (9001, NULL, 'Root Duplicate')",
     )
     .execute(conn)
-    .await
-    .context("EXECUTE insert initial root category conflict row")?;
+    .await?;
 
-    sql_query(
+    let duplicate = sql_query(
         "INSERT INTO news_categories (id, bundle_id, name) VALUES (9002, NULL, 'Root Duplicate')",
     )
     .execute(conn)
-    .await
-    .context("EXECUTE insert duplicate root category conflict row")?;
-    Ok(())
-}
-
-/// Asserts that a root-category conflict seed result failed with a constraint
-/// error, validating the partial unique index on root categories.
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-pub(crate) async fn verify_root_category_constraint_error(
-    conflict_result: TestResult<()>,
-) -> TestResult<()> {
+    .await;
     anyhow::ensure!(
-        conflict_result.is_err(),
+        duplicate.is_err(),
         "Expected duplicate insert to fail due to unique constraint"
     );
     Ok(())
@@ -274,7 +318,7 @@ pub(crate) async fn setup_legacy_schema(
 /// supplied `user_id`, `permission_id`, and `code`.  Returns `Ok(())` on
 /// success; all inserts are executed in statement order against `conn`.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-async fn seed_permission_round_trip(
+pub(crate) async fn seed_permission_round_trip(
     conn: &mut DbConnection,
     ids: PermissionTestIds,
 ) -> TestResult<()> {
@@ -299,53 +343,6 @@ async fn seed_permission_round_trip(
                  {permission_id})"
             ),
         ],
-    )
-    .await
-}
-
-/// Asserts that exactly one row in `permissions JOIN user_permissions` matches
-/// `code`, `'News category permission {code}'`, and `user_id`.
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-async fn assert_permission_join_count(
-    conn: &mut DbConnection,
-    ids: PermissionTestIds,
-) -> TestResult<()> {
-    let PermissionTestIds {
-        user_id,
-        permission_id,
-        code,
-    } = ids;
-    let permissions = sql_query(format!(
-        "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
-         up.permission_id = p.id WHERE p.code = {code} AND p.description = 'News category \
-         permission {code}' AND up.user_id = {user_id} AND up.permission_id = {permission_id}"
-    ))
-    .get_result::<CountRow>(conn)
-    .await
-    .context("LOAD permissions join round-trip count")?;
-    anyhow::ensure!(
-        permissions.count == 1,
-        "Expected exactly one permission; unexpected permissions.count: {}",
-        permissions.count
-    );
-    Ok(())
-}
-
-/// Asserts a seeded user, permission, and `user_permissions` join row returns
-/// exactly one matching row.  Used to validate the permissions schema after
-/// both fresh migration and upgrade paths.
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-pub(crate) async fn assert_permission_round_trip_with_ids(
-    conn: &mut DbConnection,
-    ids: PermissionTestIds,
-) -> TestResult<()> {
-    assert_permission_join_count(
-        conn,
-        PermissionTestIds {
-            user_id: ids.user_id,
-            permission_id: ids.permission_id,
-            code: ids.code,
-        },
     )
     .await
 }

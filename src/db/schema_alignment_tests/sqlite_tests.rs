@@ -9,7 +9,6 @@
 //! - Uses in-memory connections, `sqlite_names` catalogue readers, and the parent module's
 //!   `assert_upgrade_backfills`.
 
-use anyhow::Context;
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use rstest::{fixture, rstest};
@@ -17,14 +16,11 @@ use rstest::{fixture, rstest};
 use super::{
     DbConnection,
     NameRow,
-    PermissionTestIds,
     TestResult,
     apply_migrations,
     assert_upgrade_backfills,
-    seed_permission_round_trip,
-    seed_root_category_name_conflict,
     setup_legacy_schema,
-    verify_root_category_constraint_error,
+    verify_root_category_names_are_unique_with_constraint_insert,
 };
 
 async fn sqlite_conn() -> TestResult<DbConnection> {
@@ -40,14 +36,12 @@ async fn two_bundle_db() -> TestResult<DbConnection> {
         "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'A')",
     )
     .execute(&mut conn)
-    .await
-    .context("EXECUTE insert first SQLite test bundle")?;
+    .await?;
     diesel::sql_query(
         "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (2, NULL, 'B')",
     )
     .execute(&mut conn)
-    .await
-    .context("EXECUTE insert second SQLite test bundle")?;
+    .await?;
     Ok(conn)
 }
 
@@ -56,12 +50,10 @@ async fn add_sn_db(#[future] two_bundle_db: TestResult<DbConnection>) -> TestRes
     let mut conn = two_bundle_db.await?;
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'WithTwo', 1)")
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert SQLite add_sn populated category")?;
+        .await?;
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'Empty', 1)")
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert SQLite add_sn empty category")?;
+        .await?;
 
     for i in 1_i32..=2 {
         diesel::sql_query(format!(
@@ -69,8 +61,7 @@ async fn add_sn_db(#[future] two_bundle_db: TestResult<DbConnection>) -> TestRes
              'Article {i}', '2026-01-01 00:00:00')"
         ))
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert SQLite add_sn article")?;
+        .await?;
     }
     Ok(conn)
 }
@@ -82,14 +73,12 @@ async fn threaded_articles_db() -> TestResult<DbConnection> {
         "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'ThreadBundle')",
     )
     .execute(&mut conn)
-    .await
-    .context("EXECUTE insert SQLite threading bundle")?;
+    .await?;
     diesel::sql_query(
         "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'ThreadCat', 1)",
     )
     .execute(&mut conn)
-    .await
-    .context("EXECUTE insert SQLite threading category")?;
+    .await?;
 
     diesel::sql_query(
         "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
@@ -97,20 +86,17 @@ async fn threaded_articles_db() -> TestResult<DbConnection> {
          NULL, NULL, 'Root', '2026-01-01 00:00:00')",
     )
     .execute(&mut conn)
-    .await
-    .context("EXECUTE insert SQLite root threading article")?;
+    .await?;
     diesel::sql_query(
         "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
          next_article_id, first_child_article_id, title, posted_at) VALUES (2, 1, 1, NULL, NULL, \
          NULL, 'Child', '2026-01-02 00:00:00')",
     )
     .execute(&mut conn)
-    .await
-    .context("EXECUTE insert SQLite child threading article")?;
+    .await?;
     diesel::sql_query("UPDATE news_articles SET first_child_article_id = 2 WHERE id = 1")
         .execute(&mut conn)
-        .await
-        .context("EXECUTE link SQLite root article to child")?;
+        .await?;
     Ok(conn)
 }
 
@@ -134,93 +120,118 @@ async fn setup_sqlite_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
 async fn sqlite_names(conn: &mut DbConnection, sql: &str) -> TestResult<Vec<String>> {
     Ok(sql_query(sql)
         .load::<NameRow>(conn)
-        .await
-        .with_context(|| format!("LOAD SQLite names: {sql}"))?
+        .await?
         .into_iter()
         .map(|row| row.name)
         .collect())
 }
 
-async fn assert_sqlite_permission_schema(conn: &mut DbConnection) -> TestResult<()> {
+/// Returns `true` when both the `permissions` and `user_permissions` tables
+/// exist and carry their expected auto-index entries.
+async fn sqlite_permission_schema_is_aligned(conn: &mut DbConnection) -> TestResult<bool> {
     let tables = sqlite_names(
         conn,
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('permissions', \
          'user_permissions') ORDER BY name",
     )
     .await?;
-    anyhow::ensure!(
-        tables == vec!["permissions", "user_permissions"],
-        "expected SQLite permission tables, got {tables:?}"
-    );
+    if tables != vec!["permissions", "user_permissions"] {
+        return Ok(false);
+    }
 
     let permission_indices = sqlite_names(
         conn,
         "SELECT name FROM pragma_index_list('permissions') ORDER BY name",
     )
     .await?;
-    anyhow::ensure!(
-        permission_indices
-            .iter()
-            .any(|name| name == "sqlite_autoindex_permissions_1"),
-        "missing SQLite permissions unique index"
-    );
+    if !permission_indices
+        .iter()
+        .any(|name| name == "sqlite_autoindex_permissions_1")
+    {
+        return Ok(false);
+    }
 
     let user_permission_indices = sqlite_names(
         conn,
         "SELECT name FROM pragma_index_list('user_permissions') ORDER BY name",
     )
     .await?;
-    let expected = "sqlite_autoindex_user_permissions_1";
-    anyhow::ensure!(
-        user_permission_indices.iter().any(|name| name == expected),
-        "missing SQLite user_permissions index {expected}"
-    );
-    Ok(())
+    Ok(user_permission_indices
+        .iter()
+        .any(|name| name == "sqlite_autoindex_user_permissions_1"))
 }
 
-async fn assert_sqlite_bundle_schema(conn: &mut DbConnection) -> TestResult<()> {
+/// Returns `true` when `news_bundles` has the expected columns and indices.
+async fn sqlite_bundle_schema_is_aligned(conn: &mut DbConnection) -> TestResult<bool> {
     let bundle_columns = sqlite_names(
         conn,
         "SELECT name FROM pragma_table_info('news_bundles') ORDER BY cid",
     )
     .await?;
-    anyhow::ensure!(
-        bundle_columns == vec!["id", "parent_bundle_id", "name", "guid", "created_at"],
-        "unexpected SQLite news_bundles columns: {bundle_columns:?}"
-    );
+    if bundle_columns != vec!["id", "parent_bundle_id", "name", "guid", "created_at"] {
+        return Ok(false);
+    }
 
     let bundle_indices = sqlite_names(
         conn,
         "SELECT name FROM pragma_index_list('news_bundles') ORDER BY name",
     )
     .await?;
-    for expected in [
+    Ok([
         "idx_bundles_name_parent",
         "idx_bundles_parent",
         "sqlite_autoindex_news_bundles_1",
-    ] {
-        anyhow::ensure!(
-            bundle_indices.iter().any(|name| name == expected),
-            "missing SQLite bundle index {expected}"
-        );
-    }
-    Ok(())
+    ]
+    .iter()
+    .all(|expected| bundle_indices.iter().any(|name| name == expected)))
 }
 
-async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
-    assert_sqlite_bundle_schema(conn).await?;
-    assert_sqlite_article_indices(conn).await?;
+/// Returns `true` when `news_articles` carries all expected threading indices.
+///
+/// The predicate queries `PRAGMA index_list` through `sqlite_names` and checks
+/// that `idx_articles_category`, `idx_articles_first_child_article`,
+/// `idx_articles_next_article`, `idx_articles_parent_article`, and
+/// `idx_articles_prev_article` are all present. Database query failures are
+/// propagated as `Err`; a missing index causes the predicate to return `false`.
+pub(super) async fn sqlite_article_indices_are_present(
+    conn: &mut DbConnection,
+) -> TestResult<bool> {
+    let article_indices = sqlite_names(
+        conn,
+        "SELECT name FROM pragma_index_list('news_articles') ORDER BY name",
+    )
+    .await?;
+    Ok([
+        "idx_articles_category",
+        "idx_articles_first_child_article",
+        "idx_articles_next_article",
+        "idx_articles_parent_article",
+        "idx_articles_prev_article",
+    ]
+    .iter()
+    .all(|expected| article_indices.iter().any(|name| name == expected)))
+}
+
+/// Returns `true` when the full `news_bundles`, `news_categories`, and
+/// `news_articles` schema is aligned, including columns and indices.
+async fn sqlite_news_schema_is_aligned(conn: &mut DbConnection) -> TestResult<bool> {
+    if !sqlite_bundle_schema_is_aligned(conn).await? {
+        return Ok(false);
+    }
+    if !sqlite_article_indices_are_present(conn).await? {
+        return Ok(false);
+    }
 
     let category_indices = sqlite_names(
         conn,
         "SELECT name FROM pragma_index_list('news_categories') ORDER BY name",
     )
     .await?;
-    for expected in ["idx_categories_bundle", "idx_news_categories_unique"] {
-        anyhow::ensure!(
-            category_indices.iter().any(|name| name == expected),
-            "missing SQLite category index {expected}"
-        );
+    if !["idx_categories_bundle", "idx_news_categories_unique"]
+        .iter()
+        .all(|expected| category_indices.iter().any(|name| name == expected))
+    {
+        return Ok(false);
     }
 
     let category_columns = sqlite_names(
@@ -228,82 +239,61 @@ async fn assert_sqlite_news_schema(conn: &mut DbConnection) -> TestResult<()> {
         "SELECT name FROM pragma_table_info('news_categories') ORDER BY cid",
     )
     .await?;
-    anyhow::ensure!(
-        category_columns
-            == vec![
-                "id",
-                "bundle_id",
-                "name",
-                "guid",
-                "add_sn",
-                "delete_sn",
-                "created_at"
-            ],
-        "unexpected SQLite news_categories columns: {category_columns:?}"
-    );
-    Ok(())
+    Ok(category_columns
+        == vec![
+            "id",
+            "bundle_id",
+            "name",
+            "guid",
+            "add_sn",
+            "delete_sn",
+            "created_at",
+        ])
 }
 
-/// Verifies the expected `SQLite` indexes on the `news_articles` table.
+/// Returns `true` when the full aligned schema is present, including
+/// permission tables, news schema, and the root-category uniqueness constraint.
 ///
-/// The helper queries `PRAGMA index_list` through `sqlite_names` using
-/// `conn: &mut DbConnection`, returns `TestResult<()>` for database errors, and
-/// asserts that `idx_articles_category`, `idx_articles_first_child_article`,
-/// `idx_articles_next_article`, `idx_articles_parent_article`, and
-/// `idx_articles_prev_article` are present. Missing indexes return
-/// `TestResult` errors.
-pub(super) async fn assert_sqlite_article_indices(conn: &mut DbConnection) -> TestResult<()> {
-    let article_indices = sqlite_names(
-        conn,
-        "SELECT name FROM pragma_index_list('news_articles') ORDER BY name",
-    )
-    .await?;
-    for expected in [
-        "idx_articles_category",
-        "idx_articles_first_child_article",
-        "idx_articles_next_article",
-        "idx_articles_parent_article",
-        "idx_articles_prev_article",
-    ] {
-        anyhow::ensure!(
-            article_indices.iter().any(|name| name == expected),
-            "missing SQLite article index {expected}"
-        );
+/// Note: this predicate also runs a constraint-verification insert to confirm
+/// the partial unique index on root categories. This insert is a side-effect
+/// required by the constraint check and is isolated in
+/// `verify_root_category_names_are_unique_with_constraint_insert`.
+async fn sqlite_aligned_schema_is_valid(conn: &mut DbConnection) -> TestResult<bool> {
+    if !sqlite_permission_schema_is_aligned(conn).await? {
+        return Ok(false);
     }
-    Ok(())
+    if !sqlite_news_schema_is_aligned(conn).await? {
+        return Ok(false);
+    }
+    verify_root_category_names_are_unique_with_constraint_insert(conn).await?;
+    Ok(true)
 }
 
-async fn assert_sqlite_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
-    assert_sqlite_permission_schema(conn).await?;
-    assert_sqlite_news_schema(conn).await?;
-    let conflict_result = seed_root_category_name_conflict(conn).await;
-    verify_root_category_constraint_error(conflict_result).await
-}
-
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[tokio::test]
 async fn sqlite_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     let mut conn = sqlite_conn().await?;
 
-    assert_sqlite_aligned_schema(&mut conn).await
+    assert!(
+        sqlite_aligned_schema_is_valid(&mut conn).await?,
+        "aligned schema not present after fresh migration"
+    );
+    Ok(())
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[tokio::test]
 async fn sqlite_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     let mut conn = DbConnection::establish(":memory:").await?;
     setup_sqlite_legacy_schema(&mut conn).await?;
     apply_migrations(&mut conn, "", None).await?;
 
-    seed_permission_round_trip(
-        &mut conn,
-        PermissionTestIds {
-            user_id: 84,
-            permission_id: 84,
-            code: 84,
-        },
-    )
-    .await?;
     assert_upgrade_backfills(&mut conn).await?;
-    assert_sqlite_aligned_schema(&mut conn).await
+    assert!(
+        sqlite_aligned_schema_is_valid(&mut conn).await?,
+        "aligned schema not present after legacy upgrade"
+    );
+    Ok(())
 }
 
 #[rstest]
@@ -316,12 +306,10 @@ async fn sqlite_category_names_are_bundle_scoped(
     // Same name in different bundles must succeed
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'Sports', 1)")
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert first SQLite scoped Sports category")?;
+        .await?;
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'Sports', 2)")
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert second SQLite scoped Sports category")?;
+        .await?;
 
     // Same name in the same bundle must fail
     let duplicate = diesel::sql_query(
@@ -329,7 +317,7 @@ async fn sqlite_category_names_are_bundle_scoped(
     )
     .execute(&mut conn)
     .await;
-    anyhow::ensure!(
+    assert!(
         duplicate.is_err(),
         "duplicate name in same bundle must be rejected"
     );
@@ -348,37 +336,37 @@ async fn sqlite_guids_are_non_empty_and_unique(
         "SELECT guid AS name FROM news_bundles ORDER BY id",
     )
     .await?;
-    anyhow::ensure!(guids.len() == 2, "expected two bundle rows");
+    assert_eq!(guids.len(), 2, "expected two bundle rows");
     for guid in &guids {
-        anyhow::ensure!(!guid.is_empty(), "GUID must not be empty");
+        assert!(!guid.is_empty(), "GUID must not be empty");
     }
     let guid_set: std::collections::HashSet<_> = guids.iter().collect();
-    anyhow::ensure!(
-        guid_set.len() == guids.len(),
+    assert_eq!(
+        guid_set.len(),
+        guids.len(),
         "GUIDs must be unique across rows"
     );
 
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'CA', 1)")
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert first SQLite GUID category")?;
+        .await?;
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'CB', 2)")
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert second SQLite GUID category")?;
+        .await?;
 
     let category_guids = sqlite_names(
         &mut conn,
         "SELECT guid AS name FROM news_categories ORDER BY id",
     )
     .await?;
-    anyhow::ensure!(category_guids.len() == 2, "expected two category rows");
+    assert_eq!(category_guids.len(), 2, "expected two category rows");
     for guid in &category_guids {
-        anyhow::ensure!(!guid.is_empty(), "category GUID must not be empty");
+        assert!(!guid.is_empty(), "category GUID must not be empty");
     }
     let category_guid_set: std::collections::HashSet<_> = category_guids.iter().collect();
-    anyhow::ensure!(
-        category_guid_set.len() == category_guids.len(),
+    assert_eq!(
+        category_guid_set.len(),
+        category_guids.len(),
         "category GUIDs must be unique"
     );
     Ok(())
@@ -393,27 +381,25 @@ async fn sqlite_add_sn_defaults_to_zero_for_fresh_inserts(
 
     let add_sn_row = diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 1")
         .get_result::<super::NameRow>(&mut conn)
-        .await
-        .context("LOAD SQLite add_sn for category id=1")?;
+        .await?;
     let add_sn_1: i32 = add_sn_row
         .name
         .parse()
-        .context("failed to parse add_sn for id=1")?;
-    anyhow::ensure!(
-        add_sn_1 == 0,
+        .expect("failed to parse add_sn for id=1");
+    assert_eq!(
+        add_sn_1, 0,
         "add_sn is set at migration time; fresh inserts do not auto-increment it"
     );
 
     let add_sn_empty_row =
         diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 2")
             .get_result::<super::NameRow>(&mut conn)
-            .await
-            .context("LOAD SQLite add_sn for category id=2")?;
+            .await?;
     let add_sn_empty: i32 = add_sn_empty_row
         .name
         .parse()
-        .context("failed to parse add_sn for id=2")?;
-    anyhow::ensure!(add_sn_empty == 0, "empty category add_sn must be 0");
+        .expect("failed to parse add_sn for id=2");
+    assert_eq!(add_sn_empty, 0, "empty category add_sn must be 0");
 
     Ok(())
 }
@@ -431,23 +417,21 @@ async fn sqlite_article_threading_enforces_referential_integrity(
          = a.first_child_article_id WHERE a.id = 1",
     )
     .get_result::<super::NameRow>(&mut conn)
-    .await
-    .context("LOAD SQLite linked child article")?;
-    anyhow::ensure!(linked.name == "2", "root article must link to its child");
+    .await?;
+    assert_eq!(linked.name, "2", "root article must link to its child");
 
     // Referential integrity: inserting an article with a non-existent parent must fail
     // (PRAGMA foreign_keys must be ON; SQLite pragmas are connection-scoped)
     diesel::sql_query("PRAGMA foreign_keys = ON")
         .execute(&mut conn)
-        .await
-        .context("EXECUTE enable SQLite foreign keys")?;
+        .await?;
     let bad_insert = diesel::sql_query(
         "INSERT INTO news_articles (id, category_id, parent_article_id, title, posted_at) VALUES \
          (99, 1, 9999, 'Orphan', '2026-01-03 00:00:00')",
     )
     .execute(&mut conn)
     .await;
-    anyhow::ensure!(
+    assert!(
         bad_insert.is_err(),
         "insert with non-existent parent_article_id must be rejected when FK enforcement is on"
     );
@@ -455,7 +439,7 @@ async fn sqlite_article_threading_enforces_referential_integrity(
         diesel::sql_query("UPDATE news_articles SET first_child_article_id = 9999 WHERE id = 1")
             .execute(&mut conn)
             .await;
-    anyhow::ensure!(
+    assert!(
         bad_update.is_err(),
         "update with non-existent first_child_article_id must be rejected when FK enforcement is \
          on"
