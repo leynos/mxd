@@ -1,10 +1,13 @@
-//! `SQLite` schema alignment regression tests for roadmap item 4.1.1.
+//! `SQLite` schema-alignment regression tests for roadmap item 4.1.1.
 //!
-//! Validates that both a fresh application of the current migration set and an
-//! upgrade from the pre-4.1.1 schema produce the expected table structure,
-//! column lists, indexes, constraints, and backfill values on the `SQLite`
-//! backend using an in-memory database.  Each test function creates a new
-//! connection and migration state in isolation via `rstest` fixtures.
+//! Scope:
+//! - Validates aligned schema on fresh migration and on upgrade from legacy rebuilds.
+//! - Asserts bundle schema columns, category partial uniqueness at root, GUID non-emptiness and
+//!   uniqueness, threading referential integrity, and article-index presence.
+//!
+//! Helpers:
+//! - Uses in-memory connections, `sqlite_names` catalogue readers, and the parent module's
+//!   `assert_upgrade_backfills`.
 
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};

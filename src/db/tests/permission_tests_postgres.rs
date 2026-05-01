@@ -1,11 +1,12 @@
-//! Permission cascade tests for the `PostgreSQL` backend.
+//! Permission cascade tests (`PostgreSQL`).
 //!
-//! Verifies that deleting a permission or a user triggers cascade deletion of
-//! the corresponding `user_permissions` join rows while leaving the other
-//! principal intact.  Tests run against either a `POSTGRES_TEST_URL` connection
-//! or an embedded `PostgreSQL` cluster; they are serialised via
-//! `serial_test::file_serial` to prevent concurrent access to the shared
-//! embedded cluster.
+//! Scope:
+//! - Asserts cascade deletion from `permissions` and from `users` to the `user_permissions` join
+//!   table; non-deleted principals remain.
+//!
+//! Utilities and execution model:
+//! - Runs against embedded or `POSTGRES_TEST_URL` connections and is serialised with
+//!   `serial_test::file_serial(postgres_embedded_setup)` to avoid shared cluster race conditions.
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
