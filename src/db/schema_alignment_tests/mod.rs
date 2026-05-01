@@ -4,6 +4,7 @@
 //! pre-4.1.1 news schema so later roadmap work can rely on the aligned
 //! persistence contract.
 
+use anyhow::Context;
 use chrono::NaiveDateTime;
 use diesel::{
     QueryableByName,
@@ -73,7 +74,10 @@ pub(crate) struct PermissionTestIds {
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn run_statements(conn: &mut DbConnection, statements: &[&str]) -> TestResult<()> {
     for &statement in statements {
-        sql_query(statement).execute(conn).await?;
+        sql_query(statement)
+            .execute(conn)
+            .await
+            .with_context(|| format!("failed executing SQL fragment: {statement}"))?;
     }
     Ok(())
 }
@@ -87,7 +91,10 @@ pub(crate) async fn run_sql_script(conn: &mut DbConnection, script: &str) -> Tes
         .map(str::trim)
         .filter(|sql| !sql.is_empty())
     {
-        sql_query(statement).execute(conn).await?;
+        sql_query(statement)
+            .execute(conn)
+            .await
+            .with_context(|| format!("failed executing SQL fragment: {statement}"))?;
     }
     Ok(())
 }
@@ -106,7 +113,10 @@ pub(crate) async fn assert_bundle_backfill(conn: &mut DbConnection) -> TestResul
             .is_some_and(|guid| !guid.trim().is_empty()),
         "expected non-empty bundle GUID after migration backfill"
     );
-    assert!(bundle.created_at.is_some());
+    anyhow::ensure!(
+        bundle.created_at.is_some(),
+        "expected created_at to be present after backfill"
+    );
     Ok(())
 }
 
@@ -135,9 +145,20 @@ async fn assert_category_backfill_for_id(
             .is_some_and(|guid| !guid.trim().is_empty()),
         "expected non-empty category GUID after migration backfill"
     );
-    assert_eq!(category.add_sn, Some(expected_add_sn));
-    assert_eq!(category.delete_sn, Some(0));
-    assert!(category.created_at.is_some());
+    anyhow::ensure!(
+        category.add_sn == Some(expected_add_sn),
+        "expected category add_sn to be {expected_add_sn}; got {:?}",
+        category.add_sn
+    );
+    anyhow::ensure!(
+        category.delete_sn == Some(0),
+        "expected category delete_sn to be 0; got {:?}",
+        category.delete_sn
+    );
+    anyhow::ensure!(
+        category.created_at.is_some(),
+        "expected category created_at to be present after backfill"
+    );
     Ok(())
 }
 
