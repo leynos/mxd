@@ -59,6 +59,15 @@ struct CategoryBackfillRow {
     created_at: Option<NaiveDateTime>,
 }
 
+/// Groups the three integer identifiers required by permission round-trip helpers
+/// so they can be passed as a single value rather than three separate primitives.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+pub(crate) struct PermissionTestIds {
+    pub(crate) user_id: i32,
+    pub(crate) permission_id: i32,
+    pub(crate) code: i32,
+}
+
 /// Executes each SQL statement in `statements` against `conn` in order,
 /// returning the first error encountered.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
@@ -132,7 +141,15 @@ pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestRes
     assert_bundle_backfill(conn).await?;
     assert_category_backfill(conn).await?;
     assert_empty_category_backfill(conn).await?;
-    assert_permission_round_trip_with_ids(conn, 84, 84, 84).await?;
+    assert_permission_round_trip_with_ids(
+        conn,
+        PermissionTestIds {
+            user_id: 84,
+            permission_id: 84,
+            code: 84,
+        },
+    )
+    .await?;
     #[cfg(feature = "sqlite")]
     sqlite_tests::assert_sqlite_article_indices(conn).await?;
     #[cfg(feature = "postgres")]
@@ -213,10 +230,13 @@ pub(crate) async fn setup_legacy_schema(
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 async fn seed_permission_round_trip(
     conn: &mut DbConnection,
-    user_id: i32,
-    permission_id: i32,
-    code: i32,
+    ids: PermissionTestIds,
 ) -> TestResult<()> {
+    let PermissionTestIds {
+        user_id,
+        permission_id,
+        code,
+    } = ids;
     run_statements(
         conn,
         &[
@@ -242,10 +262,9 @@ async fn seed_permission_round_trip(
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 async fn assert_permission_join_count(
     conn: &mut DbConnection,
-    user_id: i32,
-    _permission_id: i32,
-    code: i32,
+    ids: PermissionTestIds,
 ) -> TestResult<()> {
+    let PermissionTestIds { user_id, code, .. } = ids;
     let permissions = sql_query(format!(
         "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
          up.permission_id = p.id WHERE p.code = {code} AND p.description = 'News category \
@@ -264,10 +283,24 @@ async fn assert_permission_join_count(
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn assert_permission_round_trip_with_ids(
     conn: &mut DbConnection,
-    user_id: i32,
-    permission_id: i32,
-    code: i32,
+    ids: PermissionTestIds,
 ) -> TestResult<()> {
-    seed_permission_round_trip(conn, user_id, permission_id, code).await?;
-    assert_permission_join_count(conn, user_id, permission_id, code).await
+    seed_permission_round_trip(
+        conn,
+        PermissionTestIds {
+            user_id: ids.user_id,
+            permission_id: ids.permission_id,
+            code: ids.code,
+        },
+    )
+    .await?;
+    assert_permission_join_count(
+        conn,
+        PermissionTestIds {
+            user_id: ids.user_id,
+            permission_id: ids.permission_id,
+            code: ids.code,
+        },
+    )
+    .await
 }

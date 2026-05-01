@@ -9,6 +9,7 @@ use test_util::postgres::PostgresTestDb;
 use super::{
     DbConnection,
     NameRow,
+    PermissionTestIds,
     TestResult,
     apply_migrations,
     assert_permission_round_trip_with_ids,
@@ -180,7 +181,15 @@ async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> TestResult<(
 }
 
 async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()> {
-    assert_permission_round_trip_with_ids(conn, 42, 42, 34).await
+    assert_permission_round_trip_with_ids(
+        conn,
+        PermissionTestIds {
+            user_id: 42,
+            permission_id: 42,
+            code: 34,
+        },
+    )
+    .await
 }
 
 fn is_ci() -> bool { std::env::var("CI").is_ok_and(|value| !value.is_empty()) }
