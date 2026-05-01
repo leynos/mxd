@@ -98,23 +98,25 @@ async fn assert_threading_integrity(
     ids: &ThreadSeedIds,
 ) -> TestResult<()> {
     let rid = &ids.root_article;
+    let chid = &ids.child_article;
     let linked = postgres_names(
         conn,
         &format!(
-            "SELECT a.id::text AS name FROM news_articles a INNER JOIN news_articles child ON \
+            "SELECT child.id::text AS name FROM news_articles a INNER JOIN news_articles child ON \
              child.id = a.first_child_article_id WHERE a.id = {rid}"
         ),
     )
     .await?;
     assert_eq!(linked.len(), 1, "root article must link to its child");
-    assert_eq!(linked[0], *rid, "linked root id must match");
+    assert_eq!(linked[0], *chid, "linked child id must match");
     Ok(())
 }
 
-async fn assert_missing_parent_is_rejected(
+async fn assert_missing_references_are_rejected(
     conn: &mut DbConnection,
-    category_id: &str,
+    ids: &ThreadSeedIds,
 ) -> TestResult<()> {
+    let category_id = &ids.category;
     let bad_insert = sql_query(format!(
         "INSERT INTO news_articles (category_id, parent_article_id, title, posted_at) VALUES \
          ({category_id}, 999999, 'Orphan', NOW())"
@@ -124,6 +126,16 @@ async fn assert_missing_parent_is_rejected(
     assert!(
         bad_insert.is_err(),
         "insert with non-existent parent_article_id must be rejected"
+    );
+    let rid = &ids.root_article;
+    let bad_update = sql_query(format!(
+        "UPDATE news_articles SET first_child_article_id = 999999 WHERE id = {rid}"
+    ))
+    .execute(conn)
+    .await;
+    assert!(
+        bad_update.is_err(),
+        "update with non-existent first_child_article_id must be rejected"
     );
     Ok(())
 }
@@ -144,6 +156,6 @@ fn postgres_article_threading_enforces_referential_integrity() -> TestResult<()>
         );
         link_root_to_child(&mut conn, &ids).await?;
         assert_threading_integrity(&mut conn, &ids).await?;
-        assert_missing_parent_is_rejected(&mut conn, &ids.category).await
+        assert_missing_references_are_rejected(&mut conn, &ids).await
     })
 }
