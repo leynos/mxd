@@ -141,6 +141,15 @@ pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestRes
     assert_bundle_backfill(conn).await?;
     assert_category_backfill(conn).await?;
     assert_empty_category_backfill(conn).await?;
+    seed_permission_round_trip(
+        conn,
+        PermissionTestIds {
+            user_id: 84,
+            permission_id: 84,
+            code: 84,
+        },
+    )
+    .await?;
     assert_permission_round_trip_with_ids(
         conn,
         PermissionTestIds {
@@ -161,7 +170,7 @@ pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestRes
 /// insert with the same name and a `NULL` `bundle_id` fails with a constraint
 /// error, validating the partial unique index on root categories.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-pub(crate) async fn assert_root_category_names_are_unique(
+pub(crate) async fn verify_root_category_names_are_unique_with_constraint_insert(
     conn: &mut DbConnection,
 ) -> TestResult<()> {
     sql_query(
@@ -276,31 +285,13 @@ async fn assert_permission_join_count(
     Ok(())
 }
 
-/// Inserts a user, a permission, and a `user_permissions` join row using the
-/// supplied `user_id`, `permission_id`, and `code`, then asserts the join
-/// returns exactly one matching row.  Used to validate the permissions schema
-/// after both fresh migration and upgrade paths.
+/// Asserts a seeded user, permission, and `user_permissions` join row returns
+/// exactly one matching row.  Used to validate the permissions schema after
+/// both fresh migration and upgrade paths.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub(crate) async fn assert_permission_round_trip_with_ids(
     conn: &mut DbConnection,
     ids: PermissionTestIds,
 ) -> TestResult<()> {
-    seed_permission_round_trip(
-        conn,
-        PermissionTestIds {
-            user_id: ids.user_id,
-            permission_id: ids.permission_id,
-            code: ids.code,
-        },
-    )
-    .await?;
-    assert_permission_join_count(
-        conn,
-        PermissionTestIds {
-            user_id: ids.user_id,
-            permission_id: ids.permission_id,
-            code: ids.code,
-        },
-    )
-    .await
+    assert_permission_join_count(conn, ids).await
 }

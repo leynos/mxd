@@ -18,9 +18,9 @@ use super::{
     NameRow,
     TestResult,
     apply_migrations,
-    assert_root_category_names_are_unique,
     assert_upgrade_backfills,
     setup_legacy_schema,
+    verify_root_category_names_are_unique_with_constraint_insert,
 };
 
 async fn sqlite_conn() -> TestResult<DbConnection> {
@@ -244,7 +244,7 @@ pub(super) async fn assert_sqlite_article_indices(conn: &mut DbConnection) -> Te
 async fn assert_sqlite_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_sqlite_permission_schema(conn).await?;
     assert_sqlite_news_schema(conn).await?;
-    assert_root_category_names_are_unique(conn).await
+    verify_root_category_names_are_unique_with_constraint_insert(conn).await
 }
 
 #[tokio::test]

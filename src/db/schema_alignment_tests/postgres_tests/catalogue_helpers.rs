@@ -22,8 +22,9 @@ use super::super::{
     NameRow,
     TestResult,
     assert_permission_round_trip_with_ids,
-    assert_root_category_names_are_unique,
+    seed_permission_round_trip,
     setup_legacy_schema,
+    verify_root_category_names_are_unique_with_constraint_insert,
 };
 
 pub(super) async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
@@ -186,10 +187,19 @@ async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> 
 pub(super) async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_postgres_permission_schema(conn).await?;
     assert_postgres_news_schema(conn).await?;
-    assert_root_category_names_are_unique(conn).await
+    verify_root_category_names_are_unique_with_constraint_insert(conn).await
 }
 
 pub(super) async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()> {
+    seed_permission_round_trip(
+        conn,
+        super::super::PermissionTestIds {
+            user_id: 42,
+            permission_id: 42,
+            code: 34,
+        },
+    )
+    .await?;
     assert_permission_round_trip_with_ids(
         conn,
         super::super::PermissionTestIds {
