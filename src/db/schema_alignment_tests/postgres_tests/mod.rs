@@ -123,6 +123,32 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
             assert!(!guid.is_empty(), "GUID must not be empty");
         }
         assert_ne!(guids[0], guids[1], "GUIDs must be unique across rows");
+
+        let bundle_ids = postgres_names(
+            &mut conn,
+            "SELECT id::text AS name FROM news_bundles ORDER BY id",
+        )
+        .await?;
+        let (bid1, bid2) = (&bundle_ids[0], &bundle_ids[1]);
+        sql_query(format!(
+            "INSERT INTO news_categories (name, bundle_id) VALUES ('CA', {bid1}), ('CB', {bid2})"
+        ))
+        .execute(&mut conn)
+        .await?;
+
+        let category_guids = postgres_names(
+            &mut conn,
+            "SELECT guid AS name FROM news_categories ORDER BY id",
+        )
+        .await?;
+        assert_eq!(category_guids.len(), 2, "expected two category rows");
+        for guid in &category_guids {
+            assert!(!guid.is_empty(), "category GUID must not be empty");
+        }
+        assert_ne!(
+            category_guids[0], category_guids[1],
+            "category GUIDs must be unique across rows"
+        );
         Ok(())
     })
 }
