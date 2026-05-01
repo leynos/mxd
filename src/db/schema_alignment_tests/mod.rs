@@ -105,7 +105,8 @@ pub(crate) async fn run_sql_script(conn: &mut DbConnection, script: &str) -> Tes
 pub(crate) async fn assert_bundle_backfill(conn: &mut DbConnection) -> TestResult<()> {
     let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
         .get_result::<BundleBackfillRow>(conn)
-        .await?;
+        .await
+        .context("LOAD news_bundles backfill row")?;
     anyhow::ensure!(
         bundle
             .guid
@@ -137,7 +138,8 @@ async fn assert_category_backfill_for_id(
         "SELECT guid, add_sn, delete_sn, created_at FROM news_categories WHERE id = {category_id}"
     ))
     .get_result::<CategoryBackfillRow>(conn)
-    .await?;
+    .await
+    .with_context(|| format!("LOAD news_categories backfill row id={category_id}"))?;
     anyhow::ensure!(
         category
             .guid
@@ -147,13 +149,13 @@ async fn assert_category_backfill_for_id(
     );
     anyhow::ensure!(
         category.add_sn == Some(expected_add_sn),
-        "expected category add_sn to be {expected_add_sn}; got {:?}",
-        category.add_sn
+        "expected category add_sn to be {expected_add_sn}; got {add_sn:?}",
+        add_sn = category.add_sn
     );
     anyhow::ensure!(
         category.delete_sn == Some(0),
-        "expected category delete_sn to be 0; got {:?}",
-        category.delete_sn
+        "expected category delete_sn to be 0; got {delete_sn:?}",
+        delete_sn = category.delete_sn
     );
     anyhow::ensure!(
         category.created_at.is_some(),
@@ -174,15 +176,6 @@ pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestRes
     assert_bundle_backfill(conn).await?;
     assert_category_backfill(conn).await?;
     assert_empty_category_backfill(conn).await?;
-    seed_permission_round_trip(
-        conn,
-        PermissionTestIds {
-            user_id: 84,
-            permission_id: 84,
-            code: 84,
-        },
-    )
-    .await?;
     assert_permission_round_trip_with_ids(
         conn,
         PermissionTestIds {
@@ -199,26 +192,34 @@ pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestRes
     Ok(())
 }
 
-/// Inserts a root category named `'Root Duplicate'` and asserts that a second
-/// insert with the same name and a `NULL` `bundle_id` fails with a constraint
-/// error, validating the partial unique index on root categories.
+/// Inserts a root category named `'Root Duplicate'`, then attempts a second
+/// insert with the same name and a `NULL` `bundle_id`.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-pub(crate) async fn verify_root_category_names_are_unique_with_constraint_insert(
-    conn: &mut DbConnection,
-) -> TestResult<()> {
+pub(crate) async fn seed_root_category_name_conflict(conn: &mut DbConnection) -> TestResult<()> {
     sql_query(
         "INSERT INTO news_categories (id, bundle_id, name) VALUES (9001, NULL, 'Root Duplicate')",
     )
     .execute(conn)
-    .await?;
+    .await
+    .context("EXECUTE insert initial root category conflict row")?;
 
-    let duplicate = sql_query(
+    sql_query(
         "INSERT INTO news_categories (id, bundle_id, name) VALUES (9002, NULL, 'Root Duplicate')",
     )
     .execute(conn)
-    .await;
+    .await
+    .context("EXECUTE insert duplicate root category conflict row")?;
+    Ok(())
+}
+
+/// Asserts that a root-category conflict seed result failed with a constraint
+/// error, validating the partial unique index on root categories.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+pub(crate) async fn verify_root_category_constraint_error(
+    conflict_result: TestResult<()>,
+) -> TestResult<()> {
     anyhow::ensure!(
-        duplicate.is_err(),
+        conflict_result.is_err(),
         "Expected duplicate insert to fail due to unique constraint"
     );
     Ok(())
@@ -320,7 +321,8 @@ async fn assert_permission_join_count(
          permission {code}' AND up.user_id = {user_id} AND up.permission_id = {permission_id}"
     ))
     .get_result::<CountRow>(conn)
-    .await?;
+    .await
+    .context("LOAD permissions join round-trip count")?;
     anyhow::ensure!(
         permissions.count == 1,
         "Expected exactly one permission; unexpected permissions.count: {}",

@@ -6,6 +6,7 @@
 //! references to non-existent articles.  Tests run against an embedded
 //! `PostgreSQL` cluster and are serialised via `serial_test::file_serial`.
 
+use anyhow::Context;
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 
@@ -93,7 +94,8 @@ async fn link_root_to_child(conn: &mut DbConnection, ids: &ThreadSeedIds) -> Tes
         "UPDATE news_articles SET first_child_article_id = {chid} WHERE id = {rid}"
     ))
     .execute(conn)
-    .await?;
+    .await
+    .context("EXECUTE link Postgres root article to child")?;
     Ok(())
 }
 
