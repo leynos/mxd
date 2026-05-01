@@ -33,6 +33,38 @@ make lint WHITAKER=/opt/custom/bin/whitaker
 The fallback is a one-time check at parse time; it does not introduce a runtime
 dependency on shell availability.
 
+
+### Makefile PATH handling
+
+`TOOL_PATH_PREFIX` is built from the resolved Cargo binary directory, the
+resolved Whitaker binary directory, and `~/.local/bin`:
+
+```make
+TOOL_PATH_PREFIX := $(shell printf '%s\n' \
+  "$(CARGO_BIN_DIR)" "$(WHITAKER_BIN_DIR)" "$(LOCAL_BIN_DIR)" \
+  | awk 'NF { printf "%s%s", sep, $$0; sep=":" }')
+```
+
+The lint targets prepend this prefix only for Whitaker invocations:
+
+```sh
+PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" \
+  RUSTFLAGS="-D warnings" \
+  whitaker --all -- --no-default-features --features "postgres test-support legacy-networking"
+```
+
+This keeps the same Cargo executable family, the resolved Whitaker binary, and
+user-local tools ahead of the ambient shell `PATH` while avoiding an empty
+current-directory entry. The Clippy lines still use `$(CARGO)` directly; the
+PATH override is specifically for tools that are invoked as subprocesses during
+lint runs.
+
+To inspect the effective prefix for a local shell, ask `make` to print it:
+
+```sh
+make -pn | grep '^TOOL_PATH_PREFIX :='
+```
+
 ## PostgreSQL test helper
 
 Install the helper once:
@@ -341,6 +373,85 @@ historical migration directories.
 - Validate news schema changes with the backend-specific migration regression
   tests in `src/db/schema_alignment_tests/` and with the routing behaviour
   scenarios that exercise migrated databases.
+
+
+### Schema alignment test harness (`src/db/schema_alignment_tests/`)
+
+The schema-alignment tests are split by shared helpers and backend-specific
+behaviour:
+
+- `mod.rs`: shared migration runners, seed helpers, backfill assertions, and
+  common row types used by both backends.
+- `sqlite_tests.rs`: in-memory SQLite setup, legacy-schema rebuilds, catalogue
+  checks through SQLite PRAGMA queries, and SQLite-specific behaviour tests.
+- `postgres_tests/mod.rs`: PostgreSQL test entry points for fresh migration,
+  legacy upgrade, scoped category uniqueness, and GUID behaviour.
+- `postgres_tests/catalogue_helpers.rs`: PostgreSQL catalogue readers and
+  assertions for tables, columns, indexes, constraints, permissions, and the
+  database harness.
+- `postgres_tests/threading.rs`: article-threading behaviour tests for
+  self-referential `news_articles` links.
+
+The shared helper surface is intentionally split between writers and readers:
+
+- `run_statements` executes a sequence of SQL statements in order.
+- `run_sql_script` splits migration SQL into individual statements before
+  execution.
+- `verify_root_category_names_are_unique_with_constraint_insert` performs an
+  insert-based constraint verification and is named `verify_` because it writes
+  test rows.
+- `seed_permission_round_trip` inserts the user, permission, and join rows used
+  by permission smoke tests.
+- `assert_permission_join_count` is the read-only assertion that checks the
+  seeded permission join.
+
+SQLite tests run against a fresh in-memory database per test or fixture.
+PostgreSQL tests run through `with_postgres_test_db`, which creates an isolated
+database using `POSTGRES_TEST_URL` when supplied or an embedded PostgreSQL
+cluster otherwise. PostgreSQL tests use `serial_test::file_serial` locks so the
+embedded cluster setup and teardown are not raced by concurrent tests.
+
+Run only the SQLite schema-alignment tests with:
+
+```sh
+RUSTFLAGS="-D warnings" \
+  cargo nextest run --features "sqlite test-support" \
+  db::schema_alignment_tests::sqlite_tests
+```
+
+Run only the PostgreSQL schema-alignment tests with:
+
+```sh
+RUSTFLAGS="-D warnings" \
+  cargo nextest run --no-default-features \
+  --features "postgres test-support legacy-networking" \
+  db::schema_alignment_tests::postgres_tests
+```
+
+
+### Model field semantics (`guid`, `created_at`, `add_sn`, `delete_sn`)
+
+The aligned news schema adds metadata fields that make legacy rows structurally
+complete after migration:
+
+- `guid`: stable external identifier for bundles and categories. It is
+  non-null at rest after migration and is populated for legacy rows during the
+  backfill. Fresh inserts use database defaults or write-model values when
+  provided.
+- `created_at`: creation timestamp for bundles and categories. It is non-null
+  at rest after migration and is backfilled for legacy rows at migration time.
+  Fresh inserts use the database timestamp default unless the caller provides a
+  value through the write model.
+- `add_sn`: category add serial number. During migration it is set from the
+  article count that exists for the category at that moment. There is no
+  trigger that increments it when later articles are inserted.
+- `delete_sn`: category delete serial number. The migration backfills it to
+  zero for existing categories and new rows rely on schema/write-model defaults
+  unless an explicit value is supplied.
+
+Tests should distinguish migration-time backfill semantics from runtime insert
+semantics. A fresh database category can have `add_sn = 0` even after articles
+are inserted in the same test because no trigger updates the field.
 
 ## Wireframe adapter context handoff
 
