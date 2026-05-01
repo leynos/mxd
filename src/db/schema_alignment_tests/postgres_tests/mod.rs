@@ -5,7 +5,9 @@
 //! column order, indexes, constraints, and backfill values on the `PostgreSQL`
 //! backend.  Tests are run against either a `POSTGRES_TEST_URL` connection or
 //! an embedded `PostgreSQL` cluster started by `pg-embed-setup-unpriv`; they
-//! skip gracefully when neither is available.
+//! skip gracefully when neither is available.  All test functions are
+//! serialised via `serial_test::file_serial` to prevent concurrent access to
+//! the shared embedded cluster.
 
 mod catalogue_helpers;
 mod threading;

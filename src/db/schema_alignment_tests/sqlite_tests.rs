@@ -4,7 +4,7 @@
 //! upgrade from the pre-4.1.1 schema produce the expected table structure,
 //! column lists, indexes, constraints, and backfill values on the `SQLite`
 //! backend using an in-memory database.  Each test function creates a new
-//! connection and migration state in isolation.
+//! connection and migration state in isolation via `rstest` fixtures.
 
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
