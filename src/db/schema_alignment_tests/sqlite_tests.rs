@@ -337,12 +337,12 @@ async fn sqlite_article_threading_enforces_referential_integrity() -> TestResult
 
     // Verify the threading link via a JOIN query
     let linked = diesel::sql_query(
-        "SELECT a.id AS name FROM news_articles a INNER JOIN news_articles child ON child.id = \
-         a.first_child_article_id WHERE a.id = 1",
+        "SELECT child.id AS name FROM news_articles a INNER JOIN news_articles child ON child.id \
+         = a.first_child_article_id WHERE a.id = 1",
     )
     .get_result::<super::NameRow>(&mut conn)
     .await?;
-    assert_eq!(linked.name, "1", "root article must link to its child");
+    assert_eq!(linked.name, "2", "root article must link to its child");
 
     // Referential integrity: inserting an article with a non-existent parent must fail
     // (PRAGMA foreign_keys must be ON; SQLite pragmas are connection-scoped)
@@ -358,6 +358,15 @@ async fn sqlite_article_threading_enforces_referential_integrity() -> TestResult
     assert!(
         bad_insert.is_err(),
         "insert with non-existent parent_article_id must be rejected when FK enforcement is on"
+    );
+    let bad_update =
+        diesel::sql_query("UPDATE news_articles SET first_child_article_id = 9999 WHERE id = 1")
+            .execute(&mut conn)
+            .await;
+    assert!(
+        bad_update.is_err(),
+        "update with non-existent first_child_article_id must be rejected when FK enforcement is \
+         on"
     );
     Ok(())
 }
