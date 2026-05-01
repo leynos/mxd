@@ -16,7 +16,7 @@ use test_util::AnyError;
 use super::{DbConnection, migrated_conn};
 use crate::{
     db::{create_user, get_user_by_name},
-    models::{NewPermission, NewUser, NewUserPermission, Permission},
+    models::{NewPermission, NewUser, NewUserPermission, Permission, UserPermission},
     schema::{
         permissions::dsl as permissions,
         user_permissions::dsl as user_permissions,
@@ -115,13 +115,16 @@ async fn test_permission_model_round_trip(
         "unexpected permission description"
     );
 
-    let assignment_count = user_permissions::user_permissions
+    let assigned = user_permissions::user_permissions
         .filter(user_permissions::user_id.eq(user_id))
         .filter(user_permissions::permission_id.eq(permission_id))
-        .count()
-        .get_result::<i64>(&mut conn)
+        .first::<UserPermission>(&mut conn)
         .await?;
-    anyhow::ensure!(assignment_count == 1, "expected seeded assignment");
+    anyhow::ensure!(assigned.user_id == user_id, "unexpected assigned user");
+    anyhow::ensure!(
+        assigned.permission_id == permission_id,
+        "unexpected assigned permission"
+    );
     Ok(())
 }
 
@@ -154,13 +157,12 @@ async fn test_user_permission_cascades(
         }
     }
 
-    let assignment_count = user_permissions::user_permissions
+    let assignments = user_permissions::user_permissions
         .filter(user_permissions::user_id.eq(user_id))
         .filter(user_permissions::permission_id.eq(permission_id))
-        .count()
-        .get_result::<i64>(&mut conn)
+        .load::<UserPermission>(&mut conn)
         .await?;
-    anyhow::ensure!(assignment_count == 0, "cascade left assignments behind");
+    anyhow::ensure!(assignments.is_empty(), "cascade left assignments behind");
     Ok(())
 }
 

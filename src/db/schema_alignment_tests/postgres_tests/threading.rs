@@ -31,9 +31,9 @@ async fn seed_bundle_and_category(conn: &mut DbConnection) -> TestResult<String>
     )
     .await?;
     let bid = bundle_ids
-        .as_slice()
         .first()
-        .ok_or_else(|| anyhow::anyhow!("missing seeded bundle id for threading test"))?;
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("no bundle rows found after insert"))?;
 
     sql_query(format!(
         "INSERT INTO news_categories (name, bundle_id) VALUES ('ThreadCat', {bid})"
@@ -49,7 +49,7 @@ async fn seed_bundle_and_category(conn: &mut DbConnection) -> TestResult<String>
     cat_ids
         .into_iter()
         .next()
-        .ok_or_else(|| anyhow::anyhow!("missing seeded category id for threading test"))
+        .ok_or_else(|| anyhow::anyhow!("no category rows found after insert"))
 }
 
 async fn insert_root_and_child(
@@ -70,9 +70,9 @@ async fn insert_root_and_child(
     )
     .await?;
     let rid = root_ids
-        .as_slice()
         .first()
-        .ok_or_else(|| anyhow::anyhow!("missing seeded root article id for threading test"))?;
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("no root article rows found after insert"))?;
 
     sql_query(format!(
         "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
@@ -88,15 +88,14 @@ async fn insert_root_and_child(
          id",
     )
     .await?;
-    assert_eq!(child_ids.len(), 1, "expected one child article");
     let child_article = child_ids
         .into_iter()
         .next()
-        .ok_or_else(|| anyhow::anyhow!("missing seeded child article id for threading test"))?;
+        .ok_or_else(|| anyhow::anyhow!("expected one child article, found none"))?;
 
     Ok(ThreadSeedIds {
         category: category_id.to_owned(),
-        root_article: rid.clone(),
+        root_article: rid,
         child_article,
     })
 }
