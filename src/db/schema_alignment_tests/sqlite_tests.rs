@@ -2,6 +2,7 @@
 
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use rstest::{fixture, rstest};
 
 use super::{
     DbConnection,
@@ -16,6 +17,77 @@ use super::{
 async fn sqlite_conn() -> TestResult<DbConnection> {
     let mut conn = DbConnection::establish(":memory:").await?;
     apply_migrations(&mut conn, "", None).await?;
+    Ok(conn)
+}
+
+#[fixture]
+async fn two_bundle_db() -> TestResult<DbConnection> {
+    let mut conn = sqlite_conn().await?;
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'A')",
+    )
+    .execute(&mut conn)
+    .await?;
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (2, NULL, 'B')",
+    )
+    .execute(&mut conn)
+    .await?;
+    Ok(conn)
+}
+
+#[fixture]
+async fn add_sn_db(#[future] two_bundle_db: TestResult<DbConnection>) -> TestResult<DbConnection> {
+    let mut conn = two_bundle_db.await?;
+    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'WithTwo', 1)")
+        .execute(&mut conn)
+        .await?;
+    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'Empty', 1)")
+        .execute(&mut conn)
+        .await?;
+
+    for i in 1_i32..=2 {
+        diesel::sql_query(format!(
+            "INSERT INTO news_articles (id, category_id, title, posted_at) VALUES ({i}, 1, \
+             'Article {i}', '2026-01-01 00:00:00')"
+        ))
+        .execute(&mut conn)
+        .await?;
+    }
+    Ok(conn)
+}
+
+#[fixture]
+async fn threaded_articles_db() -> TestResult<DbConnection> {
+    let mut conn = sqlite_conn().await?;
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'ThreadBundle')",
+    )
+    .execute(&mut conn)
+    .await?;
+    diesel::sql_query(
+        "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'ThreadCat', 1)",
+    )
+    .execute(&mut conn)
+    .await?;
+
+    diesel::sql_query(
+        "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
+         next_article_id, first_child_article_id, title, posted_at) VALUES (1, 1, NULL, NULL, \
+         NULL, NULL, 'Root', '2026-01-01 00:00:00')",
+    )
+    .execute(&mut conn)
+    .await?;
+    diesel::sql_query(
+        "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
+         next_article_id, first_child_article_id, title, posted_at) VALUES (2, 1, 1, NULL, NULL, \
+         NULL, 'Child', '2026-01-02 00:00:00')",
+    )
+    .execute(&mut conn)
+    .await?;
+    diesel::sql_query("UPDATE news_articles SET first_child_article_id = 2 WHERE id = 1")
+        .execute(&mut conn)
+        .await?;
     Ok(conn)
 }
 
@@ -183,22 +255,12 @@ async fn sqlite_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     assert_sqlite_aligned_schema(&mut conn).await
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
 #[tokio::test]
-async fn sqlite_category_names_are_bundle_scoped() -> TestResult<()> {
-    let mut conn = sqlite_conn().await?;
-
-    // Two bundles
-    diesel::sql_query(
-        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'A')",
-    )
-    .execute(&mut conn)
-    .await?;
-    diesel::sql_query(
-        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (2, NULL, 'B')",
-    )
-    .execute(&mut conn)
-    .await?;
+async fn sqlite_category_names_are_bundle_scoped(
+    #[future] two_bundle_db: TestResult<DbConnection>,
+) -> TestResult<()> {
+    let mut conn = two_bundle_db.await?;
 
     // Same name in different bundles must succeed
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'Sports', 1)")
@@ -221,21 +283,12 @@ async fn sqlite_category_names_are_bundle_scoped() -> TestResult<()> {
     Ok(())
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
 #[tokio::test]
-async fn sqlite_guids_are_non_empty_and_unique() -> TestResult<()> {
-    let mut conn = sqlite_conn().await?;
-
-    diesel::sql_query(
-        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'BundleA')",
-    )
-    .execute(&mut conn)
-    .await?;
-    diesel::sql_query(
-        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (2, NULL, 'BundleB')",
-    )
-    .execute(&mut conn)
-    .await?;
+async fn sqlite_guids_are_non_empty_and_unique(
+    #[future] two_bundle_db: TestResult<DbConnection>,
+) -> TestResult<()> {
+    let mut conn = two_bundle_db.await?;
 
     let guids = sqlite_names(
         &mut conn,
@@ -250,32 +303,12 @@ async fn sqlite_guids_are_non_empty_and_unique() -> TestResult<()> {
     Ok(())
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
 #[tokio::test]
-async fn sqlite_add_sn_defaults_zero() -> TestResult<()> {
-    let mut conn = sqlite_conn().await?;
-
-    diesel::sql_query(
-        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'TestBundle')",
-    )
-    .execute(&mut conn)
-    .await?;
-    // Verify add_sn defaults to 0 for fresh inserts and empty categories.
-    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'WithTwo', 1)")
-        .execute(&mut conn)
-        .await?;
-    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'Empty', 1)")
-        .execute(&mut conn)
-        .await?;
-
-    for i in 1_i32..=2 {
-        diesel::sql_query(format!(
-            "INSERT INTO news_articles (id, category_id, title, posted_at) VALUES ({i}, 1, \
-             'Article {i}', '2026-01-01 00:00:00')"
-        ))
-        .execute(&mut conn)
-        .await?;
-    }
+async fn sqlite_add_sn_defaults_zero(
+    #[future] add_sn_db: TestResult<DbConnection>,
+) -> TestResult<()> {
+    let mut conn = add_sn_db.await?;
 
     let add_sn_row = diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 1")
         .get_result::<super::NameRow>(&mut conn)
@@ -302,44 +335,12 @@ async fn sqlite_add_sn_defaults_zero() -> TestResult<()> {
     Ok(())
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[rstest]
 #[tokio::test]
-async fn sqlite_article_threading_enforces_referential_integrity() -> TestResult<()> {
-    let mut conn = sqlite_conn().await?;
-
-    diesel::sql_query(
-        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'ThreadBundle')",
-    )
-    .execute(&mut conn)
-    .await?;
-    diesel::sql_query(
-        "INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'ThreadCat', 1)",
-    )
-    .execute(&mut conn)
-    .await?;
-
-    // Root article
-    diesel::sql_query(
-        "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
-         next_article_id, first_child_article_id, title, posted_at) VALUES (1, 1, NULL, NULL, \
-         NULL, NULL, 'Root', '2026-01-01 00:00:00')",
-    )
-    .execute(&mut conn)
-    .await?;
-
-    // Child article referencing root via parent_article_id
-    diesel::sql_query(
-        "INSERT INTO news_articles (id, category_id, parent_article_id, prev_article_id, \
-         next_article_id, first_child_article_id, title, posted_at) VALUES (2, 1, 1, NULL, NULL, \
-         NULL, 'Child', '2026-01-02 00:00:00')",
-    )
-    .execute(&mut conn)
-    .await?;
-
-    // Update root to point first_child_article_id at child
-    diesel::sql_query("UPDATE news_articles SET first_child_article_id = 2 WHERE id = 1")
-        .execute(&mut conn)
-        .await?;
+async fn sqlite_article_threading_enforces_referential_integrity(
+    #[future] threaded_articles_db: TestResult<DbConnection>,
+) -> TestResult<()> {
+    let mut conn = threaded_articles_db.await?;
 
     // Verify the threading link via a JOIN query
     let linked = diesel::sql_query(
