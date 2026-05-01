@@ -145,37 +145,40 @@ async fn seed_bundles_for_guid_test(conn: &mut DbConnection) -> TestResult<(Stri
     Ok((bid1, bid2))
 }
 
-async fn assert_bundle_guids_and_created_at(
+async fn assert_pg_guids_and_created_at(
     conn: &mut DbConnection,
+    table: &str,
     expected_rows: usize,
+    label: &str,
 ) -> TestResult<()> {
-    let guids = postgres_names(conn, "SELECT guid AS name FROM news_bundles ORDER BY id").await?;
+    let guid_sql = format!("SELECT guid AS name FROM {table} ORDER BY id");
+    let guids = postgres_names(conn, &guid_sql).await?;
     anyhow::ensure!(
         guids.len() == expected_rows,
-        "expected two bundle rows, got {actual_rows}",
+        "expected {expected_rows} {label} rows, got {actual_rows}",
         actual_rows = guids.len()
     );
     for guid in &guids {
-        anyhow::ensure!(!guid.is_empty(), "GUID must not be empty");
+        anyhow::ensure!(!guid.is_empty(), "{label} GUID must not be empty");
     }
     let guid_set: std::collections::HashSet<_> = guids.iter().collect();
     anyhow::ensure!(
         guid_set.len() == guids.len(),
-        "GUIDs must be unique across rows"
+        "{label} GUIDs must be unique across rows"
     );
 
-    let bundle_created_at = postgres_names(
-        conn,
-        "SELECT created_at::text AS name FROM news_bundles ORDER BY id",
-    )
-    .await?;
+    let created_at_sql = format!("SELECT created_at::text AS name FROM {table} ORDER BY id");
+    let created_at_values = postgres_names(conn, &created_at_sql).await?;
     anyhow::ensure!(
-        bundle_created_at.len() == expected_rows,
-        "expected two bundle rows, got {actual_rows}",
-        actual_rows = bundle_created_at.len()
+        created_at_values.len() == expected_rows,
+        "expected {expected_rows} {label} rows, got {actual_rows}",
+        actual_rows = created_at_values.len()
     );
-    for created_at in &bundle_created_at {
-        anyhow::ensure!(!created_at.is_empty(), "created_at must not be empty");
+    for created_at in &created_at_values {
+        anyhow::ensure!(
+            !created_at.is_empty(),
+            "{label} created_at must not be empty"
+        );
     }
     Ok(())
 }
@@ -194,44 +197,6 @@ async fn seed_categories_for_guid_test(
     Ok(())
 }
 
-async fn assert_category_guids_and_created_at(
-    conn: &mut DbConnection,
-    expected_rows: usize,
-) -> TestResult<()> {
-    let category_guids =
-        postgres_names(conn, "SELECT guid AS name FROM news_categories ORDER BY id").await?;
-    anyhow::ensure!(
-        category_guids.len() == expected_rows,
-        "expected two category rows, got {actual_rows}",
-        actual_rows = category_guids.len()
-    );
-    for guid in &category_guids {
-        anyhow::ensure!(!guid.is_empty(), "category GUID must not be empty");
-    }
-    let category_guid_set: std::collections::HashSet<_> = category_guids.iter().collect();
-    anyhow::ensure!(
-        category_guid_set.len() == category_guids.len(),
-        "category GUIDs must be unique"
-    );
-    let category_created_at = postgres_names(
-        conn,
-        "SELECT created_at::text AS name FROM news_categories ORDER BY id",
-    )
-    .await?;
-    anyhow::ensure!(
-        category_created_at.len() == expected_rows,
-        "expected two category rows, got {actual_rows}",
-        actual_rows = category_created_at.len()
-    );
-    for created_at in &category_created_at {
-        anyhow::ensure!(
-            !created_at.is_empty(),
-            "category created_at must not be empty"
-        );
-    }
-    Ok(())
-}
-
 #[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
@@ -240,8 +205,8 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
         apply_migrations(&mut conn, &url, None).await?;
 
         let (bid1, bid2) = seed_bundles_for_guid_test(&mut conn).await?;
-        assert_bundle_guids_and_created_at(&mut conn, 2).await?;
+        assert_pg_guids_and_created_at(&mut conn, "news_bundles", 2, "bundle").await?;
         seed_categories_for_guid_test(&mut conn, &bid1, &bid2).await?;
-        assert_category_guids_and_created_at(&mut conn, 2).await
+        assert_pg_guids_and_created_at(&mut conn, "news_categories", 2, "category").await
     })
 }
