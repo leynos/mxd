@@ -107,7 +107,112 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
     })
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+async fn seed_bundles_for_guid_test(conn: &mut DbConnection) -> TestResult<()> {
+    sql_query(
+        "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'GA'), (NULL, 'GB')",
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+async fn assert_bundle_guids_and_created_at(
+    conn: &mut DbConnection,
+    expected_rows: usize,
+) -> TestResult<()> {
+    let guids = postgres_names(conn, "SELECT guid AS name FROM news_bundles ORDER BY id").await?;
+    anyhow::ensure!(guids.len() == expected_rows, "expected two bundle rows");
+    for guid in &guids {
+        anyhow::ensure!(!guid.is_empty(), "GUID must not be empty");
+    }
+    let guid_set: std::collections::HashSet<_> = guids.iter().collect();
+    anyhow::ensure!(
+        guid_set.len() == guids.len(),
+        "GUIDs must be unique across rows"
+    );
+
+    let bundle_created_at = postgres_names(
+        conn,
+        "SELECT created_at::text AS name FROM news_bundles ORDER BY id",
+    )
+    .await?;
+    anyhow::ensure!(
+        bundle_created_at.len() == expected_rows,
+        "expected two bundle rows"
+    );
+    for created_at in &bundle_created_at {
+        anyhow::ensure!(!created_at.is_empty(), "created_at must not be empty");
+    }
+    Ok(())
+}
+
+async fn fetch_two_bundle_ids(conn: &mut DbConnection) -> TestResult<(String, String)> {
+    let bundle_ids = postgres_names(
+        conn,
+        "SELECT id::text AS name FROM news_bundles ORDER BY id",
+    )
+    .await?;
+    let bid1 = bundle_ids
+        .as_slice()
+        .first()
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("missing bundle id 1"))?;
+    let bid2 = bundle_ids
+        .get(1)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("missing bundle id 2"))?;
+    Ok((bid1, bid2))
+}
+
+async fn seed_categories_for_guid_test(
+    conn: &mut DbConnection,
+    bid1: &str,
+    bid2: &str,
+) -> TestResult<()> {
+    sql_query(format!(
+        "INSERT INTO news_categories (name, bundle_id) VALUES ('CA', {bid1}), ('CB', {bid2})"
+    ))
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+async fn assert_category_guids_and_created_at(
+    conn: &mut DbConnection,
+    expected_rows: usize,
+) -> TestResult<()> {
+    let category_guids =
+        postgres_names(conn, "SELECT guid AS name FROM news_categories ORDER BY id").await?;
+    anyhow::ensure!(
+        category_guids.len() == expected_rows,
+        "expected two category rows"
+    );
+    for guid in &category_guids {
+        anyhow::ensure!(!guid.is_empty(), "category GUID must not be empty");
+    }
+    let category_guid_set: std::collections::HashSet<_> = category_guids.iter().collect();
+    anyhow::ensure!(
+        category_guid_set.len() == category_guids.len(),
+        "category GUIDs must be unique"
+    );
+    let category_created_at = postgres_names(
+        conn,
+        "SELECT created_at::text AS name FROM news_categories ORDER BY id",
+    )
+    .await?;
+    anyhow::ensure!(
+        category_created_at.len() == expected_rows,
+        "expected two category rows"
+    );
+    for created_at in &category_created_at {
+        anyhow::ensure!(
+            !created_at.is_empty(),
+            "category created_at must not be empty"
+        );
+    }
+    Ok(())
+}
+
 #[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
@@ -115,85 +220,10 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
         let mut conn = DbConnection::establish(&url).await?;
         apply_migrations(&mut conn, &url, None).await?;
 
-        sql_query(
-            "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'GA'), (NULL, 'GB')",
-        )
-        .execute(&mut conn)
-        .await?;
-
-        let guids = postgres_names(
-            &mut conn,
-            "SELECT guid AS name FROM news_bundles ORDER BY id",
-        )
-        .await?;
-        assert_eq!(guids.len(), 2, "expected two bundle rows");
-        for guid in &guids {
-            assert!(!guid.is_empty(), "GUID must not be empty");
-        }
-        let guid_set: std::collections::HashSet<_> = guids.iter().collect();
-        assert_eq!(
-            guid_set.len(),
-            guids.len(),
-            "GUIDs must be unique across rows"
-        );
-
-        let bundle_created_at = postgres_names(
-            &mut conn,
-            "SELECT created_at::text AS name FROM news_bundles ORDER BY id",
-        )
-        .await?;
-        assert_eq!(bundle_created_at.len(), 2, "expected two bundle rows");
-        for created_at in &bundle_created_at {
-            assert!(!created_at.is_empty(), "created_at must not be empty");
-        }
-
-        let bundle_ids = postgres_names(
-            &mut conn,
-            "SELECT id::text AS name FROM news_bundles ORDER BY id",
-        )
-        .await?;
-        let bid1 = bundle_ids
-            .as_slice()
-            .first()
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("missing bundle id 1"))?;
-        let bid2 = bundle_ids
-            .get(1)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("missing bundle id 2"))?;
-        sql_query(format!(
-            "INSERT INTO news_categories (name, bundle_id) VALUES ('CA', {bid1}), ('CB', {bid2})"
-        ))
-        .execute(&mut conn)
-        .await?;
-
-        let category_guids = postgres_names(
-            &mut conn,
-            "SELECT guid AS name FROM news_categories ORDER BY id",
-        )
-        .await?;
-        assert_eq!(category_guids.len(), 2, "expected two category rows");
-        for guid in &category_guids {
-            assert!(!guid.is_empty(), "category GUID must not be empty");
-        }
-        let category_guid_set: std::collections::HashSet<_> = category_guids.iter().collect();
-        assert_eq!(
-            category_guid_set.len(),
-            category_guids.len(),
-            "category GUIDs must be unique"
-        );
-        let category_created_at = postgres_names(
-            &mut conn,
-            "SELECT created_at::text AS name FROM news_categories ORDER BY id",
-        )
-        .await?;
-        assert_eq!(category_created_at.len(), 2, "expected two category rows");
-        for created_at in &category_created_at {
-            assert!(
-                !created_at.is_empty(),
-                "category created_at must not be empty"
-            );
-        }
-        Ok(())
+        seed_bundles_for_guid_test(&mut conn).await?;
+        assert_bundle_guids_and_created_at(&mut conn, 2).await?;
+        let (bid1, bid2) = fetch_two_bundle_ids(&mut conn).await?;
+        seed_categories_for_guid_test(&mut conn, &bid1, &bid2).await?;
+        assert_category_guids_and_created_at(&mut conn, 2).await
     })
 }
