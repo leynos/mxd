@@ -8,7 +8,7 @@ mod helpers;
 
 use std::io;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::prelude::*;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::future::BoxFuture;
@@ -146,6 +146,91 @@ pub fn setup_files_db(db: DatabaseUrl) -> Result<(), AnyError> {
     })
 }
 
+/// Converts a Unix timestamp in seconds to a [`NaiveDateTime`] for use in news
+/// fixtures.
+///
+/// # Errors
+///
+/// Returns an error if `secs` is outside the range representable as a
+/// `NaiveDateTime`.
+fn make_fixture_timestamp(secs: i64) -> Result<NaiveDateTime, AnyError> {
+    Ok(DateTime::<Utc>::from_timestamp(secs, 0)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "news fixture timestamp out of range",
+            )
+        })?
+        .naive_utc())
+}
+
+/// Creates the default `"General"` root news category and returns its ID.
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
+async fn create_general_category(conn: &mut DbConnection) -> Result<i32, AnyError> {
+    Ok(create_category(
+        conn,
+        &NewCategory {
+            name: "General",
+            bundle_id: None,
+            guid: None,
+            add_sn: None,
+            delete_sn: None,
+            created_at: None,
+        },
+    )
+    .await?)
+}
+
+/// Seeds two sequential news articles (`"First"` and `"Second"`) into
+/// `category_id`.
+///
+/// # Errors
+///
+/// Returns an error if timestamp construction or any database insert fails.
+async fn seed_news_articles(conn: &mut DbConnection, category_id: i32) -> Result<(), AnyError> {
+    let posted = make_fixture_timestamp(1000)?;
+    let first_article_id = insert_article(
+        conn,
+        &NewArticle {
+            category_id,
+            parent_article_id: None,
+            prev_article_id: None,
+            next_article_id: None,
+            first_child_article_id: None,
+            title: "First",
+            poster: None,
+            posted_at: posted,
+            flags: 0,
+            data_flavor: Some("text/plain"),
+            data: Some("a"),
+        },
+    )
+    .await?;
+
+    let posted2 = make_fixture_timestamp(2000)?;
+    insert_article(
+        conn,
+        &NewArticle {
+            category_id,
+            parent_article_id: None,
+            prev_article_id: Some(first_article_id),
+            next_article_id: None,
+            first_child_article_id: None,
+            title: "Second",
+            poster: None,
+            posted_at: posted2,
+            flags: 0,
+            data_flavor: Some("text/plain"),
+            data: Some("b"),
+        },
+    )
+    .await?;
+    Ok(())
+}
+
 /// Create a test database with news categories and articles.
 ///
 /// # Errors
@@ -154,74 +239,9 @@ pub fn setup_files_db(db: DatabaseUrl) -> Result<(), AnyError> {
 pub fn setup_news_db(db: DatabaseUrl) -> Result<(), AnyError> {
     with_db(db, |conn| {
         Box::pin(async move {
-            // Ensure test user exists for authentication
             ensure_test_user(conn).await?;
-
-            let category_id = create_category(
-                conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                    guid: None,
-                    add_sn: None,
-                    delete_sn: None,
-                    created_at: None,
-                },
-            )
-            .await?;
-
-            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-                .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "news fixture timestamp out of range",
-                    )
-                })?
-                .naive_utc();
-            let first_article_id = insert_article(
-                conn,
-                &NewArticle {
-                    category_id,
-                    parent_article_id: None,
-                    prev_article_id: None,
-                    next_article_id: None,
-                    first_child_article_id: None,
-                    title: "First",
-                    poster: None,
-                    posted_at: posted,
-                    flags: 0,
-                    data_flavor: Some("text/plain"),
-                    data: Some("a"),
-                },
-            )
-            .await?;
-
-            let posted2 = DateTime::<Utc>::from_timestamp(2000, 0)
-                .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "news fixture timestamp out of range",
-                    )
-                })?
-                .naive_utc();
-            insert_article(
-                conn,
-                &NewArticle {
-                    category_id,
-                    parent_article_id: None,
-                    prev_article_id: Some(first_article_id),
-                    next_article_id: None,
-                    first_child_article_id: None,
-                    title: "Second",
-                    poster: None,
-                    posted_at: posted2,
-                    flags: 0,
-                    data_flavor: Some("text/plain"),
-                    data: Some("b"),
-                },
-            )
-            .await?;
-            Ok(())
+            let category_id = create_general_category(conn).await?;
+            seed_news_articles(conn, category_id).await
         })
     })
 }
