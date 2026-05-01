@@ -13,6 +13,7 @@
 
 use std::future::Future;
 
+use anyhow::Context;
 use diesel::sql_query;
 use diesel_async::RunQueryDsl;
 use test_util::postgres::PostgresTestDb;
@@ -23,8 +24,9 @@ use super::super::{
     TestResult,
     assert_permission_round_trip_with_ids,
     seed_permission_round_trip,
+    seed_root_category_name_conflict,
     setup_legacy_schema,
-    verify_root_category_names_are_unique_with_constraint_insert,
+    verify_root_category_constraint_error,
 };
 
 pub(super) async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
@@ -48,7 +50,8 @@ pub(super) async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> Tes
 pub(super) async fn postgres_names(conn: &mut DbConnection, sql: &str) -> TestResult<Vec<String>> {
     Ok(sql_query(sql)
         .load::<NameRow>(conn)
-        .await?
+        .await
+        .with_context(|| format!("LOAD PostgreSQL names: {sql}"))?
         .into_iter()
         .map(|row| row.name)
         .collect())
@@ -61,7 +64,10 @@ async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResul
          AND table_name IN ('permissions', 'user_permissions') ORDER BY table_name",
     )
     .await?;
-    assert_eq!(permission_tables, vec!["permissions", "user_permissions"]);
+    anyhow::ensure!(
+        permission_tables == vec!["permissions", "user_permissions"],
+        "expected permissions tables, got {permission_tables:?}"
+    );
 
     let permission_indices = postgres_names(
         conn,
@@ -70,7 +76,10 @@ async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResul
     )
     .await?;
     for expected in ["permissions_code_key", "user_permissions_pkey"] {
-        assert!(permission_indices.iter().any(|name| name == expected));
+        anyhow::ensure!(
+            permission_indices.iter().any(|name| name == expected),
+            "missing PostgreSQL permission index {expected}"
+        );
     }
     Ok(())
 }
@@ -82,9 +91,9 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
          'news_bundles' AND table_schema = 'public' ORDER BY ordinal_position",
     )
     .await?;
-    assert_eq!(
-        bundle_columns,
-        vec!["id", "parent_bundle_id", "name", "guid", "created_at"]
+    anyhow::ensure!(
+        bundle_columns == vec!["id", "parent_bundle_id", "name", "guid", "created_at"],
+        "unexpected news_bundles columns: {bundle_columns:?}"
     );
 
     let bundle_indices = postgres_names(
@@ -98,7 +107,10 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
         "idx_bundles_parent",
         "news_bundles_name_parent_bundle_id_key",
     ] {
-        assert!(bundle_indices.iter().any(|name| name == expected));
+        anyhow::ensure!(
+            bundle_indices.iter().any(|name| name == expected),
+            "missing PostgreSQL bundle index {expected}"
+        );
     }
 
     let bundle_constraints = postgres_names(
@@ -107,10 +119,11 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
          'public.news_bundles'::regclass AND contype = 'u' ORDER BY conname",
     )
     .await?;
-    assert!(
+    anyhow::ensure!(
         bundle_constraints
             .iter()
-            .any(|name| name == "news_bundles_name_parent_bundle_id_key")
+            .any(|name| name == "news_bundles_name_parent_bundle_id_key"),
+        "missing PostgreSQL bundle unique constraint"
     );
     Ok(())
 }
@@ -122,17 +135,18 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
          'news_categories' AND table_schema = 'public' ORDER BY ordinal_position",
     )
     .await?;
-    assert_eq!(
-        category_columns,
-        vec![
-            "id",
-            "name",
-            "bundle_id",
-            "guid",
-            "add_sn",
-            "delete_sn",
-            "created_at"
-        ]
+    anyhow::ensure!(
+        category_columns
+            == vec![
+                "id",
+                "name",
+                "bundle_id",
+                "guid",
+                "add_sn",
+                "delete_sn",
+                "created_at"
+            ],
+        "unexpected news_categories columns: {category_columns:?}"
     );
 
     let category_indices = postgres_names(
@@ -146,7 +160,10 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
         "idx_categories_root_name_unique",
         "idx_categories_name_bundle_unique",
     ] {
-        assert!(category_indices.iter().any(|name| name == expected));
+        anyhow::ensure!(
+            category_indices.iter().any(|name| name == expected),
+            "missing PostgreSQL category index {expected}"
+        );
     }
     Ok(())
 }
@@ -158,7 +175,7 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
 /// `idx_articles_first_child_article`, `idx_articles_next_article`,
 /// `idx_articles_parent_article`, and `idx_articles_prev_article` are present.
 /// Database query failures are returned as `TestResult<()>`; missing indexes
-/// panic through the assertions.
+/// return `TestResult` errors.
 pub(crate) async fn assert_postgres_article_indices(conn: &mut DbConnection) -> TestResult<()> {
     let article_indices = postgres_names(
         conn,
@@ -173,7 +190,10 @@ pub(crate) async fn assert_postgres_article_indices(conn: &mut DbConnection) -> 
         "idx_articles_parent_article",
         "idx_articles_prev_article",
     ] {
-        assert!(article_indices.iter().any(|name| name == expected));
+        anyhow::ensure!(
+            article_indices.iter().any(|name| name == expected),
+            "missing PostgreSQL article index {expected}"
+        );
     }
     Ok(())
 }
@@ -187,7 +207,8 @@ async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> 
 pub(super) async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_postgres_permission_schema(conn).await?;
     assert_postgres_news_schema(conn).await?;
-    verify_root_category_names_are_unique_with_constraint_insert(conn).await
+    let conflict_result = seed_root_category_name_conflict(conn).await;
+    verify_root_category_constraint_error(conflict_result).await
 }
 
 pub(super) async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()> {
