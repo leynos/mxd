@@ -252,7 +252,7 @@ async fn sqlite_guids_are_non_empty_and_unique() -> TestResult<()> {
 
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[tokio::test]
-async fn sqlite_add_sn_reflects_article_count() -> TestResult<()> {
+async fn sqlite_add_sn_defaults_zero() -> TestResult<()> {
     let mut conn = sqlite_conn().await?;
 
     diesel::sql_query(
@@ -260,7 +260,7 @@ async fn sqlite_add_sn_reflects_article_count() -> TestResult<()> {
     )
     .execute(&mut conn)
     .await?;
-    // Category with two articles and one with none
+    // Verify add_sn defaults to 0 for fresh inserts and empty categories.
     diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'WithTwo', 1)")
         .execute(&mut conn)
         .await?;
