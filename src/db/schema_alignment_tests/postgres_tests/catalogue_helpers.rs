@@ -1,4 +1,11 @@
-//! Shared `PostgreSQL` schema-alignment test helpers.
+//! Shared `PostgreSQL` schema-alignment test helpers for roadmap item 4.1.1.
+//!
+//! Provides utilities to boot legacy schema state, inspect live `PostgreSQL`
+//! catalogue metadata (tables, columns, indexes, constraints), and assert that
+//! the aligned schema matches the expected structure after both fresh migration
+//! and upgrade paths.  Also supplies `with_postgres_test_db`, which creates a
+//! temporary database against either a `POSTGRES_TEST_URL` or an embedded
+//! `PostgreSQL` cluster.
 
 use std::future::Future;
 

@@ -1,4 +1,10 @@
-//! `PostgreSQL` article-threading schema behaviour tests.
+//! `PostgreSQL` article-threading schema behaviour tests for roadmap item 4.1.1.
+//!
+//! Verifies that the `news_articles` self-referential threading columns
+//! (`parent_article_id`, `first_child_article_id`) support valid parent-child
+//! relationships via JOIN queries and that foreign-key constraints reject
+//! references to non-existent articles.  Tests run against an embedded
+//! `PostgreSQL` cluster and are serialised via `serial_test::file_serial`.
 
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
