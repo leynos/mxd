@@ -4,7 +4,7 @@ use std::future::Future;
 
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use test_util::postgres::{PostgresTestDb, PostgresTestDbError};
+use test_util::postgres::PostgresTestDb;
 
 use super::{
     DbConnection,
@@ -185,36 +185,91 @@ async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()>
 
 fn is_ci() -> bool { std::env::var("CI").is_ok_and(|value| !value.is_empty()) }
 
-fn start_embedded_postgres_db() -> TestResult<Option<PostgresTestDb>> {
-    match PostgresTestDb::new() {
-        Ok(db) => Ok(Some(db)),
-        Err(error @ PostgresTestDbError::Unavailable(_)) if is_ci() => Err(error.into()),
-        Err(PostgresTestDbError::Unavailable(_)) => {
-            tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
-            Ok(None)
-        }
-        Err(error) => Err(error.into()),
-    }
-}
-
 fn with_postgres_test_db<F, Fut>(test: F) -> TestResult<()>
 where
     F: FnOnce(String) -> Fut + Send + 'static,
     Fut: Future<Output = TestResult<()>> + Send + 'static,
 {
-    let Some(db) = embedded_postgres_db()? else {
-        if is_ci() {
-            return Err(anyhow::anyhow!("PostgreSQL unavailable in CI"));
-        }
-        return Ok(());
-    };
-
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    runtime.block_on(async move { test(db.url.to_string()).await })
+    runtime.block_on(async move {
+        if std::env::var_os("POSTGRES_TEST_URL").is_some() {
+            let db = PostgresTestDb::new_async().await?;
+            return test(db.url.to_string()).await;
+        }
+
+        run_with_embedded_postgres(test).await
+    })
 }
 
+async fn run_with_embedded_postgres<F, Fut>(test: F) -> TestResult<()>
+where
+    F: FnOnce(String) -> Fut + Send + 'static,
+    Fut: Future<Output = TestResult<()>> + Send + 'static,
+{
+    let Some(pg) = start_optional_embedded_postgres().await? else {
+        return Ok(());
+    };
+
+    let db_name = format!(
+        "schema_alignment_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    );
+    let result = async {
+        pg.create_database(&db_name).await?;
+        let url = pg.settings().url(&db_name);
+        test(url).await
+    }
+    .await;
+
+    let stop_result = stop_embedded_postgres(pg);
+    combine_postgres_test_result(result, stop_result)
+}
+
+async fn start_optional_embedded_postgres() -> TestResult<Option<postgresql_embedded::PostgreSQL>> {
+    let mut pg = postgresql_embedded::PostgreSQL::default();
+    if let Err(error) = pg.setup().await {
+        if is_ci() {
+            return Err(error.into());
+        }
+        tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
+        return Ok(None);
+    }
+    pg.start().await?;
+    Ok(Some(pg))
+}
+
+fn stop_embedded_postgres(pg: postgresql_embedded::PostgreSQL) -> TestResult<()> {
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(pg.stop()).map_err(anyhow::Error::from)
+    })
+    .join()
+    .map_err(|_| anyhow::anyhow!("embedded postgres shutdown thread panicked"))?
+}
+
+fn combine_postgres_test_result(
+    result: TestResult<()>,
+    stop_result: TestResult<()>,
+) -> TestResult<()> {
+    match (result, stop_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(test_error), Ok(())) => Err(test_error),
+        (Ok(()), Err(stop_error)) => Err(stop_error),
+        (Err(test_error), Err(stop_error)) => Err(anyhow::anyhow!(
+            "postgres schema alignment test failed: {test_error}; embedded postgres shutdown \
+             failed: {stop_error}"
+        )),
+    }
+}
+
+#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
@@ -226,6 +281,7 @@ fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     })
 }
 
+#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
@@ -238,4 +294,78 @@ fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     })
 }
 
-fn embedded_postgres_db() -> TestResult<Option<PostgresTestDb>> { start_embedded_postgres_db() }
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[serial_test::file_serial(postgres_embedded_setup)]
+#[test]
+fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
+    with_postgres_test_db(|url| async move {
+        let mut conn = DbConnection::establish(&url).await?;
+        apply_migrations(&mut conn, &url, None).await?;
+
+        sql_query("INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'BundleA')")
+            .execute(&mut conn)
+            .await?;
+        sql_query("INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'BundleB')")
+            .execute(&mut conn)
+            .await?;
+
+        let bundle_ids = postgres_names(
+            &mut conn,
+            "SELECT id::text AS name FROM news_bundles ORDER BY id",
+        )
+        .await?;
+        let (bid1, bid2) = (&bundle_ids[0], &bundle_ids[1]);
+
+        // Same name in different bundles must succeed
+        sql_query(format!(
+            "INSERT INTO news_categories (name, bundle_id) VALUES ('Sports', {bid1})"
+        ))
+        .execute(&mut conn)
+        .await?;
+        sql_query(format!(
+            "INSERT INTO news_categories (name, bundle_id) VALUES ('Sports', {bid2})"
+        ))
+        .execute(&mut conn)
+        .await?;
+
+        // Same name in the same bundle must fail
+        let duplicate = sql_query(format!(
+            "INSERT INTO news_categories (name, bundle_id) VALUES ('Sports', {bid1})"
+        ))
+        .execute(&mut conn)
+        .await;
+        assert!(
+            duplicate.is_err(),
+            "duplicate name in same bundle must be rejected"
+        );
+        Ok(())
+    })
+}
+
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[serial_test::file_serial(postgres_embedded_setup)]
+#[test]
+fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
+    with_postgres_test_db(|url| async move {
+        let mut conn = DbConnection::establish(&url).await?;
+        apply_migrations(&mut conn, &url, None).await?;
+
+        sql_query(
+            "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'GA'), (NULL, 'GB')",
+        )
+        .execute(&mut conn)
+        .await?;
+
+        let guids = postgres_names(
+            &mut conn,
+            "SELECT guid AS name FROM news_bundles ORDER BY id",
+        )
+        .await?;
+        assert_eq!(guids.len(), 2, "expected two bundle rows");
+        for guid in &guids {
+            assert!(!guid.is_empty(), "GUID must not be empty");
+        }
+        assert_ne!(guids[0], guids[1], "GUIDs must be unique across rows");
+        Ok(())
+    })
+}

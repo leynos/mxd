@@ -109,6 +109,7 @@ mod tests {
         })
     }
 
+    #[serial_test::file_serial(postgres_embedded_setup)]
     #[test]
     fn handle_login_rejects_invalid_password_hashes() -> Result<(), AnyError> {
         let rt = Runtime::new()?;

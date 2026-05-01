@@ -1,13 +1,10 @@
 //! Permission cascade tests for the `PostgreSQL` backend.
 
-use std::future::Future;
-
 use diesel::prelude::*;
-use diesel_async::{AsyncConnection, RunQueryDsl};
-use test_util::postgres::{PostgresTestDb, PostgresTestDbError};
+use diesel_async::RunQueryDsl;
 
 use crate::{
-    db::{DbConnection, apply_migrations, create_user, get_user_by_name},
+    db::{DbConnection, create_user, get_user_by_name},
     models::{NewPermission, NewUser, NewUserPermission, Permission, UserPermission},
     schema::{
         permissions::dsl as permissions,
@@ -17,32 +14,6 @@ use crate::{
 };
 
 type TestResult<T> = anyhow::Result<T>;
-
-fn start_postgres_db() -> TestResult<Option<PostgresTestDb>> {
-    match PostgresTestDb::new() {
-        Ok(db) => Ok(Some(db)),
-        Err(PostgresTestDbError::Unavailable(_)) => {
-            tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
-            Ok(None)
-        }
-        Err(error) => Err(error.into()),
-    }
-}
-
-fn with_postgres_test_db<F, Fut>(test: F) -> TestResult<()>
-where
-    F: FnOnce(String) -> Fut + Send + 'static,
-    Fut: Future<Output = TestResult<()>> + Send + 'static,
-{
-    let Some(db) = start_postgres_db()? else {
-        return Ok(());
-    };
-
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    runtime.block_on(async move { test(db.url.to_string()).await })
-}
 
 async fn insert_permission_assignment(
     conn: &mut DbConnection,
@@ -126,41 +97,55 @@ async fn assert_user_delete_cascades_to_assignments(
     Ok(())
 }
 
+#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn test_user_permission_cascades() -> TestResult<()> {
-    with_postgres_test_db(|url| async move {
-        let mut conn = DbConnection::establish(&url).await?;
-        apply_migrations(&mut conn, &url, None).await?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(super::file_node_tests::with_embedded_pg(
+        "permission_cascade",
+        |conn| {
+            Box::pin(async move {
+                let user = NewUser {
+                    username: "postgres-dana",
+                    password: "hash",
+                };
+                create_user(conn, &user).await?;
+                let stored_user = get_user_by_name(conn, "postgres-dana")
+                    .await
+                    .map_err(anyhow::Error::from)?
+                    .ok_or_else(|| anyhow::anyhow!("postgres permission test user missing"))?;
 
-        let user = NewUser {
-            username: "postgres-dana",
-            password: "hash",
-        };
-        create_user(&mut conn, &user).await?;
-        let stored_user = get_user_by_name(&mut conn, "postgres-dana")
-            .await
-            .map_err(anyhow::Error::from)?
-            .ok_or_else(|| anyhow::anyhow!("postgres permission test user missing"))?;
-
-        let deleted_permission_id =
-            insert_permission_assignment(&mut conn, stored_user.id, 3401, "News Create Category")
+                let deleted_permission_id = insert_permission_assignment(
+                    conn,
+                    stored_user.id,
+                    3401,
+                    "News Create Category",
+                )
                 .await?;
-        assert_permission_delete_cascades_to_assignments(
-            &mut conn,
-            stored_user.id,
-            deleted_permission_id,
-        )
-        .await?;
-
-        let retained_permission_id =
-            insert_permission_assignment(&mut conn, stored_user.id, 3402, "News Delete Category")
+                assert_permission_delete_cascades_to_assignments(
+                    conn,
+                    stored_user.id,
+                    deleted_permission_id,
+                )
                 .await?;
-        assert_user_delete_cascades_to_assignments(
-            &mut conn,
-            stored_user.id,
-            retained_permission_id,
-        )
-        .await?;
-        Ok(())
-    })
+
+                let retained_permission_id = insert_permission_assignment(
+                    conn,
+                    stored_user.id,
+                    3402,
+                    "News Delete Category",
+                )
+                .await?;
+                assert_user_delete_cascades_to_assignments(
+                    conn,
+                    stored_user.id,
+                    retained_permission_id,
+                )
+                .await?;
+                Ok(())
+            })
+        },
+    ))
 }

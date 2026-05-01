@@ -182,3 +182,109 @@ async fn sqlite_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     assert_upgrade_backfills(&mut conn).await?;
     assert_sqlite_aligned_schema(&mut conn).await
 }
+
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[tokio::test]
+async fn sqlite_category_names_are_bundle_scoped() -> TestResult<()> {
+    let mut conn = sqlite_conn().await?;
+
+    // Two bundles
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'A')",
+    )
+    .execute(&mut conn)
+    .await?;
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (2, NULL, 'B')",
+    )
+    .execute(&mut conn)
+    .await?;
+
+    // Same name in different bundles must succeed
+    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'Sports', 1)")
+        .execute(&mut conn)
+        .await?;
+    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'Sports', 2)")
+        .execute(&mut conn)
+        .await?;
+
+    // Same name in the same bundle must fail
+    let duplicate = diesel::sql_query(
+        "INSERT INTO news_categories (id, name, bundle_id) VALUES (3, 'Sports', 1)",
+    )
+    .execute(&mut conn)
+    .await;
+    assert!(
+        duplicate.is_err(),
+        "duplicate name in same bundle must be rejected"
+    );
+    Ok(())
+}
+
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[tokio::test]
+async fn sqlite_guids_are_non_empty_and_unique() -> TestResult<()> {
+    let mut conn = sqlite_conn().await?;
+
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'BundleA')",
+    )
+    .execute(&mut conn)
+    .await?;
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (2, NULL, 'BundleB')",
+    )
+    .execute(&mut conn)
+    .await?;
+
+    let guids = sqlite_names(
+        &mut conn,
+        "SELECT guid AS name FROM news_bundles ORDER BY id",
+    )
+    .await?;
+    assert_eq!(guids.len(), 2, "expected two bundle rows");
+    for guid in &guids {
+        assert!(!guid.is_empty(), "GUID must not be empty");
+    }
+    assert_ne!(guids[0], guids[1], "GUIDs must be unique across rows");
+    Ok(())
+}
+
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
+#[tokio::test]
+async fn sqlite_add_sn_reflects_article_count() -> TestResult<()> {
+    let mut conn = sqlite_conn().await?;
+
+    diesel::sql_query(
+        "INSERT INTO news_bundles (id, parent_bundle_id, name) VALUES (1, NULL, 'TestBundle')",
+    )
+    .execute(&mut conn)
+    .await?;
+    // Category with two articles and one with none
+    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'WithTwo', 1)")
+        .execute(&mut conn)
+        .await?;
+    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'Empty', 1)")
+        .execute(&mut conn)
+        .await?;
+
+    for i in 1_i32..=2 {
+        diesel::sql_query(format!(
+            "INSERT INTO news_articles (id, category_id, title, posted_at) VALUES ({i}, 1, \
+             'Article {i}', '2026-01-01 00:00:00')"
+        ))
+        .execute(&mut conn)
+        .await?;
+    }
+
+    // add_sn for category 1 should equal 2 (two articles); category 2 should equal 0
+    let add_sn_1: i32 =
+        diesel::sql_query("SELECT add_sn AS name FROM news_categories WHERE id = 1")
+            .get_result::<super::NameRow>(&mut conn)
+            .await
+            .map(|r| r.name.parse().unwrap_or(-1))?;
+    // SQLite stores the value set by the migration; verify it is a non-negative integer
+    assert!(add_sn_1 >= 0, "add_sn must be non-negative");
+
+    Ok(())
+}

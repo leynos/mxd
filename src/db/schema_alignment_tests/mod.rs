@@ -19,14 +19,20 @@ mod postgres_tests;
 #[cfg(feature = "sqlite")]
 mod sqlite_tests;
 
+/// Convenience alias for fallible test operations in schema alignment tests.
 pub(crate) type TestResult<T> = Result<T, anyhow::Error>;
 
+/// A single-column row holding a `name` string, used when querying
+/// schema-metadata tables (e.g. `information_schema.columns`, `sqlite_master`)
+/// that return name lists.
 #[derive(QueryableByName)]
 pub(crate) struct NameRow {
     #[diesel(sql_type = Text)]
     pub(crate) name: String,
 }
 
+/// A single-column row holding an aggregate `COUNT(*)` result, used to assert
+/// the number of matching rows after permission and join-table operations.
 #[derive(QueryableByName)]
 pub(crate) struct CountRow {
     #[diesel(sql_type = diesel::sql_types::BigInt)]
@@ -202,6 +208,56 @@ pub(crate) async fn setup_legacy_schema(
 }
 
 /// Inserts a user, a permission, and a `user_permissions` join row using the
+/// supplied `user_id`, `permission_id`, and `code`.  Returns `Ok(())` on
+/// success; all inserts are executed in statement order against `conn`.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn seed_permission_round_trip(
+    conn: &mut DbConnection,
+    user_id: i32,
+    permission_id: i32,
+    code: i32,
+) -> TestResult<()> {
+    run_statements(
+        conn,
+        &[
+            &format!(
+                "INSERT INTO users (id, username, password) VALUES ({user_id}, \
+                 'schema-user-{user_id}', 'hash')"
+            ),
+            &format!(
+                "INSERT INTO permissions (id, code, name, description) VALUES ({permission_id}, \
+                 {code}, 'News Create Category {code}', 'News category permission {code}')"
+            ),
+            &format!(
+                "INSERT INTO user_permissions (user_id, permission_id) VALUES ({user_id}, \
+                 {permission_id})"
+            ),
+        ],
+    )
+    .await
+}
+
+/// Asserts that exactly one row in `permissions JOIN user_permissions` matches
+/// `code`, `'News category permission {code}'`, and `user_id`.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn assert_permission_join_count(
+    conn: &mut DbConnection,
+    user_id: i32,
+    _permission_id: i32,
+    code: i32,
+) -> TestResult<()> {
+    let permissions = sql_query(format!(
+        "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
+         up.permission_id = p.id WHERE p.code = {code} AND p.description = 'News category \
+         permission {code}' AND up.user_id = {user_id}"
+    ))
+    .get_result::<CountRow>(conn)
+    .await?;
+    assert_eq!(permissions.count, 1);
+    Ok(())
+}
+
+/// Inserts a user, a permission, and a `user_permissions` join row using the
 /// supplied `user_id`, `permission_id`, and `code`, then asserts the join
 /// returns exactly one matching row.  Used to validate the permissions schema
 /// after both fresh migration and upgrade paths.
@@ -212,30 +268,6 @@ pub(crate) async fn assert_permission_round_trip_with_ids(
     permission_id: i32,
     code: i32,
 ) -> TestResult<()> {
-    for statement in [
-        format!(
-            "INSERT INTO users (id, username, password) VALUES ({user_id}, \
-             'schema-user-{user_id}', 'hash')"
-        ),
-        format!(
-            "INSERT INTO permissions (id, code, name, description) VALUES ({permission_id}, \
-             {code}, 'News Create Category {code}', 'News category permission {code}')"
-        ),
-        format!(
-            "INSERT INTO user_permissions (user_id, permission_id) VALUES ({user_id}, \
-             {permission_id})"
-        ),
-    ] {
-        sql_query(statement).execute(conn).await?;
-    }
-
-    let permissions = sql_query(format!(
-        "SELECT COUNT(*) AS count FROM permissions p INNER JOIN user_permissions up ON \
-         up.permission_id = p.id WHERE p.code = {code} AND p.description = 'News category \
-         permission {code}' AND up.user_id = {user_id}"
-    ))
-    .get_result::<CountRow>(conn)
-    .await?;
-    assert_eq!(permissions.count, 1);
-    Ok(())
+    seed_permission_round_trip(conn, user_id, permission_id, code).await?;
+    assert_permission_join_count(conn, user_id, permission_id, code).await
 }
