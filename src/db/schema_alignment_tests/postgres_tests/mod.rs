@@ -113,25 +113,41 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
         .execute(&mut conn)
         .await?;
 
-        let guids = postgres_names(
-            &mut conn,
-            "SELECT guid AS name FROM news_bundles ORDER BY id",
-        )
-        .await?;
-        assert_eq!(guids.len(), 2, "expected two bundle rows");
-        for guid in &guids {
-            assert!(!guid.is_empty(), "GUID must not be empty");
-        }
-        assert_ne!(guids[0], guids[1], "GUIDs must be unique across rows");
-
         let bundle_ids = postgres_names(
             &mut conn,
             "SELECT id::text AS name FROM news_bundles ORDER BY id",
         )
         .await?;
-        let (bid1, bid2) = (&bundle_ids[0], &bundle_ids[1]);
+        let bid1 = bundle_ids
+            .first()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("no bundle rows found"))?;
+
+        let bundle_guids = postgres_names(
+            &mut conn,
+            "SELECT guid AS name FROM news_bundles ORDER BY id",
+        )
+        .await?;
+        assert_eq!(bundle_guids.len(), 2, "expected two bundle rows");
+        for guid in &bundle_guids {
+            assert!(!guid.is_empty(), "bundle GUID must not be empty");
+        }
+        assert_ne!(
+            bundle_guids[0], bundle_guids[1],
+            "bundle GUIDs must be unique across rows"
+        );
+
         sql_query(format!(
-            "INSERT INTO news_categories (name, bundle_id) VALUES ('CA', {bid1}), ('CB', {bid2})"
+            "INSERT INTO news_categories (name, bundle_id) VALUES ('CatAlpha', {bid1})"
+        ))
+        .execute(&mut conn)
+        .await?;
+        let bid2 = bundle_ids
+            .get(1)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("expected second bundle row"))?;
+        sql_query(format!(
+            "INSERT INTO news_categories (name, bundle_id) VALUES ('CatBeta', {bid2})"
         ))
         .execute(&mut conn)
         .await?;

@@ -299,35 +299,37 @@ async fn sqlite_guids_are_non_empty_and_unique(
 ) -> TestResult<()> {
     let mut conn = two_bundle_db.await?;
 
-    let guids = sqlite_names(
+    let bundle_guids = sqlite_names(
         &mut conn,
         "SELECT guid AS name FROM news_bundles ORDER BY id",
     )
     .await?;
-    assert_eq!(guids.len(), 2, "expected two bundle rows");
-    for guid in &guids {
-        assert!(!guid.is_empty(), "GUID must not be empty");
+    anyhow::ensure!(bundle_guids.len() == 2, "expected two bundle rows");
+    for guid in &bundle_guids {
+        anyhow::ensure!(!guid.is_empty(), "bundle GUID must not be empty");
     }
-    assert_ne!(guids[0], guids[1], "GUIDs must be unique across rows");
+    anyhow::ensure!(
+        bundle_guids[0] != bundle_guids[1],
+        "bundle GUIDs must be unique across rows"
+    );
 
-    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (1, 'CA', 1)")
-        .execute(&mut conn)
-        .await?;
-    diesel::sql_query("INSERT INTO news_categories (id, name, bundle_id) VALUES (2, 'CB', 2)")
-        .execute(&mut conn)
-        .await?;
+    diesel::sql_query(
+        "INSERT INTO news_categories (name, bundle_id) VALUES ('CatAlpha', 1), ('CatBeta', 2)",
+    )
+    .execute(&mut conn)
+    .await?;
 
     let category_guids = sqlite_names(
         &mut conn,
         "SELECT guid AS name FROM news_categories ORDER BY id",
     )
     .await?;
-    assert_eq!(category_guids.len(), 2, "expected two category rows");
+    anyhow::ensure!(category_guids.len() == 2, "expected two category rows");
     for guid in &category_guids {
-        assert!(!guid.is_empty(), "category GUID must not be empty");
+        anyhow::ensure!(!guid.is_empty(), "category GUID must not be empty");
     }
-    assert_ne!(
-        category_guids[0], category_guids[1],
+    anyhow::ensure!(
+        category_guids[0] != category_guids[1],
         "category GUIDs must be unique across rows"
     );
     Ok(())
