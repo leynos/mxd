@@ -258,27 +258,9 @@ pub fn setup_news_with_article(db: DatabaseUrl) -> Result<i32, AnyError> {
         Box::pin(async move {
             ensure_test_user(conn).await?;
 
-            let category_id = create_category(
-                conn,
-                &NewCategory {
-                    name: "General",
-                    bundle_id: None,
-                    guid: None,
-                    add_sn: None,
-                    delete_sn: None,
-                    created_at: None,
-                },
-            )
-            .await?;
+            let category_id = create_general_category(conn).await?;
 
-            let posted = DateTime::<Utc>::from_timestamp(1000, 0)
-                .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "news fixture timestamp out of range",
-                    )
-                })?
-                .naive_utc();
+            let posted = make_fixture_timestamp(1000)?;
             let inserted_id = insert_article(
                 conn,
                 &NewArticle {
