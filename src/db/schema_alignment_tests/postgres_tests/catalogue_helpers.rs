@@ -1,11 +1,15 @@
-//! Shared `PostgreSQL` schema-alignment test helpers for roadmap item 4.1.1.
+//! Shared `PostgreSQL` helpers for schema-alignment tests.
 //!
-//! Provides utilities to boot legacy schema state, inspect live `PostgreSQL`
-//! catalogue metadata (tables, columns, indexes, constraints), and assert that
-//! the aligned schema matches the expected structure after both fresh migration
-//! and upgrade paths.  Also supplies `with_postgres_test_db`, which creates a
-//! temporary database against either a `POSTGRES_TEST_URL` or an embedded
-//! `PostgreSQL` cluster.
+//! Provides:
+//! - `setup_postgres_legacy_schema` to stand up legacy DDL prior to an upgrade.
+//! - `postgres_names` to read catalogue names (tables/columns/indices) as strings.
+//! - `assert_postgres_aligned_schema` to assert the final schema surface.
+//! - `assert_postgres_article_indices` to validate threading-related indices.
+//! - `assert_permission_round_trip` to run a permission join smoke-test using fixed IDs.
+//!
+//! Relationship to parent:
+//! - Called by `postgres_tests` module tests; composes with `assert_upgrade_backfills` from
+//!   `schema_alignment_tests::mod`.
 
 use std::future::Future;
 

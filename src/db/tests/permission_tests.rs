@@ -1,10 +1,12 @@
-//! Permission model and cascade tests for the `SQLite` backend.
+//! Permission model and cascade tests (`SQLite`).
 //!
-//! Validates round-trip persistence of the `Permission` model and the
-//! `user_permissions` join table, and verifies that cascade deletion removes
-//! join rows when either the user or the permission is deleted.  Tests run
-//! against an in-memory `SQLite` database seeded by the standard migrated
-//! fixture.
+//! Scope:
+//! - Validates `Permission` round-trip and `user_permissions` cascade behaviour when either
+//!   principal is deleted.
+//!
+//! Utilities:
+//! - Reuses migrated in-memory connections and fixture helpers; returns `Result` rather than
+//!   panicking to standardise fallibility across tests.
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
