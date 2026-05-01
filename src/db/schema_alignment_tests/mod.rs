@@ -99,7 +99,13 @@ pub(crate) async fn assert_bundle_backfill(conn: &mut DbConnection) -> TestResul
     let bundle = sql_query("SELECT guid, created_at FROM news_bundles WHERE id = 1")
         .get_result::<BundleBackfillRow>(conn)
         .await?;
-    assert!(bundle.guid.is_some());
+    anyhow::ensure!(
+        bundle
+            .guid
+            .as_deref()
+            .is_some_and(|guid| !guid.trim().is_empty()),
+        "expected non-empty bundle GUID after migration backfill"
+    );
     assert!(bundle.created_at.is_some());
     Ok(())
 }
@@ -122,7 +128,13 @@ async fn assert_category_backfill_for_id(
     ))
     .get_result::<CategoryBackfillRow>(conn)
     .await?;
-    assert!(category.guid.is_some());
+    anyhow::ensure!(
+        category
+            .guid
+            .as_deref()
+            .is_some_and(|guid| !guid.trim().is_empty()),
+        "expected non-empty category GUID after migration backfill"
+    );
     assert_eq!(category.add_sn, Some(expected_add_sn));
     assert_eq!(category.delete_sn, Some(0));
     assert!(category.created_at.is_some());
@@ -184,7 +196,10 @@ pub(crate) async fn verify_root_category_names_are_unique_with_constraint_insert
     )
     .execute(conn)
     .await;
-    assert!(duplicate.is_err());
+    anyhow::ensure!(
+        duplicate.is_err(),
+        "Expected duplicate insert to fail due to unique constraint"
+    );
     Ok(())
 }
 
@@ -281,7 +296,11 @@ async fn assert_permission_join_count(
     ))
     .get_result::<CountRow>(conn)
     .await?;
-    assert_eq!(permissions.count, 1);
+    anyhow::ensure!(
+        permissions.count == 1,
+        "Expected exactly one permission; unexpected permissions.count: {}",
+        permissions.count
+    );
     Ok(())
 }
 
