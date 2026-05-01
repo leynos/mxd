@@ -363,19 +363,25 @@ behaviour:
 - `postgres_tests/threading.rs`: article-threading behaviour tests for
   self-referential `news_articles` links.
 
-The shared helper surface is intentionally split between writers and readers:
+The shared helper surface is intentionally split between writers and readers,
+following a predicate-based CQRS approach:
 
 - `run_statements` executes a sequence of SQL statements in order.
 - `run_sql_script` splits migration SQL into individual statements before
   execution.
-- `assert_upgrade_backfills` performs read-only bundle, category, permission,
-  and article-index checks after an upgrade.
+- `assert_upgrade_backfills` orchestrates post-upgrade checks by calling
+  predicates with `assert!`.
+- `bundle_backfill_is_valid` and `category_backfill_is_valid` are read-only
+  predicates returning `TestResult<bool>`; they query the database and return
+  a boolean without calling `assert!` internally.
 - `verify_root_category_names_are_unique_with_constraint_insert` performs an
   insert-based constraint verification and is mutation-driven by design.
 - `seed_permission_round_trip` inserts the user, permission, and join rows used
-  by permission smoke tests; it is the write path.
-- `assert_permission_join_count` is the read-only assertion that checks the
-  seeded permission join.
+  by permission smoke tests; it is the write path (command).
+- `permission_join_count` is the read-only query that returns the join row count
+  as `TestResult<i64>`.
+- `permission_round_trip_is_valid` is the predicate that wraps
+  `permission_join_count` and returns `TestResult<bool>`.
 
 SQLite tests run against a fresh in-memory database per test or fixture.
 PostgreSQL tests run through `with_postgres_test_db`, which creates an isolated

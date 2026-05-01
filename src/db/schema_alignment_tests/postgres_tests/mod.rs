@@ -13,27 +13,20 @@
 mod catalogue_helpers;
 mod threading;
 
-use anyhow::Context;
 use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 
-pub(super) use self::catalogue_helpers::assert_postgres_article_indices;
+pub(super) use self::catalogue_helpers::postgres_article_indices_are_present;
 use self::catalogue_helpers::{
-    assert_permission_round_trip,
-    assert_postgres_aligned_schema,
+    permission_round_trip_is_seeded_and_valid,
+    postgres_aligned_schema_is_valid,
     postgres_names,
     setup_postgres_legacy_schema,
     with_postgres_test_db,
 };
-use super::{
-    DbConnection,
-    PermissionTestIds,
-    TestResult,
-    apply_migrations,
-    assert_upgrade_backfills,
-    seed_permission_round_trip,
-};
+use super::{DbConnection, TestResult, apply_migrations, assert_upgrade_backfills};
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
@@ -41,11 +34,19 @@ fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
         let mut conn = DbConnection::establish(&url).await?;
         apply_migrations(&mut conn, &url, None).await?;
 
-        assert_postgres_aligned_schema(&mut conn).await?;
-        assert_permission_round_trip(&mut conn).await
+        assert!(
+            postgres_aligned_schema_is_valid(&mut conn).await?,
+            "aligned schema not present after fresh migration"
+        );
+        assert!(
+            permission_round_trip_is_seeded_and_valid(&mut conn).await?,
+            "permission round-trip predicate failed after fresh migration"
+        );
+        Ok(())
     })
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
@@ -54,20 +55,16 @@ fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
         setup_postgres_legacy_schema(&mut conn).await?;
         apply_migrations(&mut conn, &url, None).await?;
 
-        seed_permission_round_trip(
-            &mut conn,
-            PermissionTestIds {
-                user_id: 84,
-                permission_id: 84,
-                code: 84,
-            },
-        )
-        .await?;
         assert_upgrade_backfills(&mut conn).await?;
-        assert_postgres_aligned_schema(&mut conn).await
+        assert!(
+            postgres_aligned_schema_is_valid(&mut conn).await?,
+            "aligned schema not present after legacy upgrade"
+        );
+        Ok(())
     })
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
@@ -75,26 +72,25 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
         let mut conn = DbConnection::establish(&url).await?;
         apply_migrations(&mut conn, &url, None).await?;
 
-        let bundle_a_ids = postgres_names(
+        sql_query("INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'BundleA')")
+            .execute(&mut conn)
+            .await?;
+        sql_query("INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'BundleB')")
+            .execute(&mut conn)
+            .await?;
+
+        let bundle_ids = postgres_names(
             &mut conn,
-            "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'BundleA') RETURNING \
-             id::text AS name",
+            "SELECT id::text AS name FROM news_bundles ORDER BY id",
         )
         .await?;
-        let bid1 = bundle_a_ids
+        let bid1 = bundle_ids
             .as_slice()
             .first()
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("missing bundle id 1"))?;
-        let bundle_b_ids = postgres_names(
-            &mut conn,
-            "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'BundleB') RETURNING \
-             id::text AS name",
-        )
-        .await?;
-        let bid2 = bundle_b_ids
-            .as_slice()
-            .first()
+        let bid2 = bundle_ids
+            .get(1)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("missing bundle id 2"))?;
 
@@ -103,14 +99,12 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
             "INSERT INTO news_categories (name, bundle_id) VALUES ('Sports', {bid1})"
         ))
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert first scoped Sports category")?;
+        .await?;
         sql_query(format!(
             "INSERT INTO news_categories (name, bundle_id) VALUES ('Sports', {bid2})"
         ))
         .execute(&mut conn)
-        .await
-        .context("EXECUTE insert second scoped Sports category")?;
+        .await?;
 
         // Same name in the same bundle must fail
         let duplicate = sql_query(format!(
@@ -118,7 +112,7 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
         ))
         .execute(&mut conn)
         .await;
-        anyhow::ensure!(
+        assert!(
             duplicate.is_err(),
             "duplicate name in same bundle must be rejected"
         );
@@ -126,11 +120,48 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
     })
 }
 
-async fn seed_bundles_for_guid_test(conn: &mut DbConnection) -> TestResult<(String, String)> {
+async fn seed_bundles_for_guid_test(conn: &mut DbConnection) -> TestResult<()> {
+    sql_query(
+        "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'GA'), (NULL, 'GB')",
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Returns `true` when the expected number of bundle rows each have a non-empty
+/// `guid` and a non-empty `created_at` value.
+async fn bundle_guids_and_created_at_are_valid(
+    conn: &mut DbConnection,
+    expected_rows: usize,
+) -> TestResult<bool> {
+    let guids = postgres_names(conn, "SELECT guid AS name FROM news_bundles ORDER BY id").await?;
+    if guids.len() != expected_rows {
+        return Ok(false);
+    }
+    if guids.iter().any(|guid| guid.is_empty()) {
+        return Ok(false);
+    }
+    let guid_set: std::collections::HashSet<_> = guids.iter().collect();
+    if guid_set.len() != guids.len() {
+        return Ok(false);
+    }
+
+    let bundle_created_at = postgres_names(
+        conn,
+        "SELECT created_at::text AS name FROM news_bundles ORDER BY id",
+    )
+    .await?;
+    if bundle_created_at.len() != expected_rows {
+        return Ok(false);
+    }
+    Ok(bundle_created_at.iter().all(|ts| !ts.is_empty()))
+}
+
+async fn fetch_two_bundle_ids(conn: &mut DbConnection) -> TestResult<(String, String)> {
     let bundle_ids = postgres_names(
         conn,
-        "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'GA'), (NULL, 'GB') \
-         RETURNING id::text AS name",
+        "SELECT id::text AS name FROM news_bundles ORDER BY id",
     )
     .await?;
     let bid1 = bundle_ids
@@ -145,41 +176,6 @@ async fn seed_bundles_for_guid_test(conn: &mut DbConnection) -> TestResult<(Stri
     Ok((bid1, bid2))
 }
 
-async fn assert_bundle_guids_and_created_at(
-    conn: &mut DbConnection,
-    expected_rows: usize,
-) -> TestResult<()> {
-    let guids = postgres_names(conn, "SELECT guid AS name FROM news_bundles ORDER BY id").await?;
-    anyhow::ensure!(
-        guids.len() == expected_rows,
-        "expected two bundle rows, got {actual_rows}",
-        actual_rows = guids.len()
-    );
-    for guid in &guids {
-        anyhow::ensure!(!guid.is_empty(), "GUID must not be empty");
-    }
-    let guid_set: std::collections::HashSet<_> = guids.iter().collect();
-    anyhow::ensure!(
-        guid_set.len() == guids.len(),
-        "GUIDs must be unique across rows"
-    );
-
-    let bundle_created_at = postgres_names(
-        conn,
-        "SELECT created_at::text AS name FROM news_bundles ORDER BY id",
-    )
-    .await?;
-    anyhow::ensure!(
-        bundle_created_at.len() == expected_rows,
-        "expected two bundle rows, got {actual_rows}",
-        actual_rows = bundle_created_at.len()
-    );
-    for created_at in &bundle_created_at {
-        anyhow::ensure!(!created_at.is_empty(), "created_at must not be empty");
-    }
-    Ok(())
-}
-
 async fn seed_categories_for_guid_test(
     conn: &mut DbConnection,
     bid1: &str,
@@ -189,49 +185,41 @@ async fn seed_categories_for_guid_test(
         "INSERT INTO news_categories (name, bundle_id) VALUES ('CA', {bid1}), ('CB', {bid2})"
     ))
     .execute(conn)
-    .await
-    .context("EXECUTE insert categories for GUID test")?;
+    .await?;
     Ok(())
 }
 
-async fn assert_category_guids_and_created_at(
+/// Returns `true` when the expected number of category rows each have a
+/// non-empty, unique `guid` and a non-empty `created_at` value.
+async fn category_guids_and_created_at_are_valid(
     conn: &mut DbConnection,
     expected_rows: usize,
-) -> TestResult<()> {
+) -> TestResult<bool> {
     let category_guids =
         postgres_names(conn, "SELECT guid AS name FROM news_categories ORDER BY id").await?;
-    anyhow::ensure!(
-        category_guids.len() == expected_rows,
-        "expected two category rows, got {actual_rows}",
-        actual_rows = category_guids.len()
-    );
-    for guid in &category_guids {
-        anyhow::ensure!(!guid.is_empty(), "category GUID must not be empty");
+    if category_guids.len() != expected_rows {
+        return Ok(false);
+    }
+    if category_guids.iter().any(|guid| guid.is_empty()) {
+        return Ok(false);
     }
     let category_guid_set: std::collections::HashSet<_> = category_guids.iter().collect();
-    anyhow::ensure!(
-        category_guid_set.len() == category_guids.len(),
-        "category GUIDs must be unique"
-    );
+    if category_guid_set.len() != category_guids.len() {
+        return Ok(false);
+    }
+
     let category_created_at = postgres_names(
         conn,
         "SELECT created_at::text AS name FROM news_categories ORDER BY id",
     )
     .await?;
-    anyhow::ensure!(
-        category_created_at.len() == expected_rows,
-        "expected two category rows, got {actual_rows}",
-        actual_rows = category_created_at.len()
-    );
-    for created_at in &category_created_at {
-        anyhow::ensure!(
-            !created_at.is_empty(),
-            "category created_at must not be empty"
-        );
+    if category_created_at.len() != expected_rows {
+        return Ok(false);
     }
-    Ok(())
+    Ok(category_created_at.iter().all(|ts| !ts.is_empty()))
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
@@ -239,9 +227,17 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
         let mut conn = DbConnection::establish(&url).await?;
         apply_migrations(&mut conn, &url, None).await?;
 
-        let (bid1, bid2) = seed_bundles_for_guid_test(&mut conn).await?;
-        assert_bundle_guids_and_created_at(&mut conn, 2).await?;
+        seed_bundles_for_guid_test(&mut conn).await?;
+        assert!(
+            bundle_guids_and_created_at_are_valid(&mut conn, 2).await?,
+            "bundle GUIDs or created_at invalid after insert"
+        );
+        let (bid1, bid2) = fetch_two_bundle_ids(&mut conn).await?;
         seed_categories_for_guid_test(&mut conn, &bid1, &bid2).await?;
-        assert_category_guids_and_created_at(&mut conn, 2).await
+        assert!(
+            category_guids_and_created_at_are_valid(&mut conn, 2).await?,
+            "category GUIDs or created_at invalid after insert"
+        );
+        Ok(())
     })
 }

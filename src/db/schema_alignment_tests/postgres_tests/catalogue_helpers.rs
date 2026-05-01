@@ -3,9 +3,10 @@
 //! Provides:
 //! - `setup_postgres_legacy_schema` to stand up legacy DDL prior to an upgrade.
 //! - `postgres_names` to read catalogue names (tables/columns/indices) as strings.
-//! - `assert_postgres_aligned_schema` to assert the final schema surface.
-//! - `assert_postgres_article_indices` to validate threading-related indices.
-//! - `assert_permission_round_trip` to run a permission join smoke-test using fixed IDs.
+//! - `postgres_aligned_schema_is_valid` to check the final schema surface.
+//! - `postgres_article_indices_are_present` to validate threading-related indices.
+//! - `permission_round_trip_is_seeded_and_valid` to run a permission join smoke-test using fixed
+//!   IDs.
 //!
 //! Relationship to parent:
 //! - Called by `postgres_tests` module tests; composes with `assert_upgrade_backfills` from
@@ -13,7 +14,6 @@
 
 use std::future::Future;
 
-use anyhow::Context;
 use diesel::sql_query;
 use diesel_async::RunQueryDsl;
 use test_util::postgres::PostgresTestDb;
@@ -21,12 +21,12 @@ use test_util::postgres::PostgresTestDb;
 use super::super::{
     DbConnection,
     NameRow,
+    PermissionTestIds,
     TestResult,
-    assert_permission_round_trip_with_ids,
+    permission_round_trip_is_valid,
     seed_permission_round_trip,
-    seed_root_category_name_conflict,
     setup_legacy_schema,
-    verify_root_category_constraint_error,
+    verify_root_category_names_are_unique_with_constraint_insert,
 };
 
 pub(super) async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
@@ -50,24 +50,24 @@ pub(super) async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> Tes
 pub(super) async fn postgres_names(conn: &mut DbConnection, sql: &str) -> TestResult<Vec<String>> {
     Ok(sql_query(sql)
         .load::<NameRow>(conn)
-        .await
-        .with_context(|| format!("LOAD PostgreSQL names: {sql}"))?
+        .await?
         .into_iter()
         .map(|row| row.name)
         .collect())
 }
 
-async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResult<()> {
+/// Returns `true` when both `permissions` and `user_permissions` exist with
+/// their expected indices in the public schema.
+async fn postgres_permission_schema_is_aligned(conn: &mut DbConnection) -> TestResult<bool> {
     let permission_tables = postgres_names(
         conn,
         "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' \
          AND table_name IN ('permissions', 'user_permissions') ORDER BY table_name",
     )
     .await?;
-    anyhow::ensure!(
-        permission_tables == vec!["permissions", "user_permissions"],
-        "expected permissions tables, got {permission_tables:?}"
-    );
+    if permission_tables != vec!["permissions", "user_permissions"] {
+        return Ok(false);
+    }
 
     let permission_indices = postgres_names(
         conn,
@@ -75,26 +75,23 @@ async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResul
          ('permissions', 'user_permissions') ORDER BY indexname",
     )
     .await?;
-    for expected in ["permissions_code_key", "user_permissions_pkey"] {
-        anyhow::ensure!(
-            permission_indices.iter().any(|name| name == expected),
-            "missing PostgreSQL permission index {expected}"
-        );
-    }
-    Ok(())
+    Ok(["permissions_code_key", "user_permissions_pkey"]
+        .iter()
+        .all(|expected| permission_indices.iter().any(|name| name == expected)))
 }
 
-async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()> {
+/// Returns `true` when `news_bundles` has the expected columns and indices in
+/// the public schema.
+async fn postgres_bundle_schema_is_aligned(conn: &mut DbConnection) -> TestResult<bool> {
     let bundle_columns = postgres_names(
         conn,
         "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
          'news_bundles' AND table_schema = 'public' ORDER BY ordinal_position",
     )
     .await?;
-    anyhow::ensure!(
-        bundle_columns == vec!["id", "parent_bundle_id", "name", "guid", "created_at"],
-        "unexpected news_bundles columns: {bundle_columns:?}"
-    );
+    if bundle_columns != vec!["id", "parent_bundle_id", "name", "guid", "created_at"] {
+        return Ok(false);
+    }
 
     let bundle_indices = postgres_names(
         conn,
@@ -102,15 +99,15 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
          = 'public' ORDER BY indexname",
     )
     .await?;
-    for expected in [
+    if ![
         "idx_bundles_name_parent",
         "idx_bundles_parent",
         "news_bundles_name_parent_bundle_id_key",
-    ] {
-        anyhow::ensure!(
-            bundle_indices.iter().any(|name| name == expected),
-            "missing PostgreSQL bundle index {expected}"
-        );
+    ]
+    .iter()
+    .all(|expected| bundle_indices.iter().any(|name| name == expected))
+    {
+        return Ok(false);
     }
 
     let bundle_constraints = postgres_names(
@@ -119,35 +116,33 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
          'public.news_bundles'::regclass AND contype = 'u' ORDER BY conname",
     )
     .await?;
-    anyhow::ensure!(
-        bundle_constraints
-            .iter()
-            .any(|name| name == "news_bundles_name_parent_bundle_id_key"),
-        "missing PostgreSQL bundle unique constraint"
-    );
-    Ok(())
+    Ok(bundle_constraints
+        .iter()
+        .any(|name| name == "news_bundles_name_parent_bundle_id_key"))
 }
 
-async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<()> {
+/// Returns `true` when `news_categories` has the expected columns and indices
+/// in the public schema.
+async fn postgres_category_schema_is_aligned(conn: &mut DbConnection) -> TestResult<bool> {
     let category_columns = postgres_names(
         conn,
         "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
          'news_categories' AND table_schema = 'public' ORDER BY ordinal_position",
     )
     .await?;
-    anyhow::ensure!(
-        category_columns
-            == vec![
-                "id",
-                "name",
-                "bundle_id",
-                "guid",
-                "add_sn",
-                "delete_sn",
-                "created_at"
-            ],
-        "unexpected news_categories columns: {category_columns:?}"
-    );
+    if category_columns
+        != vec![
+            "id",
+            "name",
+            "bundle_id",
+            "guid",
+            "add_sn",
+            "delete_sn",
+            "created_at",
+        ]
+    {
+        return Ok(false);
+    }
 
     let category_indices = postgres_names(
         conn,
@@ -155,75 +150,85 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
          schemaname = 'public' ORDER BY indexname",
     )
     .await?;
-    for expected in [
+    Ok([
         "idx_categories_bundle",
         "idx_categories_root_name_unique",
         "idx_categories_name_bundle_unique",
-    ] {
-        anyhow::ensure!(
-            category_indices.iter().any(|name| name == expected),
-            "missing PostgreSQL category index {expected}"
-        );
-    }
-    Ok(())
+    ]
+    .iter()
+    .all(|expected| category_indices.iter().any(|name| name == expected)))
 }
 
-/// Verifies that `news_articles` has the expected `PostgreSQL` indexes.
+/// Returns `true` when `news_articles` carries all expected threading indices.
 ///
-/// The check is order-agnostic: it queries index names with `postgres_names`
-/// through the supplied `DbConnection` and asserts that `idx_articles_category`,
-/// `idx_articles_first_child_article`, `idx_articles_next_article`,
-/// `idx_articles_parent_article`, and `idx_articles_prev_article` are present.
-/// Database query failures are returned as `TestResult<()>`; missing indexes
-/// return `TestResult` errors.
-pub(crate) async fn assert_postgres_article_indices(conn: &mut DbConnection) -> TestResult<()> {
+/// The predicate queries `pg_indexes` through `postgres_names` and checks that
+/// `idx_articles_category`, `idx_articles_first_child_article`,
+/// `idx_articles_next_article`, `idx_articles_parent_article`, and
+/// `idx_articles_prev_article` are all present. Database query failures are
+/// propagated as `Err`; a missing index causes the predicate to return `false`.
+pub(crate) async fn postgres_article_indices_are_present(
+    conn: &mut DbConnection,
+) -> TestResult<bool> {
     let article_indices = postgres_names(
         conn,
         "SELECT indexname AS name FROM pg_indexes WHERE tablename = 'news_articles' AND \
          schemaname = 'public' ORDER BY indexname",
     )
     .await?;
-    for expected in [
+    Ok([
         "idx_articles_category",
         "idx_articles_first_child_article",
         "idx_articles_next_article",
         "idx_articles_parent_article",
         "idx_articles_prev_article",
-    ] {
-        anyhow::ensure!(
-            article_indices.iter().any(|name| name == expected),
-            "missing PostgreSQL article index {expected}"
-        );
+    ]
+    .iter()
+    .all(|expected| article_indices.iter().any(|name| name == expected)))
+}
+
+/// Returns `true` when the full `news_bundles`, `news_categories`, and
+/// `news_articles` schema is aligned, including columns and indices.
+async fn postgres_news_schema_is_aligned(conn: &mut DbConnection) -> TestResult<bool> {
+    Ok(postgres_bundle_schema_is_aligned(conn).await?
+        && postgres_category_schema_is_aligned(conn).await?
+        && postgres_article_indices_are_present(conn).await?)
+}
+
+/// Returns `true` when the full aligned schema is present across permission
+/// tables, news tables, and the root-category uniqueness constraint.
+///
+/// Note: this predicate also runs a constraint-verification insert to confirm
+/// the partial unique index on root categories. This insert is a side-effect
+/// required by the constraint check and is isolated in
+/// `verify_root_category_names_are_unique_with_constraint_insert`.
+pub(super) async fn postgres_aligned_schema_is_valid(conn: &mut DbConnection) -> TestResult<bool> {
+    if !postgres_permission_schema_is_aligned(conn).await? {
+        return Ok(false);
     }
-    Ok(())
+    if !postgres_news_schema_is_aligned(conn).await? {
+        return Ok(false);
+    }
+    verify_root_category_names_are_unique_with_constraint_insert(conn).await?;
+    Ok(true)
 }
 
-async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> {
-    assert_postgres_bundle_schema(conn).await?;
-    assert_postgres_category_schema(conn).await?;
-    assert_postgres_article_indices(conn).await
-}
-
-pub(super) async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
-    assert_postgres_permission_schema(conn).await?;
-    assert_postgres_news_schema(conn).await?;
-    let conflict_result = seed_root_category_name_conflict(conn).await;
-    verify_root_category_constraint_error(conflict_result).await
-}
-
-pub(super) async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()> {
+/// Seeds a permission round-trip using fixed IDs and returns `true` when the
+/// join query confirms exactly one matching row.
+pub(super) async fn permission_round_trip_is_seeded_and_valid(
+    conn: &mut DbConnection,
+) -> TestResult<bool> {
     seed_permission_round_trip(
         conn,
-        super::super::PermissionTestIds {
+        PermissionTestIds {
             user_id: 42,
             permission_id: 42,
             code: 34,
         },
     )
     .await?;
-    assert_permission_round_trip_with_ids(
+    permission_round_trip_is_valid(
         conn,
-        super::super::PermissionTestIds {
+        PermissionTestIds {
             user_id: 42,
             permission_id: 42,
             code: 34,
