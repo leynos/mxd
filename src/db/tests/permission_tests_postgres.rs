@@ -13,7 +13,7 @@ use diesel_async::RunQueryDsl;
 
 use crate::{
     db::{DbConnection, create_user, get_user_by_name},
-    models::{NewPermission, NewUser, NewUserPermission, Permission, UserPermission},
+    models::{NewPermission, NewUser, NewUserPermission, Permission},
     schema::{
         permissions::dsl as permissions,
         user_permissions::dsl as user_permissions,
@@ -64,11 +64,13 @@ async fn assert_permission_delete_cascades_to_assignments(
         .execute(&mut *conn)
         .await?;
 
-    let assignments = user_permissions::user_permissions
-        .load::<UserPermission>(conn)
+    let assignment_count = user_permissions::user_permissions
+        .filter(user_permissions::permission_id.eq(permission_id))
+        .count()
+        .get_result::<i64>(conn)
         .await?;
     anyhow::ensure!(
-        assignments.is_empty(),
+        assignment_count == 0,
         "permission deletion left assignments behind"
     );
 
@@ -89,10 +91,19 @@ async fn assert_user_delete_cascades_to_assignments(
         .execute(&mut *conn)
         .await?;
 
-    let assignments = user_permissions::user_permissions
-        .load::<UserPermission>(&mut *conn)
+    let assignment_count = user_permissions::user_permissions
+        .filter(user_permissions::permission_id.eq(permission_id))
+        .count()
+        .get_result::<i64>(&mut *conn)
         .await?;
-    anyhow::ensure!(assignments.is_empty(), "cascade left assignments behind");
+    anyhow::ensure!(assignment_count == 0, "cascade left assignments behind");
+
+    let user_count = users::users
+        .filter(users::id.eq(user_id))
+        .count()
+        .get_result::<i64>(&mut *conn)
+        .await?;
+    anyhow::ensure!(user_count == 0, "deleted user row remains");
 
     let stored_permission = permissions::permissions
         .filter(permissions::id.eq(permission_id))
