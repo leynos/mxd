@@ -124,6 +124,16 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
         }
         assert_ne!(guids[0], guids[1], "GUIDs must be unique across rows");
 
+        let bundle_created_at = postgres_names(
+            &mut conn,
+            "SELECT created_at::text AS name FROM news_bundles ORDER BY id",
+        )
+        .await?;
+        assert_eq!(bundle_created_at.len(), 2, "expected two bundle rows");
+        for created_at in &bundle_created_at {
+            assert!(!created_at.is_empty(), "created_at must not be empty");
+        }
+
         let bundle_ids = postgres_names(
             &mut conn,
             "SELECT id::text AS name FROM news_bundles ORDER BY id",
@@ -149,6 +159,18 @@ fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
             category_guids[0], category_guids[1],
             "category GUIDs must be unique across rows"
         );
+        let category_created_at = postgres_names(
+            &mut conn,
+            "SELECT created_at::text AS name FROM news_categories ORDER BY id",
+        )
+        .await?;
+        assert_eq!(category_created_at.len(), 2, "expected two category rows");
+        for created_at in &category_created_at {
+            assert!(
+                !created_at.is_empty(),
+                "category created_at must not be empty"
+            );
+        }
         Ok(())
     })
 }
