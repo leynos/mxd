@@ -253,7 +253,7 @@ impl TestServer {
         {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
-            return Self::launch_with(
+            Self::launch_with(
                 &manifest_path,
                 &bind_host,
                 db_url,
@@ -264,7 +264,7 @@ impl TestServer {
                     db_url: db_url_value,
                     temp_dir: Some(temp),
                 },
-            );
+            )
         }
 
         #[cfg(feature = "postgres")]
@@ -272,7 +272,7 @@ impl TestServer {
             let db = crate::postgres::PostgresTestDb::new()?;
             let db_url = DbUrl::from(db.url.as_ref());
             setup(&db_url)?;
-            return Self::launch_with(
+            Self::launch_with(
                 &manifest_path,
                 &bind_host,
                 db_url,
@@ -284,7 +284,7 @@ impl TestServer {
                     db,
                     temp_dir: None,
                 },
-            );
+            )
         }
     }
 
