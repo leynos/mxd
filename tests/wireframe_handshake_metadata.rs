@@ -59,7 +59,7 @@ impl MetadataWorld {
                 .map(|context| context.handshake().clone())
                 .unwrap_or_default();
             let recorded_factory = Arc::clone(&recorded_state);
-            WireframeApp::<
+            let app_result = WireframeApp::<
                 wireframe::serializer::BincodeSerializer,
                 (),
                 wireframe::app::Envelope,
@@ -69,27 +69,36 @@ impl MetadataWorld {
                 let recorded_setup = Arc::clone(&recorded_factory);
                 let handshake_for_state = handshake.clone();
                 async move {
-                    recorded_setup
-                        .lock()
-                        .unwrap_or_else(|_| panic!("recorded handshake lock poisoned"))
-                        .replace(handshake_for_state.clone());
+                    match recorded_setup.lock() {
+                        Ok(mut recorded) => {
+                            recorded.replace(handshake_for_state.clone());
+                        }
+                        Err(poisoned) => {
+                            panic!("recorded handshake lock poisoned: {poisoned}");
+                        }
+                    }
                 }
-            })
-            .unwrap_or_else(|err| panic!("failed to install connection setup: {err}"))
+            });
+            match app_result {
+                Ok(app) => app,
+                Err(err) => panic!("failed to install connection setup: {err}"),
+            }
         })
         .workers(1)
         .with_preamble::<HotlinePreamble>();
 
         let handshake_server = handshake::install(app_server, Duration::from_millis(200));
-        let bind_addr: SocketAddr = "127.0.0.1:0"
-            .parse()
-            .unwrap_or_else(|err| panic!("failed to parse bind address: {err}"));
-        let bound_server = handshake_server
-            .bind(bind_addr)
-            .unwrap_or_else(|err| panic!("failed to bind server: {err}"));
-        let addr = bound_server
-            .local_addr()
-            .unwrap_or_else(|| panic!("failed to read local address"));
+        let bind_addr: SocketAddr = match "127.0.0.1:0".parse() {
+            Ok(bind_addr) => bind_addr,
+            Err(err) => panic!("failed to parse bind address: {err}"),
+        };
+        let bound_server = match handshake_server.bind(bind_addr) {
+            Ok(bound_server) => bound_server,
+            Err(err) => panic!("failed to bind server: {err}"),
+        };
+        let Some(addr) = bound_server.local_addr() else {
+            panic!("failed to read local address");
+        };
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         tokio::spawn(async move {
             drop(
@@ -105,15 +114,19 @@ impl MetadataWorld {
     }
 
     fn recorded(&self) -> Option<HandshakeMetadata> {
-        self.recorded
-            .lock()
-            .unwrap_or_else(|_| panic!("recorded lock poisoned"))
-            .clone()
+        self.recorded.lock().map_or_else(
+            |_poisoned| panic!("recorded lock poisoned"),
+            |recorded| recorded.clone(),
+        )
     }
 
     #[expect(
         clippy::excessive_nesting,
         reason = "polling loop and branch-specific assertions require nested conditionals"
+    )]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "polling loop and branch-specific assertions are clearer inline"
     )]
     async fn connect_and_send(&self, bytes: &[u8], expect_recorded: bool) {
         let Some(addr) = *self.addr.borrow() else {
@@ -121,13 +134,13 @@ impl MetadataWorld {
         };
         // Capture the current recorded value to detect changes.
         let previous = self.recorded();
-        let mut stream = TcpStream::connect(addr)
-            .await
-            .unwrap_or_else(|err| panic!("failed to connect to test server: {err}"));
-        stream
-            .write_all(bytes)
-            .await
-            .unwrap_or_else(|err| panic!("failed to write handshake bytes: {err}"));
+        let mut stream = match TcpStream::connect(addr).await {
+            Ok(stream) => stream,
+            Err(err) => panic!("failed to connect to test server: {err}"),
+        };
+        if let Err(err) = stream.write_all(bytes).await {
+            panic!("failed to write handshake bytes: {err}");
+        }
         let mut buf = [0u8; REPLY_LEN];
         drop(stream.read_exact(&mut buf).await);
         drop(stream);
@@ -215,11 +228,12 @@ fn then_registry_cleared(world: &MetadataWorld) {
         "handshake registry should not be visible"
     );
     // Reset captured metadata to prevent cross-scenario leakage when the fixture is reused.
-    world
-        .recorded
-        .lock()
-        .unwrap_or_else(|_| panic!("recorded lock poisoned"))
-        .take();
+    match world.recorded.lock() {
+        Ok(mut recorded) => {
+            recorded.take();
+        }
+        Err(poisoned) => panic!("recorded lock poisoned: {poisoned}"),
+    }
 }
 
 #[then("no handshake metadata is recorded")]

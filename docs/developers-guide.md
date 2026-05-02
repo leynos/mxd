@@ -52,14 +52,17 @@ The lint targets prepend this prefix only for Whitaker invocations:
 ```sh
 PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" \
   RUSTFLAGS="-D warnings" \
-  whitaker --all -- --no-default-features --features "postgres test-support legacy-networking"
+  whitaker --all -- --no-default-features \
+    --features "postgres test-support legacy-networking" --all-targets
 ```
 
 This keeps the same Cargo executable family, the resolved Whitaker binary, and
 user-local tools ahead of the ambient shell `PATH` while avoiding an empty
 current-directory entry. The Clippy lines still use `$(CARGO)` directly; the
 PATH override is specifically for Whitaker and tools it invokes as
-subprocesses during lint runs. Test targets use the resolved `$(CARGO)` path
+subprocesses during lint runs. Whitaker receives `--all-targets` so test-only
+modules compiled behind `#[cfg(test)]` are linted by the same structural rules
+as library and binary targets. Test targets use the resolved `$(CARGO)` path
 directly rather than rewriting `PATH`.
 
 To inspect the effective prefix for a local shell, ask `make` to print it:
@@ -72,7 +75,7 @@ For a local lint invocation, the effective command shape is:
 
 ```sh
 PATH="$TOOL_PATH_PREFIX:$PATH" RUSTFLAGS="-D warnings" \
-  whitaker --all -- --features "sqlite test-support"
+  whitaker --all -- --features "sqlite test-support" --all-targets
 ```
 
 That prefix means Cargo subcommands installed under `~/.cargo/bin`, Whitaker

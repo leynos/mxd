@@ -45,6 +45,7 @@ impl ConnectionState {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use std::{net::SocketAddr, sync::Arc};
 
     use argon2::Argon2;

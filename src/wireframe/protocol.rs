@@ -170,6 +170,7 @@ impl WireframeProtocol for HotlineProtocol {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use rstest::{fixture, rstest};
     use wireframe::hooks::ConnectionContext;
 

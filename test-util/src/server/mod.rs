@@ -6,14 +6,15 @@
 use std::{
     ffi::OsString,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, Command, Stdio},
 };
 
+mod binary;
 mod env;
 mod readiness;
 
-use env::SERVER_BINARY_ENV;
+use binary::resolve_server_binary;
 pub use env::{DbUrl, ManifestPath, ensure_server_binary_env, with_env_var};
 #[cfg(unix)]
 use nix::{
@@ -69,53 +70,6 @@ where
     let url = DbUrl::from(path_str);
     setup(&url)?;
     Ok(url)
-}
-
-fn resolve_server_binary() -> Option<PathBuf> {
-    let resolution =
-        std::env::var_os(SERVER_BINARY_ENV).map_or(ServerBinaryResolution::EnvMissing, |bin| {
-            let path = PathBuf::from(bin);
-            if path.exists() {
-                ServerBinaryResolution::Found(path)
-            } else {
-                ServerBinaryResolution::Missing(path)
-            }
-        });
-    resolution.log();
-    resolution.into_option()
-}
-
-enum ServerBinaryResolution {
-    EnvMissing,
-    Found(PathBuf),
-    Missing(PathBuf),
-}
-
-impl ServerBinaryResolution {
-    fn log(&self) {
-        let (message, binary) = match self {
-            Self::EnvMissing => ("env var not set", None),
-            Self::Found(path) => ("using prebuilt binary", Some(path.as_path())),
-            Self::Missing(path) => ("binary from env var does not exist", Some(path.as_path())),
-        };
-        log_server_binary_resolution(message, binary);
-    }
-
-    fn into_option(self) -> Option<PathBuf> {
-        match self {
-            Self::Found(path) => Some(path),
-            Self::EnvMissing | Self::Missing(_) => None,
-        }
-    }
-}
-
-fn log_server_binary_resolution(message: &'static str, binary: Option<&Path>) {
-    let binary_display = binary.map(|path| path.display().to_string());
-    debug!(
-        env_var = SERVER_BINARY_ENV,
-        binary = ?binary_display,
-        "{message}"
-    );
 }
 
 /// Constructs the base `cargo run` command for launching the server with the

@@ -143,9 +143,10 @@ impl CreateUserWorld {
 
 #[fixture]
 fn world() -> CreateUserWorld {
-    let world = CreateUserWorld::new().unwrap_or_else(|err| {
-        panic!("failed to create test world: {err}");
-    });
+    let world = match CreateUserWorld::new() {
+        Ok(world) => world,
+        Err(err) => panic!("failed to create test world: {err}"),
+    };
     // Sanity-check fixture invariants so step definitions can rely on the DB path shape.
     assert!(
         world.config.borrow().database.ends_with("bdd.mxd.db"),

@@ -143,8 +143,10 @@ fn given_fragmented_transaction(world: &TransactionWorld, total: usize, count: u
 
 #[given("a fragmented transaction with mismatched continuation headers")]
 fn given_mismatched_continuation(world: &TransactionWorld) {
-    let bytes = mismatched_continuation_bytes()
-        .unwrap_or_else(|err| panic!("test values fit in u32: {err:?}"));
+    let bytes = match mismatched_continuation_bytes() {
+        Ok(bytes) => bytes,
+        Err(err) => panic!("test values fit in u32: {err:?}"),
+    };
     world.set_bytes(&bytes);
 }
 

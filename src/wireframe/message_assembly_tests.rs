@@ -115,17 +115,24 @@ enum PayloadBuilder {
     Continuation,
     FirstLogicalHeaderTotal,
 }
-
 fn build_payload(builder: PayloadBuilder) -> Vec<u8> {
     match builder {
         PayloadBuilder::First | PayloadBuilder::FirstLogicalHeaderTotal => {
             let header = header(10, 4);
-            first_frame_payload(message_key_for(&header), &header, b"data").expect("payload")
+            match first_frame_payload(message_key_for(&header), &header, b"data") {
+                Ok(payload) => payload,
+                Err(err) => panic!("payload: {err}"),
+            }
         }
-        PayloadBuilder::Continuation => {
-            continuation_frame_payload(MessageKey(11), FrameSequence(2), IsLast(true), b"tail")
-                .expect("payload")
-        }
+        PayloadBuilder::Continuation => match continuation_frame_payload(
+            MessageKey(11),
+            FrameSequence(2),
+            IsLast(true),
+            b"tail",
+        ) {
+            Ok(payload) => payload,
+            Err(err) => panic!("payload: {err}"),
+        },
     }
 }
 

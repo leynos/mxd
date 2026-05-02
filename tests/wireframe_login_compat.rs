@@ -246,8 +246,9 @@ impl LoginCompatWorld {
 
 #[fixture]
 fn world() -> LoginCompatWorld {
-    ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server"))
-        .unwrap_or_else(|error| panic!("failed to configure wireframe test binary path: {error}"));
+    if let Err(error) = ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server")) {
+        panic!("failed to configure wireframe test binary path: {error}");
+    }
     let world = LoginCompatWorld::new();
     assert!(!world.base.is_skipped());
     world

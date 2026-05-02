@@ -61,6 +61,7 @@ pub(crate) fn auth_strategy_for_client(_client_kind: ClientKind) -> &'static dyn
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use rstest::rstest;
 
     use super::auth_strategy_label;

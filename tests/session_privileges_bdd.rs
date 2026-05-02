@@ -55,11 +55,14 @@ struct PrivilegeWorld {
 
 impl PrivilegeWorld {
     fn new() -> Self {
-        let peer = "127.0.0.1:12345"
-            .parse()
-            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
-        let runtime =
-            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
+        let peer = match "127.0.0.1:12345".parse() {
+            Ok(peer) => peer,
+            Err(err) => panic!("failed to parse fixture peer address: {err}"),
+        };
+        let runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(err) => panic!("failed to create tokio runtime: {err}"),
+        };
         let router = WireframeRouter::new(
             Arc::new(XorCompatibility::disabled()),
             Arc::new(ClientCompatibility::from_handshake(
@@ -151,16 +154,19 @@ impl PrivilegeWorld {
         let pool = self.pool.borrow().clone();
         let name = username.to_owned();
         self.runtime.block_on(async move {
-            let mut conn = pool
-                .get()
-                .await
-                .unwrap_or_else(|err| panic!("pool connection should be available: {err}"));
-            users_dsl::users
+            let mut conn = match pool.get().await {
+                Ok(conn) => conn,
+                Err(err) => panic!("pool connection should be available: {err}"),
+            };
+            match users_dsl::users
                 .filter(users_dsl::username.eq(&name))
                 .select(users_dsl::id)
                 .first::<i32>(&mut conn)
                 .await
-                .unwrap_or_else(|err| panic!("test user should exist in fixture db: {err}"))
+            {
+                Ok(user_id) => user_id,
+                Err(err) => panic!("test user should exist in fixture db: {err}"),
+            }
         })
     }
 }

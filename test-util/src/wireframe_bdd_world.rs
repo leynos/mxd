@@ -136,30 +136,27 @@ impl WireframeBddWorld {
         let handshake_sub_version = self.handshake_sub_version.get();
         let started_at = Instant::now();
         let mut attempts = 0usize;
-        let mut last_error: Option<AnyError> = None;
 
-        loop {
+        let last_error = loop {
             attempts += 1;
             match Self::connect_and_handshake(server_addr, io_timeout, handshake_sub_version) {
                 Ok(stream) => {
                     self.stream.borrow_mut().replace(stream);
                     return Ok(());
                 }
-                Err(error) => last_error = Some(error),
+                Err(error) if started_at.elapsed() >= io_timeout => break error,
+                Err(_) => {
+                    let elapsed = started_at.elapsed();
+                    let remaining = io_timeout.saturating_sub(elapsed);
+                    std::thread::sleep(remaining.min(RECONNECT_RETRY_INTERVAL));
+                }
             }
-            let elapsed = started_at.elapsed();
-            if elapsed >= io_timeout {
-                break;
-            }
-            let remaining = io_timeout.saturating_sub(elapsed);
-            std::thread::sleep(remaining.min(RECONNECT_RETRY_INTERVAL));
-        }
+        };
 
         let elapsed = started_at.elapsed();
-        let no_error_recorded = format!(
-            "reconnect exhausted {attempts} attempts in {elapsed:?} without recording an error"
-        );
-        Err(last_error.unwrap_or_else(|| anyhow::anyhow!(no_error_recorded)))
+        Err(last_error.context(format!(
+            "reconnect exhausted {attempts} attempts in {elapsed:?}"
+        )))
     }
 
     fn connect_and_handshake(

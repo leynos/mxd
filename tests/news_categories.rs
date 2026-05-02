@@ -83,11 +83,11 @@ fn list_categories(
     Ok((reply_tx.header, names))
 }
 
-/// rstest-decorated tests that need `panic_in_result_fn` suppression.
-///
-/// The rstest macro generates wrapper functions that cannot be individually annotated,
-/// so module-level suppression is the narrowest possible scope.
 mod rstest_tests {
+    //! Rstest-generated scenario coverage for news categories.
+    //!
+    //! The rstest macro generates wrapper functions that cannot be individually
+    //! annotated, so module-level suppression is the narrowest possible scope.
     #![expect(
         clippy::panic_in_result_fn,
         reason = "rstest macro generates functions with assertions"

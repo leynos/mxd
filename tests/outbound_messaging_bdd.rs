@@ -139,9 +139,10 @@ async fn then_queue_receives(world: &OutboundWorld) {
         panic!("expected a queued frame but queue was empty");
     };
     assert_eq!(priority, PushPriority::Low);
-    let parsed = parse_transaction(&frame).unwrap_or_else(|err| {
-        panic!("parse transaction: {err}");
-    });
+    let parsed = match parse_transaction(&frame) {
+        Ok(parsed) => parsed,
+        Err(err) => panic!("parse transaction: {err}"),
+    };
     assert_eq!(parsed, OutboundWorld::message());
 }
 

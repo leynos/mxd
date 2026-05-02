@@ -166,6 +166,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use std::io::Cursor;
 
     use tokio::io::BufReader;

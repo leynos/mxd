@@ -124,6 +124,7 @@ impl ReplyBuilder {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use std::net::SocketAddr;
 
     use rstest::rstest;
@@ -184,7 +185,9 @@ mod tests {
     fn assert_event_error(event: &RecordedEvent, expected: Option<&str>) {
         match expected {
             Some(err) => {
-                let value = event.field("err").expect("expected err field");
+                let Some(value) = event.field("err") else {
+                    panic!("expected err field");
+                };
                 assert_eq!(value.trim_matches('"'), err);
             }
             None => assert!(event.field("err").is_none(), "expected no err field"),

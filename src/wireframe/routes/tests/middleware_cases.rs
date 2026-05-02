@@ -46,9 +46,10 @@ fn setup_middleware_test(
     Arc<AtomicUsize>,
 ) {
     let session = Arc::new(tokio::sync::Mutex::new(Session::default()));
-    let peer: SocketAddr = "127.0.0.1:12345"
-        .parse()
-        .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
+    let peer: SocketAddr = match "127.0.0.1:12345".parse() {
+        Ok(peer) => peer,
+        Err(err) => panic!("failed to parse fixture peer address: {err}"),
+    };
     let messaging = Arc::new(NoopOutboundMessaging);
     let presence = Arc::new(PresenceRegistry::default());
     let router = WireframeRouter::new(
@@ -113,9 +114,9 @@ fn verify_dispatch_records(peer: SocketAddr, calls: &Arc<AtomicUsize>) {
     let records = dispatch_spy::take();
     let records_by_id = records_by_id(records, cases.len());
     for case in &cases {
-        let record = records_by_id
-            .get(&case.id)
-            .unwrap_or_else(|| panic!("missing dispatch record for case {}", case.label));
+        let Some(record) = records_by_id.get(&case.id) else {
+            panic!("missing dispatch record for case {}", case.label);
+        };
         assert_record_matches_case(record, case, peer);
     }
     assert_eq!(calls.load(Ordering::SeqCst), cases.len());
