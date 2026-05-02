@@ -1,0 +1,55 @@
+//! `SQLite` article-threading referential integrity tests.
+//!
+//! Validates that threading link columns are correctly set up with foreign-key
+//! enforcement on `news_articles` self-referential joins.
+
+use anyhow::Context;
+use diesel_async::RunQueryDsl;
+use rstest::rstest;
+
+use super::{DbConnection, TestResult, threaded_articles_db};
+
+#[rstest]
+#[tokio::test]
+async fn sqlite_article_threading_enforces_referential_integrity(
+    #[future] threaded_articles_db: TestResult<DbConnection>,
+) -> TestResult<()> {
+    let mut conn = threaded_articles_db.await?;
+
+    // Verify the threading link via a JOIN query
+    let linked = diesel::sql_query(
+        "SELECT child.id AS name FROM news_articles a INNER JOIN news_articles child ON child.id \
+         = a.first_child_article_id WHERE a.id = 1",
+    )
+    .get_result::<super::NameRow>(&mut conn)
+    .await
+    .context("LOAD SQLite linked child article")?;
+    anyhow::ensure!(linked.name == "2", "root article must link to its child");
+
+    // Referential integrity: inserting an article with a non-existent parent must fail
+    // (PRAGMA foreign_keys must be ON; SQLite pragmas are connection-scoped)
+    diesel::sql_query("PRAGMA foreign_keys = ON")
+        .execute(&mut conn)
+        .await
+        .context("EXECUTE enable SQLite foreign keys")?;
+    let bad_insert = diesel::sql_query(
+        "INSERT INTO news_articles (id, category_id, parent_article_id, title, posted_at) VALUES \
+         (99, 1, 9999, 'Orphan', '2026-01-03 00:00:00')",
+    )
+    .execute(&mut conn)
+    .await;
+    anyhow::ensure!(
+        bad_insert.is_err(),
+        "insert with non-existent parent_article_id must be rejected when FK enforcement is on"
+    );
+    let bad_update =
+        diesel::sql_query("UPDATE news_articles SET first_child_article_id = 9999 WHERE id = 1")
+            .execute(&mut conn)
+            .await;
+    anyhow::ensure!(
+        bad_update.is_err(),
+        "update with non-existent first_child_article_id must be rejected when FK enforcement is \
+         on"
+    );
+    Ok(())
+}
