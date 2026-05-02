@@ -147,22 +147,14 @@ impl PostgresTestDb {
     /// Returns [`PostgresTestDbError::Unavailable`] if `PostgreSQL` is unreachable.
     /// Returns semantic [`PostgresTestDbError`] variants for initialization errors.
     pub fn new_from_template() -> Result<Self, PostgresTestDbError> {
-        if std::env::var_os("POSTGRES_TEST_URL").is_some() {
+        if Self::admin_url_from_env()?.is_some() {
             // External PostgreSQL: template support not yet implemented for external servers
             // Fall back to regular database creation
             return Self::new();
         }
 
-        let embedded = start_embedded_postgres_with_strategy(reset_postgres_db, true).map_err(
-            |e| match e {
-                EmbeddedPgError::Unavailable(_) => {
-                    PostgresTestDbError::Unavailable(PostgresUnavailable)
-                }
-                EmbeddedPgError::InitFailed(inner) => {
-                    PostgresTestDbError::EmbeddedInitFailed(inner.to_string())
-                }
-            },
-        )?;
+        let embedded = start_embedded_postgres_with_strategy(reset_postgres_db, true)
+            .map_err(Self::map_embedded_err)?;
         let url = embedded.url.clone();
         let db_name = embedded.db_name.clone();
         Ok(Self {

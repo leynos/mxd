@@ -223,8 +223,8 @@ pub(crate) async fn seed_root_category_name_conflict(conn: &mut DbConnection) ->
     )
     .execute(conn)
     .await
-    .context("EXECUTE insert duplicate root category conflict row")?;
-    Ok(())
+    .context("EXECUTE insert duplicate root category conflict row")
+    .map(|_rows| ())
 }
 
 /// Asserts that a root-category conflict seed result failed with a constraint

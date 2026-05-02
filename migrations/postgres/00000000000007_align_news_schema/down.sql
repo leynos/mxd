@@ -5,6 +5,7 @@ DROP INDEX IF EXISTS idx_articles_prev_article;
 DROP INDEX IF EXISTS idx_articles_parent_article;
 DROP INDEX IF EXISTS idx_bundles_parent;
 DROP INDEX IF EXISTS idx_bundles_name_parent;
+DROP INDEX IF EXISTS idx_bundles_root_name_unique;
 DROP INDEX IF EXISTS idx_categories_bundle;
 DROP INDEX IF EXISTS user_permissions_user_id_idx;
 DROP INDEX IF EXISTS user_permissions_permission_id_idx;

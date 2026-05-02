@@ -1303,10 +1303,13 @@ and chat features) as outlined in the roadmap.
   [12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L37-L45)
    )(
   [12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L107-L115)).
-   Category names are unique within a bundle. Root categories need a separate
-  partial unique index on `name` where `bundle_id IS NULL`, because SQLite and
-  PostgreSQL both treat `NULL` values as distinct under composite unique
-  constraints.
+   Category names are unique within a bundle. Root categories need
+  backend-specific handling because SQLite and PostgreSQL both treat `NULL`
+  values as distinct under composite unique constraints. PostgreSQL, and other
+  databases that support partial indexes, use a partial unique index on `name`
+  where `bundle_id IS NULL`. SQLite emulates the same invariant with
+  `idx_news_categories_unique` on `(name, IFNULL(bundle_id, -1))`, so root
+  categories use `-1` as the uniqueness sentinel for `NULL` bundle IDs.
 
 - `news_articles`: Each row is a post. The schema is designed to support
   threaded discussions and linear navigation:

@@ -31,7 +31,10 @@ impl ServerBinaryResolution {
         let (message, binary) = match self {
             Self::EnvMissing => ("env var not set", None),
             Self::Found(path) => ("using prebuilt binary", Some(path.as_path())),
-            Self::Missing(path) => ("binary from env var does not exist", Some(path.as_path())),
+            Self::Missing(path) => (
+                "binary from env var does not exist or is not a regular file",
+                Some(path.as_path()),
+            ),
         };
         log_server_binary_resolution(message, binary);
     }

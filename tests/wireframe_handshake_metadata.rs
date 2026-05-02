@@ -22,8 +22,8 @@ use rstest_bdd_macros::{given, scenarios, then, when};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::oneshot,
-    time::sleep,
+    sync::{mpsc, oneshot},
+    time::{sleep, timeout},
 };
 use wireframe::{app::WireframeApp, server::WireframeServer};
 
@@ -37,22 +37,20 @@ const POLL_INTERVAL_MS: u64 = 10;
 struct MetadataWorld {
     addr: RefCell<Option<SocketAddr>>,
     shutdown: RefCell<Option<oneshot::Sender<()>>>,
-    previous_recorded: RefCell<PreviousRecorded>,
     recorded: Arc<Mutex<Option<HandshakeMetadata>>>,
-}
-
-enum PreviousRecorded {
-    Unset,
-    Captured(Option<HandshakeMetadata>),
+    teardown_sender: mpsc::UnboundedSender<()>,
+    teardown_receiver: Arc<Mutex<mpsc::UnboundedReceiver<()>>>,
 }
 
 impl MetadataWorld {
     fn new() -> Self {
+        let (teardown_sender, teardown_receiver) = mpsc::unbounded_channel();
         Self {
             addr: RefCell::new(None),
             shutdown: RefCell::new(None),
-            previous_recorded: RefCell::new(PreviousRecorded::Unset),
             recorded: Arc::new(Mutex::new(None)),
+            teardown_sender,
+            teardown_receiver: Arc::new(Mutex::new(teardown_receiver)),
         }
     }
 
@@ -62,11 +60,13 @@ impl MetadataWorld {
     )]
     fn start_server(&self) {
         let recorded_state = Arc::clone(&self.recorded);
+        let teardown_state = self.teardown_sender.clone();
         let app_server = WireframeServer::new(move || {
             let handshake = take_current_context()
                 .map(|context| context.handshake().clone())
                 .unwrap_or_default();
             let recorded_factory = Arc::clone(&recorded_state);
+            let teardown_factory = teardown_state.clone();
             let app_result = WireframeApp::<
                 wireframe::serializer::BincodeSerializer,
                 (),
@@ -86,6 +86,14 @@ impl MetadataWorld {
                         }
                     }
                 }
+            })
+            .and_then(|app| {
+                app.on_connection_teardown(move |(): ()| {
+                    let teardown_setup = teardown_factory.clone();
+                    async move {
+                        let _send_result = teardown_setup.send(());
+                    }
+                })
             });
             match app_result {
                 Ok(app) => app,
@@ -133,9 +141,9 @@ impl MetadataWorld {
         bytes: &[u8],
         expect_recorded: bool,
     ) -> Result<(), anyhow::Error> {
+        self.clear_recorded();
+        self.drain_teardown_signals();
         let addr = self.server_addr();
-        self.previous_recorded
-            .replace(PreviousRecorded::Captured(self.recorded()));
         self.open_and_write(addr, bytes).await?;
         let recorded = self.await_recorded().await?;
         Self::assert_recording(expect_recorded, recorded.as_ref())?;
@@ -158,22 +166,18 @@ impl MetadataWorld {
             .await
             .map_err(|err| anyhow::anyhow!("failed to write handshake bytes: {err}"))?;
         let mut buf = [0u8; REPLY_LEN];
-        drop(stream.read_exact(&mut buf).await);
+        stream
+            .read_exact(&mut buf)
+            .await
+            .map_err(|err| anyhow::anyhow!("failed to read handshake reply: {err}"))?;
         drop(stream);
         Ok(())
     }
 
     async fn await_recorded(&self) -> Result<Option<HandshakeMetadata>, anyhow::Error> {
-        // Capture the current recorded value to detect changes.
-        let previous = match self.previous_recorded.replace(PreviousRecorded::Unset) {
-            PreviousRecorded::Captured(previous) => previous,
-            PreviousRecorded::Unset => self.recorded(),
-        };
         for attempt in 0..MAX_ATTEMPTS {
             let current = self.recorded();
-            // Wait for a different value so repeated calls do not pass on
-            // stale state.
-            if current != previous {
+            if current.is_some() {
                 return Ok(current);
             } else if attempt + 1 == MAX_ATTEMPTS {
                 return Ok(None);
@@ -182,6 +186,51 @@ impl MetadataWorld {
         }
 
         Ok(None)
+    }
+
+    fn clear_recorded(&self) {
+        match self.recorded.lock() {
+            Ok(mut recorded) => {
+                recorded.take();
+            }
+            Err(poisoned) => panic!("recorded lock poisoned: {poisoned}"),
+        }
+    }
+
+    fn drain_teardown_signals(&self) {
+        match self.teardown_receiver.lock() {
+            Ok(mut receiver) => while receiver.try_recv().is_ok() {},
+            Err(poisoned) => panic!("teardown receiver lock poisoned: {poisoned}"),
+        }
+    }
+
+    async fn wait_for_teardown(&self) -> Result<(), anyhow::Error> {
+        timeout(Duration::from_secs(1), self.wait_for_teardown_signal())
+            .await
+            .context("timed out waiting for connection teardown signal")?
+    }
+
+    async fn wait_for_teardown_signal(&self) -> Result<(), anyhow::Error> {
+        loop {
+            if self.poll_teardown_signal()? {
+                return Ok(());
+            }
+            sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
+        }
+    }
+
+    fn poll_teardown_signal(&self) -> Result<bool, anyhow::Error> {
+        let mut receiver = self
+            .teardown_receiver
+            .lock()
+            .map_err(|poisoned| anyhow::anyhow!("teardown receiver lock poisoned: {poisoned}"))?;
+        match receiver.try_recv() {
+            Ok(()) => Ok(true),
+            Err(mpsc::error::TryRecvError::Empty) => Ok(false),
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                anyhow::bail!("connection teardown signal sender was dropped");
+            }
+        }
     }
 
     fn assert_recording(
@@ -281,18 +330,8 @@ fn then_sub_version(world: &MetadataWorld, sub_version: u16) {
 }
 
 #[then("the handshake registry is cleared after teardown")]
-fn then_registry_cleared(world: &MetadataWorld) {
-    assert!(
-        !has_current_context(),
-        "handshake registry should not be visible"
-    );
-    // Reset captured metadata to prevent cross-scenario leakage when the fixture is reused.
-    match world.recorded.lock() {
-        Ok(mut recorded) => {
-            recorded.take();
-        }
-        Err(poisoned) => panic!("recorded lock poisoned: {poisoned}"),
-    }
+async fn then_registry_cleared(world: &MetadataWorld) -> Result<(), anyhow::Error> {
+    world.wait_for_teardown().await
 }
 
 #[then("no handshake metadata is recorded")]

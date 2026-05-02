@@ -77,6 +77,7 @@ async fn assert_sqlite_bundle_schema(conn: &mut DbConnection) -> TestResult<()> 
     for expected in [
         "idx_bundles_name_parent",
         "idx_bundles_parent",
+        "idx_bundles_root_name_unique",
         "sqlite_autoindex_news_bundles_1",
     ] {
         anyhow::ensure!(

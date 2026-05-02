@@ -110,6 +110,7 @@ async fn assert_postgres_bundle_schema(conn: &mut DbConnection) -> TestResult<()
     for expected in [
         "idx_bundles_name_parent",
         "idx_bundles_parent",
+        "idx_bundles_root_name_unique",
         "news_bundles_name_parent_bundle_id_key",
     ] {
         anyhow::ensure!(
@@ -293,8 +294,26 @@ async fn start_optional_embedded_postgres() -> TestResult<Option<postgresql_embe
         tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
         return Ok(None);
     }
-    pg.start().await?;
-    Ok(Some(pg))
+    handle_optional_postgres_start(pg).await
+}
+
+async fn handle_optional_postgres_start(
+    mut pg: postgresql_embedded::PostgreSQL,
+) -> TestResult<Option<postgresql_embedded::PostgreSQL>> {
+    let Err(error) = pg.start().await else {
+        return Ok(Some(pg));
+    };
+    handle_optional_postgres_error(error)
+}
+
+fn handle_optional_postgres_error(
+    error: impl Into<anyhow::Error>,
+) -> TestResult<Option<postgresql_embedded::PostgreSQL>> {
+    if is_ci() {
+        return Err(error.into());
+    }
+    tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
+    Ok(None)
 }
 
 fn stop_embedded_postgres(pg: postgresql_embedded::PostgreSQL) -> TestResult<()> {

@@ -161,7 +161,7 @@ impl PostgresTestDbError {
 
 #[expect(clippy::shadow_reuse, reason = "clearer flow with shadowing")]
 fn postgres_available(url: &Url) -> bool {
-    if let (Some(host), Some(port)) = (url.host_str(), probe_port(url)) {
+    if let Some((host, port)) = tcp_probe_target(url) {
         let addr = (host, port)
             .to_socket_addrs()
             .ok()
@@ -171,6 +171,20 @@ fn postgres_available(url: &Url) -> bool {
         }
     }
     false
+}
+
+fn tcp_probe_target(url: &Url) -> Option<(String, u16)> {
+    let query_host = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "host").then(|| value.into_owned()))
+        .filter(|host| !host.starts_with('/'));
+    let host = url.host_str().map(str::to_owned).or(query_host)?;
+    let query_port = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "port").then(|| value.parse::<u16>().ok()))
+        .flatten();
+    let port = query_port.or_else(|| probe_port(url))?;
+    Some((host, port))
 }
 
 pub(super) fn probe_port(url: &Url) -> Option<u16> {
@@ -189,7 +203,7 @@ pub(super) fn create_external_db_if_available(
     admin_url: &DatabaseUrl,
 ) -> Result<(DatabaseUrl, DatabaseName), PostgresTestDbError> {
     let parsed = Url::parse(admin_url.as_ref()).map_err(PostgresTestDbError::UrlParse)?;
-    if parsed.host_str().is_some() && !postgres_available(&parsed) {
+    if tcp_probe_target(&parsed).is_some() && !postgres_available(&parsed) {
         return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
     }
     create_external_db(admin_url)

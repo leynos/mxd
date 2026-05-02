@@ -35,6 +35,9 @@ FROM news_bundles_old;
 
 CREATE INDEX idx_bundles_parent ON news_bundles(parent_bundle_id);
 CREATE INDEX idx_bundles_name_parent ON news_bundles(name, parent_bundle_id);
+CREATE UNIQUE INDEX idx_bundles_root_name_unique
+    ON news_bundles(name)
+    WHERE parent_bundle_id IS NULL;
 
 CREATE TABLE news_categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
