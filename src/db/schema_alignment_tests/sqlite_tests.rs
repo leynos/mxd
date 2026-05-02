@@ -6,8 +6,8 @@
 //!   uniqueness, threading referential integrity, and article-index presence.
 //!
 //! Helpers:
-//! - Uses in-memory connections, `sqlite_names` catalogue readers, and the parent module's
-//!   `assert_upgrade_backfills`.
+//! - Uses in-memory connections, `sqlite_names` catalogue readers, and the parent module's backfill
+//!   seed/assertion helpers.
 
 use anyhow::Context;
 use diesel::sql_query;
@@ -17,12 +17,11 @@ use rstest::{fixture, rstest};
 use super::{
     DbConnection,
     NameRow,
-    PermissionTestIds,
     TestResult,
     apply_migrations,
-    assert_upgrade_backfills,
-    seed_permission_round_trip,
+    assert_upgrade_backfills_readonly,
     seed_root_category_name_conflict,
+    seed_upgrade_backfills,
     setup_legacy_schema,
     verify_root_category_constraint_error,
 };
@@ -293,16 +292,8 @@ async fn sqlite_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     setup_sqlite_legacy_schema(&mut conn).await?;
     apply_migrations(&mut conn, "", None).await?;
 
-    seed_permission_round_trip(
-        &mut conn,
-        PermissionTestIds {
-            user_id: 84,
-            permission_id: 84,
-            code: 84,
-        },
-    )
-    .await?;
-    assert_upgrade_backfills(&mut conn).await?;
+    seed_upgrade_backfills(&mut conn).await?;
+    assert_upgrade_backfills_readonly(&mut conn).await?;
     assert_sqlite_aligned_schema(&mut conn).await
 }
 

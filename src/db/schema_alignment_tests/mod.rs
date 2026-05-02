@@ -169,10 +169,24 @@ async fn assert_empty_category_backfill(conn: &mut DbConnection) -> TestResult<(
     assert_category_backfill_for_id(conn, 2, 0).await
 }
 
-/// Runs all post-upgrade backfill assertions: bundle, category, permission
-/// round-trip, and backend-specific article-index checks.
+/// Seeds write-side data required by post-upgrade backfill assertions.
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-pub(crate) async fn assert_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
+pub(crate) async fn seed_upgrade_backfills(conn: &mut DbConnection) -> TestResult<()> {
+    seed_permission_round_trip(
+        conn,
+        PermissionTestIds {
+            user_id: 84,
+            permission_id: 84,
+            code: 84,
+        },
+    )
+    .await
+}
+
+/// Runs read-only post-upgrade backfill assertions: bundle, category,
+/// permission round-trip, and backend-specific article-index checks.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+pub(crate) async fn assert_upgrade_backfills_readonly(conn: &mut DbConnection) -> TestResult<()> {
     assert_bundle_backfill(conn).await?;
     assert_category_backfill(conn).await?;
     assert_empty_category_backfill(conn).await?;
