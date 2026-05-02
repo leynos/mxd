@@ -36,7 +36,13 @@ const POLL_INTERVAL_MS: u64 = 10;
 struct MetadataWorld {
     addr: RefCell<Option<SocketAddr>>,
     shutdown: RefCell<Option<oneshot::Sender<()>>>,
+    previous_recorded: RefCell<PreviousRecorded>,
     recorded: Arc<Mutex<Option<HandshakeMetadata>>>,
+}
+
+enum PreviousRecorded {
+    Unset,
+    Captured(Option<HandshakeMetadata>),
 }
 
 impl MetadataWorld {
@@ -44,6 +50,7 @@ impl MetadataWorld {
         Self {
             addr: RefCell::new(None),
             shutdown: RefCell::new(None),
+            previous_recorded: RefCell::new(PreviousRecorded::Unset),
             recorded: Arc::new(Mutex::new(None)),
         }
     }
@@ -120,48 +127,78 @@ impl MetadataWorld {
         )
     }
 
-    #[expect(
-        clippy::excessive_nesting,
-        reason = "polling loop and branch-specific assertions require nested conditionals"
-    )]
-    #[expect(
-        clippy::cognitive_complexity,
-        reason = "polling loop and branch-specific assertions are clearer inline"
-    )]
-    async fn connect_and_send(&self, bytes: &[u8], expect_recorded: bool) {
+    async fn connect_and_send(
+        &self,
+        bytes: &[u8],
+        expect_recorded: bool,
+    ) -> Result<(), anyhow::Error> {
+        let addr = self.server_addr();
+        self.previous_recorded
+            .replace(PreviousRecorded::Captured(self.recorded()));
+        self.open_and_write(addr, bytes).await?;
+        let recorded = self.await_recorded().await?;
+        Self::assert_recording(expect_recorded, recorded.as_ref())?;
+        Ok(())
+    }
+
+    fn server_addr(&self) -> SocketAddr {
         let Some(addr) = *self.addr.borrow() else {
             panic!("server not started");
         };
-        // Capture the current recorded value to detect changes.
-        let previous = self.recorded();
-        let mut stream = match TcpStream::connect(addr).await {
-            Ok(stream) => stream,
-            Err(err) => panic!("failed to connect to test server: {err}"),
-        };
-        if let Err(err) = stream.write_all(bytes).await {
-            panic!("failed to write handshake bytes: {err}");
-        }
+        addr
+    }
+
+    async fn open_and_write(&self, addr: SocketAddr, bytes: &[u8]) -> Result<(), anyhow::Error> {
+        let mut stream = TcpStream::connect(addr)
+            .await
+            .map_err(|err| anyhow::anyhow!("failed to connect to test server: {err}"))?;
+        stream
+            .write_all(bytes)
+            .await
+            .map_err(|err| anyhow::anyhow!("failed to write handshake bytes: {err}"))?;
         let mut buf = [0u8; REPLY_LEN];
         drop(stream.read_exact(&mut buf).await);
         drop(stream);
+        Ok(())
+    }
 
+    async fn await_recorded(&self) -> Result<Option<HandshakeMetadata>, anyhow::Error> {
+        // Capture the current recorded value to detect changes.
+        let previous = match self.previous_recorded.replace(PreviousRecorded::Unset) {
+            PreviousRecorded::Captured(previous) => previous,
+            PreviousRecorded::Unset => self.recorded(),
+        };
         for attempt in 0..MAX_ATTEMPTS {
             let current = self.recorded();
-            if expect_recorded {
-                // Wait for a different value so repeated calls do not pass on
-                // stale state.
-                if current != previous {
-                    return;
-                }
-            } else if current != previous {
-                panic!("handshake metadata was recorded unexpectedly");
+            // Wait for a different value so repeated calls do not pass on
+            // stale state.
+            if current != previous {
+                return Ok(current);
             } else if attempt + 1 == MAX_ATTEMPTS {
-                return;
+                return Ok(None);
             }
             sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
         }
 
-        panic!("handshake metadata was not recorded within the expected time");
+        Ok(None)
+    }
+
+    fn assert_recording(
+        expect_recorded: bool,
+        recorded: Option<&HandshakeMetadata>,
+    ) -> Result<(), anyhow::Error> {
+        if expect_recorded {
+            anyhow::ensure!(
+                recorded.is_some(),
+                "handshake metadata was not recorded within the expected time"
+            );
+        } else {
+            anyhow::ensure!(
+                recorded.is_none(),
+                "handshake metadata was recorded unexpectedly"
+            );
+        }
+        Ok(())
     }
 
     fn stop(&self) {
@@ -188,19 +225,27 @@ async fn given_server(world: &MetadataWorld) {
 }
 
 #[when("I complete a Hotline handshake with sub-protocol \"{tag}\" and sub-version {sub_version}")]
-async fn when_valid_handshake(world: &MetadataWorld, tag: String, sub_version: u16) {
+async fn when_valid_handshake(
+    world: &MetadataWorld,
+    tag: String,
+    sub_version: u16,
+) -> Result<(), anyhow::Error> {
     let mut sub_protocol = [0u8; 4];
     sub_protocol.copy_from_slice(tag.as_bytes());
     let bytes = preamble_bytes(*PROTOCOL_ID, sub_protocol, VERSION, sub_version);
-    world.connect_and_send(&bytes, true).await;
+    world.connect_and_send(&bytes, true).await
 }
 
 #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
-async fn when_invalid_handshake(world: &MetadataWorld, tag: String, version: u16) {
+async fn when_invalid_handshake(
+    world: &MetadataWorld,
+    tag: String,
+    version: u16,
+) -> Result<(), anyhow::Error> {
     let mut protocol = [0u8; 4];
     protocol.copy_from_slice(tag.as_bytes());
     let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
-    world.connect_and_send(&bytes, false).await;
+    world.connect_and_send(&bytes, false).await
 }
 
 #[then("the recorded handshake sub-protocol is \"{tag}\"")]
