@@ -124,71 +124,55 @@ fn does_not_augment_login_reply_for_unknown_client_kind() {
     assert_login_reply_augmentation(0, 100, false);
 }
 
-#[rstest]
+fn assert_not_augmented_for(version: u16, is_reply: u16, error: u32) {
+    let compat = ClientCompatibility::from_handshake(&handshake(0));
+    compat.record_login_version(version);
+    #[expect(
+        clippy::big_endian_bytes,
+        reason = "network protocol uses big-endian integers"
+    )]
+    let payload = match encode_params(&[(FieldId::Version, version.to_be_bytes().as_ref())]) {
+        Ok(payload) => payload,
+        Err(err) => panic!("payload encodes: {err}"),
+    };
+    let payload_len = match u32::try_from(payload.len()) {
+        Ok(payload_len) => payload_len,
+        Err(err) => panic!("payload length fits in u32: {err}"),
+    };
+    let is_reply = match u8::try_from(is_reply) {
+        Ok(is_reply) => is_reply,
+        Err(err) => panic!("is_reply fits in u8: {err}"),
+    };
+    let header = FrameHeader {
+        flags: 0,
+        is_reply,
+        ty: TransactionType::Login.into(),
+        id: 1,
+        error,
+        total_size: payload_len,
+        data_size: payload_len,
+    };
+    let mut txn = Transaction {
+        header,
+        payload: payload.clone(),
+    };
+
+    let updated = match compat.augment_login_reply(&mut txn) {
+        Ok(updated) => updated,
+        Err(err) => panic!("augment reply: {err}"),
+    };
+
+    assert!(!updated, "augmentation must not occur");
+    assert_eq!(txn.payload, payload);
+}
+
+#[test]
 fn does_not_augment_failed_login_reply_for_hotline_clients() {
-    let compat = ClientCompatibility::from_handshake(&handshake(0));
-    compat.record_login_version(190);
-    #[expect(
-        clippy::big_endian_bytes,
-        reason = "network protocol uses big-endian integers"
-    )]
-    let payload = encode_params(&[(FieldId::Version, 190u16.to_be_bytes().as_ref())])
-        .expect("payload encodes");
-    let payload_len = u32::try_from(payload.len()).expect("payload length fits in u32");
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 1,
-        ty: TransactionType::Login.into(),
-        id: 1,
-        error: ERR_NOT_AUTHENTICATED,
-        total_size: payload_len,
-        data_size: payload_len,
-    };
-    let mut reply = Transaction {
-        header,
-        payload: payload.clone(),
-    };
-
-    let updated = compat
-        .augment_login_reply(&mut reply)
-        .expect("augment reply");
-
-    assert!(!updated, "failed login replies must not be augmented");
-    assert_eq!(reply.payload, payload);
+    assert_not_augmented_for(190, 1, ERR_NOT_AUTHENTICATED);
 }
 
-#[rstest]
-fn does_not_augment_login_request_for_hotline_clients() {
-    let compat = ClientCompatibility::from_handshake(&handshake(0));
-    compat.record_login_version(190);
-    #[expect(
-        clippy::big_endian_bytes,
-        reason = "network protocol uses big-endian integers"
-    )]
-    let payload = encode_params(&[(FieldId::Version, 190u16.to_be_bytes().as_ref())])
-        .expect("payload encodes");
-    let payload_len = u32::try_from(payload.len()).expect("payload length fits in u32");
-    let header = FrameHeader {
-        flags: 0,
-        is_reply: 0,
-        ty: TransactionType::Login.into(),
-        id: 1,
-        error: 0,
-        total_size: payload_len,
-        data_size: payload_len,
-    };
-    let mut request = Transaction {
-        header,
-        payload: payload.clone(),
-    };
-
-    let updated = compat
-        .augment_login_reply(&mut request)
-        .expect("augment reply");
-
-    assert!(!updated, "login requests must not be augmented");
-    assert_eq!(request.payload, payload);
-}
+#[test]
+fn does_not_augment_login_request_for_hotline_clients() { assert_not_augmented_for(190, 0, 0); }
 
 #[rstest]
 fn records_u16_max_version_without_sentinel_collision() {
