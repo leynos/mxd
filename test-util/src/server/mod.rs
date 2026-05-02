@@ -253,7 +253,18 @@ impl TestServer {
         {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
-            Self::launch_sqlite(&manifest_path, &bind_host, db_url, Some(temp))
+            return Self::launch_with(
+                &manifest_path,
+                &bind_host,
+                db_url,
+                move |child, bind_addr, db_url_value| Self {
+                    child,
+                    port: bind_addr.port(),
+                    bind_addr,
+                    db_url: db_url_value,
+                    temp_dir: Some(temp),
+                },
+            );
         }
 
         #[cfg(feature = "postgres")]
@@ -261,7 +272,19 @@ impl TestServer {
             let db = crate::postgres::PostgresTestDb::new()?;
             let db_url = DbUrl::from(db.url.as_ref());
             setup(&db_url)?;
-            Self::launch_postgres(&manifest_path, &bind_host, db, db_url)
+            return Self::launch_with(
+                &manifest_path,
+                &bind_host,
+                db_url,
+                move |child, bind_addr, db_url_value| Self {
+                    child,
+                    port: bind_addr.port(),
+                    bind_addr,
+                    db_url: db_url_value,
+                    db,
+                    temp_dir: None,
+                },
+            );
         }
     }
 
@@ -276,49 +299,6 @@ impl TestServer {
     {
         let (child, bind_addr) = launch_server_process(manifest_path, bind_host, &db_url)?;
         Ok(build_self(child, bind_addr, db_url))
-    }
-
-    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-    fn launch_sqlite(
-        manifest_path: &ManifestPath,
-        bind_host: &str,
-        db_url: DbUrl,
-        temp_dir: Option<TempDir>,
-    ) -> Result<Self, AnyError> {
-        Self::launch_with(
-            manifest_path,
-            bind_host,
-            db_url,
-            move |child, bind_addr, db_url_value| Self {
-                child,
-                port: bind_addr.port(),
-                bind_addr,
-                db_url: db_url_value,
-                temp_dir,
-            },
-        )
-    }
-
-    #[cfg(feature = "postgres")]
-    fn launch_postgres(
-        manifest_path: &ManifestPath,
-        bind_host: &str,
-        db: PostgresTestDb,
-        db_url: DbUrl,
-    ) -> Result<Self, AnyError> {
-        Self::launch_with(
-            manifest_path,
-            bind_host,
-            db_url,
-            move |child, bind_addr, db_url_value| Self {
-                child,
-                port: bind_addr.port(),
-                bind_addr,
-                db_url: db_url_value,
-                db,
-                temp_dir: None,
-            },
-        )
     }
 
     /// Returns the ephemeral port on which the server is listening.
