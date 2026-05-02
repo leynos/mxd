@@ -132,6 +132,10 @@ SELECT
 FROM news_articles_new;
 
 CREATE INDEX idx_articles_category ON news_articles(category_id);
+CREATE INDEX idx_articles_parent_article ON news_articles(parent_article_id);
+CREATE INDEX idx_articles_prev_article ON news_articles(prev_article_id);
+CREATE INDEX idx_articles_next_article ON news_articles(next_article_id);
+CREATE INDEX idx_articles_first_child_article ON news_articles(first_child_article_id);
 
 DROP TABLE news_articles_new;
 DROP TABLE news_categories_new;

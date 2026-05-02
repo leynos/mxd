@@ -77,6 +77,7 @@ async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResul
     .await?;
     for expected in [
         "permissions_code_key",
+        "permissions_pkey",
         "user_permissions_permission_id_idx",
         "user_permissions_pkey",
         "user_permissions_user_id_idx",
