@@ -74,7 +74,7 @@ make -pn | grep '^TOOL_PATH_PREFIX :='
 For a local lint invocation, the effective command shape is:
 
 ```sh
-PATH="$TOOL_PATH_PREFIX:$PATH" RUSTFLAGS="-D warnings" \
+PATH="${TOOL_PATH_PREFIX:+$TOOL_PATH_PREFIX:}$PATH" RUSTFLAGS="-D warnings" \
   whitaker --all -- --features "sqlite test-support" --all-targets
 ```
 

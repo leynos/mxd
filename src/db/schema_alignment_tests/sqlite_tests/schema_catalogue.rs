@@ -180,9 +180,14 @@ async fn sqlite_category_names_are_bundle_scoped(
     )
     .execute(&mut conn)
     .await;
+    let duplicate_error = match duplicate {
+        Ok(_) => anyhow::bail!("duplicate name in same bundle must be rejected"),
+        Err(error) => error.to_string(),
+    };
     anyhow::ensure!(
-        duplicate.is_err(),
-        "duplicate name in same bundle must be rejected"
+        duplicate_error.contains("UNIQUE constraint failed"),
+        "duplicate name in same bundle must fail with a UNIQUE constraint error; got: \
+         {duplicate_error}"
     );
     Ok(())
 }

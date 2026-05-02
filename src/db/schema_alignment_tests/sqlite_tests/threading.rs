@@ -40,18 +40,32 @@ async fn sqlite_article_threading_enforces_referential_integrity(
     )
     .execute(&mut conn)
     .await;
+    let bad_insert_error = match bad_insert {
+        Ok(_) => anyhow::bail!(
+            "insert with non-existent parent_article_id must be rejected when FK enforcement is on"
+        ),
+        Err(error) => error.to_string(),
+    };
     anyhow::ensure!(
-        bad_insert.is_err(),
-        "insert with non-existent parent_article_id must be rejected when FK enforcement is on"
+        bad_insert_error.contains("FOREIGN KEY constraint failed"),
+        "insert with non-existent parent_article_id must fail with a FOREIGN KEY constraint \
+         error; got: {bad_insert_error}"
     );
     let bad_update =
         diesel::sql_query("UPDATE news_articles SET first_child_article_id = 9999 WHERE id = 1")
             .execute(&mut conn)
             .await;
+    let bad_update_error = match bad_update {
+        Ok(_) => anyhow::bail!(
+            "update with non-existent first_child_article_id must be rejected when FK enforcement \
+             is on"
+        ),
+        Err(error) => error.to_string(),
+    };
     anyhow::ensure!(
-        bad_update.is_err(),
-        "update with non-existent first_child_article_id must be rejected when FK enforcement is \
-         on"
+        bad_update_error.contains("FOREIGN KEY constraint failed"),
+        "update with non-existent first_child_article_id must fail with a FOREIGN KEY constraint \
+         error; got: {bad_update_error}"
     );
     Ok(())
 }
