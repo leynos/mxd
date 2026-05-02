@@ -8,8 +8,8 @@
 //! - `assert_permission_round_trip` to run a permission join smoke-test using fixed IDs.
 //!
 //! Relationship to parent:
-//! - Called by `postgres_tests` module tests; composes with `assert_upgrade_backfills` from
-//!   `schema_alignment_tests::mod`.
+//! - Called by `postgres_tests` module tests; composes with the backfill seed/assertion helpers
+//!   from `schema_alignment_tests::mod`.
 
 use std::future::Future;
 

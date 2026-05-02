@@ -7,8 +7,8 @@
 //!
 //! Helper interdependencies:
 //! - Uses `catalogue_helpers` for schema catalogue queries (tables/columns/indices),
-//!   `with_postgres_test_db` for embedded/URL-backed database setup, and `assert_upgrade_backfills`
-//!   from the parent module for cross-backend backfill checks.
+//!   `with_postgres_test_db` for embedded/URL-backed database setup, and the parent module's
+//!   cross-backend backfill seed/assertion helpers.
 
 mod catalogue_helpers;
 mod threading;
@@ -27,11 +27,11 @@ use self::catalogue_helpers::{
 };
 use super::{
     DbConnection,
-    PermissionTestIds,
+    NameRow,
     TestResult,
     apply_migrations,
-    assert_upgrade_backfills,
-    seed_permission_round_trip,
+    assert_upgrade_backfills_readonly,
+    seed_upgrade_backfills,
 };
 
 #[serial_test::file_serial(postgres_embedded_setup)]
@@ -54,16 +54,8 @@ fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
         setup_postgres_legacy_schema(&mut conn).await?;
         apply_migrations(&mut conn, &url, None).await?;
 
-        seed_permission_round_trip(
-            &mut conn,
-            PermissionTestIds {
-                user_id: 84,
-                permission_id: 84,
-                code: 84,
-            },
-        )
-        .await?;
-        assert_upgrade_backfills(&mut conn).await?;
+        seed_upgrade_backfills(&mut conn).await?;
+        assert_upgrade_backfills_readonly(&mut conn).await?;
         assert_postgres_aligned_schema(&mut conn).await
     })
 }
@@ -75,28 +67,22 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
         let mut conn = DbConnection::establish(&url).await?;
         apply_migrations(&mut conn, &url, None).await?;
 
-        let bundle_a_ids = postgres_names(
-            &mut conn,
+        let bid1 = sql_query(
             "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'BundleA') RETURNING \
              id::text AS name",
         )
-        .await?;
-        let bid1 = bundle_a_ids
-            .as_slice()
-            .first()
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("missing bundle id 1"))?;
-        let bundle_b_ids = postgres_names(
-            &mut conn,
+        .get_result::<NameRow>(&mut conn)
+        .await
+        .context("LOAD inserted BundleA id")?
+        .name;
+        let bid2 = sql_query(
             "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'BundleB') RETURNING \
              id::text AS name",
         )
-        .await?;
-        let bid2 = bundle_b_ids
-            .as_slice()
-            .first()
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("missing bundle id 2"))?;
+        .get_result::<NameRow>(&mut conn)
+        .await
+        .context("LOAD inserted BundleB id")?
+        .name;
 
         // Same name in different bundles must succeed
         sql_query(format!(
@@ -127,22 +113,23 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
 }
 
 async fn seed_bundles_for_guid_test(conn: &mut DbConnection) -> TestResult<(String, String)> {
-    let bundle_ids = postgres_names(
-        conn,
-        "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'GA'), (NULL, 'GB') \
-         RETURNING id::text AS name",
+    let ga = sql_query(
+        "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'GA') RETURNING id::text \
+         AS name",
     )
-    .await?;
-    let bid1 = bundle_ids
-        .as_slice()
-        .first()
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("missing bundle id 1"))?;
-    let bid2 = bundle_ids
-        .get(1)
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("missing bundle id 2"))?;
-    Ok((bid1, bid2))
+    .get_result::<NameRow>(conn)
+    .await
+    .context("LOAD inserted GA bundle id")?
+    .name;
+    let gb = sql_query(
+        "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'GB') RETURNING id::text \
+         AS name",
+    )
+    .get_result::<NameRow>(conn)
+    .await
+    .context("LOAD inserted GB bundle id")?
+    .name;
+    Ok((ga, gb))
 }
 
 async fn assert_pg_guids_and_created_at(

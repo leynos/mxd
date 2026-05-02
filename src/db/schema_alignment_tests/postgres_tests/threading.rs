@@ -11,7 +11,7 @@ use diesel::sql_query;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 
 use super::{
-    super::{DbConnection, TestResult, apply_migrations},
+    super::{DbConnection, NameRow, TestResult, apply_migrations},
     catalogue_helpers::{postgres_names, with_postgres_test_db},
 };
 
@@ -22,63 +22,48 @@ struct ThreadSeedIds {
 }
 
 async fn seed_bundle_and_category(conn: &mut DbConnection) -> TestResult<String> {
-    let bundle_ids = postgres_names(
-        conn,
+    let bid = sql_query(
         "INSERT INTO news_bundles (parent_bundle_id, name) VALUES (NULL, 'ThreadBundle') \
          RETURNING id::text AS name",
     )
-    .await?;
-    let bid = bundle_ids
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("missing seeded bundle id for threading test"))?;
+    .get_result::<NameRow>(conn)
+    .await
+    .context("LOAD inserted Postgres threading bundle id")?
+    .name;
 
-    let cat_ids = postgres_names(
-        conn,
-        &format!(
-            "INSERT INTO news_categories (name, bundle_id) VALUES ('ThreadCat', {bid}) RETURNING \
-             id::text AS name"
-        ),
-    )
-    .await?;
-    cat_ids
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("missing seeded category id for threading test"))
+    Ok(sql_query(format!(
+        "INSERT INTO news_categories (name, bundle_id) VALUES ('ThreadCat', {bid}) RETURNING \
+         id::text AS name"
+    ))
+    .get_result::<NameRow>(conn)
+    .await
+    .context("LOAD inserted Postgres threading category id")?
+    .name)
 }
 
 async fn insert_root_and_child(
     conn: &mut DbConnection,
     category_id: &str,
 ) -> TestResult<ThreadSeedIds> {
-    let root_ids = postgres_names(
-        conn,
-        &format!(
-            "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
-             next_article_id, first_child_article_id, title, posted_at) VALUES ({category_id}, \
-             NULL, NULL, NULL, NULL, 'Root', NOW()) RETURNING id::text AS name"
-        ),
-    )
-    .await?;
-    let rid = root_ids
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("missing seeded root article id for threading test"))?;
+    let rid = sql_query(format!(
+        "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
+         next_article_id, first_child_article_id, title, posted_at) VALUES ({category_id}, NULL, \
+         NULL, NULL, NULL, 'Root', NOW()) RETURNING id::text AS name"
+    ))
+    .get_result::<NameRow>(conn)
+    .await
+    .context("LOAD inserted Postgres root article id")?
+    .name;
 
-    let child_ids = postgres_names(
-        conn,
-        &format!(
-            "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
-             next_article_id, first_child_article_id, title, posted_at) VALUES ({category_id}, \
-             {rid}, NULL, NULL, NULL, 'Child', NOW()) RETURNING id::text AS name"
-        ),
-    )
-    .await?;
-    anyhow::ensure!(child_ids.len() == 1, "expected one child article");
-    let child_article = child_ids
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("missing seeded child article id for threading test"))?;
+    let child_article = sql_query(format!(
+        "INSERT INTO news_articles (category_id, parent_article_id, prev_article_id, \
+         next_article_id, first_child_article_id, title, posted_at) VALUES ({category_id}, {rid}, \
+         NULL, NULL, NULL, 'Child', NOW()) RETURNING id::text AS name"
+    ))
+    .get_result::<NameRow>(conn)
+    .await
+    .context("LOAD inserted Postgres child article id")?
+    .name;
 
     Ok(ThreadSeedIds {
         category: category_id.to_owned(),
@@ -112,12 +97,12 @@ async fn assert_threading_integrity(
              child.id = a.first_child_article_id WHERE a.id = {rid}"
         ),
     )
-    .await?;
+    .await
+    .context("LOAD linked Postgres child id")?;
     anyhow::ensure!(linked.len() == 1, "root article must link to its child");
     let linked_first = linked
-        .as_slice()
-        .first()
-        .cloned()
+        .into_iter()
+        .next()
         .ok_or_else(|| anyhow::anyhow!("no linked child found"))?;
     anyhow::ensure!(linked_first == *chid, "linked child id must match");
     Ok(())
