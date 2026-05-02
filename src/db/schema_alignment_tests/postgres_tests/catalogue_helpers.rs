@@ -174,6 +174,34 @@ async fn assert_postgres_category_schema(conn: &mut DbConnection) -> TestResult<
     Ok(())
 }
 
+async fn assert_postgres_article_schema(conn: &mut DbConnection) -> TestResult<()> {
+    let article_columns = postgres_names(
+        conn,
+        "SELECT column_name AS name FROM information_schema.columns WHERE table_name = \
+         'news_articles' AND table_schema = 'public' ORDER BY ordinal_position",
+    )
+    .await?;
+    anyhow::ensure!(
+        article_columns
+            == vec![
+                "id",
+                "category_id",
+                "parent_article_id",
+                "prev_article_id",
+                "next_article_id",
+                "first_child_article_id",
+                "title",
+                "poster",
+                "posted_at",
+                "flags",
+                "data_flavor",
+                "data"
+            ],
+        "unexpected news_articles columns: {article_columns:?}"
+    );
+    Ok(())
+}
+
 /// Verifies that `news_articles` has the expected `PostgreSQL` indexes.
 ///
 /// The check is order-agnostic: it queries index names with `postgres_names`
@@ -207,6 +235,7 @@ pub(crate) async fn assert_postgres_article_indices(conn: &mut DbConnection) -> 
 async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_postgres_bundle_schema(conn).await?;
     assert_postgres_category_schema(conn).await?;
+    assert_postgres_article_schema(conn).await?;
     assert_postgres_article_indices(conn).await
 }
 

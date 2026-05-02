@@ -80,6 +80,28 @@ CREATE TABLE news_articles (
     CHECK (category_id IS NOT NULL)
 );
 
+CREATE TEMP TABLE news_articles_downgrade_precondition (
+    should_abort INTEGER NOT NULL
+);
+
+CREATE TEMP TRIGGER abort_null_article_category_before_downgrade
+BEFORE INSERT ON news_articles_downgrade_precondition
+WHEN NEW.should_abort = 1
+BEGIN
+    SELECT RAISE(ABORT, 'downgrade aborted: news_articles_new contains rows with NULL category_id');
+END;
+
+INSERT INTO news_articles_downgrade_precondition (should_abort)
+SELECT 1
+WHERE EXISTS (
+    SELECT 1
+    FROM news_articles_new
+    WHERE category_id IS NULL
+);
+
+DROP TRIGGER abort_null_article_category_before_downgrade;
+DROP TABLE news_articles_downgrade_precondition;
+
 INSERT INTO news_articles (
     id,
     category_id,
