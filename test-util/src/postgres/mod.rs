@@ -294,6 +294,7 @@ mod tests {
 
     use std::io;
 
+    use anyhow::{bail, ensure};
     use rstest::rstest;
     use url::Url;
 
@@ -312,7 +313,10 @@ mod tests {
     #[test]
     fn admin_url_from_env_returns_none_when_unset() -> Result<(), AnyError> {
         with_env_var("POSTGRES_TEST_URL", None, || {
-            assert!(PostgresTestDb::admin_url_from_env()?.is_none());
+            ensure!(
+                PostgresTestDb::admin_url_from_env()?.is_none(),
+                "POSTGRES_TEST_URL should be unset"
+            );
             Ok(())
         })
     }
@@ -320,9 +324,10 @@ mod tests {
     #[test]
     fn admin_url_from_env_maps_parse_errors_to_init_failed() -> Result<(), AnyError> {
         with_env_var("POSTGRES_TEST_URL", Some("not a postgres url"), || {
-            let error = PostgresTestDb::admin_url_from_env()
-                .expect_err("invalid POSTGRES_TEST_URL should fail");
-            assert!(
+            let Err(error) = PostgresTestDb::admin_url_from_env() else {
+                bail!("invalid POSTGRES_TEST_URL should fail");
+            };
+            ensure!(
                 matches!(error, PostgresTestDbError::InitFailed(_)),
                 "invalid POSTGRES_TEST_URL should map to InitFailed"
             );
@@ -333,11 +338,25 @@ mod tests {
     #[test]
     fn new_maps_env_parse_errors_to_init_failed() -> Result<(), AnyError> {
         with_env_var("POSTGRES_TEST_URL", Some("not a postgres url"), || {
-            let error = match PostgresTestDb::new() {
-                Ok(_) => panic!("invalid POSTGRES_TEST_URL should fail"),
-                Err(error) => error,
+            let Err(error) = PostgresTestDb::new() else {
+                bail!("invalid POSTGRES_TEST_URL should fail");
             };
-            assert!(
+            ensure!(
+                matches!(error, PostgresTestDbError::InitFailed(_)),
+                "invalid POSTGRES_TEST_URL should map to InitFailed"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn new_async_maps_env_parse_errors_to_init_failed() -> Result<(), AnyError> {
+        with_env_var("POSTGRES_TEST_URL", Some("not a postgres url"), || {
+            let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+            let Err(error) = runtime.block_on(PostgresTestDb::new_async()) else {
+                bail!("invalid POSTGRES_TEST_URL should fail");
+            };
+            ensure!(
                 matches!(error, PostgresTestDbError::InitFailed(_)),
                 "invalid POSTGRES_TEST_URL should map to InitFailed"
             );
