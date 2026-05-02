@@ -396,9 +396,9 @@ behaviour:
 
 - `mod.rs`: shared migration runners, seed helpers, backfill assertions, and
   read-only backfill verifiers used by both backends.
-- `sqlite_tests.rs`: isolated in-memory SQLite setup, legacy-schema rebuilds,
-  catalogue checks through SQLite PRAGMA queries, and SQLite-specific behaviour
-  tests.
+- `sqlite_tests/`: isolated in-memory SQLite setup, legacy-schema rebuilds,
+  catalogue checks through SQLite PRAGMA queries, GUID/counter tests, and
+  SQLite-specific threading behaviour tests split into focused submodules.
 - `postgres_tests/mod.rs`: PostgreSQL test entry points for fresh migration,
   legacy upgrade, scoped category uniqueness, and GUID behaviour.
 - `postgres_tests/catalogue_helpers.rs`: PostgreSQL catalogue readers and
@@ -444,7 +444,6 @@ RUSTFLAGS="-D warnings" \
   --features "postgres test-support legacy-networking" \
   db::schema_alignment_tests::postgres_tests
 ```
-
 
 ### News model metadata semantics
 
