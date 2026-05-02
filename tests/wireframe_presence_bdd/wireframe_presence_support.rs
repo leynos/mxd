@@ -67,10 +67,7 @@ pub(super) struct RequestSpec<'a> {
 
 impl PresenceWorld {
     pub(super) fn new() -> Self {
-        let runtime = match Runtime::new() {
-            Ok(runtime) => runtime,
-            Err(error) => panic!("runtime: {error}"),
-        };
+        let runtime = Runtime::new().unwrap_or_else(|error| panic_runtime_new(&error));
         Self {
             runtime,
             router: WireframeRouter::new(
@@ -183,6 +180,8 @@ impl PresenceWorld {
         f(transaction)
     }
 }
+
+fn panic_runtime_new(error: &std::io::Error) -> Runtime { panic!("runtime: {error}") }
 
 #[derive(Clone, Default)]
 struct RecordingMessaging {
