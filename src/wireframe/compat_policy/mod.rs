@@ -117,9 +117,7 @@ impl ClientCompatibility {
     /// Returns a [`TransactionError`] if the reply payload cannot be decoded or
     /// re-encoded.
     pub fn augment_login_reply(&self, reply: &mut Transaction) -> Result<bool, TransactionError> {
-        if reply.header.error != 0
-            || TransactionType::from(reply.header.ty) != TransactionType::Login
-        {
+        if !is_successful_login_reply(reply) {
             return Ok(false);
         }
         if !self.should_include_login_extras() {
@@ -149,6 +147,13 @@ impl ClientCompatibility {
         reply.header.data_size = payload_len;
         Ok(true)
     }
+}
+
+fn is_successful_login_reply(reply: &Transaction) -> bool {
+    let is_reply = reply.header.is_reply != 0;
+    let is_successful_login =
+        reply.header.error == 0 && TransactionType::from(reply.header.ty) == TransactionType::Login;
+    is_reply && is_successful_login
 }
 
 fn extract_login_version(payload: &[u8]) -> Result<Option<u16>, TransactionError> {

@@ -174,7 +174,7 @@ mod tests {
             Err(err) => panic!("bind: {err}"),
         };
         let Some(addr) = server.local_addr() else {
-            panic!("addr");
+            panic!("failed to obtain server.local_addr() when setting up handshake");
         };
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
         tokio::spawn(async move {

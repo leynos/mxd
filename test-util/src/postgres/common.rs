@@ -114,15 +114,26 @@ impl std::error::Error for PostgresUnavailable {}
 pub enum PostgresTestDbError {
     /// `PostgreSQL` binary not found or server unreachable.
     Unavailable(PostgresUnavailable),
-    /// Initialization failed (URL parsing, database creation, etc.).
-    InitFailed(Box<dyn StdError + Send + Sync>),
+    /// `POSTGRES_TEST_URL` or a generated database URL could not be parsed.
+    UrlParse(url::ParseError),
+    /// External database creation failed.
+    DbCreateFailed(String),
+    /// Embedded `PostgreSQL` initialization failed.
+    EmbeddedInitFailed(String),
+    /// Blocking database setup task failed before returning a result.
+    BlockingTaskFailed(tokio::task::JoinError),
 }
 
 impl std::fmt::Display for PostgresTestDbError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unavailable(e) => write!(f, "{e}"),
-            Self::InitFailed(e) => write!(f, "PostgreSQL initialization failed: {e}"),
+            Self::UrlParse(e) => write!(f, "PostgreSQL URL parse failed: {e}"),
+            Self::DbCreateFailed(e) => write!(f, "PostgreSQL database creation failed: {e}"),
+            Self::EmbeddedInitFailed(e) => {
+                write!(f, "embedded PostgreSQL initialization failed: {e}")
+            }
+            Self::BlockingTaskFailed(e) => write!(f, "PostgreSQL setup task failed: {e}"),
         }
     }
 }
@@ -131,7 +142,9 @@ impl StdError for PostgresTestDbError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Unavailable(e) => Some(e),
-            Self::InitFailed(e) => Some(&**e),
+            Self::UrlParse(e) => Some(e),
+            Self::BlockingTaskFailed(e) => Some(e),
+            Self::DbCreateFailed(_) | Self::EmbeddedInitFailed(_) => None,
         }
     }
 }
@@ -175,12 +188,12 @@ pub(super) fn generate_db_name(prefix: &str) -> Result<DatabaseName, DatabaseNam
 pub(super) fn create_external_db_if_available(
     admin_url: &DatabaseUrl,
 ) -> Result<(DatabaseUrl, DatabaseName), PostgresTestDbError> {
-    let parsed =
-        Url::parse(admin_url.as_ref()).map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
-    if !postgres_available(&parsed) {
+    let parsed = Url::parse(admin_url.as_ref()).map_err(PostgresTestDbError::UrlParse)?;
+    if parsed.host_str().is_some() && !postgres_available(&parsed) {
         return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
     }
-    create_external_db(admin_url).map_err(PostgresTestDbError::InitFailed)
+    create_external_db(admin_url)
+        .map_err(|error| PostgresTestDbError::DbCreateFailed(error.to_string()))
 }
 
 pub(super) fn postgres_test_url_from_env() -> Option<String> {

@@ -10,7 +10,7 @@ pub(super) fn resolve_server_binary() -> Option<PathBuf> {
     let resolution =
         std::env::var_os(SERVER_BINARY_ENV).map_or(ServerBinaryResolution::EnvMissing, |bin| {
             let path = PathBuf::from(bin);
-            if path.exists() {
+            if path.is_file() {
                 ServerBinaryResolution::Found(path)
             } else {
                 ServerBinaryResolution::Missing(path)

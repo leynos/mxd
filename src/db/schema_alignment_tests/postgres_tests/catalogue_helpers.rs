@@ -75,10 +75,15 @@ async fn assert_postgres_permission_schema(conn: &mut DbConnection) -> TestResul
          ('permissions', 'user_permissions') ORDER BY indexname",
     )
     .await?;
-    for expected in ["permissions_code_key", "user_permissions_pkey"] {
+    for expected in [
+        "permissions_code_key",
+        "user_permissions_permission_id_idx",
+        "user_permissions_pkey",
+        "user_permissions_user_id_idx",
+    ] {
         anyhow::ensure!(
             permission_indices.iter().any(|name| name == expected),
-            "missing PostgreSQL permission index {expected}"
+            "missing PostgreSQL permission index {expected}; got {permission_indices:?}"
         );
     }
     Ok(())

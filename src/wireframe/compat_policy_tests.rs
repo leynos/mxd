@@ -158,6 +158,39 @@ fn does_not_augment_failed_login_reply_for_hotline_clients() {
 }
 
 #[rstest]
+fn does_not_augment_login_request_for_hotline_clients() {
+    let compat = ClientCompatibility::from_handshake(&handshake(0));
+    compat.record_login_version(190);
+    #[expect(
+        clippy::big_endian_bytes,
+        reason = "network protocol uses big-endian integers"
+    )]
+    let payload = encode_params(&[(FieldId::Version, 190u16.to_be_bytes().as_ref())])
+        .expect("payload encodes");
+    let payload_len = u32::try_from(payload.len()).expect("payload length fits in u32");
+    let header = FrameHeader {
+        flags: 0,
+        is_reply: 0,
+        ty: TransactionType::Login.into(),
+        id: 1,
+        error: 0,
+        total_size: payload_len,
+        data_size: payload_len,
+    };
+    let mut request = Transaction {
+        header,
+        payload: payload.clone(),
+    };
+
+    let updated = compat
+        .augment_login_reply(&mut request)
+        .expect("augment reply");
+
+    assert!(!updated, "login requests must not be augmented");
+    assert_eq!(request.payload, payload);
+}
+
+#[rstest]
 fn records_u16_max_version_without_sentinel_collision() {
     let compat = ClientCompatibility::from_handshake(&handshake(0));
     compat.record_login_version(u16::MAX);

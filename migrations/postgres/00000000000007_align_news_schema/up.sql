@@ -47,6 +47,8 @@ CREATE UNIQUE INDEX idx_categories_root_name_unique
 CREATE INDEX IF NOT EXISTS idx_bundles_parent ON news_bundles(parent_bundle_id);
 CREATE INDEX IF NOT EXISTS idx_bundles_name_parent ON news_bundles(name, parent_bundle_id);
 CREATE INDEX IF NOT EXISTS idx_categories_bundle ON news_categories(bundle_id);
+CREATE INDEX IF NOT EXISTS user_permissions_user_id_idx ON user_permissions(user_id);
+CREATE INDEX IF NOT EXISTS user_permissions_permission_id_idx ON user_permissions(permission_id);
 CREATE INDEX idx_articles_parent_article ON news_articles(parent_article_id);
 CREATE INDEX idx_articles_prev_article ON news_articles(prev_article_id);
 CREATE INDEX idx_articles_next_article ON news_articles(next_article_id);

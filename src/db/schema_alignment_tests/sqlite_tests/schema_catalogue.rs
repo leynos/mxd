@@ -45,11 +45,16 @@ async fn assert_sqlite_permission_schema(conn: &mut DbConnection) -> TestResult<
         "SELECT name FROM pragma_index_list('user_permissions') ORDER BY name",
     )
     .await?;
-    let expected = "sqlite_autoindex_user_permissions_1";
-    anyhow::ensure!(
-        user_permission_indices.iter().any(|name| name == expected),
-        "missing SQLite user_permissions index {expected}"
-    );
+    for expected in [
+        "sqlite_autoindex_user_permissions_1",
+        "user_permissions_permission_id_idx",
+        "user_permissions_user_id_idx",
+    ] {
+        anyhow::ensure!(
+            user_permission_indices.iter().any(|name| name == expected),
+            "missing SQLite user_permissions index {expected}; got {user_permission_indices:?}"
+        );
+    }
     Ok(())
 }
 

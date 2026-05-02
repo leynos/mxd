@@ -105,8 +105,14 @@ fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
         .execute(&mut conn)
         .await;
         anyhow::ensure!(
-            duplicate.is_err(),
-            "duplicate name in same bundle must be rejected"
+            matches!(
+                duplicate,
+                Err(diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::UniqueViolation,
+                    _
+                ))
+            ),
+            "duplicate name in same bundle must fail with a unique-constraint error"
         );
         Ok(())
     })

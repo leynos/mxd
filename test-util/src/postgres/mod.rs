@@ -1,12 +1,5 @@
 //! Helpers for `PostgreSQL`-backed integration tests.
 
-// Note: The rstest #[fixture] macro generates sibling items that cannot be
-// individually annotated, requiring this module-level suppression.
-#![expect(
-    missing_docs,
-    reason = "rstest #[fixture] macro generates undocumented helper items"
-)]
-
 pub(crate) mod common;
 mod embedded;
 
@@ -30,7 +23,6 @@ use embedded::{
     start_embedded_postgres_async,
     start_embedded_postgres_with_strategy,
 };
-use rstest::fixture;
 
 /// A test database instance backed by either embedded or external `PostgreSQL`.
 pub struct PostgresTestDb {
@@ -44,10 +36,7 @@ pub struct PostgresTestDb {
 impl PostgresTestDb {
     fn admin_url_from_env() -> Result<Option<DatabaseUrl>, PostgresTestDbError> {
         postgres_test_url_from_env()
-            .map(|value| {
-                DatabaseUrl::parse(&value)
-                    .map_err(|error| PostgresTestDbError::InitFailed(Box::new(error)))
-            })
+            .map(|value| DatabaseUrl::parse(&value).map_err(PostgresTestDbError::UrlParse))
             .transpose()
     }
 
@@ -56,7 +45,9 @@ impl PostgresTestDb {
             EmbeddedPgError::Unavailable(_) => {
                 PostgresTestDbError::Unavailable(PostgresUnavailable)
             }
-            EmbeddedPgError::InitFailed(inner) => PostgresTestDbError::InitFailed(inner),
+            EmbeddedPgError::InitFailed(inner) => {
+                PostgresTestDbError::EmbeddedInitFailed(inner.to_string())
+            }
         }
     }
 
@@ -71,7 +62,7 @@ impl PostgresTestDb {
     /// - The configured external server cannot be reached
     /// - The embedded `PostgreSQL` binary is not available
     ///
-    /// Returns [`PostgresTestDbError::InitFailed`] for other errors
+    /// Returns semantic [`PostgresTestDbError`] variants for other errors
     /// (URL parsing, database creation, etc.).
     pub fn new() -> Result<Self, PostgresTestDbError> {
         if let Some(admin_url) = Self::admin_url_from_env()? {
@@ -107,7 +98,7 @@ impl PostgresTestDb {
     /// - The configured external server cannot be reached
     /// - The embedded `PostgreSQL` binary is not available
     ///
-    /// Returns [`PostgresTestDbError::InitFailed`] for other errors
+    /// Returns semantic [`PostgresTestDbError`] variants for other errors
     /// (URL parsing, database creation, etc.).
     pub async fn new_async() -> Result<Self, PostgresTestDbError> {
         if let Some(admin_url) = Self::admin_url_from_env()? {
@@ -116,7 +107,7 @@ impl PostgresTestDb {
                 create_external_db_if_available(&admin_url_for_blocking)
             })
             .await
-            .map_err(|error| PostgresTestDbError::InitFailed(Box::new(error)))??;
+            .map_err(PostgresTestDbError::BlockingTaskFailed)??;
             return Ok(Self {
                 url,
                 admin_url: Some(admin_url),
@@ -154,7 +145,7 @@ impl PostgresTestDb {
     /// # Errors
     ///
     /// Returns [`PostgresTestDbError::Unavailable`] if `PostgreSQL` is unreachable.
-    /// Returns [`PostgresTestDbError::InitFailed`] for initialization errors.
+    /// Returns semantic [`PostgresTestDbError`] variants for initialization errors.
     pub fn new_from_template() -> Result<Self, PostgresTestDbError> {
         if std::env::var_os("POSTGRES_TEST_URL").is_some() {
             // External PostgreSQL: template support not yet implemented for external servers
@@ -167,7 +158,9 @@ impl PostgresTestDb {
                 EmbeddedPgError::Unavailable(_) => {
                     PostgresTestDbError::Unavailable(PostgresUnavailable)
                 }
-                EmbeddedPgError::InitFailed(inner) => PostgresTestDbError::InitFailed(inner),
+                EmbeddedPgError::InitFailed(inner) => {
+                    PostgresTestDbError::EmbeddedInitFailed(inner.to_string())
+                }
             },
         )?;
         let url = embedded.url.clone();
@@ -213,78 +206,36 @@ impl Drop for PostgresTestDb {
     }
 }
 
-/// rstest fixture providing a `PostgreSQL` test database.
-///
-/// This fixture is for tests that **require** `PostgreSQL` and should fail loudly
-/// when it is unavailable. Use this when `PostgreSQL` is a hard dependency of the
-/// test (e.g., testing `PostgreSQL`-specific SQL syntax).
-///
-/// # When to Use Direct `PostgresTestDb::new()` Instead
-///
-/// For tests that should **skip gracefully** when `PostgreSQL` is unavailable,
-/// call `PostgresTestDb::new()` directly and check for
-/// [`PostgresTestDbError::Unavailable`]:
-///
-/// ```ignore
-/// let db = match PostgresTestDb::new() {
-///     Ok(db) => db,
-///     Err(PostgresTestDbError::Unavailable(_)) => {
-///         eprintln!("PostgreSQL unavailable; skipping test");
-///         return Ok(());
-///     }
-///     Err(e) => return Err(e.into()),
-/// };
-/// ```
-///
-/// # Panics
-///
-/// Panics if:
-/// - `PostgreSQL` is unavailable (binary not found or server unreachable)
-/// - Initialization or database creation fails (configuration error)
-#[fixture]
-pub fn postgres_db() -> PostgresTestDb {
-    match PostgresTestDb::new() {
-        Ok(db) => db,
-        Err(e) if e.is_unavailable() => panic!("PostgreSQL unavailable: {e}"),
-        Err(e) => panic!("Failed to prepare Postgres test database: {e}"),
-    }
-}
+pub use fixture_glue::{postgres_db, postgres_db_fast};
 
-/// rstest fixture providing a fast `PostgreSQL` test database via template cloning.
-///
-/// This fixture uses database templating to provide sub-second test database
-/// creation. A template database with migrations applied is created once per
-/// test process and reused across all tests.
-///
-/// # Performance
-///
-/// - First test: ~5-10 seconds (template creation + migration)
-/// - Subsequent tests: ~10-50ms (template clone only)
-/// - 95-99% faster than `postgres_db` for large test suites
-///
-/// # Use Cases
-///
-/// - Large test suites where startup time is significant
-/// - Tests that don't modify `PostgreSQL` cluster settings
-/// - Tests that only need database-level isolation
-///
-/// # When to Use `postgres_db` Instead
-///
-/// - Tests that modify cluster-level `PostgreSQL` settings
-/// - Tests that require full cluster isolation
-/// - First-time setup or when debugging migration issues
-///
-/// # Panics
-///
-/// Panics if:
-/// - `PostgreSQL` is unavailable (binary not found or server unreachable)
-/// - Template creation or database cloning fails
-#[fixture]
-pub fn postgres_db_fast() -> PostgresTestDb {
-    match PostgresTestDb::new_from_template() {
-        Ok(db) => db,
-        Err(e) if e.is_unavailable() => panic!("PostgreSQL unavailable: {e}"),
-        Err(e) => panic!("Failed to create PostgreSQL test database from template: {e}"),
+mod fixture_glue {
+    //! `rstest` fixture glue for `PostgreSQL` test databases.
+
+    #![expect(
+        missing_docs,
+        reason = "rstest #[fixture] macro generates undocumented helper items"
+    )]
+    #![expect(
+        unused_braces,
+        reason = "rstest #[fixture] macro expands from normal function bodies"
+    )]
+
+    use rstest::fixture;
+
+    use super::{PostgresTestDb, PostgresTestDbError};
+
+    /// rstest fixture providing a `PostgreSQL` test database.
+    ///
+    /// This fixture is for tests that require `PostgreSQL` and should report
+    /// setup errors through the test runner.
+    #[fixture]
+    pub fn postgres_db() -> Result<PostgresTestDb, PostgresTestDbError> { PostgresTestDb::new() }
+
+    /// rstest fixture providing a fast `PostgreSQL` test database via template
+    /// cloning.
+    #[fixture]
+    pub fn postgres_db_fast() -> Result<PostgresTestDb, PostgresTestDbError> {
+        PostgresTestDb::new_from_template()
     }
 }
 
@@ -322,43 +273,43 @@ mod tests {
     }
 
     #[test]
-    fn admin_url_from_env_maps_parse_errors_to_init_failed() -> Result<(), AnyError> {
+    fn admin_url_from_env_maps_parse_errors_to_url_parse() -> Result<(), AnyError> {
         with_env_var("POSTGRES_TEST_URL", Some("not a postgres url"), || {
             let Err(error) = PostgresTestDb::admin_url_from_env() else {
                 bail!("invalid POSTGRES_TEST_URL should fail");
             };
             ensure!(
-                matches!(error, PostgresTestDbError::InitFailed(_)),
-                "invalid POSTGRES_TEST_URL should map to InitFailed"
+                matches!(error, PostgresTestDbError::UrlParse(_)),
+                "invalid POSTGRES_TEST_URL should map to UrlParse"
             );
             Ok(())
         })
     }
 
     #[test]
-    fn new_maps_env_parse_errors_to_init_failed() -> Result<(), AnyError> {
+    fn new_maps_env_parse_errors_to_url_parse() -> Result<(), AnyError> {
         with_env_var("POSTGRES_TEST_URL", Some("not a postgres url"), || {
             let Err(error) = PostgresTestDb::new() else {
                 bail!("invalid POSTGRES_TEST_URL should fail");
             };
             ensure!(
-                matches!(error, PostgresTestDbError::InitFailed(_)),
-                "invalid POSTGRES_TEST_URL should map to InitFailed"
+                matches!(error, PostgresTestDbError::UrlParse(_)),
+                "invalid POSTGRES_TEST_URL should map to UrlParse"
             );
             Ok(())
         })
     }
 
     #[test]
-    fn new_async_maps_env_parse_errors_to_init_failed() -> Result<(), AnyError> {
+    fn new_async_maps_env_parse_errors_to_url_parse() -> Result<(), AnyError> {
         with_env_var("POSTGRES_TEST_URL", Some("not a postgres url"), || {
             let runtime = tokio::runtime::Builder::new_current_thread().build()?;
             let Err(error) = runtime.block_on(PostgresTestDb::new_async()) else {
                 bail!("invalid POSTGRES_TEST_URL should fail");
             };
             ensure!(
-                matches!(error, PostgresTestDbError::InitFailed(_)),
-                "invalid POSTGRES_TEST_URL should map to InitFailed"
+                matches!(error, PostgresTestDbError::UrlParse(_)),
+                "invalid POSTGRES_TEST_URL should map to UrlParse"
             );
             Ok(())
         })
@@ -377,8 +328,8 @@ mod tests {
             io::Error::other("boom"),
         )));
         assert!(
-            matches!(init_failed, PostgresTestDbError::InitFailed(_)),
-            "embedded initialization failures should map to InitFailed"
+            matches!(init_failed, PostgresTestDbError::EmbeddedInitFailed(_)),
+            "embedded initialization failures should map to EmbeddedInitFailed"
         );
     }
 }

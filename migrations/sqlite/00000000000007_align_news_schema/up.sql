@@ -126,6 +126,8 @@ CREATE INDEX idx_articles_parent_article ON news_articles(parent_article_id);
 CREATE INDEX idx_articles_prev_article ON news_articles(prev_article_id);
 CREATE INDEX idx_articles_next_article ON news_articles(next_article_id);
 CREATE INDEX idx_articles_first_child_article ON news_articles(first_child_article_id);
+CREATE INDEX IF NOT EXISTS user_permissions_user_id_idx ON user_permissions(user_id);
+CREATE INDEX IF NOT EXISTS user_permissions_permission_id_idx ON user_permissions(permission_id);
 
 DROP TABLE news_articles_old;
 DROP TABLE news_categories_old;

@@ -8,6 +8,8 @@ DROP INDEX IF EXISTS idx_categories_root_name_unique;
 DROP INDEX IF EXISTS idx_categories_bundle;
 DROP INDEX IF EXISTS idx_bundles_name_parent;
 DROP INDEX IF EXISTS idx_bundles_parent;
+DROP INDEX IF EXISTS user_permissions_user_id_idx;
+DROP INDEX IF EXISTS user_permissions_permission_id_idx;
 
 ALTER TABLE news_articles RENAME TO news_articles_new;
 ALTER TABLE news_categories RENAME TO news_categories_new;

@@ -8,6 +8,7 @@ use anyhow::Context;
 use chrono::NaiveDateTime;
 use diesel::{
     QueryableByName,
+    result::{DatabaseErrorKind, Error as DieselError},
     sql_query,
     sql_types::{Integer, Nullable, Text, Timestamp},
 };
@@ -232,11 +233,36 @@ pub(crate) async fn seed_root_category_name_conflict(conn: &mut DbConnection) ->
 pub(crate) async fn verify_root_category_constraint_error(
     conflict_result: TestResult<()>,
 ) -> TestResult<()> {
+    let Err(error) = conflict_result else {
+        anyhow::bail!("Expected duplicate insert to fail due to unique constraint");
+    };
+    let diesel_error = error.downcast_ref::<DieselError>();
+    let is_constraint_violation = diesel_error.is_some_and(is_unique_or_constraint_error)
+        || error
+            .to_string()
+            .to_ascii_lowercase()
+            .contains("constraint")
+        || error.to_string().contains("UNIQUE");
     anyhow::ensure!(
-        conflict_result.is_err(),
-        "Expected duplicate insert to fail due to unique constraint"
+        is_constraint_violation,
+        "Expected duplicate insert to fail due to unique constraint, got {error:?}"
     );
     Ok(())
+}
+
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+fn is_unique_or_constraint_error(error: &DieselError) -> bool {
+    match error {
+        DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => true,
+        DieselError::DatabaseError(_, info) => {
+            info.message().contains("UNIQUE")
+                || info.message().to_ascii_lowercase().contains("constraint")
+                || info
+                    .details()
+                    .is_some_and(|details| details.contains("23505"))
+        }
+        _ => false,
+    }
 }
 
 /// Inserts the six legacy migration-version rows, one user, one bundle, one

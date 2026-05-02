@@ -1303,7 +1303,7 @@ and chat features) as outlined in the roadmap.
   [12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L37-L45)
    )(
   [12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L107-L115)).
-  Category names are unique within a bundle. Root categories need a separate
+   Category names are unique within a bundle. Root categories need a separate
   partial unique index on `name` where `bundle_id IS NULL`, because SQLite and
   PostgreSQL both treat `NULL` values as distinct under composite unique
   constraints.
@@ -1392,11 +1392,12 @@ required indices explicitly.
 The same migration also backfills legacy rows so the aligned schema is usable
 immediately after upgrade. Bundles and categories receive generated legacy GUID
 surrogates plus `created_at` timestamps, and categories derive `add_sn` from
-the current article count while initializing `delete_sn` to `0`. The migration
-also creates the normalized `permissions` and `user_permissions` tables in this
-step without yet wiring runtime privilege loading; that remains intentionally
-deferred to roadmap item 4.1.3 so schema alignment does not widen into
-behavioural permission enforcement.
+the current article count while initializing `delete_sn` to `0`. The normalized
+`permissions` and `user_permissions` tables are part of the earlier file-node
+and permission migration; roadmap item 4.1.1 only verifies their presence and
+adds the lookup indices needed by the aligned schema tests. Runtime privilege
+loading remains intentionally deferred to roadmap item 4.1.3 so schema
+alignment does not widen into behavioural permission enforcement.
 
 The **news domain logic** uses these tables to implement operations:
 
