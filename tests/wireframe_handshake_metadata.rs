@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use mxd::{
     protocol::{PROTOCOL_ID, REPLY_LEN, VERSION},
     wireframe::{
@@ -224,16 +225,32 @@ async fn given_server(world: &MetadataWorld) {
     world.start_server();
 }
 
+async fn run_handshake_step(
+    world: &MetadataWorld,
+    tag: &str,
+    version: u16,
+    expect_recorded: bool,
+) -> anyhow::Result<()> {
+    let mut protocol_tag = [0u8; 4];
+    protocol_tag.copy_from_slice(tag.as_bytes());
+    let bytes = if expect_recorded {
+        preamble_bytes(*PROTOCOL_ID, protocol_tag, VERSION, version)
+    } else {
+        preamble_bytes(protocol_tag, *b"CHAT", version, 0)
+    };
+    world
+        .connect_and_send(&bytes, expect_recorded)
+        .await
+        .with_context(|| format!("failed to run handshake step for tag {tag}"))
+}
+
 #[when("I complete a Hotline handshake with sub-protocol \"{tag}\" and sub-version {sub_version}")]
 async fn when_valid_handshake(
     world: &MetadataWorld,
     tag: String,
     sub_version: u16,
 ) -> Result<(), anyhow::Error> {
-    let mut sub_protocol = [0u8; 4];
-    sub_protocol.copy_from_slice(tag.as_bytes());
-    let bytes = preamble_bytes(*PROTOCOL_ID, sub_protocol, VERSION, sub_version);
-    world.connect_and_send(&bytes, true).await
+    run_handshake_step(world, &tag, sub_version, true).await
 }
 
 #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
@@ -242,10 +259,7 @@ async fn when_invalid_handshake(
     tag: String,
     version: u16,
 ) -> Result<(), anyhow::Error> {
-    let mut protocol = [0u8; 4];
-    protocol.copy_from_slice(tag.as_bytes());
-    let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
-    world.connect_and_send(&bytes, false).await
+    run_handshake_step(world, &tag, version, false).await
 }
 
 #[then("the recorded handshake sub-protocol is \"{tag}\"")]
