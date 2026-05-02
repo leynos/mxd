@@ -38,6 +38,26 @@ path = "src/bin/mxd_wireframe_server.rs"
 path = "src/lib.rs"
 
 [[test]]
+name = "transaction_streaming"
+path = "tests/transaction_streaming.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "wireframe_handshake_metadata"
+path = "tests/wireframe_handshake_metadata.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "wireframe_memory_budgets"
+path = "tests/wireframe_memory_budgets.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "wireframe_transaction"
+path = "tests/wireframe_transaction.rs"
+required-features = ["test-support"]
+
+[[test]]
 name = "wireframe_xor_compat"
 path = "tests/wireframe_xor_compat.rs"
 required-features = ["test-support"]

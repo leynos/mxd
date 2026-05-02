@@ -91,10 +91,10 @@ impl RouteTestContext {
 
     fn refresh_presence(&self, connection_id: OutboundConnectionId) {
         let _ = self.presence.remove(connection_id);
-        if let Some(snapshot) = self.session.presence_snapshot(connection_id) {
-            self.presence
-                .upsert(snapshot)
-                .unwrap_or_else(|error| panic!("upsert presence snapshot: {error}"));
+        if let Some(snapshot) = self.session.presence_snapshot(connection_id)
+            && let Err(error) = self.presence.upsert(snapshot)
+        {
+            panic!("upsert presence snapshot: {error}");
         }
     }
 

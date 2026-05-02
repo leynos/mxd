@@ -66,17 +66,16 @@ fn registry_returns_sorted_snapshots() {
     assert_eq!(snapshots[2].connection_id, OutboundConnectionId::new(2));
 }
 
-fn registry_with_first_alice_upsert() -> (PresenceRegistry, PresenceUpsert) {
+fn registry_with_first_alice_upsert() -> Result<(PresenceRegistry, PresenceUpsert), TransactionError>
+{
     let registry = PresenceRegistry::default();
-    let first = registry
-        .upsert(snapshot(1, 42, "alice"))
-        .expect("insert alice");
-    (registry, first)
+    let first = registry.upsert(snapshot(1, 42, "alice"))?;
+    Ok((registry, first))
 }
 
 #[test]
 fn registry_assigns_unique_presence_ids_for_duplicate_account_logins() {
-    let (registry, first) = registry_with_first_alice_upsert();
+    let (registry, first) = registry_with_first_alice_upsert().expect("insert first alice login");
     let second = registry
         .upsert(snapshot(2, 42, "alice"))
         .expect("insert second login");
@@ -87,7 +86,7 @@ fn registry_assigns_unique_presence_ids_for_duplicate_account_logins() {
 
 #[test]
 fn registry_preserves_presence_id_when_session_updates() {
-    let (registry, first) = registry_with_first_alice_upsert();
+    let (registry, first) = registry_with_first_alice_upsert().expect("insert first alice login");
     let second = registry
         .upsert(snapshot(1, 42, "Alice A."))
         .expect("update snapshot");
@@ -107,9 +106,9 @@ fn registry_remove_returns_remaining_peers() {
         .expect("insert charlie");
     registry.upsert(snapshot(2, 2, "bob")).expect("insert bob");
 
-    let removed = registry
-        .remove(OutboundConnectionId::new(2))
-        .unwrap_or_else(|| panic!("removed snapshot"));
+    let Some(removed) = registry.remove(OutboundConnectionId::new(2)) else {
+        panic!("removed snapshot");
+    };
 
     assert_eq!(removed.departed.user_id, 3);
     assert_eq!(

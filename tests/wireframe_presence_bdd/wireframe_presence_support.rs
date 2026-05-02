@@ -67,8 +67,12 @@ pub(super) struct RequestSpec<'a> {
 
 impl PresenceWorld {
     pub(super) fn new() -> Self {
+        let runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(error) => panic!("runtime: {error}"),
+        };
         Self {
-            runtime: Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}")),
+            runtime,
             router: WireframeRouter::new(
                 Arc::new(XorCompatibility::disabled()),
                 Arc::new(ClientCompatibility::from_handshake(
