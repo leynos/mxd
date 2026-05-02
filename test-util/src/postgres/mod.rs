@@ -42,6 +42,24 @@ pub struct PostgresTestDb {
 }
 
 impl PostgresTestDb {
+    fn admin_url_from_env() -> Result<Option<DatabaseUrl>, PostgresTestDbError> {
+        postgres_test_url_from_env()
+            .map(|value| {
+                DatabaseUrl::parse(&value)
+                    .map_err(|error| PostgresTestDbError::InitFailed(Box::new(error)))
+            })
+            .transpose()
+    }
+
+    fn map_embedded_err(error: EmbeddedPgError) -> PostgresTestDbError {
+        match error {
+            EmbeddedPgError::Unavailable(_) => {
+                PostgresTestDbError::Unavailable(PostgresUnavailable)
+            }
+            EmbeddedPgError::InitFailed(inner) => PostgresTestDbError::InitFailed(inner),
+        }
+    }
+
     /// Creates a new test database instance.
     ///
     /// Uses `POSTGRES_TEST_URL` environment variable if set, otherwise starts
@@ -56,9 +74,7 @@ impl PostgresTestDb {
     /// Returns [`PostgresTestDbError::InitFailed`] for other errors
     /// (URL parsing, database creation, etc.).
     pub fn new() -> Result<Self, PostgresTestDbError> {
-        if let Some(value) = postgres_test_url_from_env() {
-            let admin_url = DatabaseUrl::parse(&value)
-                .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
+        if let Some(admin_url) = Self::admin_url_from_env()? {
             let (url, db_name) = create_external_db_if_available(&admin_url)?;
             return Ok(Self {
                 url,
@@ -68,12 +84,8 @@ impl PostgresTestDb {
             });
         }
 
-        let embedded = start_embedded_postgres(reset_postgres_db).map_err(|e| match e {
-            EmbeddedPgError::Unavailable(_) => {
-                PostgresTestDbError::Unavailable(PostgresUnavailable)
-            }
-            EmbeddedPgError::InitFailed(inner) => PostgresTestDbError::InitFailed(inner),
-        })?;
+        let embedded =
+            start_embedded_postgres(reset_postgres_db).map_err(Self::map_embedded_err)?;
         let url = embedded.url.clone();
         let db_name = embedded.db_name.clone();
         Ok(Self {
@@ -98,9 +110,7 @@ impl PostgresTestDb {
     /// Returns [`PostgresTestDbError::InitFailed`] for other errors
     /// (URL parsing, database creation, etc.).
     pub async fn new_async() -> Result<Self, PostgresTestDbError> {
-        if let Some(value) = postgres_test_url_from_env() {
-            let admin_url = DatabaseUrl::parse(&value)
-                .map_err(|e| PostgresTestDbError::InitFailed(Box::new(e)))?;
+        if let Some(admin_url) = Self::admin_url_from_env()? {
             let admin_url_for_blocking = admin_url.clone();
             let (url, db_name) = tokio::task::spawn_blocking(move || {
                 create_external_db_if_available(&admin_url_for_blocking)
@@ -117,12 +127,7 @@ impl PostgresTestDb {
 
         let embedded = start_embedded_postgres_async(reset_postgres_db)
             .await
-            .map_err(|e| match e {
-                EmbeddedPgError::Unavailable(_) => {
-                    PostgresTestDbError::Unavailable(PostgresUnavailable)
-                }
-                EmbeddedPgError::InitFailed(inner) => PostgresTestDbError::InitFailed(inner),
-            })?;
+            .map_err(Self::map_embedded_err)?;
         let url = embedded.url.clone();
         let db_name = embedded.db_name.clone();
         Ok(Self {
@@ -287,10 +292,13 @@ pub fn postgres_db_fast() -> PostgresTestDb {
 mod tests {
     //! Regression tests for external `PostgreSQL` URL probing.
 
+    use std::io;
+
     use rstest::rstest;
     use url::Url;
 
-    use super::common::probe_port;
+    use super::{EmbeddedPgError, PostgresTestDb, PostgresTestDbError, common::probe_port};
+    use crate::{AnyError, with_env_var};
 
     #[rstest]
     #[case("postgres://postgres:password@127.0.0.1/test", Some(5432))]
@@ -299,5 +307,59 @@ mod tests {
     fn probe_port_matches_postgres_url_policy(#[case] url: &str, #[case] expected: Option<u16>) {
         let parsed = Url::parse(url).expect("test URL should parse");
         assert_eq!(probe_port(&parsed), expected);
+    }
+
+    #[test]
+    fn admin_url_from_env_returns_none_when_unset() -> Result<(), AnyError> {
+        with_env_var("POSTGRES_TEST_URL", None, || {
+            assert!(PostgresTestDb::admin_url_from_env()?.is_none());
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn admin_url_from_env_maps_parse_errors_to_init_failed() -> Result<(), AnyError> {
+        with_env_var("POSTGRES_TEST_URL", Some("not a postgres url"), || {
+            let error = PostgresTestDb::admin_url_from_env()
+                .expect_err("invalid POSTGRES_TEST_URL should fail");
+            assert!(
+                matches!(error, PostgresTestDbError::InitFailed(_)),
+                "invalid POSTGRES_TEST_URL should map to InitFailed"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn new_maps_env_parse_errors_to_init_failed() -> Result<(), AnyError> {
+        with_env_var("POSTGRES_TEST_URL", Some("not a postgres url"), || {
+            let error = match PostgresTestDb::new() {
+                Ok(_) => panic!("invalid POSTGRES_TEST_URL should fail"),
+                Err(error) => error,
+            };
+            assert!(
+                matches!(error, PostgresTestDbError::InitFailed(_)),
+                "invalid POSTGRES_TEST_URL should map to InitFailed"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn embedded_error_mapping_preserves_variants() {
+        let unavailable =
+            PostgresTestDb::map_embedded_err(EmbeddedPgError::Unavailable("missing".to_owned()));
+        assert!(
+            matches!(unavailable, PostgresTestDbError::Unavailable(_)),
+            "embedded unavailability should map to Unavailable"
+        );
+
+        let init_failed = PostgresTestDb::map_embedded_err(EmbeddedPgError::InitFailed(Box::new(
+            io::Error::other("boom"),
+        )));
+        assert!(
+            matches!(init_failed, PostgresTestDbError::InitFailed(_)),
+            "embedded initialization failures should map to InitFailed"
+        );
     }
 }

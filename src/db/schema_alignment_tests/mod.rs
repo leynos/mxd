@@ -353,13 +353,5 @@ pub(crate) async fn assert_permission_round_trip_with_ids(
     conn: &mut DbConnection,
     ids: PermissionTestIds,
 ) -> TestResult<()> {
-    assert_permission_join_count(
-        conn,
-        PermissionTestIds {
-            user_id: ids.user_id,
-            permission_id: ids.permission_id,
-            code: ids.code,
-        },
-    )
-    .await
+    assert_permission_join_count(conn, ids).await
 }
