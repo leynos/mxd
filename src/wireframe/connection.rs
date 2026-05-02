@@ -207,6 +207,7 @@ pub fn has_current_context() -> bool { current_context().is_some() }
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use rstest::rstest;
     use serial_test::serial;
     use tokio::{runtime::Builder, sync::Barrier, task};

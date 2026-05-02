@@ -5,21 +5,28 @@ export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 APP ?= mxd
 CARGO ?= cargo
 CARGO_FALLBACK := $(HOME)/.cargo/bin/cargo
-ifneq ($(wildcard $(CARGO_FALLBACK)),)
-  ifneq ($(shell command -v $(CARGO) >/dev/null 2>&1; echo $$?),0)
+CARGO_CMD := $(firstword $(CARGO))
+CARGO_PATH := $(shell command -v $(CARGO_CMD) 2>/dev/null)
+ifeq ($(CARGO_PATH),)
+  ifneq ($(wildcard $(CARGO_FALLBACK)),)
     CARGO := $(CARGO_FALLBACK)
+    CARGO_CMD := $(firstword $(CARGO))
+    CARGO_PATH := $(shell command -v $(CARGO_CMD) 2>/dev/null)
   endif
 endif
-CARGO_RESOLVED := $(shell resolved=$$(command -v $(CARGO) 2>/dev/null); if [ -n "$$resolved" ]; then dir=$$(dirname "$$resolved"); base=$$(basename "$$resolved"); printf '%s/%s\n' "$$(cd "$$dir" && pwd)" "$$base"; fi)
-CARGO_BIN_DIR := $(if $(CARGO_RESOLVED),$(dir $(CARGO_RESOLVED)),$(dir $(CARGO)))
+CARGO_BIN_DIR := $(if $(CARGO_PATH),$(dir $(CARGO_PATH)))
 LOCAL_BIN_DIR := $(HOME)/.local/bin
 BUILD_JOBS ?=
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
 WHITAKER ?= whitaker
 WHITAKER_FALLBACK := $(HOME)/.local/bin/whitaker
-ifneq ($(wildcard $(WHITAKER_FALLBACK)),)
-  ifneq ($(shell command -v $(WHITAKER) >/dev/null 2>&1; echo $$?),0)
+WHITAKER_CMD := $(firstword $(WHITAKER))
+WHITAKER_PATH := $(shell command -v $(WHITAKER_CMD) 2>/dev/null)
+ifeq ($(WHITAKER_PATH),)
+  ifneq ($(wildcard $(WHITAKER_FALLBACK)),)
     WHITAKER := $(WHITAKER_FALLBACK)
+    WHITAKER_CMD := $(firstword $(WHITAKER))
+    WHITAKER_PATH := $(shell command -v $(WHITAKER_CMD) 2>/dev/null)
   endif
 endif
 MDLINT ?= markdownlint-cli2
@@ -29,6 +36,8 @@ ifneq ($(wildcard $(MDLINT_FALLBACK)),)
     MDLINT := $(MDLINT_FALLBACK)
   endif
 endif
+WHITAKER_BIN_DIR := $(if $(WHITAKER_PATH),$(dir $(WHITAKER_PATH)))
+TOOL_PATH_PREFIX := $(shell printf '%s\n' "$(CARGO_BIN_DIR)" "$(WHITAKER_BIN_DIR)" "$(LOCAL_BIN_DIR)" | awk 'NF { printf "%s%s", sep, $$0; sep=":" }')
 NIXIE ?= nixie
 TLC_RUNNER ?= ./scripts/run-tlc.sh
 TLC_IMAGE ?= ghcr.io/leynos/mxd/mxd-tlc:latest
@@ -79,15 +88,15 @@ lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy for all featur
 
 lint-postgres: ## Run Clippy with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
-	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES)
+	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES) --all-targets
 
 lint-sqlite: ## Run Clippy with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
-	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES)
+	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES) --all-targets
 
 lint-wireframe-only: ## Run Clippy with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
-	PATH="$(CARGO_BIN_DIR):$(LOCAL_BIN_DIR):$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES)
+	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES) --all-targets
 
 markdownlint: ## Lint Markdown files
 	$(MDLINT) '**/*.md'

@@ -128,6 +128,7 @@ fn error_code_from_str(text: &str) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use std::time::Duration;
 
     use rstest::rstest;
@@ -164,10 +165,17 @@ mod tests {
         })
         .with_preamble::<HotlinePreamble>();
         let server = super::install(server, timeout);
-        let server = server
-            .bind("127.0.0.1:0".parse().expect("parse socket addr"))
-            .expect("bind");
-        let addr = server.local_addr().expect("addr");
+        let bind_addr = match "127.0.0.1:0".parse() {
+            Ok(addr) => addr,
+            Err(err) => panic!("parse socket addr: {err}"),
+        };
+        let server = match server.bind(bind_addr) {
+            Ok(server) => server,
+            Err(err) => panic!("bind: {err}"),
+        };
+        let Some(addr) = server.local_addr() else {
+            panic!("failed to obtain server.local_addr() when setting up handshake");
+        };
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             let _ = server

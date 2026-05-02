@@ -84,6 +84,7 @@ pub async fn run_with_cli(cli: ResolvedCli) -> Result<()> { wireframe::run_with_
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use rstest::rstest;
 
     use super::*;

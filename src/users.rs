@@ -40,6 +40,7 @@ pub(crate) fn verify_password(hash: &str, pw: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use argon2::Argon2;
     use rstest::{fixture, rstest};
 

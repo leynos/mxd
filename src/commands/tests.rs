@@ -12,7 +12,10 @@ use crate::{field_id::FieldId, transaction::encode_params, transaction_type::Tra
 fn valid_login_payload() -> Vec<u8> {
     let params: Vec<(FieldId, &[u8])> =
         vec![(FieldId::Login, b"alice"), (FieldId::Password, b"secret")];
-    encode_params(&params).expect("payload encodes")
+    match encode_params(&params) {
+        Ok(payload) => payload,
+        Err(err) => panic!("payload encodes: {err}"),
+    }
 }
 
 /// Asserts that credentials match expected valid values.

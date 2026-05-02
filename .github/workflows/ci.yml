@@ -93,7 +93,7 @@ jobs:
               ! -name 'whitaker_suite@*' \
               -delete
           fi
-          RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }}
+          RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
       - name: Test
         run: |
           if [[ "${{ matrix.rstest_timeout }}" == "true" ]]; then

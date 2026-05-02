@@ -164,6 +164,7 @@ pub(crate) fn finalize_reply(
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use std::{
         net::SocketAddr,
         sync::atomic::{AtomicU32, Ordering},
@@ -247,7 +248,10 @@ mod tests {
         let messaging = NoopOutboundMessaging;
         let presence = PresenceRegistry::default();
         let context = CommandContext {
-            peer: "127.0.0.1:12345".parse().expect("valid loopback socket"),
+            peer: match "127.0.0.1:12345".parse() {
+                Ok(peer) => peer,
+                Err(err) => panic!("valid loopback socket: {err}"),
+            },
             pool: dummy_pool(),
             session: &mut session,
             transport: &mut transport,
@@ -259,13 +263,13 @@ mod tests {
             header: header(tx_type),
         };
 
-        let runtime = Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("runtime builds");
-        runtime
-            .block_on(layer.process_command(tx_type, command, context))
-            .expect("command succeeds");
+        let runtime = match Builder::new_current_thread().enable_all().build() {
+            Ok(runtime) => runtime,
+            Err(err) => panic!("runtime builds: {err}"),
+        };
+        if let Err(err) = runtime.block_on(layer.process_command(tx_type, command, context)) {
+            panic!("command succeeds: {err}");
+        }
 
         assert_eq!(
             auth.login_calls.load(Ordering::SeqCst),

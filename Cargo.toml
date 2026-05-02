@@ -26,9 +26,6 @@ name = "mxd"
 path = "src/main.rs"
 required-features = ["legacy-networking"]
 
-[lib]
-path = "src/lib.rs"
-
 [[bin]]
 name = "gen_corpus"
 path = "src/bin/gen_corpus.rs"
@@ -36,6 +33,9 @@ path = "src/bin/gen_corpus.rs"
 [[bin]]
 name = "mxd-wireframe-server"
 path = "src/bin/mxd_wireframe_server.rs"
+
+[lib]
+path = "src/lib.rs"
 
 [[test]]
 name = "transaction_streaming"
@@ -78,7 +78,7 @@ cfg-if = "1"
 ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" }
 argon2 = { version = "0.5", features = ["std"] }
 rand = "0.8"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 diesel-cte-ext = { workspace = true }
 futures-util = "0.3"
 tracing = "0.1"

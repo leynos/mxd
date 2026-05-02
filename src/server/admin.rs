@@ -82,6 +82,7 @@ async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use rstest::rstest;
 
     use super::*;

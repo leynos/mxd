@@ -204,6 +204,7 @@ impl OutboundMessaging for NoopOutboundMessaging {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use rstest::{fixture, rstest};
     use tokio::runtime::Runtime;
 

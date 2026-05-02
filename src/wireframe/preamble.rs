@@ -72,6 +72,7 @@ fn decode_error_for_handshake(err: &HandshakeError) -> DecodeError {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use std::io::Cursor;
 
     use rstest::rstest;
@@ -154,6 +155,7 @@ mod tests {
 
 #[cfg(test)]
 mod bdd {
+    //! Behaviour-driven tests for this module.
     use std::cell::RefCell;
 
     use bincode::{borrow_decode_from_slice, config, error::DecodeError};
