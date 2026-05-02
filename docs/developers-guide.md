@@ -33,7 +33,6 @@ make lint WHITAKER=/opt/custom/bin/whitaker
 The fallback is a one-time check at parse time; it does not introduce a runtime
 dependency on shell availability.
 
-
 ### Makefile PATH handling via `TOOL_PATH_PREFIX`
 
 `TOOL_PATH_PREFIX` is built from the resolved Cargo binary directory, the
@@ -390,7 +389,6 @@ historical migration directories.
 - Validate news schema changes with the backend-specific migration regression
   tests in `src/db/schema_alignment_tests/` and with the routing behaviour
   scenarios that exercise migrated databases.
-
 
 ### Schema alignment test harness (`src/db/schema_alignment_tests/`)
 
