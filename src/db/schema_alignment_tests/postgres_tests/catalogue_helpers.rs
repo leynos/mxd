@@ -29,6 +29,8 @@ use super::super::{
     verify_root_category_constraint_error,
 };
 
+/// Builds the legacy `PostgreSQL` schema in `conn` through the shared migration
+/// setup helper, returning `TestResult<()>` for any DDL or seed failure.
 pub(super) async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> TestResult<()> {
     setup_legacy_schema(
         conn,
@@ -47,6 +49,8 @@ pub(super) async fn setup_postgres_legacy_schema(conn: &mut DbConnection) -> Tes
     .await
 }
 
+/// Runs `sql` against `conn`, loads single-column `NameRow` values, and returns
+/// the collected names as `TestResult<Vec<String>>`.
 pub(super) async fn postgres_names(conn: &mut DbConnection, sql: &str) -> TestResult<Vec<String>> {
     Ok(sql_query(sql)
         .load::<NameRow>(conn)
@@ -240,6 +244,8 @@ async fn assert_postgres_news_schema(conn: &mut DbConnection) -> TestResult<()> 
     assert_postgres_article_indices(conn).await
 }
 
+/// Verifies the migrated `PostgreSQL` permission and news schema on `conn`,
+/// including the insert-driven root-category uniqueness check.
 pub(super) async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> TestResult<()> {
     assert_postgres_permission_schema(conn).await?;
     assert_postgres_news_schema(conn).await?;
@@ -247,6 +253,8 @@ pub(super) async fn assert_postgres_aligned_schema(conn: &mut DbConnection) -> T
     verify_root_category_constraint_error(conflict_result).await
 }
 
+/// Seeds fixed permission rows through `conn`, then asserts the join can be
+/// read back; insert or assertion failures are returned as `TestResult<()>`.
 pub(super) async fn assert_permission_round_trip(conn: &mut DbConnection) -> TestResult<()> {
     seed_permission_round_trip(
         conn,
@@ -270,6 +278,8 @@ pub(super) async fn assert_permission_round_trip(conn: &mut DbConnection) -> Tes
 
 fn is_ci() -> bool { std::env::var("CI").is_ok_and(|value| !value.is_empty()) }
 
+/// Runs `test` inside a single-thread runtime against a URL-backed or embedded
+/// `PostgreSQL` database, passing the connection URL and returning `TestResult<()>`.
 pub(super) fn with_postgres_test_db<F, Fut>(test: F) -> TestResult<()>
 where
     F: FnOnce(String) -> Fut + Send + 'static,
