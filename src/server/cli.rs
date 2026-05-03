@@ -86,6 +86,7 @@ fn config_args_without_subcommand() -> Vec<OsString> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use argon2::Params;
     use figment::Jail;
     use rstest::rstest;

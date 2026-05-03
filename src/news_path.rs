@@ -119,6 +119,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use diesel::debug_query;
     use paste::paste;
     use rstest::{fixture, rstest};

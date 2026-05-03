@@ -72,7 +72,6 @@ fn run_factory_with_stored_context(
 ) -> std::result::Result<HotlineApp, AppFactoryError> {
     run_factory_with_stored_context_and_assertions(stored, || {})
 }
-
 fn run_factory_with_stored_context_and_assertions<F>(
     stored: Option<ConnectionContext>,
     assertions: F,
@@ -84,10 +83,10 @@ where
     let argon2 = Arc::new(Argon2::default());
     let outbound_registry = Arc::new(WireframeOutboundRegistry::default());
     let presence = Arc::new(PresenceRegistry::default());
-    let runtime = Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("build current-thread runtime");
+    let runtime = match Builder::new_current_thread().enable_all().build() {
+        Ok(runtime) => runtime,
+        Err(err) => return Err(AppFactoryError::BuildApplication(err.into())),
+    };
 
     runtime.block_on(scope_current_context(None, async {
         match stored {

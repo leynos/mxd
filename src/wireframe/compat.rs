@@ -168,17 +168,24 @@ const fn is_text_field(field: FieldId) -> bool {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use rstest::rstest;
 
     use super::*;
     use crate::transaction::decode_params;
 
     fn build_payload(params: &[(FieldId, &[u8])]) -> Vec<u8> {
-        encode_params(params).expect("payload encodes")
+        match encode_params(params) {
+            Ok(payload) => payload,
+            Err(err) => panic!("payload encodes: {err}"),
+        }
     }
 
     fn decode_param_map(payload: &[u8]) -> Vec<(FieldId, Vec<u8>)> {
-        decode_params(payload).expect("payload decodes")
+        match decode_params(payload) {
+            Ok(params) => params,
+            Err(err) => panic!("payload decodes: {err}"),
+        }
     }
 
     #[rstest]

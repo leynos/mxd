@@ -46,11 +46,14 @@ struct GuardrailWorld {
 
 impl GuardrailWorld {
     fn new() -> Self {
-        let peer = "127.0.0.1:12345"
-            .parse()
-            .unwrap_or_else(|err| panic!("failed to parse fixture peer address: {err}"));
-        let runtime =
-            Runtime::new().unwrap_or_else(|err| panic!("failed to create tokio runtime: {err}"));
+        let peer = match "127.0.0.1:12345".parse() {
+            Ok(peer) => peer,
+            Err(err) => panic!("failed to parse fixture peer address: {err}"),
+        };
+        let runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(err) => panic!("failed to create tokio runtime: {err}"),
+        };
         let router =
             Self::build_router(XorCompatibility::disabled(), &HandshakeMetadata::default());
         Self {

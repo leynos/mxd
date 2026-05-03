@@ -1303,6 +1303,13 @@ and chat features) as outlined in the roadmap.
   [12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L37-L45)
    )(
   [12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L107-L115)).
+   Category names are unique within a bundle. Root categories need
+  backend-specific handling because SQLite and PostgreSQL both treat `NULL`
+  values as distinct under composite unique constraints. PostgreSQL, and other
+  databases that support partial indexes, use a partial unique index on `name`
+  where `bundle_id IS NULL`. SQLite emulates the same invariant with
+  `idx_news_categories_unique` on `(name, IFNULL(bundle_id, -1))`, so root
+  categories use `-1` as the uniqueness sentinel for `NULL` bundle IDs.
 
 - `news_articles`: Each row is a post. The schema is designed to support
   threaded discussions and linear navigation:
@@ -1375,6 +1382,25 @@ Additionally, we have **permissions** for news:
   [12](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/news-schema.md#L82-L90)).
    This approach makes it easy to query which users have, say, “News Admin”
   rights, or to extend with new permissions.
+
+For roadmap item 4.1.1 the implemented schema was aligned to this design using
+an additive migration pair (`00000000000007_align_news_schema`) rather than
+rewriting historical migrations in place. PostgreSQL can add the missing bundle
+and category metadata columns in place, but SQLite cannot safely reach the
+target defaults and scoped category uniqueness with `ALTER TABLE` alone. The
+SQLite migration therefore rebuilds `news_bundles`, `news_categories`, and
+`news_articles`, copying rows forward with stable IDs and recreating the
+required indices explicitly.
+
+The same migration also backfills legacy rows so the aligned schema is usable
+immediately after upgrade. Bundles and categories receive generated legacy GUID
+surrogates plus `created_at` timestamps, and categories derive `add_sn` from
+the current article count while initializing `delete_sn` to `0`. The normalized
+`permissions` and `user_permissions` tables are part of the earlier file-node
+and permission migration; roadmap item 4.1.1 only verifies their presence and
+adds the lookup indices needed by the aligned schema tests. Runtime privilege
+loading remains intentionally deferred to roadmap item 4.1.3 so schema
+alignment does not widen into behavioural permission enforcement.
 
 The **news domain logic** uses these tables to implement operations:
 

@@ -124,6 +124,7 @@ impl Privileges {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for this module.
     use rstest::rstest;
 
     use super::*;

@@ -6,14 +6,15 @@
 use std::{
     ffi::OsString,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, Command, Stdio},
 };
 
+mod binary;
 mod env;
 mod readiness;
 
-use env::SERVER_BINARY_ENV;
+use binary::resolve_server_binary;
 pub use env::{DbUrl, ManifestPath, ensure_server_binary_env, with_env_var};
 #[cfg(unix)]
 use nix::{
@@ -69,53 +70,6 @@ where
     let url = DbUrl::from(path_str);
     setup(&url)?;
     Ok(url)
-}
-
-fn resolve_server_binary() -> Option<PathBuf> {
-    let resolution =
-        std::env::var_os(SERVER_BINARY_ENV).map_or(ServerBinaryResolution::EnvMissing, |bin| {
-            let path = PathBuf::from(bin);
-            if path.exists() {
-                ServerBinaryResolution::Found(path)
-            } else {
-                ServerBinaryResolution::Missing(path)
-            }
-        });
-    resolution.log();
-    resolution.into_option()
-}
-
-enum ServerBinaryResolution {
-    EnvMissing,
-    Found(PathBuf),
-    Missing(PathBuf),
-}
-
-impl ServerBinaryResolution {
-    fn log(&self) {
-        let (message, binary) = match self {
-            Self::EnvMissing => ("env var not set", None),
-            Self::Found(path) => ("using prebuilt binary", Some(path.as_path())),
-            Self::Missing(path) => ("binary from env var does not exist", Some(path.as_path())),
-        };
-        log_server_binary_resolution(message, binary);
-    }
-
-    fn into_option(self) -> Option<PathBuf> {
-        match self {
-            Self::Found(path) => Some(path),
-            Self::EnvMissing | Self::Missing(_) => None,
-        }
-    }
-}
-
-fn log_server_binary_resolution(message: &'static str, binary: Option<&Path>) {
-    let binary_display = binary.map(|path| path.display().to_string());
-    debug!(
-        env_var = SERVER_BINARY_ENV,
-        binary = ?binary_display,
-        "{message}"
-    );
 }
 
 /// Constructs the base `cargo run` command for launching the server with the
@@ -299,7 +253,18 @@ impl TestServer {
         {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
-            Self::launch_sqlite(&manifest_path, &bind_host, db_url, Some(temp))
+            Self::launch_with(
+                &manifest_path,
+                &bind_host,
+                db_url,
+                move |child, bind_addr, db_url_value| Self {
+                    child,
+                    port: bind_addr.port(),
+                    bind_addr,
+                    db_url: db_url_value,
+                    temp_dir: Some(temp),
+                },
+            )
         }
 
         #[cfg(feature = "postgres")]
@@ -307,7 +272,19 @@ impl TestServer {
             let db = crate::postgres::PostgresTestDb::new()?;
             let db_url = DbUrl::from(db.url.as_ref());
             setup(&db_url)?;
-            Self::launch_postgres(&manifest_path, &bind_host, db, db_url)
+            Self::launch_with(
+                &manifest_path,
+                &bind_host,
+                db_url,
+                move |child, bind_addr, db_url_value| Self {
+                    child,
+                    port: bind_addr.port(),
+                    bind_addr,
+                    db_url: db_url_value,
+                    db,
+                    temp_dir: None,
+                },
+            )
         }
     }
 
@@ -322,49 +299,6 @@ impl TestServer {
     {
         let (child, bind_addr) = launch_server_process(manifest_path, bind_host, &db_url)?;
         Ok(build_self(child, bind_addr, db_url))
-    }
-
-    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
-    fn launch_sqlite(
-        manifest_path: &ManifestPath,
-        bind_host: &str,
-        db_url: DbUrl,
-        temp_dir: Option<TempDir>,
-    ) -> Result<Self, AnyError> {
-        Self::launch_with(
-            manifest_path,
-            bind_host,
-            db_url,
-            move |child, bind_addr, db_url_value| Self {
-                child,
-                port: bind_addr.port(),
-                bind_addr,
-                db_url: db_url_value,
-                temp_dir,
-            },
-        )
-    }
-
-    #[cfg(feature = "postgres")]
-    fn launch_postgres(
-        manifest_path: &ManifestPath,
-        bind_host: &str,
-        db: PostgresTestDb,
-        db_url: DbUrl,
-    ) -> Result<Self, AnyError> {
-        Self::launch_with(
-            manifest_path,
-            bind_host,
-            db_url,
-            move |child, bind_addr, db_url_value| Self {
-                child,
-                port: bind_addr.port(),
-                bind_addr,
-                db_url: db_url_value,
-                db,
-                temp_dir: None,
-            },
-        )
     }
 
     /// Returns the ephemeral port on which the server is listening.

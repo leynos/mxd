@@ -60,8 +60,12 @@ struct HandshakeWorld {
 
 impl HandshakeWorld {
     fn new() -> Self {
+        let rt = match Runtime::new() {
+            Ok(rt) => rt,
+            Err(err) => panic!("runtime: {err}"),
+        };
         Self {
-            rt: Runtime::new().expect("runtime"),
+            rt,
             addr: RefCell::new(None),
             shutdown: RefCell::new(None),
             reply: RefCell::new(None),
@@ -96,13 +100,12 @@ impl HandshakeWorld {
         reply
             .as_ref()
             .map(|buf| {
-                u32::from_be_bytes(
-                    buf[4..8]
-                        .try_into()
-                        .expect("convert reply slice to array (bdd reply)"),
-                )
+                let bytes = buf[4..8]
+                    .try_into()
+                    .map_err(|err| format!("convert reply slice to array (bdd reply): {err}"))?;
+                Ok(u32::from_be_bytes(bytes))
             })
-            .map_err(ToString::to_string)
+            .map_err(ToString::to_string)?
     }
 }
 

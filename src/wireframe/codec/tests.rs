@@ -229,17 +229,20 @@ fn expected_framing_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {
         return expected;
     }
 
-    for_each_fragment_range(payload.len(), |offset, len| {
+    let fragment_result = for_each_fragment_range(payload.len(), |offset, len| {
         let end = offset + len;
-        let chunk = payload
-            .get(offset..end)
-            .expect("payload length checked before slicing");
+        let Some(chunk) = payload.get(offset..end) else {
+            panic!("payload length checked before slicing");
+        };
         let mut frame_header = header.clone();
-        frame_header.data_size = u32::try_from(chunk.len()).expect("chunk length fits u32");
+        frame_header.data_size = match u32::try_from(chunk.len()) {
+            Ok(chunk_len) => chunk_len,
+            Err(err) => panic!("chunk length fits u32: {err}"),
+        };
         expected.extend(transaction_bytes(&frame_header, chunk));
         Ok::<(), ()>(())
-    })
-    .expect("fragment iteration succeeds");
+    });
+    assert!(fragment_result.is_ok(), "fragment iteration succeeds");
 
     expected
 }

@@ -97,7 +97,6 @@ fn decoder_emits_first_then_continuation_payloads_for_fragmented_request() {
     );
     assert_eq!(second_env.correlation_id(), Some(44));
 }
-
 fn tracker_with_pending_series() -> (super::InboundSeriesTracker, FrameHeader, FrameHeader) {
     let first_header = FrameHeader {
         flags: 0,
@@ -109,9 +108,9 @@ fn tracker_with_pending_series() -> (super::InboundSeriesTracker, FrameHeader, F
         data_size: 2,
     };
     let mut tracker = super::InboundSeriesTracker::new();
-    let _ = tracker
-        .start(&first_header, &[0u8; 2])
-        .expect("first fragment starts a tracked series");
+    if let Err(err) = tracker.start(&first_header, &[0u8; 2]) {
+        panic!("first fragment starts a tracked series: {err}");
+    }
 
     let zero_header = FrameHeader {
         flags: 0,

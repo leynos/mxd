@@ -7,7 +7,6 @@ use crate::{
     field_id::FieldId,
     wireframe::test_helpers::{fragmented_transaction_bytes, transaction_bytes},
 };
-
 fn prepare_reassembly_buffer(
     codec: &mut HotlineCodec,
     header: &FrameHeader,
@@ -17,13 +16,18 @@ fn prepare_reassembly_buffer(
     let first = transaction_bytes(header, first_payload);
     let mut buf = BytesMut::from(&first[..]);
 
-    let first_result = codec.decode(&mut buf).expect("decode should succeed");
+    let first_result = match codec.decode(&mut buf) {
+        Ok(result) => result,
+        Err(err) => panic!("decode should succeed: {err}"),
+    };
 
     assert!(first_result.is_none());
 
     let mut second_header = header.clone();
-    second_header.data_size =
-        u32::try_from(second_payload.len()).expect("second payload length should fit in u32");
+    second_header.data_size = match u32::try_from(second_payload.len()) {
+        Ok(len) => len,
+        Err(err) => panic!("second payload length should fit in u32: {err}"),
+    };
     let second = transaction_bytes(&second_header, second_payload);
     buf.extend_from_slice(&second);
     buf

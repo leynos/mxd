@@ -67,8 +67,9 @@ pub(super) struct RequestSpec<'a> {
 
 impl PresenceWorld {
     pub(super) fn new() -> Self {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic_runtime_new(&error));
         Self {
-            runtime: Runtime::new().unwrap_or_else(|error| panic!("runtime: {error}")),
+            runtime,
             router: WireframeRouter::new(
                 Arc::new(XorCompatibility::disabled()),
                 Arc::new(ClientCompatibility::from_handshake(
@@ -179,6 +180,8 @@ impl PresenceWorld {
         f(transaction)
     }
 }
+
+fn panic_runtime_new(error: &std::io::Error) -> Runtime { panic!("runtime: {error}") }
 
 #[derive(Clone, Default)]
 struct RecordingMessaging {

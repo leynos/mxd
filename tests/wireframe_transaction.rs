@@ -143,9 +143,12 @@ fn given_fragmented_transaction(world: &TransactionWorld, total: usize, count: u
 
 #[given("a fragmented transaction with mismatched continuation headers")]
 fn given_mismatched_continuation(world: &TransactionWorld) {
-    let bytes = mismatched_continuation_bytes()
-        .unwrap_or_else(|err| panic!("test values fit in u32: {err:?}"));
+    let bytes = mismatched_continuation_bytes().unwrap_or_else(|err| panic_test_values_fit(&err));
     world.set_bytes(&bytes);
+}
+
+fn panic_test_values_fit(err: &mxd::wireframe::test_helpers::FragmentError) -> Vec<u8> {
+    panic!("test values fit in u32: {err:?}");
 }
 
 #[when("I decode the transaction frame")]

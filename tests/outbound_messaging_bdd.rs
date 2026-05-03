@@ -139,10 +139,12 @@ async fn then_queue_receives(world: &OutboundWorld) {
         panic!("expected a queued frame but queue was empty");
     };
     assert_eq!(priority, PushPriority::Low);
-    let parsed = parse_transaction(&frame).unwrap_or_else(|err| {
-        panic!("parse transaction: {err}");
-    });
+    let parsed = parse_transaction(&frame).unwrap_or_else(|err| panic_parse_transaction(&err));
     assert_eq!(parsed, OutboundWorld::message());
+}
+
+fn panic_parse_transaction(err: &mxd::transaction::TransactionError) -> Transaction {
+    panic!("parse transaction: {err}");
 }
 
 scenarios!(
