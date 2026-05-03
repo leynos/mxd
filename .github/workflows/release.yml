@@ -57,7 +57,7 @@ jobs:
       should_upload_workflow_artifacts: ${{ steps.release_modes.outputs.should-upload-workflow-artifacts }}
       repo_name: ${{ steps.repo_name.outputs.value }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
 
       - id: repo_name
         name: Determine repository name
@@ -124,7 +124,7 @@ jobs:
       - build-linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
 
       - name: Ensure release exists (draft)
         shell: bash
