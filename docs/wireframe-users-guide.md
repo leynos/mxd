@@ -507,8 +507,8 @@ Available fragment-reassembly assertion helpers:
 - `assert_fragment_reassembly_error` — verify reassembly errors including
   `MessageTooLarge` (with or without specific message ID), `IndexMismatch`
   (out-of-order fragments), `MessageMismatch` (fragments from wrong logical
-  message), `SeriesComplete` (duplicate or late fragments after completion),
-  and `IndexOverflow` (fragment index exceeding limits).
+  message), `SeriesComplete` (duplicate or late fragments after completion), and
+   `IndexOverflow` (fragment index exceeding limits).
 - `assert_fragment_reassembly_buffered_messages` — verify buffered partial
   message count.
 - `assert_fragment_reassembly_evicted` — verify timeout-based eviction.
@@ -870,9 +870,9 @@ no change is required for bincode-compatible types.
   using `dyn Serializer` directly is unsupported unless concrete wrappers are
   provided. For migration, keep concrete serializer types in `EncodeWith` /
   `DecodeWith` bounds, retain
-  `wireframe::serializer::MessageCompatibilitySerializer` for legacy
-  `Message`-based payloads, and use `SerdeMessage` with `SerdeSerializerBridge`
-  for Serde-only payloads. When runtime-polymorphic serializer behaviour is
+  `wireframe::serializer::MessageCompatibilitySerializer` for legacy `Message`
+  -based payloads, and use `SerdeMessage` with `SerdeSerializerBridge` for
+  Serde-only payloads. When runtime-polymorphic serializer behaviour is
   required, wrap concrete serializer implementations in adapter wrappers that
   expose object-safe APIs and delegate to
   `Serializer::deserialize_with_context` as needed.
@@ -1114,11 +1114,11 @@ sensible defaults automatically from `buffer_capacity` (the codec's
 `max_frame_length()`). The derived values use the same multiplier pattern as
 fragmentation defaults:
 
-| Budget field           | Multiplier           | Default (1024-byte frame) |
-| ---------------------- | -------------------- | ------------------------- |
-| `bytes_per_message`    | `frame_budget × 16`  | 16 KiB                    |
-| `bytes_per_connection` | `frame_budget × 64`  | 64 KiB                    |
-| `bytes_in_flight`      | `frame_budget × 64`  | 64 KiB                    |
+| Budget field           | Multiplier          | Default (1024-byte frame) |
+| ---------------------- | ------------------- | ------------------------- |
+| `bytes_per_message`    | `frame_budget × 16` | 16 KiB                    |
+| `bytes_per_connection` | `frame_budget × 64` | 64 KiB                    |
+| `bytes_in_flight`      | `frame_budget × 64` | 64 KiB                    |
 
 All three protection tiers (per-frame enforcement, soft-limit read pacing, and
 hard-cap connection abort) are active with derived defaults. Changing
@@ -1377,8 +1377,8 @@ response editing before the response is serialized. `HandlerService` rebuilds a
 packet from the request bytes, invokes the registered handler, and by default
 returns the original payload; replies are crafted in middleware (or custom
 packet types with interior mutability). Decode typed payloads via the `Message`
-helpers, then write the encoded response into
-`ServiceResponse::frame_mut()`.[^10][^12]
+helpers, then write the encoded response into `ServiceResponse::frame_mut()`.[
+^10][^12]
 
 ```rust
 use std::convert::Infallible;
@@ -1416,11 +1416,11 @@ async fn decode_and_respond(
 let middleware = from_fn(decode_and_respond);
 ```
 
-Advanced integrations can adopt the `wireframe::extractor` module, which
-defines `MessageRequest`, `Payload`, and `FromMessageRequest` for building
-Actix-style extractors in custom middleware or services. These types expose
-shared state, peer addresses, and payload cursors for frameworks that want to
-layer additional ergonomics on top of the core primitives.[^13]
+Advanced integrations can adopt the `wireframe::extractor` module, which defines
+ `MessageRequest`, `Payload`, and `FromMessageRequest` for building Actix-style
+extractors in custom middleware or services. These types expose shared state,
+peer addresses, and payload cursors for frameworks that want to layer
+additional ergonomics on top of the core primitives.[^13]
 
 ## Connection lifecycle
 
@@ -1528,8 +1528,8 @@ or emit errors.[^14]
 
 `WireframeServer::new` clones the application factory per worker, defaults the
 worker count to the host CPU total (never below one), supports a readiness
-signal, and normalizes accept-loop backoff settings through
-`accept_backoff`.[^15][^16] Servers start in an unbound state; call `bind` or
+signal, and normalizes accept-loop backoff settings through `accept_backoff`.[
+^15][^16] Servers start in an unbound state; call `bind` or
 `bind_existing_listener` to transition into the `Bound` typestate, inspect the
 bound address, or rebind later.[^17]
 
@@ -2135,14 +2135,13 @@ match client.call(&request).await {
 
 Background work interacts with connections through `PushQueues`. The fluent
 builder configures high- and low-priority capacities, optional rate limits, and
-an optional dead-letter queue with tunable logging cadence for dropped
-frames.[^23] Queue construction validates capacities and rate limits, clamping
-rates to the supported range.[^24] `PushHandle` exposes async
-`push_high_priority` and `push_low_priority` helpers that honour the rate
-limiter before awaiting channel capacity, while `try_push` implements
-policy-controlled drops with optional warnings and dead-letter forwarding.[^26]
-Cloneable handles downgrade to `Weak` references for registration in a session
-registry.[^25]
+an optional dead-letter queue with tunable logging cadence for dropped frames.[
+^23] Queue construction validates capacities and rate limits, clamping rates to
+the supported range.[^24] `PushHandle` exposes async `push_high_priority` and
+`push_low_priority` helpers that honour the rate limiter before awaiting
+channel capacity, while `try_push` implements policy-controlled drops with
+optional warnings and dead-letter forwarding.[^26] Cloneable handles downgrade
+to `Weak` references for registration in a session registry.[^25]
 
 `PushQueues::recv` prefers high-priority frames but eventually drains the
 low-priority queue; `close` lets tests release resources when no actor is
@@ -2178,8 +2177,8 @@ frames, a streamed response, a channel-backed multi-packet response, or an
 empty reply. `into_stream` converts any variant into a boxed `FrameStream`,
 ready to install on a connection actor with `set_response` so streaming output
 can be interleaved with push traffic. `WireframeError` distinguishes transport
-failures from protocol-level errors emitted by streaming
-responses.[^34][^35][^31]
+failures from protocol-level errors emitted by streaming responses.[^34][^35][
+^31]
 
 When constructing imperative streams, the `async-stream` crate integrates
 smoothly. The example below yields five frames and converts them into a
@@ -2498,8 +2497,8 @@ decode failures are surfaced through `ClientError::Wireframe`.[^51]
   `ClientError::PreambleRead(_)` means the success callback could not read or
   decode the server's acknowledgement bytes. This usually indicates the wrong
   preamble type, malformed server bytes, or callback logic that reads the
-  response incorrectly. Confirm both sides use the same preamble schema and
-  that `on_preamble_success` returns any leftover bytes it consumed.
+  response incorrectly. Confirm both sides use the same preamble schema and that
+   `on_preamble_success` returns any leftover bytes it consumed.
 - Preamble encode or write failure:
   `ClientError::PreambleEncode(_)` means the client failed before handshake
   completion while serializing or writing the preamble. In the current client

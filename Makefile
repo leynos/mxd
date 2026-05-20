@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
+.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -103,6 +103,21 @@ markdownlint: ## Lint Markdown files
 
 nixie: ## Validate Mermaid diagrams
 	$(NIXIE) --no-sandbox
+
+audit: rust-audit ## Audit dependencies for known vulnerabilities
+
+rust-audit: ## Audit every Rust manifest for known vulnerabilities
+	find . \
+		\( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/.venv/*' \) -prune -o \
+		-name Cargo.toml -exec sh -c 'set -e; for manifest do \
+			manifest_dir=$$(dirname "$$manifest"); \
+			if [ ! -f "$$manifest_dir/Cargo.lock" ]; then \
+				printf "Skipping Rust manifest without adjacent lockfile %s\n" "$$manifest"; \
+				continue; \
+			fi; \
+			printf "Auditing Rust manifest %s\n" "$$manifest"; \
+			(cd "$$manifest_dir" && $(CARGO) audit); \
+		done' sh {} +
 
 tlc: tlc-handshake ## Run all TLA+ model checks
 

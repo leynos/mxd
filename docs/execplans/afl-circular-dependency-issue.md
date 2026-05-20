@@ -108,8 +108,8 @@ contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
   switch the whole fuzz path to release.
 
 - Observation: Docker validation cannot be executed in this workspace because
-  `/var/run/docker.sock` is absent. Evidence: `docker build ...` fails here
-  with `failed to connect to the docker API at unix:///var/run/docker.sock`.
+  `/var/run/docker.sock` is absent. Evidence: `docker build ...` fails here with
+   `failed to connect to the docker API at unix:///var/run/docker.sock`.
   Impact: the plan must specify an external validation step instead of claiming
   local proof.
 

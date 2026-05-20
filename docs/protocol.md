@@ -20,19 +20,19 @@ as listed.
 
 ### 1 Session-initialisation handshake
 
-| Offset | Size (bytes) | Field               | Meaning                                                                              |
-| -----: | ------------ | ------------------- | ------------------------------------------------------------------------------------ |
-| 0      | 4            | **Protocol ID**     | ASCII **“TRTP”** (0x54 52 54 50). Distinguishes Hotline from other TCP services.     |
-| 4      | 4            | **Sub-protocol ID** | Application-specific tag (e.g. “CHAT”, “FILE”). Can be 0.                            |
-| 8      | 2            | **Version**         | Currently **0x0001**. A server should refuse versions it does not understand.        |
-| 10     | 2            | **Sub-version**     | Application-defined; often used for build/revision numbers.                          |
+| Offset | Size (bytes) | Field               | Meaning                                                                          |
+| -----: | ------------ | ------------------- | -------------------------------------------------------------------------------- |
+| 0      | 4            | **Protocol ID**     | ASCII **“TRTP”** (0x54 52 54 50). Distinguishes Hotline from other TCP services. |
+| 4      | 4            | **Sub-protocol ID** | Application-specific tag (e.g. “CHAT”, “FILE”). Can be 0.                        |
+| 8      | 2            | **Version**         | Currently **0x0001**. A server should refuse versions it does not understand.    |
+| 10     | 2            | **Sub-version**     | Application-defined; often used for build/revision numbers.                      |
 
 **Direction:** Client → Server. The server replies immediately with:
 
-| Offset | Size | Field       | Meaning                                         |
-| -----: | ---- | ----------- | ----------------------------------------------- |
-| 0      | 4    | Protocol ID | Must echo “TRTP”.                               |
-| 4      | 4    | Error code  | **0 = OK**. Non-zero → connection is dropped.   |
+| Offset | Size | Field       | Meaning                                       |
+| -----: | ---- | ----------- | --------------------------------------------- |
+| 0      | 4    | Protocol ID | Must echo “TRTP”.                             |
+| 4      | 4    | Error code  | **0 = OK**. Non-zero → connection is dropped. |
 
 A compliant implementation simply waits for the four-byte error code and aborts
 if it is non-zero. No further data follow.
@@ -1193,11 +1193,11 @@ privileges – the user must have *Upload File* rights for that folder. If
 allowed and if there’s space/quotas okay, the server will allocate a transfer
 slot. The reply gives a reference number like with downloads. Then the client
 is expected to open a new connection to the server’s upload port (which is the
-same as download port, base port+1, in non-HTTP mode). The client then sends
-the `'HTXF'` handshake with the reference and the total data size to send.
-After that, the client transmits the file data in the same “flattened file”
-format over that connection. The server receives the bytes and writes the file
-to the specified folder.
+same as download port, base port+1, in non-HTTP mode). The client then sends the
+ `'HTXF'` handshake with the reference and the total data size to send. After
+that, the client transmits the file data in the same “flattened file” format
+over that connection. The server receives the bytes and writes the file to the
+specified folder.
 
 If the client had crashed and is resuming an upload, the server might have a
 partial file and it can provide resume info: typically, Hotline supported

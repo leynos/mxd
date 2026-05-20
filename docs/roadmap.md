@@ -192,8 +192,8 @@ and explicit dependencies. Timeframes are intentionally omitted.
   sub-version/login-version compatibility gating, plus boundary-focused unit
   and behavioural regression coverage. Dependencies: 1.5.2.
 - [x] 1.5.5. Add wireframe compatibility guardrails and a routing entrypoint.
-  Acceptance: A `WireframeRouter` provides the only public routing entrypoint,
-  a `CompatibilityLayer` runs request and reply hooks, and a spy-based test
+  Acceptance: A `WireframeRouter` provides the only public routing entrypoint, a
+   `CompatibilityLayer` runs request and reply hooks, and a spy-based test
   asserts login hook ordering. See
   [ADR-002](docs/adr-002-compatibility-guardrails-and-augmentation.md). Status:
   Completed on 15 February 2026. `WireframeRouter` is the sole `pub` routing

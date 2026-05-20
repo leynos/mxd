@@ -32,8 +32,8 @@ edition.
 development via `rust-toolchain.toml` so contributors get consistent `rustfmt`
 and `clippy` behaviour.
 
-Step definitions may be synchronous functions (`fn`) or asynchronous functions
-(`async fn`). The framework no longer depends on the `async-trait` crate to
+Step definitions may be synchronous functions (`fn`) or asynchronous functions (
+ `async fn`). The framework no longer depends on the `async-trait` crate to
 express async methods in traits. Projects that previously relied on
 `#[async_trait]` in helper traits should replace those methods with ordinary
 functions, and use async steps or async fixtures where appropriate. Step
@@ -770,11 +770,11 @@ one may filter or run them in parallel as usual.
 
 Steps or hooks may call `rstest_bdd::skip!` to stop executing the remaining
 steps. The macro records a `Skipped` outcome and short-circuits the scenario so
-the generated test returns before evaluating the annotated function body.
-Invoke `skip!()` with no arguments to record a skipped outcome without a
-message. Pass an optional string to describe the reason, and use the standard
-`format!` syntax to interpolate values when needed. Set the
-`RSTEST_BDD_FAIL_ON_SKIPPED` environment variable to `1`, or call
+the generated test returns before evaluating the annotated function body. Invoke
+ `skip!()` with no arguments to record a skipped outcome without a message.
+Pass an optional string to describe the reason, and use the standard `format!`
+syntax to interpolate values when needed. Set the `RSTEST_BDD_FAIL_ON_SKIPPED`
+environment variable to `1`, or call
 `rstest_bdd::config::set_fail_on_skipped(true)`, to escalate skipped scenarios
 into test failures unless the feature or scenario carries an `@allow_skipped`
 tag. (Example-level tags are not yet evaluated.)
@@ -830,9 +830,9 @@ that a step or scenario stopped executing. Use
 `rstest_bdd::assert_step_skipped!` to unwrap a `StepExecution::Skipped`
 outcome, optionally constraining its message, and
 `rstest_bdd::assert_scenario_skipped!` to inspect
-[`ScenarioStatus`](crate::reporting::ScenarioStatus) records. Both macros
-accept `message_absent = true` to assert that no message was provided and
-substring matching to confirm that a message contains the expected reason.
+[`ScenarioStatus`](crate::reporting::ScenarioStatus) records. Both macros accept
+ `message_absent = true` to assert that no message was provided and substring
+matching to confirm that a message contains the expected reason.
 
 ```rust,no_run
 use rstest_bdd::{assert_scenario_skipped, assert_step_skipped, StepExecution};
@@ -919,8 +919,8 @@ consumed via `StepContext` rather than referenced directly in the test body.
 ## Async scenario execution
 
 Scenarios can run asynchronously under Tokio's current-thread runtime. This
-enables test code to `.await` async operations while preserving the
-`RefCell`-backed fixture model for mutable borrows across await points.
+enables test code to `.await` async operations while preserving the `RefCell`
+-backed fixture model for mutable borrows across await points.
 
 ### Using `#[scenario]` with async
 
@@ -1155,9 +1155,8 @@ fn async_wrapper_with_aliases<'ctx>(
 ### Current limitations
 
 - **Tokio current-thread mode only:** Multi-threaded Tokio mode would require
-  `Send` futures, which conflicts with the `RefCell`-backed fixture storage.
-  See [ADR-001](adr-001-async-fixtures-and-test.md) for the full design
-  rationale.
+  `Send` futures, which conflicts with the `RefCell`-backed fixture storage. See
+   [ADR-001](adr-001-async-fixtures-and-test.md) for the full design rationale.
 - **Nested runtime safeguards:** Async-only steps running in synchronous
   scenarios use a per-step runtime fallback, which refuses to run when a Tokio
   runtime is already active on the current thread.
@@ -1230,11 +1229,11 @@ Best practices for writing effective scenarios include:
   referring to `{u32}`), escape them as `{{` and `}}` rather than placing them
   inside `{name:type}`. The lexer closes the placeholder at the first `}` after
   the optional type hint; any characters between the `:type` and that first `}`
-  are ignored (for example, `{n:u32 extra}` parses as `name = n`,
-  `type = u32`). `name` must start with a letter or underscore and may contain
-  letters, digits, or underscores (`[A-Za-z_][A-Za-z0-9_]*`). Whitespace within
-  the type hint is ignored (for example, `{count: u32}` and `{count:u32}` are
-  both accepted), but whitespace is not allowed between the name and the colon.
+  are ignored (for example, `{n:u32 extra}` parses as `name = n`, `type = u32`).
+   `name` must start with a letter or underscore and may contain letters,
+  digits, or underscores (`[A-Za-z_][A-Za-z0-9_]*`). Whitespace within the type
+  hint is ignored (for example, `{count: u32}` and `{count:u32}` are both
+  accepted), but whitespace is not allowed between the name and the colon.
   Prefer the compact form `{count:u32}` in new code. When a pattern contains no
   placeholders, the step text must match exactly. Unknown type hints are
   treated as generic placeholders and capture any non-newline text using a
@@ -1590,9 +1589,9 @@ unic-langid = "0.9"
 
 The crate exposes the embedded assets via the [`Localizations`] helper. This
 type implements `i18n_embed::I18nAssets`, allowing applications with existing
-Fluent infrastructure to load resources into their own
-[`FluentLanguageLoader`]. Libraries without a localization framework can rely
-on the built-in loader and request a different language at runtime:
+Fluent infrastructure to load resources into their own `FluentLanguageLoader`.
+Libraries without a localization framework can rely on the built-in loader and
+request a different language at runtime:
 
 ```rust,no_run
 # fn scope_locale() -> Result<(), rstest_bdd::localization::LocalizationError> {
@@ -1611,9 +1610,7 @@ not shipped with the crate. Procedural macro diagnostics remain in English so
 compile-time output stays deterministic regardless of the host machine’s
 language settings.
 
-[`Localizations`]: https://docs.rs/rstest-bdd/latest/rstest_bdd/localization/
-[`FluentLanguageLoader`]:
-https://docs.rs/i18n-embed/latest/i18n_embed/fluent/struct.FluentLanguageLoader.html
+[`Localizations`]: <https://docs.rs/rstest-bdd/latest/rstest_bdd/localization/>
 
 ## Diagnostic tooling
 
@@ -1679,9 +1676,8 @@ rstest_bdd::reporting::json::write_snapshot(&mut buffer)?;
 ```
 
 The companion `rstest_bdd::reporting::junit` module renders the same snapshot
-as JUnit XML. Each skipped scenario emits a `<skipped>` element with an
-optional `message` attribute so continuous integration (CI) servers surface the
-reason:
+as JUnit XML. Each skipped scenario emits a `<skipped>` element with an optional
+ `message` attribute so continuous integration (CI) servers surface the reason:
 
 ```rust,no_run
 let mut xml = String::new();

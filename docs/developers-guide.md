@@ -8,6 +8,8 @@ codebase, plus the PostgreSQL helper needed for integration coverage.
 
 - Rust toolchain pinned by `rust-toolchain.toml`.
 - `cargo` and `make` available on your `PATH`.
+- `cargo-audit` available for `make audit`; CI installs it with
+  `cargo binstall --no-confirm cargo-audit`.
 - Optional: `pg-embed-setup-unpriv` for PostgreSQL-backed tests.
 
 ### Build-tool resolution
@@ -16,15 +18,16 @@ The `Makefile` applies a conditional fallback for each build tool it invokes.
 When the named tool is not found on `PATH`, the Makefile checks a fixed
 well-known location and, if present, promotes it:
 
-| Variable | Default | Fallback location |
-| --- | --- | --- |
-| `CARGO` | `cargo` | `~/.cargo/bin/cargo` |
-| `WHITAKER` | `whitaker` | `~/.local/bin/whitaker` |
-| `MDLINT` | `markdownlint-cli2` | `~/.bun/bin/markdownlint-cli2` |
+| Variable   | Default             | Fallback location              |
+| ---------- | ------------------- | ------------------------------ |
+| `CARGO`    | `cargo`             | `~/.cargo/bin/cargo`           |
+| `WHITAKER` | `whitaker`          | `~/.local/bin/whitaker`        |
+| `MDLINT`   | `markdownlint-cli2` | `~/.bun/bin/markdownlint-cli2` |
 
-This avoids silent failures when a tool is installed outside `PATH` and prevents
-the Makefile from inadvertently resolving to an unintended binary earlier in
-`PATH`. Override any variable at invocation time if the tool lives elsewhere:
+This avoids silent failures when a tool is installed outside `PATH` and
+prevents the Makefile from inadvertently resolving to an unintended binary
+earlier in `PATH`. Override any variable at invocation time if the tool lives
+elsewhere:
 
 ```sh
 make lint WHITAKER=/opt/custom/bin/whitaker
@@ -33,12 +36,28 @@ make lint WHITAKER=/opt/custom/bin/whitaker
 The fallback is a one-time check at parse time; it does not introduce a runtime
 dependency on shell availability.
 
+## Dependency auditing
+
+Run the dependency vulnerability audit with:
+
+```sh
+make audit
+```
+
+The `audit` target delegates to `rust-audit`, which walks every `Cargo.toml`
+outside generated or vendor-like directories and runs `cargo audit` from
+manifest directories that have an adjacent `Cargo.lock`. Workspace member
+manifests without their own lockfile are covered by the root workspace lockfile
+and are reported as skipped rather than failing the audit before the root check
+runs. This keeps the root workspace, auxiliary crates, and standalone lockfiles
+under the same advisory check used by CI.
+
 ### Makefile PATH handling via `TOOL_PATH_PREFIX`
 
 `TOOL_PATH_PREFIX` is built from the resolved Cargo binary directory, the
 resolved Whitaker binary directory, and `~/.local/bin`. The Makefile resolves
-the executable token first, records the directory only when lookup succeeds, and
-then joins the non-empty entries:
+the executable token first, records the directory only when lookup succeeds,
+and then joins the non-empty entries:
 
 ```make
 TOOL_PATH_PREFIX := $(shell printf '%s\n' \
@@ -58,10 +77,10 @@ PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" \
 This keeps the same Cargo executable family, the resolved Whitaker binary, and
 user-local tools ahead of the ambient shell `PATH` while avoiding an empty
 current-directory entry. The Clippy lines still use `$(CARGO)` directly; the
-PATH override is specifically for Whitaker and tools it invokes as
-subprocesses during lint runs. Whitaker receives `--all-targets` so test-only
-modules compiled behind `#[cfg(test)]` are linted by the same structural rules
-as library and binary targets. Test targets use the resolved `$(CARGO)` path
+PATH override is specifically for Whitaker and tools it invokes as subprocesses
+during lint runs. Whitaker receives `--all-targets` so test-only modules
+compiled behind `#[cfg(test)]` are linted by the same structural rules as
+library and binary targets. Test targets use the resolved `$(CARGO)` path
 directly rather than rewriting `PATH`.
 
 To inspect the effective prefix for a local shell, ask `make` to print it:
@@ -241,16 +260,15 @@ re-exports the public surface of each module.
   failure (`fail_closed = true`) or a graceful skip (`fail_closed = false`).
   Reads `MXD_VALIDATOR_FAIL_CLOSED` and falls back to `CI=true` detection.
 - `server_binary.rs`: resolves the path to a prebuilt
-  `mxd-wireframe-server` binary. Precedence is
-  `MXD_VALIDATOR_SERVER_BINARY`, `CARGO_BIN_EXE_mxd-wireframe-server`, then
-  workspace `target/` candidates.
+  `mxd-wireframe-server` binary. Precedence is `MXD_VALIDATOR_SERVER_BINARY`,
+  `CARGO_BIN_EXE_mxd-wireframe-server`, then workspace `target/` candidates.
 - `hx_client.rs`: discovers the `hx` binary, rejecting the Helix editor via a
   version probe. Spawns a PTY session via `expectrl` and provides helpers to
   wait for the Hotline prompt and terminate the session.
 - `harness.rs`: orchestrates these pieces by running policy and prerequisite
-  checks via `ValidatorHarness::prepare()`, launching the wireframe server
-  with `start_server_with_setup()`, opening the PTY client with `spawn_hx()`,
-  and exporting PTY expect/send helpers used directly by tests.
+  checks via `ValidatorHarness::prepare()`, launching the wireframe server with
+  `start_server_with_setup()`, opening the PTY client with `spawn_hx()`, and
+  exporting PTY expect/send helpers used directly by tests.
 
 ### Key public types
 
@@ -338,20 +356,21 @@ The snapshot is validated before insertion so field 300 replies and
 notifications cannot contain unencodable user identifiers or display names.
 
 `PresenceRegistry` stores online snapshots by outbound connection identifier.
-`upsert` inserts or replaces a snapshot and returns the peer connection IDs that
-should receive a change notification. `remove` deletes a snapshot by connection
-ID and returns the removed snapshot plus the remaining peer IDs.
+`upsert` inserts or replaces a snapshot and returns the peer connection IDs
+that should receive a change notification. `remove` deletes a snapshot by
+connection ID and returns the removed snapshot plus the remaining peer IDs.
 `online_snapshots` returns all online snapshots in deterministic order.
-`snapshot_for_user_id` looks up a visible user and, when multiple sessions share
-the same account user ID, selects the snapshot with the lowest connection ID.
+`snapshot_for_user_id` looks up a visible user and, when multiple sessions
+share the same account user ID, selects the snapshot with the lowest connection
+ID.
 
 The presence transaction builders convert snapshots into protocol replies and
 server pushes. `build_user_name_list_reply` produces Get User Name List (300)
 replies with repeated field-300 records. `build_notify_change_user` produces
 Notify Change User (301) notifications. `build_notify_delete_user` produces
-Notify Delete User (302) notifications. `build_client_info_text_reply`
-produces Get Client Info Text (303) replies with the visible name and
-placeholder info text.
+Notify Delete User (302) notifications. `build_client_info_text_reply` produces
+Get Client Info Text (303) replies with the visible name and placeholder info
+text.
 
 ### Error-handling conventions
 
@@ -623,8 +642,9 @@ The following functions are re-exported from `src/db/mod.rs`:
 - `download_file_permission`: returns the `NewPermission` descriptor for the
   canonical `download_file` entry (code 2).
 
-`resolve_file_node_path` returns `Result<Option<FileNode>, FileNodeLookupError>`.
-`FileNodeLookupError` has three variants:
+`resolve_file_node_path` returns
+`Result<Option<FileNode>, FileNodeLookupError>`. `FileNodeLookupError` has
+three variants:
 
 - `InvalidPath`: invalid or malformed path.
 - `Diesel(diesel::result::Error)`: a database query error.
@@ -695,8 +715,7 @@ session. It carries:
 
 Build snapshots from a `Session` with `Session::presence_snapshot()`. The
 method returns `None` unless the session phase is `Online`, keeping
-agreement-gated users out of the roster until they complete the login
-lifecycle.
+agreement-gated users out of the roster until they complete the login lifecycle.
 
 ### `PresenceRegistry`
 
@@ -716,8 +735,7 @@ and mutation operations:
   use this to build the `300 Get User Name List` response.
 - `snapshot_for_user_id(user_id) -> Option<PresenceSnapshot>` returns the
   snapshot for the given database user ID. If duplicate sessions share the same
-  user ID, the snapshot with the numerically lowest `connection_id` is
-  returned.
+  user ID, the snapshot with the numerically lowest `connection_id` is returned.
 
 ### Transaction builders
 

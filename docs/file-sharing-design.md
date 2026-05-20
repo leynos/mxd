@@ -49,9 +49,9 @@ robustness and scalability.
 **database** for metadata & permissions and an **object storage** service for
 file content. The server logic (written in Rust) mediates between client
 requests, the DB, and the object store: for example, a download request
-triggers a DB lookup and an object store read stream. By leveraging the Rust
-**`object_store`** crate, it is possible to easily swap underlying storage
-(local filesystem, S3, Azure, etc.) without code changes. All storage access is
+triggers a DB lookup and an object store read stream. By leveraging the Rust **
+`object_store`** crate, it is possible to easily swap underlying storage (local
+filesystem, S3, Azure, etc.) without code changes. All storage access is
 asynchronous and stream-oriented for efficiency. The **ACL and user
 management** are part of the broader application schema and are reused here –
 meaning file/folder permissions are stored and enforced using the same tables
@@ -70,8 +70,8 @@ enforcement. The object store holds only file data and is treated as a flat
 blob store.
 
 **Storage Abstraction:** The implementation does *not* rely on filesystem
-semantics or cloud-specific APIs directly – instead, the abstraction provided
-by `object_store::ObjectStore`. This trait provides methods to put and get
+semantics or cloud-specific APIs directly – instead, the abstraction provided by
+ `object_store::ObjectStore`. This trait provides methods to put and get
 objects, list with prefixes, and handle multipart uploads in a uniform way.
 This lets the same code run against local disk, S3, Azure, Google Cloud, etc.,
 configured by a URL or builder at runtime. All file reads/writes are done
@@ -541,8 +541,8 @@ steps:
    };
    ```
 
-   This yields an async stream of bytes
-   (`impl Stream<Item=Result<Bytes, Error>>`). The object_store library will
+   This yields an async stream of bytes (
+   `impl Stream<Item=Result<Bytes, Error>>`). The object_store library will
    handle efficiently ranging the request (coalescing multiple small ranges if
    needed).
 
@@ -1329,9 +1329,9 @@ Applying these rules ensures that:
   for security auditing. E.g., if user tries to download a file without rights,
   the implementation log it.
 
-By centralizing permission checks in each operation handler and using the
-shared `permissions`, `user_permissions`, and `resource_permissions` tables,
-the design maintains consistency across features. A user’s access to files is
+By centralizing permission checks in each operation handler and using the shared
+ `permissions`, `user_permissions`, and `resource_permissions` tables, the
+design maintains consistency across features. A user’s access to files is
 managed through the same normalized privilege catalogue that supports other
 feature areas, so administrative tooling can update one coherent permission
 system.

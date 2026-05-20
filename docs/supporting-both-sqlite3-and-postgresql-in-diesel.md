@@ -60,13 +60,13 @@ ______________________________________________________________________
 
 ### 2.2 Column types that line up cleanly
 
-| Logical type | PostgreSQL              | SQLite notes                                                                      |
-| ------------ | ----------------------- | --------------------------------------------------------------------------------- |
-| strings      | `TEXT` (or `VARCHAR`)   | `TEXT` – SQLite ignores the length specifier anyway                               |
-| booleans     | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`; Diesel serializes to 0 / 1, so this is fine                 |
-| integers     | `INTEGER` / `BIGINT`    | ditto                                                                             |
-| decimals     | `NUMERIC(…)`            | stored as FLOAT in SQLite; Diesel’s `Numeric` round-trips, but beware precision   |
-| blobs / raw  | `BYTEA`                 | `BLOB`                                                                            |
+| Logical type | PostgreSQL              | SQLite notes                                                                    |
+| ------------ | ----------------------- | ------------------------------------------------------------------------------- |
+| strings      | `TEXT` (or `VARCHAR`)   | `TEXT` – SQLite ignores the length specifier anyway                             |
+| booleans     | `BOOLEAN DEFAULT FALSE` | declare as `BOOLEAN`; Diesel serializes to 0 / 1, so this is fine               |
+| integers     | `INTEGER` / `BIGINT`    | ditto                                                                           |
+| decimals     | `NUMERIC(…)`            | stored as FLOAT in SQLite; Diesel’s `Numeric` round-trips, but beware precision |
+| blobs / raw  | `BYTEA`                 | `BLOB`                                                                          |
 
 Things that **do *not* port** and therefore need conditional SQL:
 

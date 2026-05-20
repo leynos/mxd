@@ -103,8 +103,8 @@ If the migration requires violating any constraint, stop and escalate.
 
 - Observation: this branch already has template-based fast provisioning via
   `ensure_template_exists` in `test-util/src/postgres.rs`, but dependencies are
-  still pinned to `v0.4.0`. Evidence: `test-util/src/postgres.rs` currently
-  uses `cluster.ensure_template_exists(...)`; `Cargo.toml` and
+  still pinned to `v0.4.0`. Evidence: `test-util/src/postgres.rs` currently uses
+   `cluster.ensure_template_exists(...)`; `Cargo.toml` and
   `test-util/Cargo.toml` pin `version = "0.4.0"`. Impact: migration can focus
   on lifecycle/send-safe upgrades plus dependency bump rather than introducing
   template cloning from scratch.
