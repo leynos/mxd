@@ -508,7 +508,7 @@ Available fragment-reassembly assertion helpers:
   `MessageTooLarge` (with or without specific message ID), `IndexMismatch`
   (out-of-order fragments), `MessageMismatch` (fragments from wrong logical
   message), `SeriesComplete` (duplicate or late fragments after completion), and
-   `IndexOverflow` (fragment index exceeding limits).
+  `IndexOverflow` (fragment index exceeding limits).
 - `assert_fragment_reassembly_buffered_messages` — verify buffered partial
   message count.
 - `assert_fragment_reassembly_evicted` — verify timeout-based eviction.
