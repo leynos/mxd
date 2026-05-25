@@ -1377,8 +1377,8 @@ response editing before the response is serialized. `HandlerService` rebuilds a
 packet from the request bytes, invokes the registered handler, and by default
 returns the original payload; replies are crafted in middleware (or custom
 packet types with interior mutability). Decode typed payloads via the `Message`
-helpers, then write the encoded response into `ServiceResponse::frame_mut()`.[
-^10][^12]
+helpers, then write the encoded response into
+`ServiceResponse::frame_mut()`[^10][^12].
 
 ```rust
 use std::convert::Infallible;
@@ -1528,8 +1528,8 @@ or emit errors.[^14]
 
 `WireframeServer::new` clones the application factory per worker, defaults the
 worker count to the host CPU total (never below one), supports a readiness
-signal, and normalizes accept-loop backoff settings through `accept_backoff`.[
-^15][^16] Servers start in an unbound state; call `bind` or
+signal, and normalizes accept-loop backoff settings through
+`accept_backoff`[^15][^16]. Servers start in an unbound state; call `bind` or
 `bind_existing_listener` to transition into the `Bound` typestate, inspect the
 bound address, or rebind later.[^17]
 
@@ -2135,10 +2135,11 @@ match client.call(&request).await {
 
 Background work interacts with connections through `PushQueues`. The fluent
 builder configures high- and low-priority capacities, optional rate limits, and
-an optional dead-letter queue with tunable logging cadence for dropped frames.[
-^23] Queue construction validates capacities and rate limits, clamping rates to
-the supported range.[^24] `PushHandle` exposes async `push_high_priority` and
-`push_low_priority` helpers that honour the rate limiter before awaiting
+an optional dead-letter queue with tunable logging cadence for dropped
+frames[^23]. Queue construction validates capacities and rate limits, clamping
+rates to the supported range.[^24] `PushHandle` exposes async
+`push_high_priority` and
+ `push_low_priority` helpers that honour the rate limiter before awaiting
 channel capacity, while `try_push` implements policy-controlled drops with
 optional warnings and dead-letter forwarding.[^26] Cloneable handles downgrade
 to `Weak` references for registration in a session registry.[^25]
@@ -2177,8 +2178,8 @@ frames, a streamed response, a channel-backed multi-packet response, or an
 empty reply. `into_stream` converts any variant into a boxed `FrameStream`,
 ready to install on a connection actor with `set_response` so streaming output
 can be interleaved with push traffic. `WireframeError` distinguishes transport
-failures from protocol-level errors emitted by streaming responses.[^34][^35][
-^31]
+failures from protocol-level errors emitted by streaming
+responses[^34][^35][^31].
 
 When constructing imperative streams, the `async-stream` crate integrates
 smoothly. The example below yields five frames and converts them into a

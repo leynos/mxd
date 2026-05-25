@@ -1090,11 +1090,11 @@ classDiagram
     ClientPoolConfig --> PoolFairnessPolicy
 ```
 
-*Class diagram: `WireframeClientBuilder` creates a `WireframeClientPool` using a
- `ClientPoolConfig` (which selects a `PoolFairnessPolicy`). The pool vends
-`PoolHandle` instances; each handle yields a `PooledClientLease` on `acquire()`.
- `PooledClientLease` derefs to `WireframeClient`, exposing `call`, `send`, and
-`receive` for individual requests.*
+*Class diagram: `WireframeClientBuilder` creates a `WireframeClientPool` using
+a `ClientPoolConfig` (which selects a `PoolFairnessPolicy`). The pool vends
+`PoolHandle` instances; each handle yields a `PooledClientLease` on
+`acquire()`. `PooledClientLease` derefs to `WireframeClient`, exposing `call`,
+`send`, and `receive` for individual requests.*
 
 Sequence diagram showing the connection pool usage flow: building the pool,
 acquiring a PoolHandle, checking out a PooledClientLease, making a request, and

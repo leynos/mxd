@@ -108,8 +108,8 @@ Doctests reside within documentation comments. Rust recognizes two types:
 denoted by triple back-ticks (```). While `rustdoc` defaults to Rust syntax,
 explicitly add the `rust` language specifier for clarity.[^3] A doctest
 "passes" when it compiles and runs without panicking. To assert specific
-outcomes, use the standard macros `assert!`, `assert_eq!`, and `assert_ne!`.[
-^3] <!-- markdownlint-enable MD013 -->
+outcomes, use the standard macros `assert!`, `assert_eq!`, and `assert_ne!`[^3].
+<!-- markdownlint-enable MD013 -->
 
 ### 2.2 The Philosophy of a Good Example
 
@@ -201,8 +201,8 @@ primary use cases include:
 
 1. **Hiding** `main` **Wrappers**: As demonstrated in the error-handling
    examples, the entire `fn main() -> Result<...> {... }` and `Ok(())`
-   scaffolding can be hidden, presenting the user with only the relevant code.[
-   ^9]
+   scaffolding can be hidden, presenting the user with only the relevant
+   code[^9].
 
 2. **Hiding Setup Code**: If an example requires some preliminary setup—like
    creating a temporary file, defining a helper struct for the test, or

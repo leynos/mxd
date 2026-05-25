@@ -55,7 +55,7 @@ begins.
   client handshake message (4-byte protocol ID, 4-byte sub-protocol ID, 2-byte
   version, 2-byte sub-version[^3]). Implement `bincode::Decode`/`BorrowDecode`
   for this struct so that it meets `wireframe::preamble::Preamble` trait bounds
-  [ ^4]. This lets `wireframe` know how to decode the incoming handshake bytes
+  [^4]. This lets `wireframe` know how to decode the incoming handshake bytes
   into a structured form.
 
 - **Register Preamble with Server**: Configure the `WireframeServer` to use the
@@ -104,8 +104,8 @@ this framing using `wireframe`’s customizable serialization layer.
   its parsing logic can be reused here[^10][^11].
 
 - Determine if the message is fragmented. In Hotline, if
-  `Data size < Total size`, the message is split across multiple TCP frames[
-  ^12]. Accumulate the bytes from subsequent frames (which share the same
+  `Data size < Total size`, the message is split across multiple TCP
+  frames[^12]. Accumulate the bytes from subsequent frames (which share the same
   transaction ID and header values) until the full `Total size` of payload is
   reached[^13]. Only then should the combined payload be considered a complete
   message to dispatch. This reassembly can be done within the serializer or via

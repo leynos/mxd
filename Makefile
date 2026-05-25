@@ -107,9 +107,11 @@ nixie: ## Validate Mermaid diagrams
 audit: rust-audit ## Audit dependencies for known vulnerabilities
 
 rust-audit: ## Audit every Rust manifest for known vulnerabilities
+	audited_file=$$(mktemp); \
+	trap 'rm -f "$$audited_file"' EXIT; \
 	find . \
 		\( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/.venv/*' \) -prune -o \
-		-name Cargo.toml -exec sh -c 'set -e; for manifest do \
+		-name Cargo.toml -exec sh -c 'set -e; audited_file=$$1; shift; for manifest do \
 			manifest_dir=$$(dirname "$$manifest"); \
 			if [ ! -f "$$manifest_dir/Cargo.lock" ]; then \
 				printf "Skipping Rust manifest without adjacent lockfile %s\n" "$$manifest"; \
@@ -117,7 +119,12 @@ rust-audit: ## Audit every Rust manifest for known vulnerabilities
 			fi; \
 			printf "Auditing Rust manifest %s\n" "$$manifest"; \
 			(cd "$$manifest_dir" && $(CARGO) audit); \
-		done' sh {} +
+			printf . >> "$$audited_file"; \
+		done' sh "$$audited_file" {} +; \
+	if [ ! -s "$$audited_file" ]; then \
+		printf "No lockfile-backed Rust manifests were audited\n"; \
+		exit 1; \
+	fi
 
 tlc: tlc-handshake ## Run all TLA+ model checks
 
