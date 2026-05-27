@@ -24,8 +24,8 @@ domain operations can be exercised in isolation from their environment.
   loop, the `wireframe` crate acts as the **port** for the Hotline binary
   protocol. It handles socket I/O with Tokio, decodes and encodes the
   Hotline-specific frames, and dispatches incoming messages to the appropriate
-  domain handler via a routing table[^wireframe-routing-table][
-  ^mxd-routing-handlers]. Each Hotline “transaction” type (a message or request
+  domain handler via a routing table[^wireframe-routing-table][^mxd-routing-handlers].
+  Each Hotline “transaction” type (a message or request
   identified by an ID) is mapped to a handler function. For example, the Login
   transaction (Hotline ID 0x006B) is routed to a `handle_login` handler in the
   domain core. The Wireframe adapter thus plays the role of the **primary

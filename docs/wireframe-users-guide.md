@@ -870,9 +870,9 @@ no change is required for bincode-compatible types.
   using `dyn Serializer` directly is unsupported unless concrete wrappers are
   provided. For migration, keep concrete serializer types in `EncodeWith` /
   `DecodeWith` bounds, retain
-  `wireframe::serializer::MessageCompatibilitySerializer` for legacy `Message`
-  -based payloads, and use `SerdeMessage` with `SerdeSerializerBridge` for
-  Serde-only payloads. When runtime-polymorphic serializer behaviour is
+  `wireframe::serializer::MessageCompatibilitySerializer` for legacy
+  `Message`-based payloads, and use `SerdeMessage` with `SerdeSerializerBridge`
+  for Serde-only payloads. When runtime-polymorphic serializer behaviour is
   required, wrap concrete serializer implementations in adapter wrappers that
   expose object-safe APIs and delegate to
   `Serializer::deserialize_with_context` as needed.
