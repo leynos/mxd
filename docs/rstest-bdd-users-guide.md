@@ -32,8 +32,8 @@ edition.
 development via `rust-toolchain.toml` so contributors get consistent `rustfmt`
 and `clippy` behaviour.
 
-Step definitions may be synchronous functions (`fn`) or asynchronous functions
-(`async fn`). The framework no longer depends on the `async-trait` crate to
+Step definitions may be synchronous functions (`fn`) or asynchronous functions (
+ `async fn`). The framework no longer depends on the `async-trait` crate to
 express async methods in traits. Projects that previously relied on
 `#[async_trait]` in helper traits should replace those methods with ordinary
 functions, and use async steps or async fixtures where appropriate. Step
@@ -44,7 +44,7 @@ wrappers normalize results into `StepExecution`.
 | Role ("amigo")                     | Primary concerns                                                                                                                  | Features provided by `rstest‑bdd`                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Business analyst/product owner** | Writing and reviewing business-readable specifications; ensuring that acceptance criteria are expressed clearly.                  | Gherkin `.feature` files are plain text and start with a `Feature` declaration; each `Scenario` describes a single behaviour. Steps are written using keywords `Given`, `When`, and `Then` ([syntax](gherkin-syntax.md#L72-L91)), producing living documentation that can be read by non-technical stakeholders.                                                                                          |
-| **Developer**                      | Implementing step definitions in Rust and wiring them to the business specifications; using existing fixtures for setup/teardown. | Attribute macros `#[given]`, `#[when]` and `#[then]` register step functions and their pattern strings in a global step registry. A `#[scenario]` macro reads a feature file at compile time and generates a test that drives the registered steps. Fixtures whose parameter names match are injected automatically; use `#[from(name)]` only when a parameter name differs from the fixture.             |
+| **Developer**                      | Implementing step definitions in Rust and wiring them to the business specifications; using existing fixtures for setup/teardown. | Attribute macros `#[given]`, `#[when]`, and `#[then]` register step functions and their pattern strings in a global step registry. A `#[scenario]` macro reads a feature file at compile time and generates a test that drives the registered steps. Fixtures whose parameter names match are injected automatically; use `#[from(name)]` only when a parameter name differs from the fixture.            |
 | **Tester/QA**                      | Executing behaviour tests, ensuring correct sequencing of steps and verifying outcomes observable by the user.                    | Scenarios are executed via the standard `cargo test` runner; test functions annotated with `#[scenario]` run each step in order and panic if a step is missing. Assertions belong in `Then` steps; guidelines discourage inspecting internal state and encourage verifying observable outcomes. Testers can use `cargo test` filters and parallelism because the generated tests are ordinary Rust tests. |
 
 The following sections expand on these responsibilities and show how to use the
@@ -121,7 +121,7 @@ the structure into their projects.
 
 Developers implement the behaviour described in a feature by writing step
 definition functions in Rust. Each step definition is an ordinary function
-annotated with one of the attribute macros `#[given]`, `#[when]` or `#[then]`.
+annotated with one of the attribute macros `#[given]`, `#[when]`, or `#[then]`.
 The annotation takes a single string literal that must match the text of the
 corresponding step in the feature file. Placeholders in the form `{name}` or
 `{name:Type}` are supported. The framework extracts matching substrings and
@@ -770,11 +770,11 @@ one may filter or run them in parallel as usual.
 
 Steps or hooks may call `rstest_bdd::skip!` to stop executing the remaining
 steps. The macro records a `Skipped` outcome and short-circuits the scenario so
-the generated test returns before evaluating the annotated function body.
-Invoke `skip!()` with no arguments to record a skipped outcome without a
-message. Pass an optional string to describe the reason, and use the standard
-`format!` syntax to interpolate values when needed. Set the
-`RSTEST_BDD_FAIL_ON_SKIPPED` environment variable to `1`, or call
+the generated test returns before evaluating the annotated function body. Invoke
+ `skip!()` with no arguments to record a skipped outcome without a message.
+Pass an optional string to describe the reason, and use the standard `format!`
+syntax to interpolate values when needed. Set the `RSTEST_BDD_FAIL_ON_SKIPPED`
+environment variable to `1`, or call
 `rstest_bdd::config::set_fail_on_skipped(true)`, to escalate skipped scenarios
 into test failures unless the feature or scenario carries an `@allow_skipped`
 tag. (Example-level tags are not yet evaluated.)
@@ -830,9 +830,9 @@ that a step or scenario stopped executing. Use
 `rstest_bdd::assert_step_skipped!` to unwrap a `StepExecution::Skipped`
 outcome, optionally constraining its message, and
 `rstest_bdd::assert_scenario_skipped!` to inspect
-[`ScenarioStatus`](crate::reporting::ScenarioStatus) records. Both macros
-accept `message_absent = true` to assert that no message was provided and
-substring matching to confirm that a message contains the expected reason.
+[`ScenarioStatus`](crate::reporting::ScenarioStatus) records. Both macros accept
+ `message_absent = true` to assert that no message was provided, and substring
+matching to confirm that a message contains the expected reason.
 
 ```rust,no_run
 use rstest_bdd::{assert_scenario_skipped, assert_step_skipped, StepExecution};
@@ -919,8 +919,8 @@ consumed via `StepContext` rather than referenced directly in the test body.
 ## Async scenario execution
 
 Scenarios can run asynchronously under Tokio's current-thread runtime. This
-enables test code to `.await` async operations while preserving the
-`RefCell`-backed fixture model for mutable borrows across await points.
+enables test code to `.await` async operations while preserving the `RefCell`
+-backed fixture model for mutable borrows across await points.
 
 ### Using `#[scenario]` with async
 
@@ -1155,9 +1155,8 @@ fn async_wrapper_with_aliases<'ctx>(
 ### Current limitations
 
 - **Tokio current-thread mode only:** Multi-threaded Tokio mode would require
-  `Send` futures, which conflicts with the `RefCell`-backed fixture storage.
-  See [ADR-001](adr-001-async-fixtures-and-test.md) for the full design
-  rationale.
+  `Send` futures, which conflicts with the `RefCell`-backed fixture storage. See
+   [ADR-001](adr-001-async-fixtures-and-test.md) for the full design rationale.
 - **Nested runtime safeguards:** Async-only steps running in synchronous
   scenarios use a per-step runtime fallback, which refuses to run when a Tokio
   runtime is already active on the current thread.
@@ -1230,11 +1229,11 @@ Best practices for writing effective scenarios include:
   referring to `{u32}`), escape them as `{{` and `}}` rather than placing them
   inside `{name:type}`. The lexer closes the placeholder at the first `}` after
   the optional type hint; any characters between the `:type` and that first `}`
-  are ignored (for example, `{n:u32 extra}` parses as `name = n`,
-  `type = u32`). `name` must start with a letter or underscore and may contain
-  letters, digits, or underscores (`[A-Za-z_][A-Za-z0-9_]*`). Whitespace within
-  the type hint is ignored (for example, `{count: u32}` and `{count:u32}` are
-  both accepted), but whitespace is not allowed between the name and the colon.
+  are ignored (for example, `{n:u32 extra}` parses as `name = n`, `type = u32`).
+   `name` must start with a letter or underscore and may contain letters,
+  digits, or underscores (`[A-Za-z_][A-Za-z0-9_]*`). Whitespace within the type
+  hint is ignored (for example, `{count: u32}` and `{count:u32}` are both
+  accepted), but whitespace is not allowed between the name and the colon.
   Prefer the compact form `{count:u32}` in new code. When a pattern contains no
   placeholders, the step text must match exactly. Unknown type hints are
   treated as generic placeholders and capture any non-newline text using a
@@ -1590,9 +1589,9 @@ unic-langid = "0.9"
 
 The crate exposes the embedded assets via the [`Localizations`] helper. This
 type implements `i18n_embed::I18nAssets`, allowing applications with existing
-Fluent infrastructure to load resources into their own
-[`FluentLanguageLoader`]. Libraries without a localization framework can rely
-on the built-in loader and request a different language at runtime:
+Fluent infrastructure to load resources into their own `FluentLanguageLoader`.
+Libraries without a localization framework can rely on the built-in loader and
+request a different language at runtime:
 
 ```rust,no_run
 # fn scope_locale() -> Result<(), rstest_bdd::localization::LocalizationError> {
@@ -1611,9 +1610,7 @@ not shipped with the crate. Procedural macro diagnostics remain in English so
 compile-time output stays deterministic regardless of the host machine’s
 language settings.
 
-[`Localizations`]: https://docs.rs/rstest-bdd/latest/rstest_bdd/localization/
-[`FluentLanguageLoader`]:
-https://docs.rs/i18n-embed/latest/i18n_embed/fluent/struct.FluentLanguageLoader.html
+[`Localizations`]: <https://docs.rs/rstest-bdd/latest/rstest_bdd/localization/>
 
 ## Diagnostic tooling
 
@@ -1679,9 +1676,8 @@ rstest_bdd::reporting::json::write_snapshot(&mut buffer)?;
 ```
 
 The companion `rstest_bdd::reporting::junit` module renders the same snapshot
-as JUnit XML. Each skipped scenario emits a `<skipped>` element with an
-optional `message` attribute so continuous integration (CI) servers surface the
-reason:
+as JUnit XML. Each skipped scenario emits a `<skipped>` element with an optional
+ `message` attribute, so continuous integration (CI) servers surface the reason:
 
 ```rust,no_run
 let mut xml = String::new();
@@ -1912,7 +1908,7 @@ listed above for filtering.
 Development to Rust without sacrificing the ergonomics of `rstest` and the
 convenience of `cargo test`. In its present form, the framework provides a core
 workflow: write Gherkin scenarios, implement matching Rust functions with
-`#[given]`, `#[when]` and `#[then]` annotations, rely on matching parameter
+`#[given]`, `#[when]`, and `#[then]` annotations, rely on matching parameter
 names for fixture injection (use `#[from]` when renaming), and bind tests to
 scenarios with `#[scenario]`. Step definitions are discovered at link time via
 the `inventory` crate, and scenarios execute all steps in sequence before

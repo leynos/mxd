@@ -1,15 +1,15 @@
 # User guide
 
 This guide explains how to run both server binaries and how to use their shared
-administrative subcommands. The command-line interface (CLI) definitions live
-in `mxd::server::cli`, while the active networking runtime is selected by the
+administrative subcommands. The command-line interface (CLI) definitions live in
+ `mxd::server::cli`, while the active networking runtime is selected by the
 `legacy-networking` Cargo feature.
 
 ## Launching the legacy server
 
 - Build the sqlite variant with `make sqlite` or the postgres variant with
-  `make postgres`. The `legacy-networking` feature is enabled by default, so
-  the `mxd` binary is available.
+  `make postgres`. The `legacy-networking` feature is enabled by default, so the
+   `mxd` binary is available.
 - Start the daemon with `cargo run --bin mxd -- --bind 0.0.0.0:5500 --database
   mxd.db`.
 - Override `MXD_`-prefixed environment variables or drop-in `.mxd.toml` files
@@ -63,11 +63,11 @@ in `mxd::server::cli`, while the active networking runtime is selected by the
   immediately visible to peers. Users who must accept the server agreement
   first become visible only after sending the Agreed transaction (121) and the
   session reaches `Online`. `Get User Name List` (300) and `Notify Change User`
-  (301) are emitted only once the session is `Online`. Once online, `Notify
-  Delete User` (302), `Get Client Info Text` (303), and `Set Client User Info`
-  (304) behave as before: disconnects remove the user, info lookup returns the
-  visible name with blank info text, and session nickname/icon/options updates
-  notify peers.
+  (301) are emitted only once the session is `Online`. Once online,
+  `Notify Delete User` (302), `Get Client Info Text` (303), and
+  `Set Client User Info` (304) behave as before: disconnects remove the user,
+  info lookup returns the visible name with blank info text, and session
+  nickname/icon/options updates notify peers.
 - Internal release validation uses
   `docs/internal-compatibility-matrix.md` as the compatibility source of truth.
   Release-note QA sign-off must reference that matrix using the checklist in

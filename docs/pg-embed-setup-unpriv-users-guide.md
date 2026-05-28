@@ -280,7 +280,7 @@ fn coverage(test_cluster: TestCluster) {
 ```
 
 If PostgreSQL cannot start, the fixture panics with a
-`SKIP-TEST-CLUSTER`-prefixed message that retains the original error. Unit
+`SKIP-TEST-CLUSTER-prefixed` message that retains the original error. Unit
 tests fail immediately, while behaviour tests can convert known transient
 conditions into soft skips via the shared `skip_message` helper.
 

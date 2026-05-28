@@ -53,8 +53,8 @@ tests cover both success and failure paths for outbound delivery.
 
 - Risk: outbound traits could force broad signature changes in domain code.
   Severity: medium Likelihood: low Mitigation: introduce a small, explicit
-  outbound context struct and update only the route boundary
-  (`process_transaction_bytes`) to pass it.
+  outbound context struct and update only the route boundary (
+  `process_transaction_bytes`) to pass it.
 
 - Risk: tests that rely on Postgres may be flaky without the embedded setup.
   Severity: low Likelihood: medium Mitigation: use

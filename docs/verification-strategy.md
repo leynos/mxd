@@ -2,10 +2,10 @@
 
 This document describes how mxd verifies correctness-critical behaviour with
 Temporal Logic of Actions (TLA+) and the TLA+ Model Checker (TLC), the
-Stateright model checker, and the Kani bounded verifier for Rust. It
-complements `docs/design.md` and the wireframe migration plans by describing
-the boundary between domain logic and adapters and by making verification a
-deliverable of each roadmap step.
+Stateright model checker, and the Kani bounded verifier for Rust. It complements
+ `docs/design.md` and the wireframe migration plans by describing the boundary
+between domain logic and adapters and by making verification a deliverable of
+each roadmap step.
 
 ## Goals and scope
 

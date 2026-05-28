@@ -57,6 +57,12 @@ jobs:
           if ! cargo nextest --version >/dev/null 2>&1; then
             cargo binstall --no-confirm cargo-nextest
           fi
+      - name: Install cargo-audit
+        if: matrix.name == 'postgres'
+        run: cargo binstall --no-confirm cargo-audit
+      - name: Audit dependencies
+        if: matrix.name == 'postgres'
+        run: make audit
       - name: Export POSTGRES_TEST_URL
         if: matrix.name == 'postgres'
         uses: ./.github/actions/export-postgres-url

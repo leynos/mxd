@@ -149,8 +149,8 @@ tests.
   inner `TransactionService` during `transform()`.
 
 - Observation: wireframe v0.2.0 adds `FrameCodec` support, allowing custom
-  framing to be installed with `WireframeApp::with_codec`. The worked example
-  in `../wireframe/examples/hotline_codec.rs` shows a `HotlineFrameCodec`
+  framing to be installed with `WireframeApp::with_codec`. The worked example in
+   `../wireframe/examples/hotline_codec.rs` shows a `HotlineFrameCodec`
   implementation that wraps the 20-byte header framing. This means we can use
   wireframe's built-in connection handling again and retire the custom
   Tokio-based codec and accept loop.
@@ -162,8 +162,8 @@ tests.
   transactions.
 
 - Observation: the routing test module exceeded the 400-line file limit once
-  the per-transaction success cases were added. Resolution: split the tests
-  into `src/wireframe/routes/tests/error_cases.rs`,
+  the per-transaction success cases were added. Resolution: split the tests into
+   `src/wireframe/routes/tests/error_cases.rs`,
   `src/wireframe/routes/tests/routing_cases.rs`, and shared helpers.
 
 - Observation: the `self_named_module_files` lint rejects `routes.rs` once
@@ -173,7 +173,7 @@ tests.
 - Observation: routing BDD and unit tests duplicated database, frame, and
   parameter helper logic, and sharing helpers through `test-util` caused type
   mismatches due to duplicate `mxd` crates. Resolution: centralize
-  `build_frame`/`collect_strings` in `wireframe::test_helpers` and re-export
+  `build_frame` /`collect_strings` in `wireframe::test_helpers` and re-export
   them from `test-util` while keeping DB setup in `test-util`.
 
 ## Decision Log
@@ -286,8 +286,8 @@ tests.
 ## Context and Orientation
 
 The mxd codebase implements a Hotline-compatible server using hexagonal
-architecture. The transport layer is migrating from a bespoke TCP loop
-(`src/server/legacy/`) to the `wireframe` library.
+architecture. The transport layer is migrating from a bespoke TCP loop (
+`src/server/legacy/`) to the `wireframe` library.
 
 Key files and their roles:
 

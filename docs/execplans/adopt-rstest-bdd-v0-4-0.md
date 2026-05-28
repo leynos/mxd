@@ -76,8 +76,8 @@ scenario exercises the async scenario path described in
   safety improvements may require either adopting `scenarios!` or confirming
   `#[scenario]` now suppresses unused fixtures.
 - Observation: Formatting tools updated documentation tables and the
-  `.gitignore` comment describing the grepai index. Evidence: `make fmt`
-  changed `docs/pg-embed-setup-unpriv-users-guide.md`,
+  `.gitignore` comment describing the grepai index. Evidence: `make fmt` changed
+   `docs/pg-embed-setup-unpriv-users-guide.md`,
   `docs/rstest-bdd-users-guide.md`, and `.gitignore`. Impact: include these in
   the documentation commit to keep the tree clean.
 
@@ -172,8 +172,8 @@ Stage D: Documentation and cleanup.
 
 ## Concrete steps
 
-All commands run from the repository root
-(`/data/leynos/Projects/mxd.worktrees/adopt-rstest-bdd-v0-4-0`). For long
+All commands run from the repository root (
+`/data/leynos/Projects/mxd.worktrees/adopt-rstest-bdd-v0-4-0`). For long
 outputs, capture logs using:
 
 ```text

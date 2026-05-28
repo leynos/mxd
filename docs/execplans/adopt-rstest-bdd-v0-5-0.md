@@ -69,8 +69,8 @@ behavioural suites still assert the same outcomes, while `make check-fmt`,
 
 - Observation: embedded `PostgreSQL` fixture guards are not `Send`, so a full
   database setup cannot be moved to a worker thread and returned to async
-  scenario code. Evidence: `E0277`
-  (`std::rc::Rc<()> cannot be sent between threads safely`) when attempting to
+  scenario code. Evidence: `E0277` (
+  `std::rc::Rc<()> cannot be sent between threads safely`) when attempting to
   return `Result<Option<TestDb>, AnyError>` across a thread channel. Impact:
   adopted a split strategy: async scenarios where safe, synchronous scenarios
   for embedded-Postgres setup paths.
@@ -93,8 +93,8 @@ behavioural suites still assert the same outcomes, while `make check-fmt`,
   and aligns with v0.5.0 guidance. Date/Author: 2026-02-06 / Codex.
 - Decision: for suites that rely on embedded `PostgreSQL` setup helpers,
   preserve synchronous step glue with fixture-owned runtimes. Rationale:
-  prevents nested runtime panics and avoids crossing thread boundaries with
-  non-`Send` `PostgresTestDb` guards. Date/Author: 2026-02-06 / Codex.
+  prevents nested runtime panics and avoids crossing thread boundaries with non-
+   `Send` `PostgresTestDb` guards. Date/Author: 2026-02-06 / Codex.
 
 ## Outcomes & Retrospective
 

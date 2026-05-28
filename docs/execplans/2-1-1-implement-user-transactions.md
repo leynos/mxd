@@ -85,8 +85,8 @@ Success is observable when:
 
 - Risk: current login flow authenticates immediately, while the protocol says
   the session becomes publicly online after agreement handling. Severity: high.
-  Likelihood: medium. Mitigation: model explicit lifecycle phases
-  (`Unauthenticated`, `PendingAgreement`, `Online`) and gate `300/301/302`
+  Likelihood: medium. Mitigation: model explicit lifecycle phases (
+  `Unauthenticated`, `PendingAgreement`, `Online`) and gate `300/301/302`
   emission on the online phase only.
 
 - Risk: the single-client binary BDD harness cannot reliably observe
