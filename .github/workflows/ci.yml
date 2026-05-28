@@ -58,8 +58,10 @@ jobs:
             cargo binstall --no-confirm cargo-nextest
           fi
       - name: Install cargo-audit
+        if: matrix.name == 'postgres'
         run: cargo binstall --no-confirm cargo-audit
       - name: Audit dependencies
+        if: matrix.name == 'postgres'
         run: make audit
       - name: Export POSTGRES_TEST_URL
         if: matrix.name == 'postgres'
