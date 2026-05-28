@@ -108,19 +108,27 @@ audit: rust-audit ## Audit dependencies for known vulnerabilities
 
 rust-audit: ## Audit every Rust manifest for known vulnerabilities
 	audited_file=$$(mktemp); \
-	trap 'rm -f "$$audited_file"' EXIT; \
+	skipped_file=$$(mktemp); \
+	trap 'rm -f "$$audited_file" "$$skipped_file"' EXIT; \
 	find . \
 		\( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/.venv/*' \) -prune -o \
-		-name Cargo.toml -exec sh -c 'set -e; audited_file=$$1; shift; for manifest do \
+		-name Cargo.toml -exec sh -c 'set -e; audited_file=$$1; skipped_file=$$2; shift; shift; for manifest do \
 			manifest_dir=$$(dirname "$$manifest"); \
 			if [ ! -f "$$manifest_dir/Cargo.lock" ]; then \
 				printf "Skipping Rust manifest without adjacent lockfile %s\n" "$$manifest"; \
+				printf . >> "$$skipped_file"; \
 				continue; \
 			fi; \
 			printf "Auditing Rust manifest %s\n" "$$manifest"; \
-			(cd "$$manifest_dir" && $(CARGO) audit); \
-			printf . >> "$$audited_file"; \
-		done' sh "$$audited_file" {} +; \
+			if (cd "$$manifest_dir" && $(CARGO) audit); then \
+				printf . >> "$$audited_file"; \
+			else \
+				rc=$$?; \
+				printf "VULNERABILITY FAILURE: cargo audit failed for %s (exit %d)\n" "$$manifest" $$rc; \
+				exit $$rc; \
+			fi; \
+		done' sh "$$audited_file" "$$skipped_file" {} +; \
+	printf "Audit summary: $$(wc -c < $$audited_file) manifest(s) audited, $$(wc -c < $$skipped_file) manifest(s) skipped (no adjacent Cargo.lock)\n"; \
 	if [ ! -s "$$audited_file" ]; then \
 		printf "No lockfile-backed Rust manifests were audited\n"; \
 		exit 1; \
