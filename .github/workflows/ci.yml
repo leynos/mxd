@@ -57,11 +57,15 @@ jobs:
           if ! cargo nextest --version >/dev/null 2>&1; then
             cargo binstall --no-confirm cargo-nextest
           fi
+      # Dependency audits report advisories against the whole lockfile, so a
+      # newly published advisory would fail every Dependabot PR regardless of
+      # content and deadlock auto-merge. The scheduled audit workflow covers
+      # Dependabot merges instead.
       - name: Install cargo-audit
-        if: matrix.name == 'postgres'
+        if: matrix.name == 'postgres' && github.actor != 'dependabot[bot]'
         run: cargo binstall --no-confirm cargo-audit
       - name: Audit dependencies
-        if: matrix.name == 'postgres'
+        if: matrix.name == 'postgres' && github.actor != 'dependabot[bot]'
         run: make audit
       - name: Export POSTGRES_TEST_URL
         if: matrix.name == 'postgres'

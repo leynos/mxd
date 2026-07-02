@@ -1,0 +1,25 @@
+name: Scheduled dependency audit
+
+# CI skips `make audit` on Dependabot pull requests so that newly published
+# advisories against the existing lockfile cannot block unrelated dependency
+# bumps. This scheduled run is the compensating control: it audits the
+# default branch weekly so anything that slips through surfaces within days.
+
+'on':
+  schedule:
+    - cron: '53 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
+      - name: Install cargo-audit
+        run: cargo binstall --no-confirm cargo-audit
+      - name: Audit dependencies
+        run: make audit
