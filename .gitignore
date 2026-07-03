@@ -38,3 +38,6 @@ debugging-plan-*.md
 states/
 # grepai index
 .grepai/
+
+# Local semantic-index daemon state
+.memdb/
