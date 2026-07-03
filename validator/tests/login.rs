@@ -4,6 +4,7 @@
 //! `mxd-wireframe-server` binary explicitly and that login succeeds and fails
 //! on observable client behaviour.
 
+use expectrl::Expect;
 use test_util::{AnyError, setup_files_db, setup_login_db};
 use validator::{
     ValidatorHarness,

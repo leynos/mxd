@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use expectrl::{Regex, Session};
+use expectrl::{Expect, Regex, session::OsSession as Session};
 use test_util::{AnyError, TestServer, with_env_var};
 
 use crate::{

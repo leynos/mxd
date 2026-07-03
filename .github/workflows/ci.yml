@@ -55,7 +55,7 @@ jobs:
       - name: Install cargo-nextest
         run: |
           if ! cargo nextest --version >/dev/null 2>&1; then
-            cargo binstall --no-confirm cargo-nextest
+            cargo binstall --locked --no-confirm cargo-nextest
           fi
       # Dependency audits report advisories against the whole lockfile, so a
       # newly published advisory would fail every Dependabot PR regardless of
