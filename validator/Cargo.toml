@@ -9,7 +9,7 @@ tempfile = "3"
 which = "4"
 nix = { version = "0.27", optional = false, features = ["signal"] }
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+toml = "0.9"
 thiserror = "2"
 test-util = { path = "../test-util", default-features = false }
 wait-timeout = "0.2"
