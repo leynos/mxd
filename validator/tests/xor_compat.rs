@@ -4,6 +4,7 @@
 //! against `mxd-wireframe-server`, even though its legacy news commands do not
 //! match the server's newer news transaction surface.
 
+use expectrl::Expect;
 use test_util::{AnyError, setup_login_db};
 use validator::{
     ValidatorHarness,

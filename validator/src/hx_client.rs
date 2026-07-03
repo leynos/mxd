@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-use expectrl::{Regex, Session};
+use expectrl::{Expect, Regex, session::OsSession as Session};
 use thiserror::Error;
 use wait_timeout::ChildExt;
 use which::which;
