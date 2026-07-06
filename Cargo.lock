@@ -939,9 +939,9 @@ dependencies = [
 
 [[package]]
 name = "diesel-cte-ext"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3ac4abe4e95b48a0c92513b37c55ca99929bd01eeaf64076293439a29dfec23"
+checksum = "64a78d8c2cc46fd81ca5fb189d24aafb6be58890dcd7511d14dce6b3adb5b738"
 dependencies = [
  "diesel",
  "diesel-async",
