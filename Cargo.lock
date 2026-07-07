@@ -280,6 +280,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd6a120d2e16b3e1b4a24bd70f23b12d3e16b81f113364a26935f8db7245452d"
+
+[[package]]
 name = "bincode_derive"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2417,7 +2423,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "async-trait",
- "bincode",
+ "bincode 3.0.0",
  "bitflags 2.10.0",
  "bytes",
  "camino",
@@ -5916,7 +5922,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae7ba1b82771f0428551e3d19c8578521cc77c73dda66746e1e4ae5986d8a7c6"
 dependencies = [
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "bytes",
  "dashmap 6.1.0",
  "derive_more 2.0.1",
