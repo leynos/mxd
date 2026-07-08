@@ -280,12 +280,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bincode"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6a120d2e16b3e1b4a24bd70f23b12d3e16b81f113364a26935f8db7245452d"
-
-[[package]]
 name = "bincode_derive"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2423,7 +2417,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "async-trait",
- "bincode 3.0.0",
+ "bincode",
  "bitflags 2.10.0",
  "bytes",
  "camino",
@@ -4680,9 +4674,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.48.0"
+version = "1.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff360e02eab121e0bc37a2d3b4d4dc622e6eda3a8e5253d5435ecf5bd4c68408"
+checksum = "27ad5e34374e03cfffefc301becb44e9dc3c17584f414349ebe29ed26661822d"
 dependencies = [
  "bytes",
  "libc",
@@ -5907,7 +5901,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae7ba1b82771f0428551e3d19c8578521cc77c73dda66746e1e4ae5986d8a7c6"
 dependencies = [
  "async-trait",
- "bincode 2.0.1",
+ "bincode",
  "bytes",
  "dashmap 6.1.0",
  "derive_more 2.0.1",
