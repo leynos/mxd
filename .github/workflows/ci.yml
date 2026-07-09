@@ -207,6 +207,11 @@ jobs:
       - uses: ./.github/actions/export-postgres-url
         with:
           url: postgres://postgres:password@127.0.0.1/test
+      # The ratchet supports one baseline per job, so the sqlite leg
+      # (the default feature set and broadest suite) carries it. The
+      # authoritative baseline is the cache saved by coverage-main.yml
+      # on main, which every PR run can restore; baselines saved here
+      # stay scoped to the PR branch.
       - name: Generate coverage for SQLite
         uses: leynos/shared-actions/.github/actions/generate-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
         env:
@@ -217,6 +222,7 @@ jobs:
           format: lcov
           use-cargo-nextest: 'false'
           artefact-name-suffix: sqlite
+          with-ratchet: 'true'
       - name: Generate coverage for Postgres
         uses: leynos/shared-actions/.github/actions/generate-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
         env:
