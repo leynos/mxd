@@ -78,7 +78,6 @@ jobs:
           features: sqlite test-support
           output-path: lcov-sqlite.info
           format: lcov
-          use-cargo-nextest: 'false'
           artefact-name-suffix: sqlite-main
           with-ratchet: 'true'
       - name: Generate coverage for Postgres
@@ -91,7 +90,6 @@ jobs:
           features: postgres test-support
           output-path: lcov-postgres.info
           format: lcov
-          use-cargo-nextest: 'false'
           artefact-name-suffix: postgres-main
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
