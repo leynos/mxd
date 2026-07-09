@@ -173,7 +173,13 @@ jobs:
       MXD_VALIDATOR_FAIL_CLOSED: "true"
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
+      # CodeScene keys each coverage upload to the checked-out commit,
+      # and its PR check waits on the head SHA. The default checkout is
+      # the synthetic refs/pull/<n>/merge commit, whose upload can never
+      # satisfy the head-SHA check, so check out the PR head instead.
       - uses: actions/checkout@v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
         with:
           install-sqlite-deps: true
