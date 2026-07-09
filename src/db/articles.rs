@@ -67,26 +67,20 @@ pub struct CreateRootArticleParams<'a> {
 ///
 /// # Errors
 /// Returns an error if the path is invalid or the insertion fails.
-#[expect(
-    clippy::shadow_reuse,
-    reason = "intentional shadowing in transaction closure"
-)]
 #[must_use = "handle the result"]
 pub async fn create_root_article(
     conn: &mut DbConnection,
     path: &str,
     params: CreateRootArticleParams<'_>,
 ) -> Result<i32, PathLookupError> {
-    conn.transaction::<_, PathLookupError, _>(|conn| {
-        Box::pin(async move {
-            let cat_id = category_id_from_path(conn, path).await?;
-            let last = get_last_root_article_id(conn, cat_id).await?;
-            let inserted = insert_new_article(conn, cat_id, last, &params).await?;
-            if let Some(prev) = last {
-                link_prev_to_new(conn, prev, inserted).await?;
-            }
-            Ok(inserted)
-        })
+    conn.transaction::<_, PathLookupError, _>(async |tx_conn| {
+        let cat_id = category_id_from_path(tx_conn, path).await?;
+        let last = get_last_root_article_id(tx_conn, cat_id).await?;
+        let inserted = insert_new_article(tx_conn, cat_id, last, &params).await?;
+        if let Some(prev) = last {
+            link_prev_to_new(tx_conn, prev, inserted).await?;
+        }
+        Ok(inserted)
     })
     .await
 }
