@@ -14,6 +14,9 @@ resolver = "2"
 # Pinned to a git revision because the published 0.2.0 release requires
 # diesel-async ^0.7; the upstream default branch has migrated to
 # diesel-async 0.9 but is not yet released on crates.io.
+# TODO(https://github.com/leynos/mxd/issues/361): replace this git pin
+# with a caret requirement once a diesel-cte-ext release supporting
+# diesel-async 0.9 is published.
 diesel-cte-ext = { git = "https://github.com/leynos/diesel-cte-ext", rev = "1457bb199adefd0ed368dfa9458fd4f07ae81679", default-features = false, features = ["async"] }
 rstest = "0.26.1"
 rstest-bdd = "0.5.0"
