@@ -92,7 +92,7 @@ jobs:
           format: lcov
           artefact-name-suffix: postgres-main
       - name: Merge coverage results
-        run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
+        run: bun x lcov-result-merger 'lcov-*.info' > lcov.info
       - name: Upload coverage data to CodeScene
         env:
           CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}

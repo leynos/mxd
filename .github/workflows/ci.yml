@@ -233,7 +233,7 @@ jobs:
           format: lcov
           artefact-name-suffix: postgres
       - name: Merge coverage results
-        run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
+        run: bun x lcov-result-merger 'lcov-*.info' > lcov.info
       # CodeScene's "Code Coverage" PR check is driven by `cs-coverage
       # check` (uploads are only accepted for analysed branches, i.e.
       # main); without this step the check times out and blocks
