@@ -178,6 +178,49 @@ async fn test_create_root_article_round_trip(
 #[cfg(feature = "sqlite")]
 #[rstest]
 #[tokio::test]
+async fn test_create_root_article_links_previous_sibling(
+    #[future] migrated_conn: Result<DbConnection, AnyError>,
+) {
+    let mut conn = migrated_conn
+        .await
+        .expect("failed to create migrated test database");
+    seed_root_category(&mut conn, "General")
+        .await
+        .expect("failed to seed category");
+    let first_params = CreateRootArticleParams {
+        title: "First",
+        flags: 0,
+        data_flavor: "text/plain",
+        data: "first body",
+    };
+    let first_id = create_root_article(&mut conn, "/General", first_params)
+        .await
+        .expect("failed to create first article");
+    let second_params = CreateRootArticleParams {
+        title: "Second",
+        flags: 0,
+        data_flavor: "text/plain",
+        data: "second body",
+    };
+    let second_id = create_root_article(&mut conn, "/General", second_params)
+        .await
+        .expect("failed to create second article");
+    let first = get_article(&mut conn, "/General", first_id)
+        .await
+        .expect("lookup failed")
+        .expect("first article missing");
+    let second = get_article(&mut conn, "/General", second_id)
+        .await
+        .expect("lookup failed")
+        .expect("second article missing");
+    assert_eq!(first.next_article_id, Some(second_id));
+    assert_eq!(second.prev_article_id, Some(first_id));
+    assert_eq!(second.next_article_id, None);
+}
+
+#[cfg(feature = "sqlite")]
+#[rstest]
+#[tokio::test]
 async fn test_create_root_article_invalid_path(
     #[future] migrated_conn: Result<DbConnection, AnyError>,
 ) {
