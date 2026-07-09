@@ -87,17 +87,17 @@ typecheck-sqlite: ## Run cargo check with the sqlite backend
 typecheck-wireframe-only: ## Run cargo check with legacy networking disabled
 	$(CARGO) check $(WIREFRAME_ONLY_FEATURES)
 
-lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy for all feature sets
+lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy and Whitaker for all feature sets
 
-lint-postgres: ## Run Clippy with the postgres backend
+lint-postgres: ## Run Clippy and Whitaker with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
 	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES) --all-targets
 
-lint-sqlite: ## Run Clippy with the sqlite backend
+lint-sqlite: ## Run Clippy and Whitaker with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
 	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES) --all-targets
 
-lint-wireframe-only: ## Run Clippy with legacy networking disabled
+lint-wireframe-only: ## Run Clippy and Whitaker with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
 	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES) --all-targets
 

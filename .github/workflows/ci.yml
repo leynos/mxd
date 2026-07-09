@@ -43,7 +43,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
-      WHITAKER_INSTALLER_REV: 9c154ead8d72dc4b26b5c67f2575fd891bc99962
+      WHITAKER_INSTALLER_VERSION: '0.2.5'
     steps:
       - uses: actions/checkout@v7.0.0
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
@@ -80,30 +80,22 @@ jobs:
         uses: actions/cache@v6
         with:
           path: |
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-whitaker-${{ env.WHITAKER_INSTALLER_REV }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: Lint with Whitaker
+            ~/.cargo/bin/whitaker-installer
+            ~/.cache/cargo-binstall
+          key: whitaker-installer-${{ runner.os }}-${{ runner.arch }}-${{ env.WHITAKER_INSTALLER_VERSION }}
+      - name: Install Whitaker
         run: |
           if ! command -v whitaker-installer >/dev/null 2>&1; then
-            cargo install --locked \
-              --git https://github.com/leynos/whitaker \
-              --rev "${WHITAKER_INSTALLER_REV}" \
-              whitaker-installer
+            if cargo binstall --version >/dev/null 2>&1; then
+              cargo binstall --no-confirm --locked "whitaker-installer@${WHITAKER_INSTALLER_VERSION}"
+            else
+              echo "cargo-binstall unavailable; building whitaker-installer from crates.io"
+              cargo install --locked whitaker-installer --version "${WHITAKER_INSTALLER_VERSION}"
+            fi
           fi
-          if ! command -v whitaker >/dev/null 2>&1; then
-            whitaker-installer
-          fi
-          if [[ -d "${HOME}/.local/share/whitaker/lints" ]]; then
-            find "${HOME}/.local/share/whitaker/lints" \
-              -type f \
-              \( -name 'lib*@*.so' -o -name 'lib*@*.dylib' -o -name '*@*.dll' \) \
-              ! -name 'libwhitaker_suite@*' \
-              ! -name 'whitaker_suite@*' \
-              -delete
-          fi
-          RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
+          whitaker-installer
+      - name: Lint with Whitaker
+        run: RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
       - name: Test
         run: |
           if [[ "${{ matrix.rstest_timeout }}" == "true" ]]; then
