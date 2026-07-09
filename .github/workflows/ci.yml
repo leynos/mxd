@@ -173,7 +173,13 @@ jobs:
       MXD_VALIDATOR_FAIL_CLOSED: "true"
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
+      # CodeScene's PR gate runs `cs-coverage check`, which diffs the PR
+      # against its merge base, so the full history must be reachable.
+      # The default merge-ref checkout matches CodeScene's documented
+      # example.
       - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
       - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
         with:
           install-sqlite-deps: true
@@ -201,15 +207,23 @@ jobs:
       - uses: ./.github/actions/export-postgres-url
         with:
           url: postgres://postgres:password@127.0.0.1/test
+      # The ratchet supports one baseline per job, so the sqlite leg
+      # (the default feature set and broadest suite) carries it. The
+      # authoritative baseline is the cache saved by coverage-main.yml
+      # on main, which every PR run can restore; baselines saved here
+      # stay scoped to the PR branch.
       - name: Generate coverage for SQLite
-        uses: ./.github/actions/generate-coverage
+        uses: leynos/shared-actions/.github/actions/generate-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
           features: sqlite test-support
           output-path: lcov-sqlite.info
+          format: lcov
+          artefact-name-suffix: sqlite
+          with-ratchet: 'true'
       - name: Generate coverage for Postgres
-        uses: ./.github/actions/generate-coverage
+        uses: leynos/shared-actions/.github/actions/generate-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
           POSTGRES_TEST_URL: postgres://postgres:password@127.0.0.1/test
@@ -217,5 +231,23 @@ jobs:
           with-default-features: false
           features: postgres test-support
           output-path: lcov-postgres.info
+          format: lcov
+          artefact-name-suffix: postgres
       - name: Merge coverage results
         run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
+      # CodeScene's "Code Coverage" PR check is driven by `cs-coverage
+      # check` (uploads are only accepted for analysed branches, i.e.
+      # main); without this step the check times out and blocks
+      # Dependabot automerge. Guarded so runs without the secret (e.g.
+      # forks) skip the gate instead of failing.
+      - name: Check coverage against CodeScene gates
+        env:
+          CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
+        if: env.CS_ACCESS_TOKEN != ''
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
+        with:
+          format: lcov
+          mode: check
+          project-url: https://api.codescene.io/v2/projects/68298
+          access-token: ${{ env.CS_ACCESS_TOKEN }}
+          installer-checksum: ${{ vars.CODESCENE_CLI_SHA256 }}

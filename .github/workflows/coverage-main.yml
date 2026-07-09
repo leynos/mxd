@@ -1,0 +1,104 @@
+name: Coverage (main)
+
+# CodeScene accepts `cs-coverage upload` only for analysed branches, so
+# main-branch coverage is uploaded here on push; pull requests run the
+# changed-line gate (`cs-coverage check`) in ci.yml instead. This
+# workflow also advances the coverage ratchet baseline: caches saved on
+# main are readable by every pull-request run, so the baseline written
+# here is the one PR ratchet checks compare against.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  coverage-upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CARGO_TERM_COLOR: always
+      BUILD_PROFILE: debug
+      HX_BIN_DIR: ${{ github.workspace }}/.bin
+      HX_WORK_ROOT: ${{ github.workspace }}/.cache/hx
+      HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client
+      MXD_VALIDATOR_FAIL_CLOSED: "true"
+      MXD_TEST_BIND_HOST: "127.0.0.1"
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: leynos/shared-actions/.github/actions/setup-rust@aebb3f5b831102e2a10ef909c83d7d50ea86c332
+        with:
+          install-sqlite-deps: true
+          install-postgres-deps: true
+      - name: Cache Cargo directories
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Add validator bin directory to PATH
+        run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
+      - name: Install SynHX
+        run: ./scripts/install-synhx.sh
+      - name: Sanity-check hx does not report Helix
+        run: |
+          set -o pipefail
+          timeout 1 hx --version 2>&1 | tee /tmp/hx-version.log || true
+          if rg -qi 'helix' /tmp/hx-version.log; then
+            echo "hx resolves to Helix, not SynHX" >&2
+            exit 1
+          fi
+      - name: Build wireframe server for coverage
+        run: make validator-sqlite-server validator-postgres-server
+      - uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d  # v2.82.5
+        with:
+          tool: cargo-llvm-cov
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
+      - uses: ./.github/actions/export-postgres-url
+        with:
+          url: postgres://postgres:password@127.0.0.1/test
+      # The ratchet supports one baseline per job, so the sqlite leg
+      # (the default feature set and broadest suite) carries it; the
+      # postgres leg is generated unratcheted.
+      - name: Generate coverage for SQLite
+        uses: leynos/shared-actions/.github/actions/generate-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
+        env:
+          MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
+        with:
+          features: sqlite test-support
+          output-path: lcov-sqlite.info
+          format: lcov
+          artefact-name-suffix: sqlite-main
+          with-ratchet: 'true'
+      - name: Generate coverage for Postgres
+        uses: leynos/shared-actions/.github/actions/generate-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
+        env:
+          MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
+          POSTGRES_TEST_URL: postgres://postgres:password@127.0.0.1/test
+        with:
+          with-default-features: false
+          features: postgres test-support
+          output-path: lcov-postgres.info
+          format: lcov
+          artefact-name-suffix: postgres-main
+      - name: Merge coverage results
+        run: bun x lcov-result-merger lcov-sqlite.info lcov-postgres.info > lcov.info
+      - name: Upload coverage data to CodeScene
+        env:
+          CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
+        if: env.CS_ACCESS_TOKEN != ''
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
+        with:
+          format: lcov
+          access-token: ${{ env.CS_ACCESS_TOKEN }}
+          installer-checksum: ${{ vars.CODESCENE_CLI_SHA256 }}

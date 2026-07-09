@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -17,6 +17,9 @@ endif
 CARGO_BIN_DIR := $(if $(CARGO_PATH),$(dir $(CARGO_PATH)))
 LOCAL_BIN_DIR := $(HOME)/.local/bin
 BUILD_JOBS ?=
+# Prefer cargo-nextest when installed, per the estate convention in
+# agent-template-rust's template/Makefile.jinja; fall back to cargo test.
+TEST_CMD := $(if $(shell $(CARGO) nextest --version 2>/dev/null),nextest run,test)
 CLIPPY_FLAGS ?= --workspace --all-targets -- -D warnings
 WHITAKER ?= whitaker
 WHITAKER_FALLBACK := $(HOME)/.local/bin/whitaker
@@ -139,23 +142,28 @@ tlc: tlc-handshake ## Run all TLA+ model checks
 tlc-handshake: ## Run TLC on handshake spec
 	TLC_IMAGE=$(TLC_IMAGE) $(TLC_RUNNER) crates/mxd-verification/tla/MxdHandshake.tla
 
-test: test-postgres test-sqlite test-wireframe-only test-verification ## Run sqlite, postgres, wireframe-only, and verification suites
+test: test-postgres test-sqlite test-wireframe-only test-verification test-doc ## Run sqlite, postgres, wireframe-only, verification, and doc suites
 
 # Note: RSTEST_TIMEOUT is intentionally omitted for postgres tests because
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
 # timeout feature requires Send. See docs/pg-embed-setup-unpriv-users-guide.md
 # "Thread safety constraints (v0.4.0)" for details.
 test-postgres: ## Run tests with the postgres backend
-	RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_POSTGRES_FEATURES)
+	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
 
 test-sqlite: ## Run tests with the sqlite backend
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(TEST_SQLITE_FEATURES)
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_SQLITE_FEATURES)
 
 test-wireframe-only: ## Run tests with legacy networking disabled
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) nextest run $(WIREFRAME_ONLY_FEATURES)
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(WIREFRAME_ONLY_FEATURES)
 
 test-verification: ## Run verification crate tests
-	RUSTFLAGS="-D warnings" $(CARGO) nextest run -p mxd-verification
+	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p mxd-verification
+
+# nextest does not execute doctests; run them separately with the
+# default (sqlite) backend, mirroring the template's split.
+test-doc: ## Run documentation tests
+	RUSTFLAGS="-D warnings" $(CARGO) test --doc $(TEST_SQLITE_FEATURES)
 
 validator-sqlite-server: ## Build the sqlite wireframe server binary for validator runs
 	$(MAKE) APP=mxd-wireframe-server sqlite
