@@ -77,7 +77,7 @@ jobs:
       - name: Lint with Clippy
         run: RUSTFLAGS="-D warnings" cargo clippy ${{ matrix.cargo_flags }} --workspace --all-targets -- -D warnings
       - name: Cache Whitaker installer
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin
