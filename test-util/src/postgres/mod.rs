@@ -204,10 +204,6 @@ mod fixture_glue {
     //! `rstest` fixture glue for `PostgreSQL` test databases.
 
     #![expect(
-        missing_docs,
-        reason = "rstest #[fixture] macro generates undocumented helper items"
-    )]
-    #![expect(
         unused_braces,
         reason = "rstest #[fixture] macro expands from normal function bodies"
     )]
