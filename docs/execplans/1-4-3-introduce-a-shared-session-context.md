@@ -405,7 +405,7 @@ columns (if implemented) uses Diesel's idempotent migration system.
 Commits should be atomic and focused. If a commit introduces a regression, it
 can be reverted independently.
 
-## Artefacts and Notes
+## Artefacts and notes
 
 Example privilege bitflags definition (based on `docs/protocol.md`):
 

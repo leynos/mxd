@@ -432,7 +432,7 @@ following steps:
 
 The derive macro always recognizes a configuration override flag and the
 associated environment variables even when you do not declare a field
-explicitly. By default a hidden `--config-path` flag is accepted alongside
+explicitly. By default, a hidden `--config-path` flag is accepted alongside
 `<PREFIX>CONFIG_PATH` and the unprefixed `CONFIG_PATH`. Applying the
 struct-level `discovery(...)` attribute customizes this behaviour, allowing you
 to rename or expose the CLI flag and adjust the filenames searched during

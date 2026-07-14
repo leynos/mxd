@@ -1,4 +1,7 @@
-//! Tests for this module.
+//! Regression tests for wireframe compatibility policies.
+//!
+//! These cases bind handshake metadata to routing decisions so legacy-client
+//! quirks remain isolated from normal protocol behaviour.
 use rstest::rstest;
 
 use super::*;
