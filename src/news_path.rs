@@ -196,7 +196,7 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
         assert_eq!(CATEGORY_BODY_SQL, expected);
     }
 
-    fn normalise_sql(sql: &str) -> String {
+    fn normalize_sql(sql: &str) -> String {
         sql.replace("-- binds: []", "")
             .replace('`', "\"")
             .split_whitespace()
@@ -243,7 +243,7 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
                         sql_query(BODY_SQL),
                     );
                     let sql = debug_query::<Backend, _>(&query).to_string();
-                    assert_eq!(normalise_sql(&sql), expected_recursive_sql($quote));
+                    assert_eq!(normalize_sql(&sql), expected_recursive_sql($quote));
                 }
 
                 #[cfg(feature = $feature)]
@@ -263,7 +263,7 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
                     );
                     let inferred_sql = debug_query::<Backend, _>(&inferred).to_string();
                     let direct_sql = debug_query::<Backend, _>(&direct).to_string();
-                    assert_eq!(normalise_sql(&inferred_sql), normalise_sql(&direct_sql));
+                    assert_eq!(normalize_sql(&inferred_sql), normalize_sql(&direct_sql));
                 }
             }
         };

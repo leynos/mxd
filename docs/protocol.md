@@ -18,7 +18,7 @@ All multi-byte integers are transmitted **big-endian (“network byte order”)*
 No padding or alignment bytes are used: the fields follow one another exactly
 as listed.
 
-### 1 Session-initialisation handshake
+### 1 Session-initialization handshake
 
 | Offset | Size (bytes) | Field               | Meaning                                                                          |
 | -----: | ------------ | ------------------- | -------------------------------------------------------------------------------- |
@@ -227,7 +227,7 @@ negotiate client/server capabilities. **Initiator:** Client.
   error reason (see “Disconnect Message” below), so the user sees a login
   failure message.
 
-**Server behavior:** On receiving a Login request, the server checks the
+**Server behaviour:** On receiving a Login request, the server checks the
 username/password against its user accounts. If the user is permitted (and not
 banned or already online if only one session allowed), the server allocates a
 session. It includes version info in the reply and prepares any welcome
@@ -266,7 +266,7 @@ login).
   Instead, the client will either display the agreement to the user and wait
   for acceptance, or skip it if `No server agreement` was indicated.
 
-**Server behavior:** The server pauses the login process and waits for the
+**Server behaviour:** The server pauses the login process and waits for the
 user’s response. If there is an agreement text configured on the server, it
 uses this transaction to send it. The user’s client will typically not let them
 fully join until they accept. The banner info tells the client how to load a
@@ -295,7 +295,7 @@ and status flags) for the session. **Initiator:** Client.
 - **Response:** The server doesn’t send a direct reply to `Agreed` (no reply
   expected). Instead, upon receiving this, the server finalizes the login.
 
-**Server behavior:** Once the server gets the Agreed transaction, it knows the
+**Server behaviour:** Once the server gets the Agreed transaction, it knows the
 user accepted the terms and is ready to fully join. The server records the
 user’s chosen nickname, icon, and privacy preferences (refusal flags or
 auto-reply message). At this point, the user is officially “online” on the
@@ -328,7 +328,7 @@ access privileges of the current user’s account. **Initiator:** Server.
   represents. No other fields are sent.
 - **Response:** The client does not reply to this (one-way notification).
 
-**Server behavior:** The server looks up the privileges associated with the
+**Server behaviour:** The server looks up the privileges associated with the
 user’s account (e.g. whether they are an admin or a normal user and what
 permissions they have). It then sends this transaction so the client knows what
 the user can or cannot do on the server. This could include general privileges
@@ -338,7 +338,7 @@ folder-specific or news-specific rights.
 **End-user experience:** This transaction itself isn’t visible to the user, but
 its effects are. The Hotline client will enable or disable interface features
 based on the privileges. For example, if the user does not have “Upload File”
-privilege, the upload button might be grayed out; if they have admin rights,
+privilege, the upload button might be greyed out; if they have admin rights,
 admin functions become available. Essentially, the client tailors the UI and
 available actions according to what the server allowed, immediately after login.
 
@@ -425,7 +425,7 @@ all users connected to the server (for display in the client’s user list).
   repeat only in a successful server-to-client Get User Name List (300) reply,
   where one or more field-300 values represent the roster snapshot.
 
-**Server behavior:** On `GetUserNameList`, the server compiles all connected
+**Server behaviour:** On `GetUserNameList`, the server compiles all connected
 users’ info. This includes the user IDs (encoded as 16-bit values in the packed
 field 300 record), their nickname, icon ID, and a colour / status field that
 indicates things like whether the user is an admin or away. It sends all that
@@ -456,7 +456,7 @@ notifications:
     info.
   - **Response:** No reply (clients just update their UI).
 
-  **Server behavior:** For a new login, right after adding the user, the server
+  **Server behaviour:** For a new login, right after adding the user, the server
   broadcasts a Notify Change User to everyone *except* that new user (who got
   the list via 300). This tells other clients “User X has joined” and provides
   their details. Similarly, if a user uses the **Set Client User Info (304)**
@@ -482,7 +482,7 @@ notifications:
   - **Parameters:** The server sends the departing user’s ID (field 103).
   - **Response:** None (clients will remove the user from their list).
 
-  **Server behavior:** As soon as a user disconnects (whether by their own
+  **Server behaviour:** As soon as a user disconnects (whether by their own
   action or being kicked), the server broadcasts a Notify Delete User to all
   remaining clients. It identifies which user ID is gone so clients can remove
   it from the roster.
@@ -508,7 +508,7 @@ with permission can do this, typically by selecting “Get Info” on a user).
   text that the user or admin configured (for example, a real name, contact
   info, or any note). If no info text is set, it could be blank.
 
-**Server behavior:** The server looks up the requested user’s account or
+**Server behaviour:** The server looks up the requested user’s account or
 session info. It fetches the “user info” field associated with that user. On
 Hotline servers, each account can have an info or real name field, and users
 themselves can’t change it in 1.8.5 (there is no direct user command to set a
@@ -540,7 +540,7 @@ server. **Initiator:** Client (only for the current user themselves).
 - **Response:** There is no direct reply expected. The server will acknowledge
   the changes implicitly by broadcasting an update to others.
 
-**Server behavior:** When the server receives SetClientUserInfo, it updates
+**Server behaviour:** When the server receives SetClientUserInfo, it updates
 that user’s info in memory: their name (for the session), icon, and flags. It
 then notifies all clients (including in any chats) via **Notify Change User
 (301)** so that everyone sees the new name/icon/status. This is essentially how
@@ -588,13 +588,13 @@ from a client to the server (to be distributed to all chat participants).
   the main/default chat. If no Chat ID is given, it implies the main public
   chat. There’s also an optional “Chat options” field (109) which can indicate
   a “normal” or “alternate” chat message. (In practice, this might
-  differentiate between standard chat lines vs. actions or colored text,
+  differentiate between standard chat lines vs. actions or coloured text,
   depending on the client UI. By default 0 = normal text, 1 = alternate style.)
 - **Response:** The server does not send a direct reply to the sender. Instead,
   the server will echo/distribute the message to all appropriate users via the
   **Chat Message** transaction.
 
-**Server behavior:** Upon receiving a ChatSend from a user, the server checks
+**Server behaviour:** Upon receiving a ChatSend from a user, the server checks
 that the user has the privilege to send chat (the user needs *Send Chat*
 privilege). If yes, the server takes the text and prepares a **Chat Message
 (106)** to all users in that chat room (including the sender, typically, so
@@ -624,7 +624,7 @@ chat participants. **Initiator:** Server (sent to each client in the chat).
   possibly system messages or actions.
 - **Response:** Clients do not reply to chat messages.
 
-**Server behavior:** For every incoming chat message, the server sends out a
+**Server behaviour:** For every incoming chat message, the server sends out a
 ChatMsg transaction to each user currently in that chat room (except possibly
 the sender if the client is designed to echo locally, but generally the sender
 gets it too for consistency). The server may also generate ChatMsg on its own
@@ -659,7 +659,7 @@ existing chat channel and retrieve its current state (participants and topic).
   chat. Each field 300 entry uses the same packed `uid` / `icon` / `colour` /
   `name_length` / `name` layout described above, scoped to that chat room.
 
-**Server behavior:** When a user requests to join a chat, the server checks if
+**Server behaviour:** When a user requests to join a chat, the server checks if
 the chat exists and if the user is allowed (if it’s a private chat, perhaps an
 invite is required or a password, but Hotline’s private chats are usually by
 invitation only). Assuming they have access (for main chat, if they have *Read
@@ -687,7 +687,7 @@ update the participant list). **Initiator:** Client.
   114).
 - **Response:** None expected directly.
 
-**Server behavior:** The server removes the user from that chat’s participant
+**Server behaviour:** The server removes the user from that chat’s participant
 list. It then sends a **Notify Chat Delete User (118)** to the remaining
 participants to tell them this user left. The server might also clear any state
 for that chat for the user (they will no longer receive messages from it).
@@ -711,7 +711,7 @@ These keep track of who is in the chat:
     NotifyChangeUser, but scoped to a chat.
   - **Response:** None.
 
-  **Server behavior:** When a user joins, the server sends this to existing
+  **Server behaviour:** When a user joins, the server sends this to existing
   members so the new user appears in their chat roster. If a user already in
   the chat changes their nickname or icon (via 304), the global
   NotifyChangeUser (301) is sent to all clients, and **Hotline 1.8.x applies
@@ -732,7 +732,7 @@ These keep track of who is in the chat:
   - **Parameters:** Chat ID (114) and User ID (103) of the user who left.
   - **Response:** None.
 
-  **Server behavior:** On a user’s departure (or if they are kicked from the
+  **Server behaviour:** On a user’s departure (or if they are kicked from the
   chat), the server sends this to remaining chat members. They will remove that
   user’s name from the list.
 
@@ -766,7 +766,7 @@ These transactions handle inviting and accepting/declining chat invitations.
     are immediately in the chat, which initially might be just the inviter until
     others accept).
 
-  **Server behavior:** When a user invites others to a new chat, the server
+  **Server behaviour:** When a user invites others to a new chat, the server
   creates a new chat room (assigning a unique Chat ID). The server adds the
   inviter to it immediately (they initiated it, so they are in that chat by
   default). It then sends out invitations to each user specified via **Invite
@@ -805,7 +805,7 @@ These transactions handle inviting and accepting/declining chat invitations.
       directly. They will either join (via sending `Join Chat (115)`) or reject
       (via `Reject Chat Invite (114)` transaction).
 
-  **Server behavior:** For a new chat (triggered by 112) or an existing chat
+  **Server behaviour:** For a new chat (triggered by 112) or an existing chat
   invite, the server sends InviteToChat to each targeted user. If the server
   version is older (\<1.5) and the invitee had auto-response or reject flags
   set, the doc notes the client will auto-send a RejectChatInvite (114)
@@ -829,7 +829,7 @@ These transactions handle inviting and accepting/declining chat invitations.
     that’s needed (the server knows who is rejecting by the session).
   - **Response:** None.
 
-  **Server behavior:** On receiving a rejection, the server will not add that
+  **Server behaviour:** On receiving a rejection, the server will not add that
   user to the chat. It may inform the inviter in some fashion (Hotline may send
   the inviter a system message like “User X declined the chat invite” – likely
   implemented as a **Server Message** to the inviter with a flag indicating
@@ -859,7 +859,7 @@ visible at the top of the chat window.
     typically a short string.
   - **Response:** No reply expected (the server will notify others).
 
-  **Server behavior:** The server updates the chat room’s subject in its state.
+  **Server behaviour:** The server updates the chat room’s subject in its state.
   It then sends a **Notify Chat Subject (119)** to all participants to
   broadcast the new topic.
 
@@ -876,7 +876,7 @@ visible at the top of the chat window.
   - **Parameters:** Chat ID (114) and the new Subject string (115).
   - **Response:** None.
 
-  **Server behavior:** This is triggered when someone uses SetChatSubject. The
+  **Server behaviour:** This is triggered when someone uses SetChatSubject. The
   server sends the new subject to every client in the specified chat so they
   can update their display.
 
@@ -921,7 +921,7 @@ from one client to another via the server. **Initiator:** Client.
   transaction. The server will route the message to the intended recipient via
   a **Server Message (104)** transaction.
 
-**Server behavior:** When the server receives SendInstantMsg, it checks that
+**Server behaviour:** When the server receives SendInstantMsg, it checks that
 the target user is online and that the sender has *Send Private Message*
 privilege (privilege code 19). If allowed, the server will forward the message.
 It translates the incoming data into a **Server Message** to the target user
@@ -957,7 +957,7 @@ client does the auto-reply by sending an InstantMsg with option 4.
 
 **End-user experience:** When user A sends a private message to user B, user A
 will see the message appear in a private chat-style window or message window
-labeled with user B’s name (the Hotline client opens a small window for the
+labelled with user B’s name (the Hotline client opens a small window for the
 conversation). They won’t get an explicit “delivered” response, but if user B
 replies, it will appear. If user B has auto-response on or is refusing
 messages, user A might instantly receive a message back saying e.g. “User B is
@@ -1003,11 +1003,11 @@ message or certain alerts need to be delivered).
   - A Chat options field (109) used here to signal message type: if Chat options
     = 1, it’s a “Server message”; if any other value, it’s an “Admin message”.
     This distinction might change how the client displays it (perhaps server
-    messages are labeled as from “Server” or shown as system notifications).
+    messages are labelled as from “Server” or shown as system notifications).
 
 - **Response:** Clients do not reply to ServerMsg transactions.
 
-**Server behavior:** For a user-to-user PM, the server constructs a ServerMsg
+**Server behaviour:** For a user-to-user PM, the server constructs a ServerMsg
 containing the original sender’s info and text. It sets the Options field based
 on the context (for example, if the sender had “automatic response” flag active
 on their account, it might set the corresponding bit so the recipient’s client
@@ -1072,7 +1072,7 @@ for the contents (files and subfolders) of a directory on the server.
   directory listing of that folder. Each entry is optional in the sense the
   server can send as many as there are items.
 
-**Server behavior:** Upon receiving the request, the server checks if the user
+**Server behaviour:** Upon receiving the request, the server checks if the user
 has permission to view that folder (there are folder-level privileges like
 “View Drop Boxes” that might hide some folders) – in general, normal files are
 visible if the user has *Download File* or *View* rights. Then it gathers all
@@ -1123,7 +1123,7 @@ download. **Initiator:** Client.
     full, waiting count might be >0 and the server might not send data until a
     slot frees up.
 
-**Server behavior:** When a download request comes in, the server first checks
+**Server behaviour:** When a download request comes in, the server first checks
 the user’s privileges. The user must have *Download File* privilege for that
 folder or file. If allowed, the server locks one of its download “slots” for
 this transfer (Hotline servers often limit how many concurrent downloads they
@@ -1188,7 +1188,7 @@ specified server folder. **Initiator:** Client.
   an upload was partial; it tells the client where to continue. Often for fresh
   uploads, resume data is not sent, meaning start from scratch.
 
-**Server behavior:** When an upload request arrives, the server checks
+**Server behaviour:** When an upload request arrives, the server checks
 privileges – the user must have *Upload File* rights for that folder. If
 allowed and if there’s space/quotas okay, the server will allocate a transfer
 slot. The reply gives a reference number like with downloads. Then the client
@@ -1237,7 +1237,7 @@ empty folder) on the server. **Initiator:** Client.
 - **Response:** None (if successful, the server just does it; if failure, the
   server might send an error or simply not remove it).
 
-**Server behavior:** The server checks that the user has the right to delete
+**Server behaviour:** The server checks that the user has the right to delete
 that item. There are separate privileges for deleting files and folders:
 *Delete File* (privilege 0) for files and *Delete Folder* (privilege 6) for
 folders. If the target is a file and the user has Delete File privilege in that
@@ -1269,7 +1269,7 @@ on the server. **Purpose:** Create a new folder in the specified directory.
 - **Response:** None (if creation succeeds, the server will likely send an
   update via the file list mechanism if needed).
 
-**Server behavior:** The server checks the *Create Folder* privilege (privilege
+**Server behaviour:** The server checks the *Create Folder* privilege (privilege
 5\) for that location. If allowed, it creates the directory on the server’s
 filesystem. No direct reply is sent, but the client will usually follow up by
 listing the folder’s contents (or the parent folder’s contents). Often the
@@ -1309,7 +1309,7 @@ dates, comments, etc., usually for a “Get Info” dialog. **Initiator:** Clien
 
   This info covers all basic properties.
 
-**Server behavior:** On GetFileInfo, the server reads the file’s metadata from
+**Server behaviour:** On GetFileInfo, the server reads the file’s metadata from
 the filesystem. For files, on Mac it might store type/creator codes and
 comments as extended attributes (Hotline servers on Windows might not have
 those, but protocol still sends blanks). Comments are stored in the server’s
@@ -1341,7 +1341,7 @@ Modify file attributes on the server. **Initiator:** Client.
 - **Response:** None (the server performs the change and doesn’t explicitly
   confirm except by the effects).
 
-**Server behavior:** The server checks privileges: to rename a file, the user
+**Server behaviour:** The server checks privileges: to rename a file, the user
 likely needs *Rename File* privilege (priv 3) or *Rename Folder* (7) if it’s a
 folder; to set a comment, perhaps the same privilege or a specific one like
 *Set File Comment* (28) / *Set Folder Comment* (29). Indeed, the protocol notes
@@ -1369,7 +1369,7 @@ the user lacks rights to rename or comment, their attempt will result in an
 error or simply nothing happens. For instance, trying to rename a file without
 privilege might cause the client to pop up “You do not have permission to
 rename files.” If comment editing is not allowed, the comment field might be
-grayed out or the server might reject the SetFileInfo silently.
+greyed out or the server might reject the SetFileInfo silently.
 
 ### Moving Files/Folders (Transaction 208) – Client Initiates
 
@@ -1382,7 +1382,7 @@ a file or folder to a new location. **Initiator:** Client.
   “move [this name] from [old path] to [new path]”.
 - **Response:** None.
 
-**Server behavior:** The server checks *Move File* privilege (priv 4) if it’s a
+**Server behaviour:** The server checks *Move File* privilege (priv 4) if it’s a
 file, or *Move Folder* (8) for folders. If allowed, the server will remove the
 item from the old directory and add it to the new directory (on the filesystem
 this is a rename operation or file system move). This includes adjusting any
@@ -1415,7 +1415,7 @@ in another folder (so one file can appear in two places). **Initiator:** Client.
   it likely uses the same name in the new location.
 - **Response:** None.
 
-**Server behavior:** The user needs *Make Alias* privilege (priv 31) to do
+**Server behaviour:** The user needs *Make Alias* privilege (priv 31) to do
 this. The server will create an alias entry in the destination. On classic Mac
 HFS servers, this could literally be a Finder alias file. In cross-platform
 context, it might be a logical reference stored by the server. But from a
@@ -1452,7 +1452,7 @@ Client.
     folder (and subfolders),
   - **Waiting count** (116) if queued, similar concept to single file download.
 
-**Server behavior:** Downloading a folder is more complex. The server again
+**Server behaviour:** Downloading a folder is more complex. The server again
 checks *Download File* privilege (since it essentially is downloading multiple
 files). If allowed, and if not too many concurrent transfers, it sets up a
 reference number and calculates how many files and total bytes are involved in
@@ -1507,7 +1507,7 @@ files (and directory structure) to the server. **Initiator:** Client.
 - **Response:** The server returns a Reference number (107) for the transfer. No
   need to send resume data here (if resuming, likely handled in-band).
 
-**Server behavior:** Privilege required is *Upload File* (1) since it’s
+**Server behaviour:** Privilege required is *Upload File* (1) since it’s
 essentially many file uploads. After the handshake, the client connects to the
 data port (as usual). The protocol for folder upload is essentially the inverse
 of folder download: the client will send files one by one, with headers
@@ -1558,7 +1558,7 @@ the client knows it must perform DownloadBanner to actually get the image bytes
 to display. Alternatively, if the banner type was URL, the client would just
 fetch from that URL instead.
 
-**Server behavior:** On DownloadBanner request, the server essentially treats
+**Server behaviour:** On DownloadBanner request, the server essentially treats
 the banner file like a normal file transfer. It might have the banner image
 stored on disk. It gives a reference and size, and then the client opens a data
 connection (port+1) with the reference. The server sends the banner image data
@@ -1620,7 +1620,7 @@ path. **Purpose:** To list news groups or categories within a bundle.
   field 320 was the old identifier for category list data). But in 1.8.5 we use
   323.
 
-**Server behavior:** The server, upon request, looks at the specified path in
+**Server behaviour:** The server, upon request, looks at the specified path in
 the news database:
 
 - If the path is root or a bundle, it finds all immediate sub-categories (which
@@ -1659,7 +1659,7 @@ the actual posts/articles (and possibly sub-threads) in a category.
   identifier (like an ID and maybe author or date snippet). The client will
   typically display the list of post titles.
 
-**Server behavior:** The server looks up all articles in the specified category
+**Server behaviour:** The server looks up all articles in the specified category
 (if the category has sub-categories, the client would use 370 for those; 371 is
 specifically used when reaching a level where actual articles exist). It then
 sends each article’s info. This probably includes an article ID internally,
@@ -1684,8 +1684,8 @@ Download the text (and metadata) of a news article so it can be read.
 
 - **Parameters:** The client specifies the category path (field 325) where the
   article resides, the Article ID (field 326) of the desired post, and a **Data
-  flavor** (field 327) indicating what format of the article it wants. In
-  Hotline, the data flavor is typically `"text/plain"` (meaning we want the
+  flavour** (field 327) indicating what format of the article it wants. In
+  Hotline, the data flavour is typically `"text/plain"` (meaning we want the
   text content). The Article ID is an identifier the server assigns to each
   post (likely gotten from the list data).
 
@@ -1700,15 +1700,15 @@ Download the text (and metadata) of a news article so it can be read.
     references for threading (i.e., if this post is a reply, parent ID points to
     the post it replied to; first child ID points to the first reply to this
     post, if any).
-  - **Data flavor** (327) echoing what is provided (should be `"text/plain"`).
+  - **Data flavour** (327) echoing what is provided (should be `"text/plain"`).
   - **Article data** (333) – the actual content of the article, i.e., the body
-    text. This field is optional in case the flavor is not text, but in our case
+    text. This field is optional in case the flavour is not text, but in our case
     it will contain the post’s text.
 
-**Server behavior:** On request, the server loads the specified article from
+**Server behaviour:** On request, the server loads the specified article from
 its database. It ensures the user can read it (*News Read Article* priv
 required, as above). It then sends all the metadata and the content. If the
-content is plain text, it’s all in field 333. If there were other flavors (like
+content is plain text, it’s all in field 333. If there were other flavours (like
 attachments or HTML), the protocol could handle but currently it’s plain text
 only and others are ignored. The article IDs (previous/next/parent/child) allow
 the client to implement “threaded” reading (like next/prev buttons or
@@ -1740,14 +1740,14 @@ to an existing article). **Initiator:** Client.
   - The article’s title (328).
   - Article flags (334) – possibly indicating if the post is locked, or
     announcement type, etc. Typically 0 for normal posts.
-  - Data flavor (327) – usually `"text/plain"` indicating the content is plain
+  - Data flavour (327) – usually `"text/plain"` indicating the content is plain
     text.
   - The article content (333) – the body text of the post.
 
 - **Response:** None (the server either accepts and will notify others, or
   returns an error if something’s wrong).
 
-**Server behavior:** The server checks *News Post Article* privilege (priv 21)
+**Server behaviour:** The server checks *News Post Article* privilege (priv 21)
 to see if the user can post in that category. If allowed, it creates the new
 article entry in its database. It assigns a new Article ID to it. The parent ID
 provided tells it if it’s a reply (if so, it will link the new post under the
@@ -1790,10 +1790,10 @@ post. **Initiator:** Client.
   deletion if replies exist).
 - **Response:** None (server performs deletion).
 
-**Server behavior:** The server checks *News Delete Article* privilege (priv
+**Server behaviour:** The server checks *News Delete Article* privilege (priv
 33). Typically only admins or moderators have this. If allowed, and if the
 article exists, the server will remove it. If recursive flag is 1, it deletes
-all replies recursively. If 0 and replies exist, the behavior might be to only
+all replies recursively. If 0 and replies exist, the behaviour might be to only
 delete that post’s content (maybe leaving a placeholder saying removed), or it
 might refuse unless no replies. The protocol allows specifying it, so
 presumably if 0 and thread has children, it might just delete that one and
@@ -1935,7 +1935,7 @@ Admin client interface for adding/editing accounts.
     bitmap.
   - **Response:** None direct.
 
-  **Server behavior:** The server creates a new account entry in its user
+  **Server behaviour:** The server creates a new account entry in its user
   database (or memory if runtime). It will store the login, (likely hash the
   password internally or store it in config), the display name, and the
   privileges. If an account with that login already exists, the server would
@@ -1961,7 +1961,7 @@ Admin client interface for adding/editing accounts.
   - **Response:** None (if success, the account is gone; if the account didn’t
     exist, server may ignore or error).
 
-  **Server behavior:** The server will remove that user from its stored list.
+  **Server behaviour:** The server will remove that user from its stored list.
   If that user is currently online at the time, an admin would typically kick
   them separately if desired – deleting an account doesn’t automatically
   disconnect them (but it does prevent re-login). There’s no broadcast or
@@ -1994,7 +1994,7 @@ Admin client interface for adding/editing accounts.
     to [Access Privilege Bits](#access-privilege-bits-field-110) to decode the
     bitmap.
 
-  **Server behavior:** When an admin wants to edit an account, their client
+  **Server behaviour:** When an admin wants to edit an account, their client
   issues GetUser. The server looks up that account in its list and sends back
   the current stored values for name, login, (maybe an encoded password), and
   privileges. The weird negation (~) of each character for login (and possibly
@@ -2020,7 +2020,7 @@ Admin client interface for adding/editing accounts.
     login.
   - **Response:** None.
 
-  **Server behavior:** The server finds that account and updates the provided
+  **Server behaviour:** The server finds that account and updates the provided
   fields. If the login itself was changed via this (e.g., renaming the
   account), it will update the account’s key (though some systems might treat
   login as immutable; Hotline allowed editing login names IIRC). The server
@@ -2041,7 +2041,7 @@ Admin client interface for adding/editing accounts.
   next login; if they’re online, it doesn’t boot them or inform them).
 
   **End-user experience:** The admin uses an “Edit Account” dialog, changes
-  some settings, and saves. They see the account list updated (maybe icon color
+  some settings, and saves. They see the account list updated (maybe icon colour
   changes if privileges changed, etc.). If the edited user is online and their
   privileges were altered, they might notice something: their client could
   immediately reflect new privileges (for instance, if now they are an admin,
@@ -2063,13 +2063,13 @@ potentially the server itself) to forcibly disconnect a user from the server.
   **Options** field (113) which can carry “ban options” – e.g., whether this
   should also ban the user’s account or IP. The exact encoding of ban options
   isn’t detailed in the doc, but likely a bit like 1 = ban IP, 2 = ban user,
-  etc., if used. There is also an optional Data (101) which might be labeled
+  etc., if used. There is also an optional Data (101) which might be labelled
   “Name?” in the spec – possibly to provide a reason or the name of who’s
   banning? The documentation is a bit unclear on that field’s purpose.
 - **Response:** None (the action is taken, then the server will inform the user
   being kicked via transaction 111).
 
-**Server behavior:** When an admin issues DisconnectUser, the server
+**Server behaviour:** When an admin issues DisconnectUser, the server
 immediately disconnects that user’s session. It will typically mark them as
 offline and send out a Notify Delete User (302) to others. If ban options were
 set, the server also adds the user to a ban list (e.g., by IP or account name).
@@ -2101,7 +2101,7 @@ convey a reason or message on disconnect, then instruct the client to close.
 - **Response:** None (the client is expected to close the connection after
   receiving it).
 
-**Server behavior:** When the server is about to disconnect a user (either via
+**Server behaviour:** When the server is about to disconnect a user (either via
 admin action, or maybe due to inactivity timeout or other reasons), it sends
 DisconnectMsg with a reason text (for example, “You have been kicked by Admin”
 or “Server shutting down”). Immediately after sending this, the server closes
@@ -2133,7 +2133,7 @@ Server.
   an “Administrator message” on clients. The protocol notes when server
   initiates, it uses the Data field for the “Administrator message” text.
 
-**Server behavior:** Upon receiving a UserBroadcast from an admin, the server
+**Server behaviour:** Upon receiving a UserBroadcast from an admin, the server
 will take that text and send it out to every connected user as a **Server
 Message (104)** with no user ID (or it might use the dedicated broadcast
 mechanism). The spec actually defines UserBroadcast as a transaction that can
@@ -2154,7 +2154,7 @@ separate system message window or as a highlighted text, often prefixed by
 something like “Broadcast from Admin: `<text>`”. For example, an admin might
 announce “Server will restart in 5 minutes.” Users see that in real-time. It’s
 not part of public chat; it’s a distinct message, often modal or clearly
-different (Hotline client had a floating window or a different color for admin
+different (Hotline client had a floating window or a different colour for admin
 broadcasts). They cannot reply to it (except via PM or such privately). It’s
 essentially like a server announcement PA system.
 

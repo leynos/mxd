@@ -33,7 +33,7 @@ pub async fn run_command(command: Commands, cfg: &AppConfig) -> Result<()> {
             let cli_args = args;
             let mut merged = load_and_merge_subcommand_for::<CreateUserArgs>(&cli_args)?;
             if let Some(password) = cli_args.password.clone() {
-                // Preserve CLI overrides because password is excluded from serialisation.
+                // Preserve CLI overrides because password is excluded from serialization.
                 merged.password = Some(password);
             }
             run_create_user(merged, cfg).await

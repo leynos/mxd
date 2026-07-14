@@ -1,7 +1,7 @@
 //! Parameter block helpers for Hotline transactions.
 //!
 //! The payload for most transactions is a list of parameters, each keyed by a
-//! 16-bit [`FieldId`]. This module validates and serialises that parameter
+//! 16-bit [`FieldId`]. This module validates and serializes that parameter
 //! structure.
 
 use std::collections::{HashMap, HashSet};

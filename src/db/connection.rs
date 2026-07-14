@@ -38,7 +38,7 @@ cfg_if! {
 /// Create a pooled connection to the configured database.
 ///
 /// Asynchronously establishes a database connection pool for the configured
-/// backend, returning any pool initialisation failure to the caller.
+/// backend, returning any pool initialization failure to the caller.
 ///
 /// # Examples
 ///

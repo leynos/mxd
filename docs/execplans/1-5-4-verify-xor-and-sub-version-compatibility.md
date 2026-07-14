@@ -166,7 +166,7 @@ Shipped changes
   compatibility gating.
 - Added `rstest` unit coverage for XOR unhappy-path decode failures, login
   version boundaries, SynHX precedence, idempotent augmentation, and
-  unparseable login payload handling.
+  unparsable login payload handling.
 - Added `rstest-bdd` behavioural scenarios for boundary login gating and SynHX
   precedence.
 - Updated design, verification strategy, and users guide documentation.
@@ -370,7 +370,7 @@ Roadmap 1.5.4 is accepted when:
   helpers, record the decision, and rerun.
 - Do not mark roadmap complete until all gates and documentation updates pass.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Capture and retain:
 

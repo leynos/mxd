@@ -41,3 +41,12 @@ states/
 
 # Local semantic-index daemon state
 .memdb/
+
+# Local spelling-policy caches and helper tool state
+.coverage
+.pytest_cache/
+__pycache__/
+.typos-oxendict-base.json
+.typos-oxendict-base.toml
+.uv-cache/
+.uv-tools/

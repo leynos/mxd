@@ -199,8 +199,8 @@ pub fn parse_transaction(buf: &[u8]) -> Result<Transaction, TransactionError> {
 }
 
 impl Transaction {
-    /// Serialise the transaction into a vector of bytes.
-    #[must_use = "use the serialised bytes"]
+    /// Serialize the transaction into a vector of bytes.
+    #[must_use = "use the serialized bytes"]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(HEADER_LEN + self.payload.len());
         let mut hdr = [0u8; HEADER_LEN];

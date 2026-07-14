@@ -311,7 +311,7 @@ Quality method:
   latest focused commit and retry with a narrower change.
 - Keep commits small so partial rollback remains surgical.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Planned implementation commits (gated):
 

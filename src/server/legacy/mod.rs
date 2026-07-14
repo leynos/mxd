@@ -152,7 +152,7 @@ async fn create_pool(database: &str) -> Result<DbPool, PoolError> {
 /// Sets up the database connection pool and runs migrations.
 ///
 /// Establishes a connection pool for the specified database, audits database-specific features,
-/// and applies any pending migrations. Returns the initialised connection pool on success.
+/// and applies any pending migrations. Returns the initialized connection pool on success.
 ///
 /// # Arguments
 ///
@@ -160,7 +160,7 @@ async fn create_pool(database: &str) -> Result<DbPool, PoolError> {
 ///
 /// # Returns
 ///
-/// A result containing the initialised database connection pool, or an error if setup fails.
+/// A result containing the initialized database connection pool, or an error if setup fails.
 async fn setup_database(database: &str, migration_timeout_secs: Option<u64>) -> Result<DbPool> {
     let pool: DbPool = create_pool(database).await?;
     {

@@ -5,7 +5,7 @@
 //!   table; non-deleted principals remain.
 //!
 //! Utilities and execution model:
-//! - Runs against embedded or `POSTGRES_TEST_URL` connections and is serialised with
+//! - Runs against embedded or `POSTGRES_TEST_URL` connections and is serialized with
 //!   `serial_test::file_serial(postgres_embedded_setup)` to avoid shared cluster race conditions.
 
 use diesel::prelude::*;

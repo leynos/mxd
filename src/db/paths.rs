@@ -13,7 +13,7 @@ pub enum PathLookupError {
     /// A database query error occurred.
     #[error(transparent)]
     Diesel(#[from] diesel::result::Error),
-    /// A JSON serialisation error occurred.
+    /// A JSON serialization error occurred.
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 }

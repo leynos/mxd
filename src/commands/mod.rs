@@ -138,7 +138,7 @@ pub enum Command {
         /// Transaction frame header.
         header: FrameHeader,
     },
-    /// Unrecognised transaction type.
+    /// Unrecognized transaction type.
     Unknown {
         /// Transaction frame header.
         header: FrameHeader,

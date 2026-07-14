@@ -65,7 +65,7 @@ classDiagram
         +new(value: NonZeroUsize) BudgetBytes
     }
 
-    class AppFactory~Ser, Ctx, E, Codec~ {
+    class AppFactory["AppFactory<Ser, Ctx, E, Codec>"] {
         <<trait>>
         +call() R
     }
@@ -777,7 +777,7 @@ classDiagram
         +typed_with(mapper: Mapper) TypedResponseStream
     }
 
-    class TypedResponseStream~S, Mapper, P, Item~ {
+    class TypedResponseStream["TypedResponseStream<S, Mapper, P, Item>"] {
         <<futures::Stream>>
         -inner: S
         -mapper: Mapper

@@ -1,0 +1,53 @@
+# Repository-specific identifiers, quotations and deliberate fixtures.
+
+schema = 1
+
+[oxford]
+stems = []
+
+[words]
+# This belongs to the formal product name GitHub Flavored Markdown.
+accepted = ["Flavored"]
+
+[words.corrections]
+
+[patterns]
+ignore = [
+  # Hotline protocol magic values and the public DataFlavor identifier.
+  "DataFlavor",
+  "data_flavor",
+  "FILP",
+  "TRAK",
+  # Cargo, GitHub Actions and Tokio machine interfaces.
+  '(?m)^\s*CARGO_TERM_COLOR: always$',
+  '(?m)^\s*types: \[opened, reopened, synchronize, labeled, ready_for_review\]$',
+  '(?m)^#\[tokio::test\(flavor = "current_thread"\)\]$',
+  # Reusable-workflow inputs, outputs, paths and keys retain upstream names.
+  '(?m)^\s*artifact-name:$',
+  '(?m)^\s*artifact: linux-(?:amd64|arm64)$',
+  '(?m)^\s*should-upload-workflow-artifacts:$',
+  '(?m)^\s*should-upload-workflow-artifacts: \$\{\{ fromJSON\(needs\.metadata\.outputs\.should_upload_workflow_artifacts\) \}\}$',
+  '(?m)^\s*should_upload_workflow_artifacts:$',
+  '(?m)^\s*should_upload_workflow_artifacts: \$\{\{ steps\.release_modes\.outputs\.should-upload-workflow-artifacts \}\}$',
+  '(?m)^\s*value: \$\{\{ jobs\.metadata\.outputs\.should_upload_workflow_artifacts \}\}$',
+  '(?m)^\s*name: \$\{\{ inputs\.artifact-name \}\}$',
+  '''(?m)^\s*if: inputs\.platform == 'linux' && inputs\.should-upload-workflow-artifacts$''',
+  '(?m)^\s*artifact-name: \$\{\{ needs\.metadata\.outputs\.repo_name \}\}-\$\{\{ matrix\.artifact \}\}$',
+  '(?m)^\s*mkdir -p artifacts$',
+  '(?m)^\s*-v \$\{\{ github\.workspace \}\}/artifacts:/out \\$',
+  '(?m)^\s*bash scripts/triage_crashes\.sh artifacts/main/crashes "\$FUZZ_HARNESS"$',
+  '(?m)^\s*name: fuzz-artifacts$',
+  '(?m)^\s*path: artifacts(?:/main/crashes/unique)?$',
+  # Exact upstream expectrl error text is asserted as a compatibility fixture.
+  'read may successed later',
+]
+
+[files]
+exclude = [
+  # Historical review transcript and immutable database migrations.
+  "pr.txt",
+  "migrations/postgres/00000000000003_add_articles/up.sql",
+  "migrations/sqlite/00000000000003_add_articles/up.sql",
+  "migrations/sqlite/00000000000007_align_news_schema/down.sql",
+  "migrations/sqlite/00000000000007_align_news_schema/up.sql",
+]

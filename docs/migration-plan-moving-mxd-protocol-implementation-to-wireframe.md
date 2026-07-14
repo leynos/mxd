@@ -46,7 +46,7 @@ already implemented.
 
 ## 2. Implement the Handshake
 
-The Hotline protocol’s session-initialisation handshake is the first message
+The Hotline protocol’s session-initialization handshake is the first message
 exchanged. Under `wireframe`, this is handled via the **preamble** mechanism,
 which allows custom handshake bytes to be read before normal message framing
 begins.
@@ -212,7 +212,7 @@ these clients:
   data.
 
 - **Version-Specific Behaviour**: Use the handshake’s `sub_version` field to
-  toggle compatibility behaviors[^25]. For instance, if Hotline 1.9 clients
+  toggle compatibility behaviours[^25]. For instance, if Hotline 1.9 clients
   require a slightly different handshake reply or format for a particular
   transaction, detect their version in the Preamble and adjust accordingly.
   SynHX might advertise its own sub-version number; the server can maintain a

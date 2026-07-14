@@ -37,7 +37,7 @@ fn post_article_request_to_db_params_maps_flags() {
 }
 
 #[test]
-fn post_article_request_to_db_params_maps_data_flavor() {
+fn post_article_request_to_db_params_maps_data_flavour() {
     let req = PostArticleRequest {
         data_flavor: "text/html".to_string(),
         ..default_post_article_request()

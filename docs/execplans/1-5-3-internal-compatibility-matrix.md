@@ -332,7 +332,7 @@ Acceptance is met when all statements below are true:
 - If tests fail, update matrix claims or compatibility logic so both
   implementation and docs agree before re-running gates.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Capture and retain:
 

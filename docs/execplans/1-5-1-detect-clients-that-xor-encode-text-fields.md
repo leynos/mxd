@@ -351,7 +351,7 @@ Steps are safe to re-run. If a test fails, fix the issue and re-run the
 relevant command. `pg_embedded_setup_unpriv` can be run multiple times and is
 safe; reuse its output across test runs.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Keep the `tee` logs listed in the concrete steps. If any command fails, record
 what happened and the resolution in the Decision Log.

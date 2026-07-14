@@ -37,7 +37,7 @@ interfaces from the outside.
 
 Another structural change is replacing the old in-process networking loop with
 `wireframe`’s connection handler and frame parser. The plan explicitly
-*deprecates the bespoke frame-handling loop* in favor of letting `wireframe`
+*deprecates the bespoke frame-handling loop* in favour of letting `wireframe`
 manage connections and message framing(
 [1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L40-L43)).
  By doing so, the networking code becomes an **Adapter** module outside the
@@ -67,7 +67,7 @@ In summary, **wireframe must be integrated as the outer adapter layer**, and
 any framework-specific constructs should be abstracted behind traits or
 interfaces that the domain implements. The domain module becomes the inner
 hexagon, focused purely on implementing Hotline protocol rules and business
-behaviour. This structural approach will fulfill the Hexagonal Architecture's
+behaviour. This structural approach will fulfil the Hexagonal Architecture's
 goal of making the core logic framework-agnostic and easily pluggable into
 different adapters.
 
@@ -289,7 +289,7 @@ uses when needed(
 reference to a sender that allows pushing to that client. Because
 `WireframeProtocol` (a port interface) mediates this, the domain isn't
 explicitly depending on the lower-level details – it just calls a method on its
-context, which the adapter fulfills by sending through `wireframe`.
+context, which the adapter fulfils by sending through `wireframe`.
 
 In summary, **the elements of the `wireframe` integration that should be
 considered "Ports" are those that interface with the domain**: the routing of
@@ -428,7 +428,7 @@ In conclusion, any area where the **domain starts to know too much about “how�
 things are done** (network protocol details, specific framework types, etc.) is
 a red flag. The remedy is always to introduce an intermediary boundary: a
 function call, a trait, a context object, etc., that cleanly separates the
-concern. The mxd-wireframe migration plan is cognizant of this – it repeatedly
+concern. The mxd-wireframe migration plan is cognisant of this – it repeatedly
 emphasizes reusing domain handlers and keeping the new framework code at the
 edges(
 [1](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md#L164-L171)).

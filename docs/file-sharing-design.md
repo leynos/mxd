@@ -85,7 +85,7 @@ component, including how it ties into the user/permission system.
 To model files, folders, and related features, the system defines a
 **FileNode** table representing an item in the hierarchy (which might be a
 folder, a file, or an alias pointer). Roadmap item 3.1.1 implements this as a
-shared-permission design: a normalised `permissions` catalogue stores Hotline
+shared-permission design: a normalized `permissions` catalogue stores Hotline
 privilege codes, `user_permissions` stores global grants, `groups` and
 `user_groups` provide shared principals, and `resource_permissions` stores
 per-file or per-folder ACL rows. The legacy `files` and `file_acl` tables are
@@ -810,7 +810,7 @@ and a move to a different folder via MoveFile. The implementation handles both:
      an item from any visible folder to any other visible folder. In practice,
      implementations might also require Create rights on the destination and
      Delete rights on the source, but since Hotline explicitly lists Move as a
-     privilege, the server honors that: the user must have the Move permission
+     privilege, the server honours that: the user must have the Move permission
      for that item's current folder (and perhaps
      also for the destination folder). In the ACL model, enforcement can occur
      as follows: user
@@ -1235,7 +1235,7 @@ implementation proceeds as follows:
    entries for each file; they will just be governed by parent folder’s ACL
    unless changed. This matches typical expectation – newly uploaded files in a
    folder are accessible to whoever can access that folder. If needed, an admin
-   can set specific ACLs afterward.
+   can set specific ACLs afterwards.
 
 6. **Finish:** After processing the last item, the server closes out the
    transfer (perhaps sending a final Next file or simply closing connection).
@@ -1518,7 +1518,7 @@ and scalability:
   range requests that are close together, improving efficiency if a client
   oddly asks for multiple ranges.
 - **Mermaid and Schema Efficiency:** (Performance of those isn’t relevant to
-  runtime, they’re design artifacts, so skipping.)
+  runtime, they’re design artefacts, so skipping.)
 - **Large Folders and Zip Option:** If a user tries to download an entire huge
   folder, sequential transfer could be slow to set up each file. As mentioned,
   one could implement an optimization: compress the folder server-side. But

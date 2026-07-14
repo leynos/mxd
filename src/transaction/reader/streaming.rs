@@ -15,7 +15,7 @@ use crate::transaction::{
     frame::{default_timeout, read_frame},
 };
 
-/// Initialisation data for constructing a `StreamingTransaction`.
+/// Initialization data for constructing a `StreamingTransaction`.
 pub(super) struct StreamingTransactionInit {
     pub first_hdr: FrameHeader,
     pub first_chunk: Vec<u8>,

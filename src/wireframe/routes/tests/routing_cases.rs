@@ -303,7 +303,7 @@ fn process_transaction_bytes_post_news_article_success_with_xor_data() -> Result
     let flags = 0i32.to_be_bytes();
     let encoded_path = xor_bytes(b"General");
     let encoded_title = xor_bytes(b"XorTitle");
-    let encoded_flavor = xor_bytes(b"text/plain");
+    let encoded_flavour = xor_bytes(b"text/plain");
     let encoded_data = xor_bytes(b"xor body");
 
     let reply = rt.block_on(ctx.send(
@@ -313,7 +313,7 @@ fn process_transaction_bytes_post_news_article_success_with_xor_data() -> Result
             (FieldId::NewsPath, encoded_path.as_slice()),
             (FieldId::NewsTitle, encoded_title.as_slice()),
             (FieldId::NewsArticleFlags, flags.as_ref()),
-            (FieldId::NewsDataFlavor, encoded_flavor.as_slice()),
+            (FieldId::NewsDataFlavor, encoded_flavour.as_slice()),
             (FieldId::NewsArticleData, encoded_data.as_slice()),
         ],
     ))?;

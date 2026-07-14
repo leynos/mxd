@@ -352,7 +352,7 @@ sequenceDiagram
     else invalid_preamble
         ProtocolModule-->>HotlinePreamble: HandshakeError
         HotlinePreamble-->>WireframeListener: DecodeError
-        WireframeListener--X Client: close_connection()
+        WireframeListener--xClient: close_connection()
     end
 ```
 
@@ -596,11 +596,11 @@ by emitting one or more physical frames. Payloads larger than `MAX_FRAME_DATA`
 (32 KiB) are fragmented using the same header-stamping rules as
 `TransactionWriter` (copying the base header and adjusting `data_size` per
 frame). Fragmentation happens after the full payload has been assembled; the
-codec does not stream or fragment during parameter serialisation.
+codec does not stream or fragment during parameter serialization.
 
 For parameter-centric payloads, the codec exposes constructor helpers that reuse
  `transaction::encode_params`, ensuring there is a single implementation of
-parameter serialisation. `encode_params` validates the per-field constraints of
+parameter serialization. `encode_params` validates the per-field constraints of
 the parameter block (for example, counts and field lengths must fit into
 `u16`), while the codec validates overall payload size limits (
 `MAX_PAYLOAD_SIZE` for the assembled payload and `MAX_FRAME_DATA` per frame)
@@ -619,7 +619,7 @@ preserving transaction type routing and payload validation.
 **Testing strategy.** The codec is tested at four levels:
 
 1. **Unit tests** (`src/wireframe/codec/tests.rs`) use `rstest` to cover
-   single-frame and multi-fragment decoding with parametrised test cases, and
+   single-frame and multi-fragment decoding with parametrized test cases, and
    to validate that outbound encoding emits the expected frame structure.
 2. **Behaviour-Driven Development (BDD) scenarios**
    (`tests/features/wireframe_transaction.feature`) express acceptance criteria
@@ -1221,7 +1221,7 @@ relationships). Below is a brief overview of each:
 - `chat_messages`: Stores chat history (if we choose to persist it). Each
   message has an `id`, the `chat_room_id` it belongs to, the `user_id` of the
   sender, a timestamp `posted_at`, an `options` integer (for styling flags like
-  emoticons or text color as per Hotline protocol), and the message `text`(
+  emoticons or text colour as per Hotline protocol), and the message `text`(
   [11](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/chat-schema.md#L31-L38)
    )(
   [11](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/chat-schema.md#L74-L82)).
@@ -1433,7 +1433,7 @@ The **news domain logic** uses these tables to implement operations:
    )(
   [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L414-L422)).
    If found, it then prepares the output parameters: title, poster, date,
-  flags, etc., including pointers to neighboring articles(
+  flags, etc., including pointers to neighbouring articles(
   [13](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/commands.rs#L367-L376)
    )(
   [13](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/commands.rs#L373-L380)).
@@ -1771,7 +1771,7 @@ as the client IP or username for certain events). Our logging strategy:
   `tracing::Span` per connection).
 
 - If not under systemd, we default to console logging (possibly with ANSI
-  coloring or plain text). This still uses `tracing`, just with a different
+  colouring or plain text). This still uses `tracing`, just with a different
   subscriber (like `fmt::Subscriber` for stderr).
 
 By logging to journald, MXD benefits from log rotation, centralized management,
@@ -1853,7 +1853,7 @@ include context.
 
 Now we break down each major subsystem of MXD – **user sessions**, **chat**,
 **news**, **file sharing**, and **tracker beacons** – describing their domain
-model, database schema mapping, protocol integration, and main behavior flows.
+model, database schema mapping, protocol integration, and main behaviour flows.
 
 ### User Sessions and Login
 
@@ -1908,7 +1908,7 @@ build the reply. The login handler (`handle_login`) will:
   [3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/login.rs#L32-L39)
    )(
   [3](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/login.rs#L34-L42)).
-   The login handler also initialises `session.privileges` to
+   The login handler also initializes `session.privileges` to
   `Privileges::default_user()`, granting the user standard capabilities
   (download files, read/send chat, read/post news articles, etc.). These
   privileges gate subsequent operations; handlers call
@@ -2071,7 +2071,7 @@ broadcast messages to all in the room.
 
 - `Chat Message` (ID 106) – this is actually the message broadcast from server
   to others in the room (the server echoes the message to participants,
-  possibly including the sender depending on client behavior).
+  possibly including the sender depending on client behaviour).
 
 - `Invite to Chat` (112) and responses (113 accept, 114 decline).
 
@@ -2131,7 +2131,7 @@ Our server design aligns to these:
   [11](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/chat-schema.md#L110-L114)).
    This keeps everyone in sync and persists the topic for newcomers.
 
-**Behavior Flows**:
+**Behaviour Flows**:
 
 - **Login to main chat**: After login, MXD could auto-join the user to the main
   lobby. This would entail sending them the current user list (simulate a 300
@@ -2304,7 +2304,7 @@ Key Hotline transactions for news include:
   [13](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/commands.rs#L201-L209)
    )(
   [13](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/commands.rs#L291-L299)).
-   The reply payload is a set of entries labeled as `FieldId::NewsCategory` for
+   The reply payload is a set of entries labelled as `FieldId::NewsCategory` for
   bundle names and possibly also categories (the client differentiates by
   context or separate calls).
 
@@ -2398,7 +2398,7 @@ Key Hotline transactions for news include:
   handle deletion manually to avoid accidentally wiping large threads
   unintentionally.
 
-**Key Behavioral Flows**:
+**Key Behavioural Flows**:
 
 - *Listing forums*: The client on startup might fetch the root level
   bundles/categories (370 with no path). The server returns all top-level
@@ -2690,7 +2690,7 @@ rather than enforced as direct foreign keys.
 Roadmap item 3.1.1 implements the tables in that E-R diagram with two important
 clarifications:
 
-- Global protocol privileges stay normalised in `permissions` and
+- Global protocol privileges stay normalized in `permissions` and
   `user_permissions`; the login flow still seeds `Session.privileges` from
   `Privileges::default_user()` until the later auth-focused roadmap item lands.
 - File ACLs live in `resource_permissions`, which stores one permission code per
@@ -3144,7 +3144,7 @@ clients to discover the server through those directories.
 ## Testing Strategy
 
 MXD is built with thorough testing in mind, including unit tests, integration
-tests, behavior-driven scenario tests, and even fuzzing for robustness. The
+tests, behaviour-driven scenario tests, and even fuzzing for robustness. The
 goal is to cover everything from the correctness of a single SQL query to the
 end-to-end protocol compliance with real clients.
 
@@ -3328,7 +3328,7 @@ repository can provision SynHX and drive the wireframe server end-to-end.
 ### Fuzzing and Property-Based Testing
 
 **Fuzz Testing (AFL++)**: We have integrated **AFL++** fuzzing to find crashes
-or misbehavior in critical parsing code. The fuzz harness is located under
+or misbehaviour in critical parsing code. The fuzz harness is located under
 `fuzz/` directory(
 [15](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/README.md#L2-L5)).
  It targets the `parse_transaction` function (which decodes raw bytes into a
@@ -3370,7 +3370,7 @@ The fuzz process:
    )(
   [21](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/fuzzing.md#L56-L64)).
    If any new crash is found, the input is saved to `artifacts/main/crashes`
-  and can be analyzed.
+  and can be analysed.
 
 - Over time, this gives us confidence that parsing (and by extension the
   handling of any malicious input) doesn’t have out-of-bound reads or infinite
@@ -3447,7 +3447,7 @@ To summarize:
   stops correctly (maybe using a timeout).
 
 - **BDD tests** (using `rstest` and possibly `rstest_bdd`) provide readable
-  scenarios verifying end-to-end behavior for key use cases.
+  scenarios verifying end-to-end behaviour for key use cases.
 
 - **Expect tests with SynHX** confirm protocol adherence with a real client.
 
@@ -3488,7 +3488,7 @@ With these testing strategies, we aim for a robust daemon:
   after fixing.
 
 - The variety of tests (from unit to full integration with external software)
-  covers both our intended behavior and actual interoperability in the wild.
+  covers both our intended behaviour and actual interoperability in the wild.
 
 ## Extensibility and Operational Considerations
 
@@ -3691,7 +3691,7 @@ search capabilities:
   having domain logic separate from transport.
 
 - **Plugin System**: Not in current plan, but one could consider a plugin
-  interface where new commands or behaviors could be added without modifying
+  interface where new commands or behaviours could be added without modifying
   core (maybe via dynamic libraries or a scripting engine). Since not
   requested, just an idea (some BBS allow scripting, but likely out of scope
   here).
