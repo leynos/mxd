@@ -4,7 +4,7 @@
 //! (`parent_article_id`, `first_child_article_id`) support valid parent-child
 //! relationships via JOIN queries and that foreign-key constraints reject
 //! references to non-existent articles.  Tests run against an embedded
-//! `PostgreSQL` cluster and are serialised via `serial_test::file_serial`.
+//! `PostgreSQL` cluster and are serialized via `serial_test::file_serial`.
 
 use anyhow::Context;
 use diesel::sql_query;

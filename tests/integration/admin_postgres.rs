@@ -41,7 +41,7 @@ fn create_user_against_embedded_postgres() -> Result<()> {
             return Ok(());
         }
         Err(err) => {
-            anyhow::bail!("Failed to initialise PostgreSQL test database: {err}");
+            anyhow::bail!("Failed to initialize PostgreSQL test database: {err}");
         }
     };
 

@@ -392,7 +392,7 @@ Quality acceptance:
 - If a stage fails, revert only the partial stage changes, keep prior commits,
   and resume from the last passing stage gate.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Keep the following artefacts during implementation:
 

@@ -12,7 +12,7 @@ test/
 */tests/
 */test/
 
-# Ignore build artifacts
+# Ignore build artefacts
 target/
 *.pyc
 *.o

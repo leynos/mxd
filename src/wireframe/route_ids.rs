@@ -1,6 +1,6 @@
 //! Route identifiers used by the wireframe adapter.
 //!
-//! These constants centralise the transaction IDs registered with the
+//! These constants centralize the transaction IDs registered with the
 //! wireframe routing layer and provide a fallback route for unknown types.
 
 /// Fallback route ID for unknown transaction types.

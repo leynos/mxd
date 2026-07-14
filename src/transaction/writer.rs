@@ -1,6 +1,6 @@
 //! Buffered and streaming writers for Hotline transactions.
 //!
-//! [`TransactionWriter`] serialises and fragments a complete [`Transaction`].
+//! [`TransactionWriter`] serializes and fragments a complete [`Transaction`].
 //! For very large payloads, use [`TransactionWriter::write_streaming`] to
 //! stream bytes from an [`AsyncRead`] source without buffering the full
 //! payload.

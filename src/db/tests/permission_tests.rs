@@ -6,7 +6,7 @@
 //!
 //! Utilities:
 //! - Reuses migrated in-memory connections and fixture helpers; returns `Result` rather than
-//!   panicking to standardise fallibility across tests.
+//!   panicking to standardize fallibility across tests.
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;

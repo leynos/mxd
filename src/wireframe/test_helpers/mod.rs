@@ -74,7 +74,7 @@ pub async fn recv_reply(
 
 /// Build a transaction frame buffer from a header and payload.
 ///
-/// The returned buffer contains the serialised 20-byte header followed by the
+/// The returned buffer contains the serialized 20-byte header followed by the
 /// payload bytes.
 #[must_use]
 pub fn transaction_bytes(header: &FrameHeader, payload: &[u8]) -> Vec<u8> {

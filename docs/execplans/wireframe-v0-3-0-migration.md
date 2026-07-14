@@ -418,7 +418,7 @@ If `wireframe::testkit` adoption broadens scope without clear payoff, revert
 that sub-step independently and complete the core version bump first. The
 capability adoption is optional; the compatibility migration is not.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Useful code snippets to preserve during implementation:
 

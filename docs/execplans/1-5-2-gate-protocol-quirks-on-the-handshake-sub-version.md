@@ -215,7 +215,7 @@ directories under `/var/tmp/pg-embedded-setup-unpriv` and rerun the setup
 command. If tests fail due to unavailable Postgres, confirm the embedded setup
 completed and rerun `make test`.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Evidence of success should include:
 

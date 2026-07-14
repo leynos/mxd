@@ -1,4 +1,7 @@
-//! Tests for this module.
+//! Regression tests for wireframe compatibility policies.
+//!
+//! These cases bind handshake metadata to routing decisions so legacy-client
+//! quirks remain isolated from normal protocol behaviour.
 use rstest::rstest;
 
 use super::*;
@@ -231,7 +234,7 @@ fn augment_login_reply_is_idempotent_when_extras_exist() {
 }
 
 #[rstest]
-fn record_login_payload_ignores_unparseable_version_lengths() {
+fn record_login_payload_ignores_unparsable_version_lengths() {
     let compat = ClientCompatibility::from_handshake(&handshake(0));
     let payload = encode_params(&[(FieldId::Version, vec![1u8, 2u8, 3u8].as_slice())])
         .expect("payload encodes");

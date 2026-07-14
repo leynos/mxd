@@ -46,7 +46,7 @@ jobs:
           name: crashes
           path: artifacts/main/crashes/unique
 
-      - name: Upload full artifacts
+      - name: Upload full artefacts
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts

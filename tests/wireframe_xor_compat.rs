@@ -123,7 +123,7 @@ fn when_message_plaintext(world: &XorWorld, message: String) {
 fn when_post_news_xor(world: &XorWorld) {
     let encoded_path = xor_bytes(b"General");
     let encoded_title = xor_bytes(b"XorTitle");
-    let encoded_flavor = xor_bytes(b"text/plain");
+    let encoded_flavour = xor_bytes(b"text/plain");
     let encoded_body = xor_bytes(b"xor body");
     let flags = 0i32.to_be_bytes();
 
@@ -134,7 +134,7 @@ fn when_post_news_xor(world: &XorWorld) {
             (FieldId::NewsPath, encoded_path.as_slice()),
             (FieldId::NewsTitle, encoded_title.as_slice()),
             (FieldId::NewsArticleFlags, flags.as_ref()),
-            (FieldId::NewsDataFlavor, encoded_flavor.as_slice()),
+            (FieldId::NewsDataFlavor, encoded_flavour.as_slice()),
             (FieldId::NewsArticleData, encoded_body.as_slice()),
         ],
     );

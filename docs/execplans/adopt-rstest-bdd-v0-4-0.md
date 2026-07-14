@@ -227,7 +227,7 @@ and reverting the specific test files. If a step fails, rerun the command after
 addressing the reported error. Keep intermediate edits small to allow surgical
 rollbacks.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Expected command snippets (abbreviated):
 

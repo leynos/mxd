@@ -179,7 +179,7 @@ impl TryFrom<Transaction> for HotlineTransaction {
             return Err(TransactionError::PayloadTooLarge);
         }
         validate_payload_parts(&value.header, &value.payload)?;
-        // Normalise the logical header to "reassembled" form.
+        // Normalize the logical header to "reassembled" form.
         value.header.data_size = value.header.total_size;
         Ok(Self {
             header: value.header,

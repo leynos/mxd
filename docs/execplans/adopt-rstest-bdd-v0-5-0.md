@@ -181,7 +181,7 @@ Each migration step is re-runnable. If a suite fails after conversion, rerun
 the targeted test command for that suite, revert only the affected file, and
 reapply the migration incrementally.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Observed nested-runtime failure during migration:
 

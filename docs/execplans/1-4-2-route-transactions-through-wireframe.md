@@ -459,7 +459,7 @@ explicitly approved.
 Commits should be atomic and focused. If a commit introduces a regression, it
 can be reverted independently.
 
-## Artifacts and Notes
+## Artefacts and notes
 
 Example route registration pattern (from `docs/wireframe-users-guide.md`):
 

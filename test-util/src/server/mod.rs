@@ -43,7 +43,7 @@ compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
 
 // NOTE: The mutual exclusion of sqlite/postgres is NOT enforced at compile time
 // when `--all-features` is used (e.g., by `make lint`). The `#[cfg(...)]` guards
-// on `setup_sqlite` and the postgres launch path ensure correct behavior at
+// on `setup_sqlite` and the postgres launch path ensure correct behaviour at
 // runtime. This design allows the crate to pass workspace-wide clippy checks.
 #[expect(
     clippy::missing_const_for_fn,

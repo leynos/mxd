@@ -264,7 +264,7 @@ Edits are safe to re-run. If a test fails, fix the issue and re-run the
 relevant command. If documentation linting fails, run `make fmt` and re-run
 `make markdownlint` and `make nixie`.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Keep the `tee` logs listed above. If any command fails, note the failure and
 resolution in the Decision Log.

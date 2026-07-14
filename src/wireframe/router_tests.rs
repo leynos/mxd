@@ -323,7 +323,7 @@ fn parse_failure_does_not_trigger_hooks(
 
     let events = compat_spy::take();
     if !events.is_empty() {
-        return Err(anyhow!("no hooks should fire for unparseable input"));
+        return Err(anyhow!("no hooks should fire for unparsable input"));
     }
     Ok(())
 }

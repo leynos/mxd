@@ -5,6 +5,49 @@ on:
     branches: [main]
 
 jobs:
+  docs-tooling:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MERMAN_CLI_VERSION: '0.7.0'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.14'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+      - name: Set up Rust for Merman
+        run: rustup toolchain install 1.95.0
+      - name: Cache Merman CLI
+        id: cache-merman-cli
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v4.3.0
+        with:
+          path: ~/.cargo/bin/merman-cli
+          key: merman-cli-${{ runner.os }}-${{ runner.arch }}-${{ env.MERMAN_CLI_VERSION }}
+      - name: Install Merman CLI
+        if: steps.cache-merman-cli.outputs.cache-hit != 'true'
+        run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
+      - name: Install Nixie
+        run: uv tool install nixie-cli==1.1.0
+      - name: Enforce en-GB-oxendict spelling
+        run: make spelling
+      - name: Lint Markdown
+        uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25
+        with:
+          globs: |
+            **/*.md
+            !**/.uv-cache/**
+            !**/.uv-tools/**
+            !**/target/**
+            !**/dist/**
+      - name: Validate Mermaid diagrams
+        run: make nixie
+
   build-test:
     runs-on: ubuntu-latest
     services:

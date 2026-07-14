@@ -103,7 +103,7 @@ ______________________________________________________________________
 
 ### Step 2: Write the TLA+ handshake specification
 
-Create `crates/mxd-verification/tla/MxdHandshake.tla` modeling the server-side
+Create `crates/mxd-verification/tla/MxdHandshake.tla` modelling the server-side
 handshake state machine.
 
 **State space design:**

@@ -98,7 +98,7 @@ behavioural tests continue to pass without changing observable server behaviour.
       Date/Author: 2026-01-11, Codex
     - Decision: Factor `fragment_ranges` from the codec encoder to make
       fragmentation proofs reusable in Kani and unit tests.
-      Rationale: keeps the fragment sizing invariant centralised and avoids
+      Rationale: keeps the fragment sizing invariant centralized and avoids
       duplicating the framing loop.
       Date/Author: 2026-01-12, Codex
     - Decision: Bound the fragment sizing harness to two fragments and set
@@ -246,7 +246,7 @@ idempotent per its guide. If Kani or test commands fail, revert only the local
 changes since the last green state and re-run the failing step. Do not proceed
 to roadmap updates until all validations succeed.
 
-## Artifacts and Notes
+## Artefacts and Notes
 
 Keep short transcripts of:
 

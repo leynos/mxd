@@ -351,7 +351,7 @@ If a step fails partway through:
 Rollback: If the entire change needs to be reverted, `git checkout` the
 affected files or reset to the previous commit.
 
-## Artifacts and notes
+## Artefacts and notes
 
 ### Key privilege bit constants (from src/privileges.rs)
 

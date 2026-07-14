@@ -11,7 +11,7 @@ on top of the `wireframe` transport. It consolidates requirements captured in
 `docs/cte-extension-design.md`, `docs/chat-schema.md`, `docs/news-schema.md`,
 `docs/fuzzing.md`, `docs/verification-strategy.md`, and
 `docs/migration-plan-moving-mxd-protocol-implementation-to-wireframe.md`. Items
-are organised into phases, steps, and measurable tasks with acceptance criteria
+are organized into phases, steps, and measurable tasks with acceptance criteria
 and explicit dependencies. Timeframes are intentionally omitted.
 
 ## 1. Wireframe migration
@@ -152,7 +152,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   transaction IDs and are logged through the existing tracing infrastructure.
   Status: Completed on 17 January 2026 by introducing a routing reply builder
   that preserves transaction IDs/types for error replies, logging errors with
-  tracing context, and adding unit tests plus Behavior-Driven Development (BDD)
+  tracing context, and adding unit tests plus Behaviour-Driven Development (BDD)
   coverage. Dependencies: 1.4.4.
 - [x] 1.4.6. Model routed transactions and session gating in Stateright.
   Acceptance: Stateright models explore login, privilege checks, and
@@ -532,7 +532,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 - [ ] 5.1.2. Enforce privilege codes 14–18 and 22–32 across administrative
   handlers. Acceptance: Privilege violations return protocol error codes and
   are logged with user context. Dependencies: 5.1.1.
-- [ ] 5.1.3. Provide audit logs summarising administrative actions with before/
+- [ ] 5.1.3. Provide audit logs summarizing administrative actions with before/
   after snapshots where applicable. Acceptance: Audit entries include actor,
   target, action, and rationale fields and feed compliance reporting.
   Dependencies: 5.1.2.
@@ -543,7 +543,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 ### 5.2. Harden database backends and query tooling
 
-- [ ] 5.2.1. Finalise PostgreSQL support, ensuring migrations, Diesel builders,
+- [ ] 5.2.1. Finalize PostgreSQL support, ensuring migrations, Diesel builders,
   and tests run against PostgreSQL 14+. Acceptance: CI runs the full
   integration suite on SQLite and PostgreSQL backends with identical behaviour.
   Dependencies: 3.
@@ -567,7 +567,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
   complete without harness crashes and store the regenerated corpus artefacts.
   Dependencies: 1.
 - [ ] 6.1.2. Ensure `cargo afl fuzz` jobs run in CI using the Docker workflow
-  documented in `docs/fuzzing.md`. Acceptance: CI artifacts contain crash
+  documented in `docs/fuzzing.md`. Acceptance: CI artefacts contain crash
   triage bundles when fuzzing discovers new inputs. Dependencies: 6.1.1.
 - [ ] 6.1.3. Establish a triage rota so fuzzing findings are reviewed within two
   working days. Acceptance: Triage logs record ownership, reproduction steps,

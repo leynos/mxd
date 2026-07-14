@@ -41,7 +41,7 @@ pub enum FieldId {
     NewsArticle,
     /// Article identifier in requests.
     NewsArticleId,
-    /// Data flavor for article content.
+    /// Data flavour for article content.
     NewsDataFlavor,
     /// Article title field.
     NewsTitle,
