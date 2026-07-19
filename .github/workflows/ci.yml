@@ -242,7 +242,7 @@ jobs:
           fi
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@v2.82.5
+      - uses: taiki-e/install-action@v2.83.2
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
