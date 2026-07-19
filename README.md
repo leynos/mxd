@@ -1,5 +1,8 @@
 # mxd
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](
+https://deepwiki.com/leynos/mxd)
+
 Marrakesh Express Daemon
 
 Hop aboard the Marrakesh Express — a compact but spirited
