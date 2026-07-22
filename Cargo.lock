@@ -280,6 +280,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd6a120d2e16b3e1b4a24bd70f23b12d3e16b81f113364a26935f8db7245452d"
+
+[[package]]
 name = "bincode_derive"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -559,9 +565,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clap_mangen"
-version = "0.3.0"
+version = "0.2.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d82842b45bf9f6a3be090dd860095ac30728042c08e0d6261ca7259b5d850f07"
+checksum = "7e30ffc187e2e3aeafcd1c6e2aa416e29739454c0ccaa419226d5ecd181f2d78"
 dependencies = [
  "clap",
  "roff",
@@ -2433,7 +2439,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "async-trait",
- "bincode",
+ "bincode 3.0.0",
  "bitflags 2.13.0",
  "bytes",
  "camino",
@@ -2456,7 +2462,7 @@ dependencies = [
  "pg-embed-setup-unpriv",
  "postgresql_embedded",
  "proptest",
- "rand 0.10.2",
+ "rand 0.9.5",
  "rstest",
  "rstest-bdd",
  "rstest-bdd-macros",
@@ -5852,7 +5858,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae7ba1b82771f0428551e3d19c8578521cc77c73dda66746e1e4ae5986d8a7c6"
 dependencies = [
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "bytes",
  "dashmap",
  "derive_more 2.0.1",
