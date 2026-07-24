@@ -575,7 +575,7 @@ dependencies = [
  "clap",
  "figment",
  "figment-json5",
- "ortho_config 0.3.0",
+ "ortho_config 0.8.0",
  "rstest",
  "serde",
  "serde_yaml",
@@ -2451,7 +2451,7 @@ dependencies = [
  "figment-json5",
  "futures-util",
  "kani",
- "ortho_config 0.3.0",
+ "ortho_config 0.8.0",
  "paste",
  "pg-embed-setup-unpriv",
  "postgresql_embedded",
@@ -2670,23 +2670,6 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ortho_config"
-version = "0.3.0"
-source = "git+https://github.com/leynos/ortho-config?tag=v0.3.0#3e9c63387d101acab64d600c926a5a941767275b"
-dependencies = [
- "clap",
- "clap-dispatch",
- "directories",
- "figment",
- "ortho_config_macros 0.3.0",
- "serde",
- "thiserror 1.0.69",
- "toml 0.8.23",
- "uncased",
- "xdg",
-]
-
-[[package]]
-name = "ortho_config"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b8b9c66f5679fdb6653199c56aff45307cff6da9b0b65cf15cce1e7c18693a"
@@ -2711,13 +2694,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "ortho_config_macros"
-version = "0.3.0"
-source = "git+https://github.com/leynos/ortho-config?tag=v0.3.0#3e9c63387d101acab64d600c926a5a941767275b"
+name = "ortho_config"
+version = "0.8.0"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.8.0#4aa603506ffc13956a9d6fcf758c0eb2ed2b0f05"
 dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
+ "camino",
+ "cap-std 3.4.5",
+ "clap",
+ "clap-dispatch",
+ "directories",
+ "dirs 5.0.1",
+ "dunce",
+ "figment",
+ "fluent-bundle",
+ "fluent-syntax",
+ "ortho_config_macros 0.8.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "toml 0.9.8",
+ "tracing",
+ "uncased",
+ "unic-langid",
+ "xdg",
 ]
 
 [[package]]
@@ -2725,6 +2724,17 @@ name = "ortho_config_macros"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a617081116c2b82c642121f241737fab8d8b8456ae4cd5a001799e7402d9f120"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "ortho_config_macros"
+version = "0.8.0"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.8.0#4aa603506ffc13956a9d6fcf758c0eb2ed2b0f05"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
