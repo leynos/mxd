@@ -39,7 +39,7 @@ jobs:
       MXD_VALIDATOR_FAIL_CLOSED: "true"
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - uses: leynos/shared-actions/.github/actions/setup-rust@18bed1ca49a6de3d8882bd72635a32ae3f023d57
         with:
           install-sqlite-deps: true

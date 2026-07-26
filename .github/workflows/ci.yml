@@ -12,7 +12,7 @@ jobs:
     env:
       MERMAN_CLI_VERSION: '0.7.0'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up Python
@@ -88,7 +88,7 @@ jobs:
       BUILD_PROFILE: debug
       WHITAKER_INSTALLER_VERSION: '0.2.6'
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - uses: leynos/shared-actions/.github/actions/setup-rust@18bed1ca49a6de3d8882bd72635a32ae3f023d57
         with:
           install-postgres-deps: ${{ matrix.install_postgres_deps }}
@@ -167,7 +167,7 @@ jobs:
       MXD_VALIDATOR_FAIL_CLOSED: "true"
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - uses: leynos/shared-actions/.github/actions/setup-rust@18bed1ca49a6de3d8882bd72635a32ae3f023d57
         with:
           install-sqlite-deps: true
@@ -219,7 +219,7 @@ jobs:
       # against its merge base, so the full history must be reachable.
       # The default merge-ref checkout matches CodeScene's documented
       # example.
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: leynos/shared-actions/.github/actions/setup-rust@18bed1ca49a6de3d8882bd72635a32ae3f023d57
