@@ -77,7 +77,7 @@ scenario exercises the async scenario path described in
   `#[scenario]` now suppresses unused fixtures.
 - Observation: Formatting tools updated documentation tables and the
   `.gitignore` comment describing the grepai index. Evidence: `make fmt` changed
-   `docs/pg-embed-setup-unpriv-users-guide.md`,
+  `docs/pg-embed-setup-unpriv-users-guide.md`,
   `docs/rstest-bdd-users-guide.md`, and `.gitignore`. Impact: include these in
   the documentation commit to keep the tree clean.
 

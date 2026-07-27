@@ -165,8 +165,8 @@ Shipped changes
 - Added Kani harness modules for XOR compatibility and sub-version/login
   compatibility gating.
 - Added `rstest` unit coverage for XOR unhappy-path decode failures, login
-  version boundaries, SynHX precedence, idempotent augmentation, and
-  unparsable login payload handling.
+  version boundaries, SynHX precedence, idempotent augmentation, and unparsable
+  login payload handling.
 - Added `rstest-bdd` behavioural scenarios for boundary login gating and SynHX
   precedence.
 - Updated design, verification strategy, and users guide documentation.

@@ -109,18 +109,27 @@ contains an executable `/usr/local/bin/fuzz` binary that AFL++ can run.
 
 - Observation: Docker validation cannot be executed in this workspace because
   `/var/run/docker.sock` is absent. Evidence: `docker build ...` fails here with
-   `failed to connect to the docker API at unix:///var/run/docker.sock`.
+  `failed to connect to the docker API at unix:///var/run/docker.sock`.
   Impact: the plan must specify an external validation step instead of claiming
   local proof.
 
 - Observation: the required repository commit gates are presently blocked by
   environment/tooling issues unrelated to this Dockerfile change. Evidence:
-  `make lint` fails in the `whitaker` step with
-  `error: unknown start of token: \`` while probing a nightly toolchain, and
-  `make test` fails during the postgres nextest path because
-  `/root/.rustup/toolchains/nightly-2025-11-08-x86_64-unknown-linux-gnu/bin/rustc`
-   is missing. Impact: this change cannot be fully validated in the current
-  workspace until those toolchain problems are repaired.
+  `make lint` fails in the `whitaker` step while probing a nightly toolchain:
+
+  ```text
+  error: unknown start of token: `
+  ```
+
+  The postgres nextest path in `make test` also reports that this compiler is
+  missing:
+
+  ```text
+  /root/.rustup/toolchains/nightly-2025-11-08-x86_64-unknown-linux-gnu/bin/rustc
+  ```
+
+  Impact: this change cannot be fully validated in the current workspace until
+  those toolchain problems are repaired.
 
 ## Decision log
 

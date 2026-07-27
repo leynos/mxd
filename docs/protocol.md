@@ -456,15 +456,15 @@ notifications:
     info.
   - **Response:** No reply (clients just update their UI).
 
-  **Server behaviour:** For a new login, right after adding the user, the server
-  broadcasts a Notify Change User to everyone *except* that new user (who got
-  the list via 300). This tells other clients “User X has joined” and provides
-  their details. Similarly, if a user uses the **Set Client User Info (304)**
-  transaction to change their nickname, icon, or preference flags (explained
-  next), the server sends Notify Change User to update all clients’ lists with
-  the new nickname/icon/status. In v1.8.x, the server also applies this update
-  to any chat rooms that the user is in (meaning the change is reflected in
-  chat participant lists too).
+  **Server behaviour:** For a new login, right after adding the user, the
+  server broadcasts a Notify Change User to everyone *except* that new user
+  (who got the list via 300). This tells other clients “User X has joined” and
+  provides their details. Similarly, if a user uses the **Set Client User Info
+  (304)** transaction to change their nickname, icon, or preference flags
+  (explained next), the server sends Notify Change User to update all clients’
+  lists with the new nickname/icon/status. In v1.8.x, the server also applies
+  this update to any chat rooms that the user is in (meaning the change is
+  reflected in chat participant lists too).
 
   **End-user experience:** Other users see one of two things: if a new user
   connected, they appear in the user list (often with a join message like “User
@@ -859,8 +859,8 @@ visible at the top of the chat window.
     typically a short string.
   - **Response:** No reply expected (the server will notify others).
 
-  **Server behaviour:** The server updates the chat room’s subject in its state.
-  It then sends a **Notify Chat Subject (119)** to all participants to
+  **Server behaviour:** The server updates the chat room’s subject in its
+  state. It then sends a **Notify Chat Subject (119)** to all participants to
   broadcast the new topic.
 
   **End-user experience:** The user setting the topic might see their chat
@@ -1194,7 +1194,7 @@ allowed and if there’s space/quotas okay, the server will allocate a transfer
 slot. The reply gives a reference number like with downloads. Then the client
 is expected to open a new connection to the server’s upload port (which is the
 same as download port, base port+1, in non-HTTP mode). The client then sends the
- `'HTXF'` handshake with the reference and the total data size to send. After
+`'HTXF'` handshake with the reference and the total data size to send. After
 that, the client transmits the file data in the same “flattened file” format
 over that connection. The server receives the bytes and writes the file to the
 specified folder.
@@ -1269,12 +1269,12 @@ on the server. **Purpose:** Create a new folder in the specified directory.
 - **Response:** None (if creation succeeds, the server will likely send an
   update via the file list mechanism if needed).
 
-**Server behaviour:** The server checks the *Create Folder* privilege (privilege
-5\) for that location. If allowed, it creates the directory on the server’s
-filesystem. No direct reply is sent, but the client will usually follow up by
-listing the folder’s contents (or the parent folder’s contents). Often the
-client might automatically refresh the view by calling GetFileNameList again to
-show the new folder.
+**Server behaviour:** The server checks the *Create Folder* privilege
+(privilege 5\) for that location. If allowed, it creates the directory on the
+server’s filesystem. No direct reply is sent, but the client will usually
+follow up by listing the folder’s contents (or the parent folder’s contents).
+Often the client might automatically refresh the view by calling
+GetFileNameList again to show the new folder.
 
 **End-user experience:** The user hits “New Folder” in the client, enters a
 folder name. The new folder then appears in the file list if creation was
@@ -1382,15 +1382,15 @@ a file or folder to a new location. **Initiator:** Client.
   “move [this name] from [old path] to [new path]”.
 - **Response:** None.
 
-**Server behaviour:** The server checks *Move File* privilege (priv 4) if it’s a
-file, or *Move Folder* (8) for folders. If allowed, the server will remove the
-item from the old directory and add it to the new directory (on the filesystem
-this is a rename operation or file system move). This includes adjusting any
-internal records (like comments might move with it; since it’s the same file
-just in a new place, it’s straightforward). If the destination has a file with
-the same name, the server might either overwrite (if allowed) or fail the move
-– the protocol doesn’t specify, but typically it might fail to avoid
-overwriting unless the user also has delete rights. The client is not
+**Server behaviour:** The server checks *Move File* privilege (priv 4) if it’s
+a file, or *Move Folder* (8) for folders. If allowed, the server will remove
+the item from the old directory and add it to the new directory (on the
+filesystem this is a rename operation or file system move). This includes
+adjusting any internal records (like comments might move with it; since it’s
+the same file just in a new place, it’s straightforward). If the destination
+has a file with the same name, the server might either overwrite (if allowed)
+or fail the move – the protocol doesn’t specify, but typically it might fail to
+avoid overwriting unless the user also has delete rights. The client is not
 explicitly told the result, but if successful, the file will disappear from the
 old folder listing and should appear in the new one.
 
@@ -1659,14 +1659,15 @@ the actual posts/articles (and possibly sub-threads) in a category.
   identifier (like an ID and maybe author or date snippet). The client will
   typically display the list of post titles.
 
-**Server behaviour:** The server looks up all articles in the specified category
-(if the category has sub-categories, the client would use 370 for those; 371 is
-specifically used when reaching a level where actual articles exist). It then
-sends each article’s info. This probably includes an article ID internally,
-which the client will use to fetch the full content later (the protocol
-suggests that field 321 contains necessary data, possibly including the
-article’s subject and an ID). The server requires *News Read Article* privilege
-(priv 20) to read posts, which if the user lacks, might return nothing or error.
+**Server behaviour:** The server looks up all articles in the specified
+category (if the category has sub-categories, the client would use 370 for
+those; 371 is specifically used when reaching a level where actual articles
+exist). It then sends each article’s info. This probably includes an article ID
+internally, which the client will use to fetch the full content later (the
+protocol suggests that field 321 contains necessary data, possibly including
+the article’s subject and an ID). The server requires *News Read Article*
+privilege (priv 20) to read posts, which if the user lacks, might return
+nothing or error.
 
 **End-user experience:** When the user opens a news category (for example
 “Announcements”), the client requests the list of articles there. The user then
@@ -1708,10 +1709,10 @@ Download the text (and metadata) of a news article so it can be read.
 **Server behaviour:** On request, the server loads the specified article from
 its database. It ensures the user can read it (*News Read Article* priv
 required, as above). It then sends all the metadata and the content. If the
-content is plain text, it’s all in field 333. If there were other flavours (like
-attachments or HTML), the protocol could handle but currently it’s plain text
-only and others are ignored. The article IDs (previous/next/parent/child) allow
-the client to implement “threaded” reading (like next/prev buttons or
+content is plain text, it’s all in field 333. If there were other flavours
+(like attachments or HTML), the protocol could handle but currently it’s plain
+text only and others are ignored. The article IDs (previous/next/parent/child)
+allow the client to implement “threaded” reading (like next/prev buttons or
 hierarchical view).
 
 **End-user experience:** The user selects a post from the list. The content of
@@ -2041,12 +2042,12 @@ Admin client interface for adding/editing accounts.
   next login; if they’re online, it doesn’t boot them or inform them).
 
   **End-user experience:** The admin uses an “Edit Account” dialog, changes
-  some settings, and saves. They see the account list updated (maybe icon colour
-  changes if privileges changed, etc.). If the edited user is online and their
-  privileges were altered, they might notice something: their client could
-  immediately reflect new privileges (for instance, if now they are an admin,
-  they might see new admin options appear, or if some privilege revoked, an
-  option disappears). In practice, Hotline might not always live-update
+  some settings, and saves. They see the account list updated (maybe icon
+  colour changes if privileges changed, etc.). If the edited user is online and
+  their privileges were altered, they might notice something: their client
+  could immediately reflect new privileges (for instance, if now they are an
+  admin, they might see new admin options appear, or if some privilege revoked,
+  an option disappears). In practice, Hotline might not always live-update
   privileges, but the protocol support is there. At minimum, the effect will be
   in their next session. They are not explicitly notified “Your account was
   edited” (unless the admin tells them). If their password was changed while

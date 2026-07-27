@@ -71,7 +71,7 @@ blob store.
 
 **Storage Abstraction:** The implementation does *not* rely on filesystem
 semantics or cloud-specific APIs directly – instead, the abstraction provided by
- `object_store::ObjectStore`. This trait provides methods to put and get
+`object_store::ObjectStore`. This trait provides methods to put and get
 objects, list with prefixes, and handle multipart uploads in a uniform way.
 This lets the same code run against local disk, S3, Azure, Google Cloud, etc.,
 configured by a URL or builder at runtime. All file reads/writes are done
@@ -1330,7 +1330,7 @@ Applying these rules ensures that:
   the implementation log it.
 
 By centralizing permission checks in each operation handler and using the shared
- `permissions`, `user_permissions`, and `resource_permissions` tables, the
+`permissions`, `user_permissions`, and `resource_permissions` tables, the
 design maintains consistency across features. A user’s access to files is
 managed through the same normalized privilege catalogue that supports other
 feature areas, so administrative tooling can update one coherent permission

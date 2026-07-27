@@ -2,16 +2,16 @@
 
 This guide explains how to run both server binaries and how to use their shared
 administrative subcommands. The command-line interface (CLI) definitions live in
- `mxd::server::cli`, while the active networking runtime is selected by the
+`mxd::server::cli`, while the active networking runtime is selected by the
 `legacy-networking` Cargo feature.
 
 ## Launching the legacy server
 
 - Build the sqlite variant with `make sqlite` or the postgres variant with
   `make postgres`. The `legacy-networking` feature is enabled by default, so the
-   `mxd` binary is available.
-- Start the daemon with `cargo run --bin mxd -- --bind 0.0.0.0:5500 --database
-  mxd.db`.
+  `mxd` binary is available.
+- Start the daemon with
+  `cargo run --bin mxd -- --bind 0.0.0.0:5500 --database mxd.db`.
 - Override `MXD_`-prefixed environment variables or drop-in `.mxd.toml` files
   to persist defaults; the server merges file and env layers before applying
   CLI overrides via `ortho-config`.
@@ -24,9 +24,10 @@ administrative subcommands. The command-line interface (CLI) definitions live in
   postgres variant with `make APP=mxd-wireframe-server postgres`. The targets
   reuse the shared CLI module, so both binaries honour the same flags,
   environment overrides, and `.mxd.toml` defaults.
-- Start the daemon with `cargo run --bin mxd-wireframe-server -- --bind
-  0.0.0.0:6600 --database mxd.db`. The binary prints `mxd-wireframe-server
-  listening on …` after the Wireframe listener binds.
+- Start the daemon with
+  `cargo run --bin mxd-wireframe-server -- --bind 0.0.0.0:6600 --database mxd.db`.
+  The binary prints `mxd-wireframe-server listening on …` after the Wireframe
+  listener binds.
 - Administrative subcommands such as `create-user` remain available because
   the bootstrap calls `mxd::server::run_command` before starting the listener.
 - The Wireframe listener now decodes the Hotline 12-byte handshake preamble,

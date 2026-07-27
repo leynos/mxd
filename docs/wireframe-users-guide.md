@@ -1417,7 +1417,7 @@ let middleware = from_fn(decode_and_respond);
 ```
 
 Advanced integrations can adopt the `wireframe::extractor` module, which defines
- `MessageRequest`, `Payload`, and `FromMessageRequest` for building Actix-style
+`MessageRequest`, `Payload`, and `FromMessageRequest` for building Actix-style
 extractors in custom middleware or services. These types expose shared state,
 peer addresses, and payload cursors for frameworks that want to layer
 additional ergonomics on top of the core primitives.[^13]
@@ -2135,11 +2135,10 @@ match client.call(&request).await {
 
 Background work interacts with connections through `PushQueues`. The fluent
 builder configures high- and low-priority capacities, optional rate limits, and
-an optional dead-letter queue with tunable logging cadence for dropped
-frames[^23]. Queue construction validates capacities and rate limits, clamping
-rates to the supported range.[^24] `PushHandle` exposes async
-`push_high_priority` and
- `push_low_priority` helpers that honour the rate limiter before awaiting
+an optional dead-letter queue with tunable logging cadence for dropped frames
+[^23]. Queue construction validates capacities and rate limits, clamping rates
+to the supported range.[^24] `PushHandle` exposes async `push_high_priority` and
+`push_low_priority` helpers that honour the rate limiter before awaiting
 channel capacity, while `try_push` implements policy-controlled drops with
 optional warnings and dead-letter forwarding.[^26] Cloneable handles downgrade
 to `Weak` references for registration in a session registry.[^25]
@@ -2178,8 +2177,8 @@ frames, a streamed response, a channel-backed multi-packet response, or an
 empty reply. `into_stream` converts any variant into a boxed `FrameStream`,
 ready to install on a connection actor with `set_response` so streaming output
 can be interleaved with push traffic. `WireframeError` distinguishes transport
-failures from protocol-level errors emitted by streaming
-responses[^34][^35][^31].
+failures from protocol-level errors emitted by streaming responses[^34][^35]
+[^31].
 
 When constructing imperative streams, the `async-stream` crate integrates
 smoothly. The example below yields five frames and converts them into a
@@ -2499,7 +2498,7 @@ decode failures are surfaced through `ClientError::Wireframe`.[^51]
   decode the server's acknowledgement bytes. This usually indicates the wrong
   preamble type, malformed server bytes, or callback logic that reads the
   response incorrectly. Confirm both sides use the same preamble schema and that
-   `on_preamble_success` returns any leftover bytes it consumed.
+  `on_preamble_success` returns any leftover bytes it consumed.
 - Preamble encode or write failure:
   `ClientError::PreambleEncode(_)` means the client failed before handshake
   completion while serializing or writing the preamble. In the current client

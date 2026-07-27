@@ -194,7 +194,7 @@ the current preamble and framing suites.
 `mxd` is a Rust workspace whose wireframe integration lives under
 `src/server/wireframe/` and `src/wireframe/`. The manifest at `Cargo.toml` now
 declares `wireframe = "0.3.0"` and builds the `mxd-wireframe-server` binary from
- `src/bin/mxd_wireframe_server.rs`.
+`src/bin/mxd_wireframe_server.rs`.
 
 The key runtime file is `src/server/wireframe/mod.rs`. It defines `HotlineApp`
 as `WireframeApp<BincodeSerializer, (), Envelope, HotlineFrameCodec>`, prepares

@@ -94,7 +94,7 @@ behavioural suites still assert the same outcomes, while `make check-fmt`,
 - Decision: for suites that rely on embedded `PostgreSQL` setup helpers,
   preserve synchronous step glue with fixture-owned runtimes. Rationale:
   prevents nested runtime panics and avoids crossing thread boundaries with non-
-   `Send` `PostgresTestDb` guards. Date/Author: 2026-02-06 / Codex.
+  `Send` `PostgresTestDb` guards. Date/Author: 2026-02-06 / Codex.
 
 ## Outcomes & Retrospective
 

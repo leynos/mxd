@@ -155,8 +155,9 @@ Exit criteria:
   both `AuthStrategy` and `LoginReplyAugmenter`.
 - Ensure login request flow and login reply flow each call the correct
   interface and remain deterministic.
-- Preserve existing guardrail ordering assertions (`on_request -> dispatch ->
-  on_reply`) or update spy expectations only when logically required and proven.
+- Preserve existing guardrail ordering assertions
+  (`on_request -> dispatch -> on_reply`) or update spy expectations only when
+  logically required and proven.
 - Keep `WireframeRouter` as sole public entrypoint.
 
 Exit criteria:

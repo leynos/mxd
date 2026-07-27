@@ -32,7 +32,7 @@ For release-note quality assurance (QA) sign-off workflow details, use
   `docs/protocol.md`. Automated coverage:
   `src/presence_tests.rs::user_name_list_reply_contains_repeated_field_300_entries`,
   `src/wireframe/routes/tests/presence_routing_cases.rs::process_transaction_bytes_user_name_list_returns_online_snapshot`,
-   and `tests/features/wireframe_presence.feature` scenario
+  and `tests/features/wireframe_presence.feature` scenario
   `Login, update, and disconnect notifications reach peers`.
 
 ## Behavioural guarantees captured by tests

@@ -150,7 +150,7 @@ tests.
 
 - Observation: wireframe v0.2.0 adds `FrameCodec` support, allowing custom
   framing to be installed with `WireframeApp::with_codec`. The worked example in
-   `../wireframe/examples/hotline_codec.rs` shows a `HotlineFrameCodec`
+  `../wireframe/examples/hotline_codec.rs` shows a `HotlineFrameCodec`
   implementation that wraps the 20-byte header framing. This means we can use
   wireframe's built-in connection handling again and retire the custom
   Tokio-based codec and accept loop.
@@ -163,7 +163,7 @@ tests.
 
 - Observation: the routing test module exceeded the 400-line file limit once
   the per-transaction success cases were added. Resolution: split the tests into
-   `src/wireframe/routes/tests/error_cases.rs`,
+  `src/wireframe/routes/tests/error_cases.rs`,
   `src/wireframe/routes/tests/routing_cases.rs`, and shared helpers.
 
 - Observation: the `self_named_module_files` lint rejects `routes.rs` once
@@ -434,8 +434,8 @@ Acceptance criteria:
 1. `make test` passes with all integration tests running against the wireframe
    server.
 
-2. The following test files no longer have `#[cfg(feature =
-   "legacy-networking")]` gates:
+2. The following test files no longer have
+   `#[cfg(feature = "legacy-networking")]` gates:
    - `tests/file_list.rs`
    - `tests/news_categories.rs`
 

@@ -152,8 +152,8 @@ and explicit dependencies. Timeframes are intentionally omitted.
   transaction IDs and are logged through the existing tracing infrastructure.
   Status: Completed on 17 January 2026 by introducing a routing reply builder
   that preserves transaction IDs/types for error replies, logging errors with
-  tracing context, and adding unit tests plus Behaviour-Driven Development (BDD)
-  coverage. Dependencies: 1.4.4.
+  tracing context, and adding unit tests plus Behaviour-Driven Development
+  (BDD) coverage. Dependencies: 1.4.4.
 - [x] 1.4.6. Model routed transactions and session gating in Stateright.
   Acceptance: Stateright models explore login, privilege checks, and
   out-of-order delivery, and `cargo test -p mxd-verification` passes with
@@ -187,13 +187,13 @@ and explicit dependencies. Timeframes are intentionally omitted.
   compatibility coverage for unhappy and edge paths. Dependencies: 1.5.2.
 - [x] 1.5.4. Verify XOR and sub-version compatibility logic with Kani.
   Acceptance: Kani harnesses show XOR encode/decode round-trips and version
-  gating for bounded inputs without panics. Status: Completed on 10 February
-  2026 by adding Kani harnesses for XOR payload round-trips and
+  gating for bounded inputs without panics. Status: Completed on
+  10 February 2026 by adding Kani harnesses for XOR payload round-trips and
   sub-version/login-version compatibility gating, plus boundary-focused unit
   and behavioural regression coverage. Dependencies: 1.5.2.
 - [x] 1.5.5. Add wireframe compatibility guardrails and a routing entrypoint.
   Acceptance: A `WireframeRouter` provides the only public routing entrypoint, a
-   `CompatibilityLayer` runs request and reply hooks, and a spy-based test
+  `CompatibilityLayer` runs request and reply hooks, and a spy-based test
   asserts login hook ordering. See
   [ADR-002](docs/adr-002-compatibility-guardrails-and-augmentation.md). Status:
   Completed on 15 February 2026. `WireframeRouter` is the sole `pub` routing
@@ -216,8 +216,8 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 - [x] 1.6.1. Port unit and integration tests so they start the wireframe server
   binary under test. Acceptance: `cargo test` exercises login, presence, file
-  listing, and news flows against the new binary. Status: Completed on 10
-  February 2026 by refactoring the shared wireframe BDD world to launch
+  listing, and news flows against the new binary. Status: Completed on
+  10 February 2026 by refactoring the shared wireframe BDD world to launch
   `mxd-wireframe-server`, adding handshake-sub-version coverage in test-util
   unit tests, and running routing/login/XOR behavioural suites over real TCP
   transport for login, authenticated-session continuity, file list, and news
@@ -314,7 +314,7 @@ and explicit dependencies. Timeframes are intentionally omitted.
 
 \[^1\]:
 [docs/design.md §Transaction routing middleware (December 2025)](docs/design.md#transaction-routing-middleware-december-2025)
- \[^2\]:
+\[^2\]:
 [docs/design.md §Regression verification via the wireframe binary (February 2026)](docs/design.md#regression-verification-via-the-wireframe-binary-february-2026)
 
 ## 2. Session and presence parity

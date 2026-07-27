@@ -47,7 +47,7 @@ components (typically 1 for a single program or method).3 A simpler formulation
 for a single subroutine is
 
 M = number of decision points + 1, where decision points include constructs like
- `if` statements and conditional loops.3
+`if` statements and conditional loops.3
 
 Thresholds and Implications:
 

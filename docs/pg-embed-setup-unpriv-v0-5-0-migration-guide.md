@@ -295,7 +295,7 @@ Adoption:
 For test-specific manual derivation of `postgresql_embedded::Settings`, switch
 from `to_settings()` to
 [`PgEnvCfg::to_settings_for_tests()`](https://docs.rs/pg-embed-setup-unpriv/latest/pg_embedded_setup_unpriv/struct.PgEnvCfg.html#method.to_settings_for_tests)
- unless production-style concurrency settings are explicitly required.
+unless production-style concurrency settings are explicitly required.
 
 ### Template database strategy for shared clusters
 
@@ -316,7 +316,7 @@ Recommended settings:
 
 Use
 [`PgEnvCfg::to_settings_for_tests()`](https://docs.rs/pg-embed-setup-unpriv/latest/pg_embedded_setup_unpriv/struct.PgEnvCfg.html#method.to_settings_for_tests)
- when preparing test clusters for template-based workflows.
+when preparing test clusters for template-based workflows.
 
 Template database example:
 

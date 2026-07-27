@@ -7,7 +7,7 @@ Marrakesh Express Daemon
 
 Hop aboard the Marrakesh Express — a compact but spirited
 [Hotline](https://hotline.fandom.com/wiki/Virtual1%27s_Hotline_Server_Protocol_Guide)
- server written in Rust. It speaks just enough of the protocol for that retro
+server written in Rust. It speaks just enough of the protocol for that retro
 BBS flair. The server uses Tokio for async networking and Diesel's async
 extension to keep users safely stored in SQLite. Passwords are salted and
 hashed with Argon2, whose knobs are adjustable via `--argon2-m-cost`,
