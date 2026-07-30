@@ -12,20 +12,20 @@ jobs:
     env:
       MERMAN_CLI_VERSION: '0.7.0'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.14'
       - name: Set up uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Set up Rust for Merman
         run: rustup toolchain install 1.95.0
       - name: Cache Merman CLI
         id: cache-merman-cli
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4.3.0
         with:
           path: ~/.cargo/bin/merman-cli
           key: merman-cli-${{ runner.os }}-${{ runner.arch }}-${{ env.MERMAN_CLI_VERSION }}
@@ -37,7 +37,7 @@ jobs:
       - name: Enforce en-GB-oxendict spelling
         run: make spelling
       - name: Lint Markdown
-        uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25
+        uses: DavidAnson/markdownlint-cli2-action@6bf21b07787794f89a243495939cd651942aeabe
         with:
           globs: |
             **/*.md
@@ -88,8 +88,8 @@ jobs:
       BUILD_PROFILE: debug
       WHITAKER_INSTALLER_VERSION: '0.2.6'
     steps:
-      - uses: actions/checkout@v7.0.0
-      - uses: leynos/shared-actions/.github/actions/setup-rust@18bed1ca49a6de3d8882bd72635a32ae3f023d57
+      - uses: actions/checkout@v7.0.1
+      - uses: leynos/shared-actions/.github/actions/setup-rust@19a7f5d1b8d5c1b2236c39720a5744492b3fc129
         with:
           install-postgres-deps: ${{ matrix.install_postgres_deps }}
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
@@ -120,7 +120,7 @@ jobs:
       - name: Lint with Clippy
         run: RUSTFLAGS="-D warnings" cargo clippy ${{ matrix.cargo_flags }} --workspace --all-targets -- -D warnings
       - name: Cache Whitaker installer
-        uses: actions/cache@v6
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cargo/bin/whitaker-installer
@@ -167,8 +167,8 @@ jobs:
       MXD_VALIDATOR_FAIL_CLOSED: "true"
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
-      - uses: actions/checkout@v7.0.0
-      - uses: leynos/shared-actions/.github/actions/setup-rust@18bed1ca49a6de3d8882bd72635a32ae3f023d57
+      - uses: actions/checkout@v7.0.1
+      - uses: leynos/shared-actions/.github/actions/setup-rust@19a7f5d1b8d5c1b2236c39720a5744492b3fc129
         with:
           install-sqlite-deps: true
       - name: Cache Cargo directories
@@ -219,10 +219,10 @@ jobs:
       # against its merge base, so the full history must be reachable.
       # The default merge-ref checkout matches CodeScene's documented
       # example.
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-      - uses: leynos/shared-actions/.github/actions/setup-rust@18bed1ca49a6de3d8882bd72635a32ae3f023d57
+      - uses: leynos/shared-actions/.github/actions/setup-rust@19a7f5d1b8d5c1b2236c39720a5744492b3fc129
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
@@ -242,7 +242,7 @@ jobs:
           fi
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@v2.83.4
+      - uses: taiki-e/install-action@v2.85.0
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
@@ -255,7 +255,7 @@ jobs:
       # on main, which every PR run can restore; baselines saved here
       # stay scoped to the PR branch.
       - name: Generate coverage for SQLite
-        uses: leynos/shared-actions/.github/actions/generate-coverage@18bed1ca49a6de3d8882bd72635a32ae3f023d57
+        uses: leynos/shared-actions/.github/actions/generate-coverage@19a7f5d1b8d5c1b2236c39720a5744492b3fc129
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
@@ -265,7 +265,7 @@ jobs:
           artefact-name-suffix: sqlite
           with-ratchet: 'true'
       - name: Generate coverage for Postgres
-        uses: leynos/shared-actions/.github/actions/generate-coverage@18bed1ca49a6de3d8882bd72635a32ae3f023d57
+        uses: leynos/shared-actions/.github/actions/generate-coverage@19a7f5d1b8d5c1b2236c39720a5744492b3fc129
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
           POSTGRES_TEST_URL: postgres://postgres:password@127.0.0.1/test
@@ -286,7 +286,7 @@ jobs:
         env:
           CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
         if: env.CS_ACCESS_TOKEN != ''
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@e0d9b652b137eb15314fff188f09e1ba18d3cc5b
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@19a7f5d1b8d5c1b2236c39720a5744492b3fc129
         with:
           format: lcov
           mode: check
