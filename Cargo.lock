@@ -280,12 +280,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bincode"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6a120d2e16b3e1b4a24bd70f23b12d3e16b81f113364a26935f8db7245452d"
-
-[[package]]
 name = "bincode_derive"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -383,9 +377,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "camino"
-version = "1.2.4"
+version = "1.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f2d30e4173c4026932d51d31d6b0613b1fd3014bf3f9f8943d4ba139c437ba0"
+checksum = "bb1307f12aa967b5a58416e87b3653360e0fd614a016b6e970db08fecbb1b80d"
 dependencies = [
  "serde_core",
 ]
@@ -2439,7 +2433,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "async-trait",
- "bincode 3.0.0",
+ "bincode",
  "bitflags 2.13.1",
  "bytes",
  "camino",
@@ -2475,7 +2469,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tokio-util",
- "toml 0.9.8",
+ "toml 0.8.23",
  "tracing",
  "uncased",
  "url",
@@ -5870,7 +5864,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae7ba1b82771f0428551e3d19c8578521cc77c73dda66746e1e4ae5986d8a7c6"
 dependencies = [
  "async-trait",
- "bincode 2.0.1",
+ "bincode",
  "bytes",
  "dashmap",
  "derive_more 2.0.1",
