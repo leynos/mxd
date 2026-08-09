@@ -57,7 +57,7 @@ jobs:
 
       - name: Build release binary
         uses: >-
-          leynos/shared-actions/.github/actions/rust-build-release@19a7f5d1b8d5c1b2236c39720a5744492b3fc129
+          leynos/shared-actions/.github/actions/rust-build-release@1014f0ce1621506ca5fa66b596ed88ec30774cce
         with:
           target: ${{ inputs.target }}
           bin-name: ${{ inputs.bin-name }}
@@ -80,7 +80,7 @@ jobs:
       - name: Package Linux artefacts
         if: inputs.platform == 'linux'
         uses: >-
-          leynos/shared-actions/.github/actions/linux-packages@19a7f5d1b8d5c1b2236c39720a5744492b3fc129
+          leynos/shared-actions/.github/actions/linux-packages@1014f0ce1621506ca5fa66b596ed88ec30774cce
         with:
           project-dir: .
           package-name: ${{ inputs.bin-name }}
