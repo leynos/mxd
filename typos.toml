@@ -35,6 +35,11 @@ extend-exclude = [
 [default]
 locale = "en-gb"
 extend-ignore-re = [
+    "-fuse-ld=mold",
+    "mold linker",
+    "Cranelift \\+ mold",
+    "Cranelift and mold",
+    "`mold`",
     "(?m)^#\\[tokio::test\\(flavor = \"current_thread\"\\)\\]$",
     "(?m)^\\s*-v \\$\\{\\{ github\\.workspace \\}\\}/artifacts:/out \\\\$",
     "(?m)^\\s*CARGO_TERM_COLOR: always$",
@@ -1509,7 +1514,6 @@ extend-ignore-re = [
 "modularizers" = "modularizers"
 "modularizes" = "modularizes"
 "modularizing" = "modularizing"
-"mold" = "mold"
 "monetisable" = "monetizable"
 "monetisably" = "monetizably"
 "monetisation" = "monetization"
