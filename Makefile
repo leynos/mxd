@@ -234,3 +234,14 @@ target/release/$(APP):
 
 $(POSTGRES_TARGET_DIR)/release/$(APP):
 	$(CARGO) build $(BUILD_JOBS) --release --bin $(APP) $(POSTGRES_FEATURES) --target-dir $(POSTGRES_TARGET_DIR)
+
+# Opt-in accelerated debug builds (Cranelift + mold); requires a nightly
+# toolchain. See AGENTS.md and tools/dev-fast/config.toml.
+DEV_FAST_CONFIG ?= tools/dev-fast/config.toml
+
+.PHONY: dev-build dev-test
+dev-build: ## Build debug binaries with Cranelift and mold
+	cargo --config "$(DEV_FAST_CONFIG)" build
+
+dev-test: ## Run tests with Cranelift and mold
+	cargo --config "$(DEV_FAST_CONFIG)" test
