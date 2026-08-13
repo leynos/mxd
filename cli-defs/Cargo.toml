@@ -9,7 +9,7 @@ workspace = true
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" }
+ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.8.0" }
 serde = { version = "1", features = ["derive"] }
 figment = { version = "0.10", features = ["env"] }
 uncased = "0.9"
