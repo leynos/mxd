@@ -54,12 +54,17 @@ extend-ignore-re = [
     "(?m)^\\s*types: \\[opened, reopened, synchronize, labeled, ready_for_review\\]$",
     "(?m)^\\s*value: \\$\\{\\{ jobs\\.metadata\\.outputs\\.should_upload_workflow_artifacts \\}\\}$",
     "(?s)```.*?```",
+    "-fuse-ld=mold",
+    "Cranelift \\+ mold",
+    "Cranelift and mold",
     "DataFlavor",
     "FILP",
     "TRAK",
     "\\brust-analyzer\\b",
     "`[^`\\n]+`",
+    "`mold`",
     "data_flavor",
+    "mold linker",
     "read may successed later",
 ]
 
