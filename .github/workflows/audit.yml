@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@1014f0ce1621506ca5fa66b596ed88ec30774cce
+      - uses: leynos/shared-actions/.github/actions/setup-rust@57a33fa65e329db7edc81ece661f1a2e1d39868f
       - name: Install cargo-audit
         run: cargo binstall --no-confirm cargo-audit
       - name: Audit dependencies
