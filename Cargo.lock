@@ -581,7 +581,7 @@ dependencies = [
  "clap",
  "figment",
  "figment-json5",
- "ortho_config 0.3.0",
+ "ortho_config 0.9.0",
  "rstest",
  "serde",
  "serde_yaml",
@@ -2458,7 +2458,7 @@ dependencies = [
  "figment-json5",
  "futures-util",
  "kani",
- "ortho_config 0.3.0",
+ "ortho_config 0.9.0",
  "paste",
  "pg-embed-setup-unpriv",
  "postgresql_embedded",
@@ -2677,23 +2677,6 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ortho_config"
-version = "0.3.0"
-source = "git+https://github.com/leynos/ortho-config?tag=v0.3.0#3e9c63387d101acab64d600c926a5a941767275b"
-dependencies = [
- "clap",
- "clap-dispatch",
- "directories",
- "figment",
- "ortho_config_macros 0.3.0",
- "serde",
- "thiserror 1.0.69",
- "toml 0.8.23",
- "uncased",
- "xdg",
-]
-
-[[package]]
-name = "ortho_config"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b8b9c66f5679fdb6653199c56aff45307cff6da9b0b65cf15cce1e7c18693a"
@@ -2718,13 +2701,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "ortho_config_macros"
-version = "0.3.0"
-source = "git+https://github.com/leynos/ortho-config?tag=v0.3.0#3e9c63387d101acab64d600c926a5a941767275b"
+name = "ortho_config"
+version = "0.9.0"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.9.0#9fba1ed061bbfaeecaa1fb0ea81881e55fbac474"
 dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
+ "camino",
+ "cap-std 4.0.2",
+ "clap",
+ "clap-dispatch",
+ "directories",
+ "dirs 5.0.1",
+ "dunce",
+ "figment",
+ "fluent-bundle",
+ "fluent-syntax",
+ "ortho_config_macros 0.9.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "toml 1.1.0+spec-1.1.0",
+ "tracing",
+ "uncased",
+ "unic-langid",
+ "xdg",
 ]
 
 [[package]]
@@ -2732,6 +2731,17 @@ name = "ortho_config_macros"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a617081116c2b82c642121f241737fab8d8b8456ae4cd5a001799e7402d9f120"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "ortho_config_macros"
+version = "0.9.0"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.9.0#9fba1ed061bbfaeecaa1fb0ea81881e55fbac474"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -4024,9 +4034,9 @@ dependencies = [
 
 [[package]]
 name = "serde_spanned"
-version = "1.0.3"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e24345aa0fe688594e73770a5f6d1b216508b4f93484c0026d521acd30134392"
+checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
 dependencies = [
  "serde_core",
 ]
@@ -4090,9 +4100,9 @@ dependencies = [
 
 [[package]]
 name = "serial_test"
-version = "4.0.1"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6df5ed973ad8d834e09f824f9e9f449af6b9a3745f78dec7cc752770bd3bf11"
+checksum = "699f4197115b8a7e7ff19c9a315a4bd6fffec26cc4626ef45ecaea389e081c6d"
 dependencies = [
  "fslock",
  "futures-executor",
@@ -4105,13 +4115,13 @@ dependencies = [
 
 [[package]]
 name = "serial_test_derive"
-version = "4.0.1"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a22144e767da4ddd8416dbf383700542ffd8a5dc493dfecedfe1fe3ad03c98ae"
+checksum = "94e153fc76e1c6a068703d6d29c508a0b15c061c4b7e43da59cc097bc342673c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -4773,11 +4783,26 @@ checksum = "f0dc8b1fb61449e27716ec0e1bdf0f6b8f3e8f6b05391e8497b8b6d7804ea6d8"
 dependencies = [
  "indexmap 2.12.0",
  "serde_core",
- "serde_spanned 1.0.3",
+ "serde_spanned 1.1.1",
  "toml_datetime 0.7.3",
  "toml_parser",
  "toml_writer",
- "winnow",
+ "winnow 0.7.13",
+]
+
+[[package]]
+name = "toml"
+version = "1.1.0+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8195ca05e4eb728f4ba94f3e3291661320af739c4e43779cbdfae82ab239fcc"
+dependencies = [
+ "indexmap 2.12.0",
+ "serde_core",
+ "serde_spanned 1.1.1",
+ "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 1.0.4",
 ]
 
 [[package]]
@@ -4799,6 +4824,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml_datetime"
+version = "1.1.1+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "toml_edit"
 version = "0.22.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4809,7 +4843,7 @@ dependencies = [
  "serde_spanned 0.6.9",
  "toml_datetime 0.6.11",
  "toml_write",
- "winnow",
+ "winnow 0.7.13",
 ]
 
 [[package]]
@@ -4821,16 +4855,16 @@ dependencies = [
  "indexmap 2.12.0",
  "toml_datetime 0.7.3",
  "toml_parser",
- "winnow",
+ "winnow 0.7.13",
 ]
 
 [[package]]
 name = "toml_parser"
-version = "1.0.4"
+version = "1.1.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0cbe268d35bdb4bb5a56a2de88d0ad0eb70af5384a99d648cd4b3d04039800e"
+checksum = "1d38ac1cf9b95face32296c0a3ede1fdc270627c9d9c02a7274dd6d960dc4d56"
 dependencies = [
- "winnow",
+ "winnow 1.0.4",
 ]
 
 [[package]]
@@ -4841,9 +4875,9 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "toml_writer"
-version = "1.0.4"
+version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df8b2b54733674ad286d16267dcfc7a71ed5c776e4ac7aa3c3e2561f7c637bf2"
+checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "tower"
@@ -5853,6 +5887,12 @@ checksum = "21a0236b59786fed61e2a80582dd500fe61f18b5dca67a4a067d0bc9039339cf"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "winnow"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "winx"
