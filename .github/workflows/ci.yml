@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: '3.14'
       - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - name: Set up Rust for Merman
         run: rustup toolchain install 1.95.0
       - name: Cache Merman CLI
@@ -89,7 +89,7 @@ jobs:
       WHITAKER_INSTALLER_VERSION: '0.2.6'
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@57a33fa65e329db7edc81ece661f1a2e1d39868f
+      - uses: leynos/shared-actions/.github/actions/setup-rust@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
         with:
           install-postgres-deps: ${{ matrix.install_postgres_deps }}
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
@@ -168,7 +168,7 @@ jobs:
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@57a33fa65e329db7edc81ece661f1a2e1d39868f
+      - uses: leynos/shared-actions/.github/actions/setup-rust@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
         with:
           install-sqlite-deps: true
       - name: Cache Cargo directories
@@ -222,7 +222,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-      - uses: leynos/shared-actions/.github/actions/setup-rust@57a33fa65e329db7edc81ece661f1a2e1d39868f
+      - uses: leynos/shared-actions/.github/actions/setup-rust@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
@@ -242,7 +242,7 @@ jobs:
           fi
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@v2.85.11
+      - uses: taiki-e/install-action@v2.86.1
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
@@ -255,7 +255,7 @@ jobs:
       # on main, which every PR run can restore; baselines saved here
       # stay scoped to the PR branch.
       - name: Generate coverage for SQLite
-        uses: leynos/shared-actions/.github/actions/generate-coverage@57a33fa65e329db7edc81ece661f1a2e1d39868f
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
@@ -265,7 +265,7 @@ jobs:
           artefact-name-suffix: sqlite
           with-ratchet: 'true'
       - name: Generate coverage for Postgres
-        uses: leynos/shared-actions/.github/actions/generate-coverage@57a33fa65e329db7edc81ece661f1a2e1d39868f
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
           POSTGRES_TEST_URL: postgres://postgres:password@127.0.0.1/test
@@ -286,7 +286,7 @@ jobs:
         env:
           CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
         if: env.CS_ACCESS_TOKEN != ''
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@57a33fa65e329db7edc81ece661f1a2e1d39868f
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
         with:
           format: lcov
           mode: check
