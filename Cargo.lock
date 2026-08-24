@@ -280,12 +280,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bincode"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6a120d2e16b3e1b4a24bd70f23b12d3e16b81f113364a26935f8db7245452d"
-
-[[package]]
 name = "bincode_derive"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -565,9 +559,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clap_mangen"
-version = "0.3.3"
+version = "0.2.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "211d617eaa4b735c96c9e0228fcbdb5120ef623f2b8cb67ffb84c3e02dbc28a4"
+checksum = "7e30ffc187e2e3aeafcd1c6e2aa416e29739454c0ccaa419226d5ecd181f2d78"
 dependencies = [
  "clap",
  "roff",
@@ -2440,7 +2434,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "async-trait",
- "bincode 3.0.0",
+ "bincode",
  "bitflags 2.13.1",
  "bytes",
  "camino",
@@ -2476,7 +2470,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
- "toml 0.8.23",
+ "toml 0.9.8",
  "tracing",
  "uncased",
  "url",
@@ -4090,9 +4084,9 @@ dependencies = [
 
 [[package]]
 name = "serial_test"
-version = "4.0.1"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6df5ed973ad8d834e09f824f9e9f449af6b9a3745f78dec7cc752770bd3bf11"
+checksum = "699f4197115b8a7e7ff19c9a315a4bd6fffec26cc4626ef45ecaea389e081c6d"
 dependencies = [
  "fslock",
  "futures-executor",
@@ -4105,13 +4099,13 @@ dependencies = [
 
 [[package]]
 name = "serial_test_derive"
-version = "4.0.1"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a22144e767da4ddd8416dbf383700542ffd8a5dc493dfecedfe1fe3ad03c98ae"
+checksum = "94e153fc76e1c6a068703d6d29c508a0b15c061c4b7e43da59cc097bc342673c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -5871,7 +5865,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae7ba1b82771f0428551e3d19c8578521cc77c73dda66746e1e4ae5986d8a7c6"
 dependencies = [
  "async-trait",
- "bincode 2.0.1",
+ "bincode",
  "bytes",
  "dashmap",
  "derive_more 2.0.1",
