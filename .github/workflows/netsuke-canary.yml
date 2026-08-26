@@ -1,0 +1,61 @@
+name: Netsuke v0.1.0 release-admission canary
+
+on:
+  push:
+    branches: [issue-598-v010-netsuke-canary]
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [check-fmt, lint-postgres, lint-sqlite, lint-wireframe-only, test-postgres, test-sqlite, test-wireframe-only]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: leynos/shared-actions/.github/actions/setup-rust@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
+        with:
+          install-postgres-deps: ${{ matrix.target == 'lint-postgres' || matrix.target == 'test-postgres' }}
+          install-sqlite-deps: ${{ matrix.target != 'lint-postgres' && matrix.target != 'test-postgres' }}
+      - name: Install cargo-nextest
+        if: startsWith(matrix.target, 'test-')
+        run: cargo binstall --locked --no-confirm cargo-nextest
+      - name: Export PostgreSQL test connection
+        if: matrix.target == 'test-postgres'
+        uses: ./.github/actions/export-postgres-url
+        with:
+          url: postgres://postgres:password@127.0.0.1/test
+      - name: Install the pinned Netsuke candidate
+        id: netsuke
+        uses: leynos/netsuke/.github/actions/install-release-candidate@ba0f87cd9e518ed81a5eb32709d8f2a65dae4124
+        with:
+          revision: ba0f87cd9e518ed81a5eb32709d8f2a65dae4124
+          expected-version: 0.1.0-beta2
+      - name: Run the selected feature lane
+        shell: bash
+        run: |
+          set +e
+          "${{ steps.netsuke.outputs.binary }}" build "${{ matrix.target }}"
+          status=$?
+          printf '{"repository":"leynos/mxd","downstream_revision":"%s","netsuke_revision":"%s","netsuke_version":"%s","target":"%s","platform":"%s","status":%s}\n' \
+            "$GITHUB_SHA" "${{ steps.netsuke.outputs.revision }}" "${{ steps.netsuke.outputs.version }}" "${{ matrix.target }}" "$RUNNER_OS" "$status"
+          exit "$status"

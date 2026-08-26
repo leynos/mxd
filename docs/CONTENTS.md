@@ -13,6 +13,8 @@ Start here for newcomers to the project.
   and using administrative commands.
 - [`developers-guide.md`](developers-guide.md) — Developer workflow, quality
   gates, and local setup.
+- [`netsuke-release-canary.md`](netsuke-release-canary.md) — Pinned v0.1.0
+  downstream feature-lane migration canary.
 
 ## Understanding the architecture
 

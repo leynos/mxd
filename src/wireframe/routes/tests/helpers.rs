@@ -184,7 +184,6 @@ pub(super) fn find_string(
     Ok(text.to_owned())
 }
 
-#[expect(clippy::big_endian_bytes, reason = "network protocol")]
 /// Locate a field in parameters and decode it as a big-endian `i32`.
 ///
 /// # Parameters
@@ -196,6 +195,7 @@ pub(super) fn find_string(
 ///
 /// Returns an error if the field is missing or the payload is not a 4-byte
 /// big-endian integer.
+#[expect(clippy::big_endian_bytes, reason = "network protocol")]
 pub(super) fn find_i32(params: &[(FieldId, Vec<u8>)], field_id: FieldId) -> Result<i32, AnyError> {
     let bytes = params
         .iter()

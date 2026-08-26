@@ -1,0 +1,21 @@
+netsuke_version: "1.0.0"
+
+actions:
+  - name: check-fmt
+    command: "cargo fmt --all -- --check"
+  - name: lint-postgres
+    command: "RUSTFLAGS='-D warnings' cargo clippy --no-default-features --features 'postgres test-support legacy-networking' --workspace --all-targets -- -D warnings"
+  - name: lint-sqlite
+    command: "RUSTFLAGS='-D warnings' cargo clippy --features 'sqlite test-support' --workspace --all-targets -- -D warnings"
+  - name: lint-wireframe-only
+    command: "RUSTFLAGS='-D warnings' cargo clippy --no-default-features --features 'sqlite toml test-support' --workspace --all-targets -- -D warnings"
+  - name: test-postgres
+    command: "RUSTFLAGS='-D warnings' cargo nextest run --no-default-features --features 'postgres test-support legacy-networking' --filter-expr 'not package(=validator)'"
+  - name: test-sqlite
+    command: "RSTEST_TIMEOUT=20 RUSTFLAGS='-D warnings' cargo nextest run --features 'sqlite test-support' --filter-expr 'not package(=validator)'"
+  - name: test-wireframe-only
+    command: "RSTEST_TIMEOUT=20 RUSTFLAGS='-D warnings' cargo nextest run --no-default-features --features 'sqlite toml test-support' --filter-expr 'not package(=validator)'"
+
+defaults: [check-fmt, lint-postgres, lint-sqlite, lint-wireframe-only, test-postgres, test-sqlite, test-wireframe-only]
+
+targets: []

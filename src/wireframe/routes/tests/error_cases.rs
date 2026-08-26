@@ -216,7 +216,7 @@ async fn process_transaction_bytes_truncated_input() {
 async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader {
     let pool = dummy_pool();
     let mut session = Session::default();
-    let peer = "127.0.0.1:12345".parse().expect("valid address");
+    let peer = std::net::SocketAddr::from(([127, 0, 0, 1], 12345));
     let messaging = NoopOutboundMessaging;
     let presence = PresenceRegistry::default();
     let router = test_router();
@@ -237,11 +237,13 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
         )
         .await;
 
-    FrameHeader::from_bytes(
-        result[..HEADER_LEN]
-            .try_into()
-            .expect("header slice should be exact size"),
-    )
+    assert!(
+        result.len() >= HEADER_LEN,
+        "response includes a frame header"
+    );
+    let mut header_bytes = [0; HEADER_LEN];
+    header_bytes.copy_from_slice(&result[..HEADER_LEN]);
+    FrameHeader::from_bytes(&header_bytes)
 }
 
 /// Tests that payload length mismatches preserve the original transaction ID.
