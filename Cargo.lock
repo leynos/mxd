@@ -404,9 +404,9 @@ dependencies = [
 
 [[package]]
 name = "cap-primitives"
-version = "4.0.2"
+version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdadbd7c002d3a484b35243669abdae85a0ebaded5a61117169dc3400f9a7ff0"
+checksum = "8b5f74729fd2f44701d1a8eb47e906cdb3ccd9ec0f02baad85a744b791940b18"
 dependencies = [
  "ambient-authority",
  "fs-set-times",
@@ -435,12 +435,12 @@ dependencies = [
 
 [[package]]
 name = "cap-std"
-version = "4.0.2"
+version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7281235d6e96d3544ca18bba9049be92f4190f8d923e3caef1b5f66cfa752608"
+checksum = "c1ec78e242cfa2cfe276807ac2ecc00315a6c97786977414bcd1c3963b6c91b8"
 dependencies = [
  "camino",
- "cap-primitives 4.0.2",
+ "cap-primitives 4.0.3",
  "io-extras 0.19.0",
  "io-lifetimes 3.0.1",
  "rustix",
@@ -2438,7 +2438,7 @@ dependencies = [
  "bitflags 2.13.1",
  "bytes",
  "camino",
- "cap-std 4.0.2",
+ "cap-std 4.0.3",
  "cfg-if",
  "chrono",
  "clap",
@@ -2457,7 +2457,7 @@ dependencies = [
  "pg-embed-setup-unpriv",
  "postgresql_embedded",
  "proptest",
- "rand 0.10.2",
+ "rand 0.9.5",
  "rstest",
  "rstest-bdd",
  "rstest-bdd-macros",
@@ -2916,7 +2916,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3331937f47bb304d7aa1c3337c4ac52fdd9db5063c399a3e4dad5ecec274b72"
 dependencies = [
  "camino",
- "cap-std 4.0.2",
+ "cap-std 4.0.3",
  "clap",
  "color-eyre",
  "dashmap",
@@ -4084,9 +4084,9 @@ dependencies = [
 
 [[package]]
 name = "serial_test"
-version = "4.0.1"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6df5ed973ad8d834e09f824f9e9f449af6b9a3745f78dec7cc752770bd3bf11"
+checksum = "699f4197115b8a7e7ff19c9a315a4bd6fffec26cc4626ef45ecaea389e081c6d"
 dependencies = [
  "fslock",
  "futures-executor",
@@ -4099,13 +4099,13 @@ dependencies = [
 
 [[package]]
 name = "serial_test_derive"
-version = "4.0.1"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a22144e767da4ddd8416dbf383700542ffd8a5dc493dfecedfe1fe3ad03c98ae"
+checksum = "94e153fc76e1c6a068703d6d29c508a0b15c061c4b7e43da59cc097bc342673c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 2.0.119",
 ]
 
 [[package]]
