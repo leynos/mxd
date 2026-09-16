@@ -33,6 +33,14 @@ ifeq ($(WHITAKER_PATH),)
   endif
 endif
 MDLINT ?= markdownlint-cli2
+# `make fmt` and `make check-fmt` call mdtablefix directly. `--git` selects the
+# Markdown files Git tracks and `--include-untracked` adds the untracked files
+# Git does not ignore, so a new document is formatted before it is staged.
+# Both modes need mdtablefix 0.6.0 or later; CI pins the version at the
+# install-mdtablefix step.
+MDTABLEFIX ?= mdtablefix
+MDTABLEFIX_SELECT = --git --include-untracked
+MDTABLEFIX_RULES = --wrap --renumber --breaks --ellipsis --fences
 MDLINT_FALLBACK := $(HOME)/.bun/bin/markdownlint-cli2
 ifneq ($(wildcard $(MDLINT_FALLBACK)),)
   ifneq ($(shell command -v $(MDLINT) >/dev/null 2>&1; echo $$?),0)
@@ -88,10 +96,12 @@ corpus: ## Generate the fuzzing corpus
 
 fmt: ## Format Rust and Markdown sources
 	$(CARGO) fmt --all
-	mdformat-all
+	$(MDTABLEFIX) --in-place $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
+	@unset FORCE_COLOR; $(MDLINT) --fix "**/*.md"
 
-check-fmt: ## Verify formatting for Rust sources
+check-fmt: ## Verify formatting for Rust and Markdown sources
 	$(CARGO) fmt --all -- --check
+	$(MDTABLEFIX) --check $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
 
 typecheck: typecheck-postgres typecheck-sqlite typecheck-wireframe-only ## Run cargo check for all feature sets
 
