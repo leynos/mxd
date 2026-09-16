@@ -99,7 +99,7 @@ fmt: ## Format Rust and Markdown sources
 	$(MDTABLEFIX) --in-place $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
 	@unset FORCE_COLOR; $(MDLINT) --fix "**/*.md"
 
-check-fmt: ## Verify formatting for Rust sources
+check-fmt: ## Verify formatting for Rust and Markdown sources
 	$(CARGO) fmt --all -- --check
 	$(MDTABLEFIX) --check $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
 

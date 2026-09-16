@@ -1,9 +1,9 @@
+# Implementing a Hotline-Style File Sharing Component (Developer Guide)
+
 <!-- markdownlint-disable MD029 -->
 <!-- The deeply nested ordered lists below interleave fenced blocks and
      bullet sub-lists; mdtablefix numbers them as one list while markdownlint
      reads them as several, so MD029 is disabled for this document. -->
-
-# Implementing a Hotline-Style File Sharing Component (Developer Guide)
 
 ## Introduction
 
