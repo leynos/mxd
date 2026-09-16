@@ -1,3 +1,8 @@
+<!-- markdownlint-disable MD029 -->
+<!-- The deeply nested ordered lists below interleave fenced blocks and
+     bullet sub-lists; mdtablefix numbers them as one list while markdownlint
+     reads them as several, so MD029 is disabled for this document. -->
+
 # Implementing a Hotline-Style File Sharing Component (Developer Guide)
 
 ## Introduction
@@ -673,7 +678,7 @@ interrupted. The steps:
    uploads parts in parallel or sequentially as needed. This ensures the upload
    is efficient and can handle large files without memory bloat.
 
-1. **Resumable Upload:** If the client indicated a resume (Hotline uses a *File
+5. **Resumable Upload:** If the client indicated a resume (Hotline uses a *File
    resume data* field in the server's reply to an upload request to tell the
    client where to resume), the server needs to handle interrupted uploads. One
    approach: when an upload is interrupted, the system keeps the DB entry
@@ -731,7 +736,7 @@ interrupted. The steps:
    complexity, but the design acknowledges the need and outlines a solution
    (track bytes received, client only sends remainder, use multi-part append).
 
-1. **Finalize and Commit:** Once all bytes are received and the multipart upload
+6. **Finalize and Commit:** Once all bytes are received and the multipart upload
    is finished successfully (which atomically creates the object in the store),
    the implementation updates the database. If the implementation deferred
    inserting the FileNode, insert it now; if the implementation inserted
@@ -740,7 +745,7 @@ interrupted. The steps:
    the comment extracted from the info fork. The file is now available for
    others to download.
 
-2. **Response:** The server sends a confirmation. In Hotline protocol, the
+7. **Response:** The server sends a confirmation. In Hotline protocol, the
    client might not get a special “upload succeeded” message except maybe a
    generic success or an updated file list broadcast. In the case, the
    implementation can simply return a success status on the control connection.
@@ -842,7 +847,7 @@ and a move to a different folder via MoveFile. The implementation handles both:
       movement. This is exactly why flat key mapping was chosen. In the design,
       *no object store operation is needed for a metadata move*.
 
-  1. **Permissions:** If the item had specific ACL entries, the implementation
+  4. **Permissions:** If the item had specific ACL entries, the implementation
      might consider
      whether to transfer or update them if moving across different sections.
      Typically, the ACL entries move along with the item (since they are tied to
@@ -853,7 +858,7 @@ and a move to a different folder via MoveFile. The implementation handles both:
      from under a protected area, it remains a dropbox unless changed. This is
      all left to admin policy; the system just moves the node.
 
-  2. **Object Store:** As noted, no direct action required if keys are
+  5. **Object Store:** As noted, no direct action required if keys are
     unchanged. If the implementation did need to rename keys (path-coupled keys
     design), it would have to: for a single file, use
     `object_store.copy(src, dst)` if
@@ -861,7 +866,7 @@ and a move to a different folder via MoveFile. The implementation handles both:
      for a folder, iterate through all descendant files and do the same, which
      would be very slow and prone to failure mid-way. Avoided in this approach.
 
-  3. **Result:** Notify success. The client will likely refresh the old and new
+  6. **Result:** Notify success. The client will likely refresh the old and new
      locations in its UI.
 
 - **Rename / Set Info (207):** Renaming a file or folder within the same parent
@@ -1010,7 +1015,7 @@ will follow the same general approach:
      those two numbers
      (and a reference number as usual for the forthcoming transfer).
 
-1. **Data Transfer Loop:** The client will connect on the data port (like with
+4. **Data Transfer Loop:** The client will connect on the data port (like with
    DownloadFile) and initiate the folder download transfer. The protocol
    involves a series of small request/response exchanges to send each file:
 
@@ -1063,7 +1068,7 @@ will follow the same general approach:
      processed. Finally, presumably, the implementation sends a termination or
      simply closes the connection.
 
-2. **Edge cases:** If the user doesn’t have access to certain files, the
+5. **Edge cases:** If the user doesn’t have access to certain files, the
    implementation might either skip them entirely (not counting in the initial
    count perhaps), or send them but expect the client can’t download them
    (Hotline likely wouldn’t include them if user couldn’t download
@@ -1071,7 +1076,7 @@ will follow the same general approach:
    the enumeration would filter out unauthorized files, adjusting the
    count/size accordingly.
 
-3. **Performance:** Downloading many files one-by-one can be slower than a
+6. **Performance:** Downloading many files one-by-one can be slower than a
    single archive. As an enhancement, one might offer to compress the folder
    server-side (e.g., create a zip on the fly). But that deviates from
    Hotline’s protocol. Following Hotline, the implementation does it

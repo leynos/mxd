@@ -16,6 +16,11 @@
     ".node_modules/**",
     "**/node_modules/**",
     "**/target/**",
-    "vendor/wireframe/**"
+    "vendor/wireframe/**",
+    ".vtcode/**",
+    ".terraform/**",
+    ".uv-cache/**",
+    "memories/**",
+    "CRUSH.md"
   ]
 }
