@@ -49,6 +49,7 @@ concurrency:
 jobs:
   metadata:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       version: ${{ steps.ensure_version.outputs.crate-version }}
       bin_name: ${{ steps.bin_name.outputs.bin-name }}
@@ -123,6 +124,7 @@ jobs:
       - metadata
       - build-linux
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
 
