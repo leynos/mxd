@@ -1,6 +1,6 @@
 //! Unit tests covering routing error paths and state scaffolding.
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use rstest::rstest;
 
@@ -213,10 +213,23 @@ async fn process_transaction_bytes_truncated_input() {
     assert_eq!(reply_header.error, ERR_INTERNAL);
 }
 
-async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader {
+/// Route one transaction and return the reply's header.
+///
+/// # Parameters
+///
+/// * `header` - Header of the transaction to route.
+/// * `payload` - Payload bytes to accompany it.
+///
+/// # Errors
+///
+/// Returns an error if the fixed peer address does not parse, or if the reply
+/// is shorter than a header. Arranging a test can fail, and a helper is not a
+/// test: the failure belongs to the caller, which is the test, rather than to
+/// a panic here that would name this function instead of the case.
+async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> anyhow::Result<FrameHeader> {
     let pool = dummy_pool();
     let mut session = Session::default();
-    let peer = "127.0.0.1:12345".parse().expect("valid address");
+    let peer: SocketAddr = "127.0.0.1:12345".parse()?;
     let messaging = NoopOutboundMessaging;
     let presence = PresenceRegistry::default();
     let router = test_router();
@@ -237,17 +250,17 @@ async fn assert_error_reply(header: FrameHeader, payload: &[u8]) -> FrameHeader 
         )
         .await;
 
-    FrameHeader::from_bytes(
-        result[..HEADER_LEN]
-            .try_into()
-            .expect("header slice should be exact size"),
-    )
+    let reply_header: &[u8; HEADER_LEN] = result
+        .get(..HEADER_LEN)
+        .ok_or_else(|| anyhow::anyhow!("reply shorter than a header: {} bytes", result.len()))?
+        .try_into()?;
+    Ok(FrameHeader::from_bytes(reply_header))
 }
 
 /// Tests that payload length mismatches preserve the original transaction ID.
 #[rstest]
 #[tokio::test]
-async fn process_transaction_bytes_preserves_id_on_payload_mismatch() {
+async fn process_transaction_bytes_preserves_id_on_payload_mismatch() -> anyhow::Result<()> {
     let header = FrameHeader {
         flags: 0,
         is_reply: 0,
@@ -257,16 +270,17 @@ async fn process_transaction_bytes_preserves_id_on_payload_mismatch() {
         total_size: 4,
         data_size: 4,
     };
-    let reply_header = assert_error_reply(header, &[]).await;
+    let reply_header = assert_error_reply(header, &[]).await?;
     assert_eq!(reply_header.id, 4242);
     assert_eq!(reply_header.ty, 200);
     assert_eq!(reply_header.error, ERR_INTERNAL);
+    Ok(())
 }
 
 /// Tests that unknown transaction type returns error code 3.
 #[rstest]
 #[tokio::test]
-async fn process_transaction_bytes_unknown_type() {
+async fn process_transaction_bytes_unknown_type() -> anyhow::Result<()> {
     // Create a transaction with unknown type (65535).
     let header = FrameHeader {
         flags: 0,
@@ -277,8 +291,9 @@ async fn process_transaction_bytes_unknown_type() {
         total_size: 0,
         data_size: 0,
     };
-    let reply_header = assert_error_reply(header, &[]).await;
+    let reply_header = assert_error_reply(header, &[]).await?;
     assert_eq!(reply_header.is_reply, 1);
     assert_eq!(reply_header.id, 123, "transaction ID should be preserved");
     assert_eq!(reply_header.error, ERR_UNKNOWN_TYPE);
+    Ok(())
 }
