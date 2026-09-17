@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling spelling-config spelling-config-write spelling-phrase-check spelling-helper-test
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling spelling-config spelling-config-write spelling-phrase-check spelling-helper-test test-workflow-contracts
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -61,6 +61,8 @@ TYPOS_CONFIG_BUILDER := $(UV_ENV) $(UV) tool run --python 3.14 \
 	--from "$(TYPOS_CONFIG_BUILDER_SOURCE)" typos-config-builder
 SPELLING_PY_SRCS := \
 	scripts/typos_rollout_check.py scripts/tests/test_typos_rollout_check.py
+PYYAML_VERSION ?= 6.0.3
+WORKFLOW_CONTRACT_SRCS := $(wildcard tests/workflow_contracts/*.py)
 SPELLING_PY_TESTS := scripts/tests/test_typos_rollout_check.py
 SPELLING_COVERAGE_ARGS := --cov=typos_rollout_check --cov-fail-under=90
 SPELLING_HELPER_PYTEST = PYTHONPATH=scripts $(UV_ENV) $(UV) run --no-project \
@@ -102,6 +104,14 @@ fmt: ## Format Rust and Markdown sources
 check-fmt: ## Verify formatting for Rust and Markdown sources
 	$(CARGO) fmt --all -- --check
 	$(MDTABLEFIX) --check $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
+
+test-workflow-contracts: ## Assert the CI workflows place and gate what they claim
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(WORKFLOW_CONTRACT_SRCS)
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(WORKFLOW_CONTRACT_SRCS)
+	@PYTHONPATH=tests/workflow_contracts $(UV_ENV) $(UV) run --no-project \
+		--python 3.14 --with pytest==9.0.2 --with pyyaml==$(PYYAML_VERSION) \
+		python -m pytest tests/workflow_contracts -c /dev/null --rootdir=. \
+		-p no:cacheprovider
 
 typecheck: typecheck-postgres typecheck-sqlite typecheck-wireframe-only ## Run cargo check for all feature sets
 
