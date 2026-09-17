@@ -19,6 +19,7 @@ the job to any runner it liked, which is the defect worth catching.
 
 from __future__ import annotations
 
+import re
 import typing as typ
 
 import pytest
@@ -55,17 +56,26 @@ PLACEMENT_FROM_INPUT: typ.Final[cabc.Mapping[tuple[str, str], str]] = {
     ("build-and-package.yml", "build"): "runner",
 }
 
-# Every reusable-workflow call, with the workflow it calls. Pinned so that a
-# new call cannot appear without a decision about where its work lands, and so
-# that a pinned ref cannot be swapped for a branch unnoticed.
+# Every reusable-workflow call, with the workflow it calls. The identity is
+# pinned; the ref deliberately is not. A Dependabot bump moving a pin forward
+# is a decision this repository already makes elsewhere, and a contract
+# naming the SHA would redden every such pull request and teach people to edit
+# the contract to make a bump pass, which is the habit worth avoiding.
+#
+# What is asserted instead is that an external call is pinned to a commit at
+# all. A ref that is a branch or a tag is the substantive defect: it moves
+# under the workflow without any pull request at all.
 PINNED_CALLS: typ.Final[cabc.Mapping[tuple[str, str], str]] = {
     ("dependabot-automerge.yml", "automerge"): (
         "leynos/shared-actions/.github/workflows/dependabot-automerge.yml"
-        "@95e90ba9e33eaeb3c8b4bf6ed1dbe1d7184ee710"
     ),
     ("release-dry-run.yml", "release"): "./.github/workflows/release.yml",
     ("release.yml", "build-linux"): "./.github/workflows/build-and-package.yml",
 }
+
+# A 40-character lower-case hexadecimal commit, which is the only ref that
+# cannot move under the workflow that names it.
+COMMIT_REF: typ.Final = re.compile(r"^[0-9a-f]{40}$")
 
 # Ceilings, in minutes. Sized as the estate sizes them: about twice the worst
 # observed successful duration plus a quarter of an hour of reporting margin.
@@ -190,12 +200,42 @@ def test_the_caller_sends_the_package_build_to_a_pinned_runner(
 def test_every_call_is_pinned_and_every_pin_is_a_call(
     documents: cabc.Mapping[str, cabc.Mapping[str, object]],
 ) -> None:
-    """The set of reusable-workflow calls is exactly the pinned set."""
-    declared = {record.coordinate: record.calls for record in call_records(documents)}
+    """The set of reusable-workflow calls is exactly the pinned set.
+
+    Compared on the workflow's identity with any ref stripped, so that moving
+    a pin forward is not a contract failure while calling somewhere new is.
+    """
+    declared = {
+        record.coordinate: record.calls.split("@", 1)[0]
+        for record in call_records(documents)
+    }
     assert declared == dict(PINNED_CALLS), (
         f"calls declared {sorted(declared.items())}, "
         f"pinned {sorted(PINNED_CALLS.items())}"
     )
+
+
+def test_every_call_outside_this_repository_names_a_commit(
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> None:
+    """An external call is pinned to a commit, never to a branch or a tag.
+
+    A call to a path in this repository carries no ref and needs none: it is
+    the tree under review. A call to another repository is a different matter.
+    A branch ref moves under the workflow with no pull request here at all, so
+    a lane could change what it runs between two identical trees, and a tag can
+    be moved in place.
+    """
+    external = [
+        record for record in call_records(documents) if not record.calls.startswith(".")
+    ]
+    assert external, "expected at least one call outside this repository"
+    unpinned = [
+        (record.coordinate, record.calls)
+        for record in external
+        if COMMIT_REF.match(record.calls.partition("@")[2]) is None
+    ]
+    assert not unpinned, f"calls not pinned to a commit: {unpinned}"
 
 
 def test_every_job_has_a_pinned_ceiling(
