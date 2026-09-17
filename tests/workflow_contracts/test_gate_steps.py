@@ -14,6 +14,13 @@ worse than having no step at all, because the absence would be noticed.
 A condition is judged by key presence rather than by value, because a reader
 that coerced ``if`` to text would report the YAML boolean ``false`` as an empty
 string and call the step unconditional.
+
+The lockfile gate is here for the same reason as the rest. `cargo metadata
+--locked` is the only command that refuses a `Cargo.lock` the manifest does not
+admit; every other cargo invocation is free to rewrite the lockfile and will
+quietly resolve the mismatch away. Three Dependabot pull requests have moved a
+dependency across a major boundary in `Cargo.lock` alone, and each time `main`
+carried a lockfile nothing built from until somebody ran cargo.
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ if typ.TYPE_CHECKING:
 
 # Each gate, as (workflow, job, the whole run body the step must carry).
 PINNED_GATES: typ.Final[tuple[tuple[str, str, str], ...]] = (
+    ("ci.yml", "build-test", "make check-locked"),
     ("ci.yml", "build-test", "make check-fmt"),
     ("ci.yml", "docs-tooling", "make test-workflow-contracts"),
     ("ci.yml", "docs-tooling", "make spelling"),
@@ -103,4 +111,29 @@ def test_a_gate_runs_and_its_verdict_is_kept(
         f"{command!r} and which carry neither if nor continue-on-error; "
         f"expected exactly one. Steps present: "
         f"{[step.run for step in job.steps if step.run is not None]}"
+    )
+
+
+def test_the_lockfile_gate_precedes_every_command_that_could_rewrite_it(
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> None:
+    """The lockfile check runs before anything that resolves the lockfile.
+
+    Placed after a build it would assert a file that build had already
+    rewritten, which is the one arrangement in which the gate reads as green
+    while the defect it exists for is present in the tree under review.
+    """
+    job = job_by_coordinate("ci.yml", "build-test", documents)
+    (gate,) = _gating_steps(job, "make check-locked")
+    resolving = tuple(
+        step.index
+        for step in job.steps
+        if step.run is not None
+        and step.index != gate
+        and ("cargo " in step.run or "make " in step.run)
+    )
+    assert resolving, "expected build-test to run cargo at all"
+    assert gate < min(resolving), (
+        f"make check-locked runs at step {gate}, after a command at step "
+        f"{min(resolving)} that may have rewritten the lockfile first"
     )

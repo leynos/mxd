@@ -100,6 +100,11 @@ jobs:
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
       - name: Cache Cargo directories
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # Before anything long runs: a lockfile the manifest does not admit is a
+      # tree nothing here builds from, and every later step would silently
+      # re-resolve it instead of failing.
+      - name: Check the lockfile matches the manifest
+        run: make check-locked
       - name: Install cargo-nextest
         run: |
           if ! cargo nextest --version >/dev/null 2>&1; then
