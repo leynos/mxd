@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -65,6 +65,8 @@ TYPOS_CONFIG_BUILDER = $(UV_ENV) $(UV) tool run --python 3.14 --from \
 # The tree the gate reads. Overridden only by the gate's own test, which runs
 # this very target against a fixture holding a prohibited phrase.
 SPELLING_ROOT ?= .
+PYYAML_VERSION ?= 6.0.3
+WORKFLOW_CONTRACT_SRCS := $(wildcard tests/workflow_contracts/*.py)
 TLC_RUNNER ?= ./scripts/run-tlc.sh
 TLC_IMAGE ?= ghcr.io/leynos/mxd/mxd-tlc:latest
 RSTEST_TIMEOUT ?= 20
@@ -101,6 +103,14 @@ fmt: ## Format Rust and Markdown sources
 check-fmt: ## Verify formatting for Rust and Markdown sources
 	$(CARGO) fmt --all -- --check
 	$(MDTABLEFIX) --check $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
+
+test-workflow-contracts: ## Assert the CI workflows place and gate what they claim
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(WORKFLOW_CONTRACT_SRCS)
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(WORKFLOW_CONTRACT_SRCS)
+	@PYTHONPATH=tests/workflow_contracts $(UV_ENV) $(UV) run --no-project \
+		--python 3.14 --with pytest==9.0.2 --with pyyaml==$(PYYAML_VERSION) \
+		python -m pytest tests/workflow_contracts -c /dev/null --rootdir=. \
+		-p no:cacheprovider
 
 typecheck: typecheck-postgres typecheck-sqlite typecheck-wireframe-only ## Run cargo check for all feature sets
 

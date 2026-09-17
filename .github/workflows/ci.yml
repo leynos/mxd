@@ -35,6 +35,8 @@ jobs:
         run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Install Nixie
         run: uv tool install nixie-cli==1.1.0
+      - name: Assert the workflow contracts
+        run: make test-workflow-contracts
       - name: Enforce en-GB-oxendict spelling
         run: make spelling
       # A clean checkout passes the gate whether or not it enforces anything,
