@@ -850,6 +850,15 @@ new lane appear unpinned; in the other it lets a pin outlive the lane it named,
 so a rename leaves the pin reading and the lane running with nothing between
 them.
 
+A call is compared on the workflow it names, with any ref stripped, and a call
+to another repository is separately required to name a forty-character commit.
+Moving a pin forward is a decision this repository already makes through
+Dependabot, and a contract naming the commit would redden every such pull
+request and teach people to edit the contract to make a bump pass. A branch or
+tag ref is the defect worth refusing: it moves under the workflow with no pull
+request here at all, so a lane can change what it runs between two identical
+trees.
+
 **The placement is pinned where it is decided.** `build-and-package.yml` takes
 its label from `inputs.runner`, so its own file decides nothing. `release.yml`'s
 `build-linux` passes the label, and that is where the contract reads it. A
