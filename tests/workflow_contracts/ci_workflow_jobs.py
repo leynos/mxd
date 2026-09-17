@@ -1,4 +1,4 @@
-"""Job and step records parsed from this repository's CI workflows.
+"""Reading this repository's CI workflows into job, step and call records.
 
 A record keeps the distinctions a contract depends on. A condition is recorded
 as key presence rather than as a value, because a reader that coerced ``if`` to
@@ -12,7 +12,8 @@ refused: :class:`CallRecord` keeps the called workflow and the caller's
 contract reading the callee's own ``runs-on`` would pass while the caller sent
 the job to any runner it liked.
 
-Parsing primitives live in :mod:`ci_workflow_reader`. Nothing here touches the
+Parsing primitives live in :mod:`ci_workflow_reader` and where a job runs is
+read in :mod:`ci_workflow_placement`. Nothing here touches the
 filesystem or the YAML parser: every function takes parsed documents, which a
 caller obtains from :func:`ci_workflow_reader.repository_documents` or builds
 itself. A query that loaded the repository when its argument was omitted would
@@ -21,10 +22,10 @@ put a second, invisible route through the boundary the reader owns.
 
 from __future__ import annotations
 
-import dataclasses as dc
-import re
 import typing as typ
 
+from ci_workflow_placement import runner_placement
+from ci_workflow_records import CallRecord, JobRecord, StepRecord
 from ci_workflow_reader import (
     WorkflowShapeError,
     optional_text,
@@ -33,320 +34,6 @@ from ci_workflow_reader import (
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
-
-
-@dc.dataclass(frozen=True, slots=True)
-class StepRecord:
-    """One parsed workflow step.
-
-    Attributes
-    ----------
-    index
-        The step's position within its job, counted from zero. Contracts use
-        it to assert ordering, such as a cache restore preceding its save.
-    name
-        The step's ``name``, or ``None`` when it declares none.
-    identifier
-        The step's ``id``, or ``None``. A cache save's guard refers to its
-        restore step by this identifier.
-    uses
-        The step's ``uses`` coordinate and ref, or ``None`` for a ``run`` step.
-    run
-        The step's whole ``run`` body, or ``None`` for a ``uses`` step. It is
-        kept whole because whole-value equality is the only reading a wrapped
-        command cannot satisfy.
-    has_condition
-        Whether the step declares an ``if`` key at all. Presence, not value: a
-        reading that coerced ``if`` to text would report the YAML boolean
-        ``false`` as an empty string and call the step unconditional.
-    has_continue_on_error
-        Whether the step declares ``continue-on-error``, which discards the
-        step's verdict rather than skipping it.
-    condition
-        The declared condition rendered as text, or ``None`` when absent. Used
-        where a contract pins a legitimate condition verbatim.
-    with_values
-        The step's ``with`` mapping, empty when it declares none.
-    """
-
-    index: int
-    name: str | None
-    identifier: str | None
-    uses: str | None
-    run: str | None
-    has_condition: bool
-    has_continue_on_error: bool
-    condition: str | None
-    with_values: cabc.Mapping[str, object]
-
-
-# A conditional `runs-on`. GitHub renders one label from a guard and two
-# literal arms; the reader keeps the guard as well as the arms, because the
-# arms alone cannot tell a fork fallback from an event-keyed placement.
-RUNS_ON_EXPRESSION: typ.Final = re.compile(
-    r"^\$\{\{\s*(?P<guard>.+?)\s*&&\s*'(?P<when_true>[^']+)'"
-    r"\s*\|\|\s*'(?P<when_false>[^']+)'\s*\}\}$"
-)
-
-# A placement taken from a workflow input. A reusable workflow that names its
-# runner this way has no label of its own: the caller supplies it, so the
-# placement is pinned in the caller's `with` block and this record says only
-# which input carries it.
-RUNS_ON_INPUT: typ.Final = re.compile(
-    r"^\$\{\{\s*inputs\.(?P<input>[A-Za-z_][A-Za-z0-9_-]*)\s*\}\}$"
-)
-
-
-@dc.dataclass(frozen=True, slots=True)
-class RunnerPlacement:
-    """Where a job runs, as its ``runs-on`` declares it.
-
-    Attributes
-    ----------
-    guard
-        The expression deciding between the labels, or ``None`` when the
-        placement is unconditional. Kept as text: a contract that read only
-        the labels could not tell a fork fallback from an event-keyed
-        placement, and those are different decisions.
-    declaration
-        The value as YAML handed it over, for a placement written as one
-        string, and ``None`` for a list of labels. Kept because the parse
-        deliberately tolerates whitespace, including a line break a folded
-        scalar failed to fold away, and a contract may want to refuse what
-        the reader accepts.
-    labels
-        Every label the job can run on. For a literal placement these are the
-        labels in declaration order; for an expression they are the arms in
-        expression order, the guarded one first, so a contract can reject a
-        pair that was swapped. Empty when the placement comes from an input,
-        because this workflow names no label at all.
-    from_input
-        The workflow input the label is taken from, or ``None`` when the
-        placement names its labels here. A job placed this way is pinned in
-        its caller, not here, and a contract that read only this file would
-        pass while the caller sent the job to any runner it liked.
-    """
-
-    guard: str | None
-    labels: tuple[str, ...]
-    declaration: str | None
-    from_input: str | None = None
-
-
-@dc.dataclass(frozen=True, slots=True)
-class JobRecord:
-    """One parsed workflow job, with its runner placement and steps.
-
-    Attributes
-    ----------
-    workflow
-        The workflow file name the job is declared in.
-    job_id
-        The job's identifier within that workflow.
-    placement
-        Where the job runs, parsed from ``runs-on``: the guard, when the
-        placement is conditional, and the labels it chooses between.
-    timeout_minutes
-        The declared ceiling, left as the parsed value rather than narrowed,
-        so a contract can tell an absent ceiling from a non-integer one.
-    has_condition
-        Whether the job declares an ``if`` key at all. A condition on the job
-        disables every gate inside it while leaving each command untouched.
-    has_continue_on_error
-        Whether the job declares ``continue-on-error``.
-    steps
-        The job's steps, in declaration order.
-    """
-
-    workflow: str
-    job_id: str
-    placement: RunnerPlacement
-    timeout_minutes: object
-    has_condition: bool
-    has_continue_on_error: bool
-    steps: tuple[StepRecord, ...]
-
-    @property
-    def coordinate(self) -> tuple[str, str]:
-        """The ``(workflow file, job id)`` pair naming this job."""
-        return (self.workflow, self.job_id)
-
-    @property
-    def runner_labels(self) -> tuple[str, ...]:
-        """Every label this job can run on.
-
-        Returns
-        -------
-        tuple[str, ...]
-            The placement's labels. Contracts that judge a label set, such as
-            the ceiling and foreign-family rules, read this and so treat a
-            conditional placement as the set of runners it can reach.
-        """
-        return self.placement.labels
-
-
-@dc.dataclass(frozen=True, slots=True)
-class CallRecord:
-    """One job that calls a reusable workflow rather than declaring steps.
-
-    Such a job has no ``runs-on`` of its own. The called workflow decides where
-    it runs, and where that workflow takes its label from an input, the caller
-    decides. Keeping the caller's inputs here is what lets a contract pin the
-    label at the only place it is written.
-
-    Attributes
-    ----------
-    workflow
-        The calling workflow's file name.
-    job_id
-        The job's identifier within that workflow.
-    calls
-        The ``uses`` value: a path for a workflow in this repository, or an
-        owner, repository and ref for one outside it.
-    inputs
-        The caller's ``with`` mapping, empty when it passes none. Values are
-        kept as parsed, so a literal label and an expression are
-        distinguishable.
-    has_condition
-        Whether the call declares an ``if`` key at all. Presence, not value,
-        for the reason given on :class:`StepRecord`.
-    """
-
-    workflow: str
-    job_id: str
-    calls: str
-    inputs: cabc.Mapping[str, object]
-    has_condition: bool
-
-    @property
-    def coordinate(self) -> tuple[str, str]:
-        """The ``(workflow file, job id)`` pair naming this call."""
-        return (self.workflow, self.job_id)
-
-
-def _expression_placement(value: str, coordinate: str) -> RunnerPlacement:
-    """Read a conditional ``runs-on`` expression.
-
-    Parameters
-    ----------
-    value
-        The declared text. A wrapped expression reads the same as a
-        single-line one: the whitespace between the guard and its arms is
-        matched as whitespace, whether YAML left a space or a line break
-        there.
-    coordinate
-        ``workflow:job`` text used in any error raised.
-
-    Returns
-    -------
-    RunnerPlacement
-        The guard and the two arms, guarded arm first.
-
-    Raises
-    ------
-    WorkflowShapeError
-        When the expression is not the guard-and-two-literal-arms shape this
-        estate uses. Reading an unmodelled expression as a literal label
-        would leave a lane placed by something no contract can see.
-    """
-    matched = RUNS_ON_EXPRESSION.match(value.strip())
-    if matched is None:
-        message = (
-            f"{coordinate}: runs-on expression {value!r} is not a guard with "
-            "two literal labels"
-        )
-        raise WorkflowShapeError(message)
-    return RunnerPlacement(
-        guard=matched["guard"],
-        labels=(matched["when_true"], matched["when_false"]),
-        declaration=value,
-    )
-
-
-def _list_placement(labels: list[str], coordinate: str) -> RunnerPlacement:
-    """Read a ``runs-on`` written as a list of labels.
-
-    GitHub permits an expression among the entries, so a list is not
-    self-evidently a set of literal labels. One recorded as a literal would
-    read to every contract as a runner named ``${{ inputs.chosen-os }}``,
-    which no job can be placed on and which hides the runners the expression
-    can actually select. The list form is refused rather than guessed at, for
-    the same reason a runner group is.
-
-    Parameters
-    ----------
-    labels
-        The declared entries, already narrowed to strings.
-    coordinate
-        ``workflow:job`` text used in any error raised.
-
-    Returns
-    -------
-    RunnerPlacement
-        The labels in declaration order.
-
-    Raises
-    ------
-    WorkflowShapeError
-        When an entry contains an expression, or when the list is empty.
-    """
-    if not labels:
-        message = f"{coordinate}: runs-on must name at least one label"
-        raise WorkflowShapeError(message)
-    expressions = [label for label in labels if "${{" in label]
-    if expressions:
-        message = (
-            f"{coordinate}: runs-on list entries {expressions!r} are "
-            "expressions, and the runners they select are not modelled here"
-        )
-        raise WorkflowShapeError(message)
-    return RunnerPlacement(guard=None, labels=tuple(labels), declaration=None)
-
-
-def _runner_placement(
-    job: cabc.Mapping[str, object], coordinate: str
-) -> RunnerPlacement:
-    """Read where a job runs.
-
-    Parameters
-    ----------
-    job
-        A parsed job mapping.
-    coordinate
-        ``workflow:job`` text used in any error raised.
-
-    Returns
-    -------
-    RunnerPlacement
-        The parsed placement.
-
-    Raises
-    ------
-    WorkflowShapeError
-        When ``runs-on`` is neither a string, nor a list of strings, nor one
-        of the two expression shapes above, or when a list entry is an
-        expression. A runner group is deliberately not modelled.
-    """
-    match job.get("runs-on"):
-        case str() as value if matched := RUNS_ON_INPUT.match(value.strip()):
-            return RunnerPlacement(
-                guard=None,
-                labels=(),
-                declaration=value,
-                from_input=matched["input"],
-            )
-        case str() as value if "${{" in value:
-            return _expression_placement(value, coordinate)
-        case str() as label:
-            return RunnerPlacement(guard=None, labels=(label,), declaration=label)
-        case list() as labels if all(isinstance(entry, str) for entry in labels):
-            return _list_placement(typ.cast("list[str]", labels), coordinate)
-        case other:
-            message = (
-                f"{coordinate}: runs-on must be a string or a list of strings, "
-                f"got {other!r}"
-            )
-            raise WorkflowShapeError(message)
 
 
 def _step_record(
@@ -415,7 +102,7 @@ def _job_record(
     return JobRecord(
         workflow=workflow_name,
         job_id=job_id,
-        placement=_runner_placement(job, coordinate),
+        placement=runner_placement(job, coordinate),
         timeout_minutes=job.get("timeout-minutes"),
         has_condition="if" in job,
         has_continue_on_error="continue-on-error" in job,
