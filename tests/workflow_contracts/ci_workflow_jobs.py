@@ -263,6 +263,46 @@ def _expression_placement(value: str, coordinate: str) -> RunnerPlacement:
     )
 
 
+def _list_placement(labels: list[str], coordinate: str) -> RunnerPlacement:
+    """Read a ``runs-on`` written as a list of labels.
+
+    GitHub permits an expression among the entries, so a list is not
+    self-evidently a set of literal labels. One recorded as a literal would
+    read to every contract as a runner named ``${{ inputs.chosen-os }}``,
+    which no job can be placed on and which hides the runners the expression
+    can actually select. The list form is refused rather than guessed at, for
+    the same reason a runner group is.
+
+    Parameters
+    ----------
+    labels
+        The declared entries, already narrowed to strings.
+    coordinate
+        ``workflow:job`` text used in any error raised.
+
+    Returns
+    -------
+    RunnerPlacement
+        The labels in declaration order.
+
+    Raises
+    ------
+    WorkflowShapeError
+        When an entry contains an expression, or when the list is empty.
+    """
+    if not labels:
+        message = f"{coordinate}: runs-on must name at least one label"
+        raise WorkflowShapeError(message)
+    expressions = [label for label in labels if "${{" in label]
+    if expressions:
+        message = (
+            f"{coordinate}: runs-on list entries {expressions!r} are "
+            "expressions, and the runners they select are not modelled here"
+        )
+        raise WorkflowShapeError(message)
+    return RunnerPlacement(guard=None, labels=tuple(labels), declaration=None)
+
+
 def _runner_placement(
     job: cabc.Mapping[str, object], coordinate: str
 ) -> RunnerPlacement:
@@ -284,8 +324,8 @@ def _runner_placement(
     ------
     WorkflowShapeError
         When ``runs-on`` is neither a string, nor a list of strings, nor one
-        of the two expression shapes above. A runner group is deliberately not
-        modelled.
+        of the two expression shapes above, or when a list entry is an
+        expression. A runner group is deliberately not modelled.
     """
     match job.get("runs-on"):
         case str() as value if matched := RUNS_ON_INPUT.match(value.strip()):
@@ -300,11 +340,7 @@ def _runner_placement(
         case str() as label:
             return RunnerPlacement(guard=None, labels=(label,), declaration=label)
         case list() as labels if all(isinstance(entry, str) for entry in labels):
-            return RunnerPlacement(
-                guard=None,
-                labels=tuple(typ.cast("list[str]", labels)),
-                declaration=None,
-            )
+            return _list_placement(typ.cast("list[str]", labels), coordinate)
         case other:
             message = (
                 f"{coordinate}: runs-on must be a string or a list of strings, "
