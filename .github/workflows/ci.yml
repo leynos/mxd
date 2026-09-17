@@ -7,6 +7,7 @@ on:
 jobs:
   docs-tooling:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
     env:
@@ -45,6 +46,7 @@ jobs:
 
   build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:15
@@ -160,6 +162,7 @@ jobs:
 
   validator-sqlite:
     runs-on: ubuntu-latest
+    timeout-minutes: 27
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
@@ -194,6 +197,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:15
