@@ -535,6 +535,11 @@ def job_by_coordinate(
 ) -> JobRecord:
     """Select one step-declaring job by its workflow file and identifier.
 
+    There is no matching selector for calls. The one contract that needs a
+    call by coordinate reads it from :func:`call_records` itself, because a
+    second selector differing only in the sequence it searches and the noun it
+    names is duplication rather than symmetry.
+
     Parameters
     ----------
     workflow
@@ -553,7 +558,9 @@ def job_by_coordinate(
     Raises
     ------
     WorkflowShapeError
-        When the coordinate does not name exactly one job.
+        When the coordinate does not name exactly one job. Zero and two are
+        the same failure to a caller expecting one, and both mean a pin and
+        the tree have drifted apart.
     """
     matches = [
         record
@@ -562,43 +569,5 @@ def job_by_coordinate(
     ]
     if len(matches) != 1:
         message = f"expected exactly one {workflow}:{job_id} job, found {len(matches)}"
-        raise WorkflowShapeError(message)
-    return matches[0]
-
-
-def call_by_coordinate(
-    workflow: str,
-    job_id: str,
-    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
-) -> CallRecord:
-    """Select one reusable-workflow call by its workflow file and identifier.
-
-    Parameters
-    ----------
-    workflow
-        The calling workflow's file name.
-    job_id
-        The job identifier within that workflow.
-    documents
-        Parsed workflows to search. Required, for the reason given on
-        :func:`job_records`.
-
-    Returns
-    -------
-    CallRecord
-        The matching call.
-
-    Raises
-    ------
-    WorkflowShapeError
-        When the coordinate does not name exactly one call.
-    """
-    matches = [
-        record
-        for record in call_records(documents)
-        if record.coordinate == (workflow, job_id)
-    ]
-    if len(matches) != 1:
-        message = f"expected exactly one {workflow}:{job_id} call, found {len(matches)}"
         raise WorkflowShapeError(message)
     return matches[0]

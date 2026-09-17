@@ -23,7 +23,6 @@ import typing as typ
 
 import pytest
 from ci_workflow_jobs import (
-    call_by_coordinate,
     call_records,
     job_by_coordinate,
     job_records,
@@ -177,7 +176,11 @@ def test_the_caller_sends_the_package_build_to_a_pinned_runner(
     label it passes is a literal this contract has read, not an expression
     resolved somewhere no contract looks.
     """
-    call = call_by_coordinate("release.yml", "build-linux", documents)
+    (call,) = [
+        record
+        for record in call_records(documents)
+        if record.coordinate == ("release.yml", "build-linux")
+    ]
     assert call.inputs.get("runner") == "ubuntu-latest", (
         f"release.yml:build-linux sends the package build to "
         f"{call.inputs.get('runner')!r}"
