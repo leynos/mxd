@@ -846,6 +846,23 @@ explain why it is required. Do not add broad word-level exceptions for prose.
 The gate also rejects punctuation-sensitive shared phrase corrections that
 single-token spelling scans cannot enforce reliably.
 
+`make test-spelling-gate` proves that it does. A clean checkout passes
+`make spelling` whether or not the gate is enforcing anything, so a flag
+dropped, a scope narrowed or a builder release that stopped reading the phrase
+policy would leave the lane green and the policy unenforced. The test runs the
+`spelling` target itself, overriding only `SPELLING_ROOT`, against a fixture
+tree carrying this repository's policy files and one document holding a
+prohibited phrase, and asserts the target fails and names the phrase. A second
+case runs the same fixture with the phrase corrected and asserts it passes, so
+a fixture broken for an unrelated reason cannot satisfy the first. Wrapping the
+gate as `|| true`, narrowing its scope or replacing the builder invocation each
+fail it.
+
+The builder is pinned to the commit `v0.1.1` points at rather than to the tag.
+A tag is a movable ref, and this target downloads and executes the code it
+names, so the same commit of this repository would otherwise be able to run
+different code.
+
 ## Presence runtime
 
 The presence runtime is the in-memory authority for which users are currently

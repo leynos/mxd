@@ -1,0 +1,103 @@
+"""The spelling gate, proved against a tree that must fail it.
+
+`make spelling` runs on every pull request, and on a clean checkout it passes
+whether or not it is enforcing anything. A flag dropped, a scope narrowed, or a
+builder release that stops reading the phrase policy would all leave the lane
+green and the policy unenforced, and nothing in the repository would say so.
+
+So the gate is driven here against a fixture that holds a prohibited phrase.
+The target itself is invoked, with only `SPELLING_ROOT` overridden, so the pin,
+the subcommand and every flag are the ones a pull request runs. A test that
+retyped the command would pass while the target drifted away from it.
+"""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+import typing as typ
+from pathlib import Path
+
+import pytest
+
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
+REPOSITORY: typ.Final = Path(__file__).resolve().parents[2]
+# Declared in the shared dictionary's `[phrases.corrections]`. Split so this
+# file does not itself carry the phrase the gate is asked to reject.
+PROHIBITED: typ.Final = "hand" + "-written"
+# The policy documents the gate reads. The fixture carries the repository's
+# own, so the test measures this repository's policy rather than a stand-in.
+POLICY_FILES: typ.Final = (
+    "typos.toml",
+    "typos.local.toml",
+    ".typos-oxendict-base.toml",
+    ".typos-oxendict-base.json",
+)
+
+
+def _run_gate(root: Path) -> subprocess.CompletedProcess[str]:
+    """Run the repository's own `spelling` target against a tree."""
+    return subprocess.run(
+        ["make", "spelling", f"SPELLING_ROOT={root}"],
+        cwd=REPOSITORY,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.fixture
+def tracked_tree(tmp_path: Path) -> cabc.Callable[[str], Path]:
+    """Build a git tree carrying this repository's policy and one text file.
+
+    The tree is tracked because the gate reads tracked files; an untracked
+    fixture would be skipped and the test would pass for the wrong reason.
+    """
+
+    def _build(body: str) -> Path:
+        root = tmp_path / "fixture"
+        root.mkdir()
+        for name in POLICY_FILES:
+            shutil.copy(REPOSITORY / name, root / name)
+        (root / "docs").mkdir()
+        (root / "docs" / "note.md").write_text(f"# Note\n\n{body}\n", encoding="utf-8")
+        subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        return root
+
+    return _build
+
+
+def test_a_prohibited_phrase_fails_the_gate(
+    tracked_tree: cabc.Callable[[str], Path],
+) -> None:
+    """The unhappy path, which a clean checkout can never exercise.
+
+    This is the assertion the deleted helper's test used to carry. Without it
+    the lane proves only that the gate ran, not that it refuses anything.
+    """
+    result = _run_gate(tracked_tree(f"A {PROHIBITED} note."))
+    assert result.returncode != 0, (
+        "a tree holding a prohibited phrase must fail the spelling gate"
+    )
+    assert PROHIBITED in result.stdout + result.stderr, (
+        "the gate must name the phrase it rejected, or nobody can act on it"
+    )
+
+
+def test_the_same_tree_without_the_phrase_passes(
+    tracked_tree: cabc.Callable[[str], Path],
+) -> None:
+    """The narrowness half: the fixture is refused for the phrase, nothing else.
+
+    Without this, a fixture that failed for an unrelated reason, a missing
+    policy file or a malformed tree, would satisfy the test above while proving
+    nothing about phrase enforcement.
+    """
+    result = _run_gate(tracked_tree("A handwritten note."))
+    assert result.returncode == 0, (
+        f"the fixture must pass once the phrase is corrected; "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
