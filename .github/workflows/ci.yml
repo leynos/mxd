@@ -7,6 +7,7 @@ on:
 jobs:
   docs-tooling:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
     env:
@@ -34,6 +35,8 @@ jobs:
         run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Install Nixie
         run: uv tool install nixie-cli==1.1.0
+      - name: Assert the workflow contracts
+        run: make test-workflow-contracts
       - name: Enforce en-GB-oxendict spelling
         run: make spelling
       - name: Lint Markdown
@@ -45,6 +48,7 @@ jobs:
 
   build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:15
@@ -90,6 +94,11 @@ jobs:
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
       - name: Cache Cargo directories
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # Before anything long runs: a lockfile the manifest does not admit is a
+      # tree nothing here builds from, and every later step would silently
+      # re-resolve it instead of failing.
+      - name: Check the lockfile matches the manifest
+        run: make check-locked
       - name: Install cargo-nextest
         run: |
           if ! cargo nextest --version >/dev/null 2>&1; then
@@ -160,6 +169,7 @@ jobs:
 
   validator-sqlite:
     runs-on: ubuntu-latest
+    timeout-minutes: 27
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
@@ -194,6 +204,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:15

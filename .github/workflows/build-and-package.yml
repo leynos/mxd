@@ -48,6 +48,7 @@ jobs:
   build:
     name: Build ${{ inputs.platform }} artefacts
     runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
     env:
       BIN_NAME: ${{ inputs.bin-name }}
       VERSION: ${{ inputs.version }}

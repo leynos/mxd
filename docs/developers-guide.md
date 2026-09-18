@@ -674,9 +674,112 @@ make fmt
 make markdownlint
 make nixie
 make check-fmt
+make check-locked
+make test-workflow-contracts
 make lint
 make test
 ```
+
+## The workflow contracts
+
+`make test-workflow-contracts` asserts that the CI workflows place and gate
+what this guide says they do. The `docs-tooling` job runs it, because that is
+the cheapest lane on a pull request and already installs Python and uv.
+
+A contract here asserts what would break a gate rather than what its author
+meant. Three rules follow from that, and each exists because a weaker reading
+passed against a tree it should have refused somewhere in this estate.
+
+**Whole-value equality.** A gate step's entire `run` body must be the gate
+command. A step whose body merely contains `make check-fmt` is satisfied by
+`make check-fmt || true`, which reads as a gate in a diff and gates nothing. A
+step carrying `if` or `continue-on-error` is not counted either, and nor is any
+step in a job carrying them, since a job-level `continue-on-error` discards
+every verdict inside while leaving each command untouched.
+
+**Both directions.** Placements, ceilings and reusable-workflow calls are
+compared as sets, not as subsets. A subset assertion in one direction lets a
+new lane appear unpinned; in the other it lets a pin outlive the lane it named,
+so a rename leaves the pin reading and the lane running with nothing between
+them.
+
+A call is compared on the workflow it names, with any ref stripped, and a call
+to another repository is separately required to name a forty-character commit.
+Moving a pin forward is a decision this repository already makes through
+Dependabot, and a contract naming the commit would redden every such pull
+request and teach people to edit the contract to make a bump pass. A branch or
+tag ref is the defect worth refusing: it moves under the workflow with no pull
+request here at all, so a lane can change what it runs between two identical
+trees.
+
+**The placement is pinned where it is decided.** `build-and-package.yml` takes
+its label from `inputs.runner`, so its own file decides nothing. `release.yml`'s
+`build-linux` passes the label, and that is where the contract reads it. A
+contract reading the callee's `runs-on` would pass while the caller sent the
+package build to any runner it liked.
+
+### What the reader refuses
+
+Every placement contract rests on one reader, so a shape it reads wrongly is a
+lane placed by something no contract can see. Four `runs-on` shapes appear in
+this estate and the reader models three of them deliberately: a bare label, a
+list of literal labels, and a guard choosing between two literal arms. A
+fourth, a placement taken from a workflow input, names no label here at all, so
+the record says only which input carries it.
+
+Anything else raises `WorkflowShapeError` rather than being recorded as a
+literal. A runner group selects by membership and names no label. A dynamic
+matrix expression resolves at run time to labels this reader cannot know. A
+list is the subtle case, because GitHub permits a variable among its entries:
+an entry recorded as a literal would read to every contract as a runner named
+`${{ inputs.chosen-os }}`, which no job can be placed on, while the runners the
+expression can actually select stay invisible to the contract that exists to
+pin them.
+
+`tests/workflow_contracts/test_workflow_placement_unit.py` drives the reader
+with mappings rather than with this repository's workflows, because these are
+shapes mxd does not declare. A contract parametrized over the workflows as they
+stand exercises only the accepted shapes, and would pass unchanged with every
+refusal deleted.
+
+### Ceilings
+
+Every job declares `timeout-minutes`. A job without one inherits GitHub's
+six-hour default, which bounds nothing: it is the point at which a wedged job
+stops costing money, not a statement about how long the work takes.
+
+Ceilings are sized as the estate sizes them, at roughly twice the worst
+observed successful duration plus a quarter of an hour of reporting margin. Two
+are sized differently and say so in the contract: `tlc-image` is sized on a
+real image build rather than on the 24-to-29-second skip it performs on nearly
+every run, because a ceiling sized on the median would cancel the only run that
+matters; and the release path's ceilings are placeholders, generous enough not
+to cancel a real run and tight enough to catch a wedged one, until
+`release-dry-run` runs and can be measured.
+
+### The lockfile gate
+
+`make check-locked` runs `cargo metadata --locked`, which is the only command
+that refuses a `Cargo.lock` the manifest does not admit. Every other cargo
+invocation may rewrite the lockfile, and silently resolves such a mismatch away
+rather than reporting it.
+
+The gate exists because the mismatch has reached `main` three times, each time
+from a lockfile-only dependency bump that crossed a major boundary the manifest
+declares. Between such a merge and the next lockfile write, `main` carries a
+lockfile nothing builds from, and no lane says so.
+
+It runs as the first step of `build-test`, before anything long. Placed after a
+build it would assert a file that build had already rewritten, which is the one
+arrangement in which the gate reads green while the defect is present in the
+tree under review. The contract asserts that ordering as well as the command.
+
+### Adding a lane
+
+A new job fails the contracts until it is pinned: its coordinate must appear in
+`PINNED_PLACEMENTS` or `PLACEMENT_FROM_INPUT`, and in `PINNED_CEILINGS` with a
+ceiling sized from three green runs. That refusal is the point. A lane nobody
+pinned is a lane nobody decided the placement or the bound of.
 
 ## Spelling policy
 
