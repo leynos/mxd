@@ -41,7 +41,16 @@ ignore = [
   '(?m)^\s*path: artifacts(?:/main/crashes/unique)?$',
   # Exact upstream expectrl error text is asserted as a compatibility fixture.
   'read may successed later',
-  # Inline code spans are masked; the shared dictionary does not mask them yet.
+  # Markdown inline code is machine text, and Typos has no Markdown reader to
+  # tell it from prose. Measured on this tree: removing this pattern reports 16
+  # findings across eight documents, and every one is an identifier rather than
+  # a word. Eleven are Tokio's `flavor` attribute argument, two are `color` in
+  # an environment variable, two are `normalised` inside a Rust identifier, and
+  # one is a `Ser` type abbreviation. Sixteen anchored patterns would restate
+  # one structural fact sixteen times and would need a seventeenth on the next
+  # such line, so the fact is stated once. The cost is a genuine prose typo
+  # written inside backticks, which nothing here would catch; the shared
+  # dictionary masking code spans itself would remove the need for this.
   '`[^`\n]+`',
 ]
 
