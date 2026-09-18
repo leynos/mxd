@@ -36,6 +36,10 @@ jobs:
         run: uv tool install nixie-cli==1.1.0
       - name: Enforce en-GB-oxendict spelling
         run: make spelling
+      # A clean checkout passes the gate whether or not it enforces anything,
+      # so the gate is also run against a fixture that must fail it.
+      - name: Prove the spelling gate refuses a prohibited phrase
+        run: make test-spelling-gate
       - name: Lint Markdown
         uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff
         with:

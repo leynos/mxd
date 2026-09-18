@@ -680,23 +680,41 @@ make test
 
 ## Spelling policy
 
-`make spelling` enforces en-GB-oxendict spelling over tracked text with the
-pinned Typos release. `make markdownlint` depends on that target, so prose
-checks cannot bypass the repository-wide spelling policy.
+`make spelling` enforces en-GB-oxendict spelling over tracked text.
+`make markdownlint` depends on that target, so prose checks cannot bypass the
+repository-wide spelling policy.
 
-The checked-in `typos.toml` is generated from the shared dictionary and the
-repository overlay in `typos.local.toml`. Do not edit generated entries by
-hand. Run `make spelling-config-write` after changing the overlay or after the
-shared dictionary is updated, and use `make spelling-config` to verify that the
-checked-in result is current. The builder keeps its downloaded shared base in
+Every run regenerates `typos.toml` from the live shared dictionary and the
+repository overlay in `typos.local.toml`, then scans the tracked tree. Do not
+edit generated entries by hand; add narrow repository-specific entries to
+`typos.local.toml` instead. The builder keeps its downloaded shared base in
 untracked cache files and refreshes the local copy only when the published
-source is newer.
+source is newer, so a valid cache remains usable without network access.
+Because the dictionary is live, `typos.toml` must never be drift checked in
+continuous integration.
 
 Repository exceptions must protect machine interfaces, formal upstream names,
 or exact serialized fixtures. Use the narrowest anchored pattern possible and
 explain why it is required. Do not add broad word-level exceptions for prose.
-The consumer phrase checker also rejects punctuation-sensitive shared
-corrections that single-token spelling scans cannot enforce reliably.
+The gate also rejects punctuation-sensitive shared phrase corrections that
+single-token spelling scans cannot enforce reliably.
+
+`make test-spelling-gate` proves that it does. A clean checkout passes
+`make spelling` whether or not the gate is enforcing anything, so a flag
+dropped, a scope narrowed or a builder release that stopped reading the phrase
+policy would leave the lane green and the policy unenforced. The test runs the
+`spelling` target itself, overriding only `SPELLING_ROOT`, against a fixture
+tree carrying this repository's policy files and one document holding a
+prohibited phrase, and asserts the target fails and names the phrase. A second
+case runs the same fixture with the phrase corrected and asserts it passes, so
+a fixture broken for an unrelated reason cannot satisfy the first. Wrapping the
+gate as `|| true`, narrowing its scope or replacing the builder invocation each
+fail it.
+
+The builder is pinned to the commit `v0.1.1` points at rather than to the tag.
+A tag is a movable ref, and this target downloads and executes the code it
+names, so the same commit of this repository would otherwise be able to run
+different code.
 
 ## Presence runtime
 

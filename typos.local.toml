@@ -6,8 +6,7 @@ schema = 1
 stems = []
 
 [words]
-# This belongs to the formal product name GitHub Flavored Markdown.
-accepted = ["Flavored"]
+accepted = []
 
 [words.corrections]
 
@@ -20,6 +19,8 @@ ignore = [
   "TRAK",
   # Cargo, GitHub Actions and Tokio machine interfaces.
   '(?m)^\s*CARGO_TERM_COLOR: always$',
+  # FORCE_COLOR is an environment variable read by markdownlint-cli2.
+  '(?m)^\s*@unset FORCE_COLOR;',
   '(?m)^\s*types: \[opened, reopened, synchronize, labeled, ready_for_review\]$',
   '(?m)^#\[tokio::test\(flavor = "current_thread"\)\]$',
   # Reusable-workflow inputs, outputs, paths and keys retain upstream names.
@@ -40,6 +41,17 @@ ignore = [
   '(?m)^\s*path: artifacts(?:/main/crashes/unique)?$',
   # Exact upstream expectrl error text is asserted as a compatibility fixture.
   'read may successed later',
+  # Markdown inline code is machine text, and Typos has no Markdown reader to
+  # tell it from prose. Measured on this tree: removing this pattern reports 16
+  # findings across eight documents, and every one is an identifier rather than
+  # a word. Eleven are Tokio's `flavor` attribute argument, two are `color` in
+  # an environment variable, two are `normalised` inside a Rust identifier, and
+  # one is a `Ser` type abbreviation. Sixteen anchored patterns would restate
+  # one structural fact sixteen times and would need a seventeenth on the next
+  # such line, so the fact is stated once. The cost is a genuine prose typo
+  # written inside backticks, which nothing here would catch; the shared
+  # dictionary masking code spans itself would remove the need for this.
+  '`[^`\n]+`',
 ]
 
 [files]
