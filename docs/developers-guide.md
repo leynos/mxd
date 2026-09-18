@@ -718,6 +718,30 @@ its label from `inputs.runner`, so its own file decides nothing. `release.yml`'s
 contract reading the callee's `runs-on` would pass while the caller sent the
 package build to any runner it liked.
 
+### What the reader refuses
+
+Every placement contract rests on one reader, so a shape it reads wrongly is a
+lane placed by something no contract can see. Four `runs-on` shapes appear in
+this estate and the reader models three of them deliberately: a bare label, a
+list of literal labels, and a guard choosing between two literal arms. A
+fourth, a placement taken from a workflow input, names no label here at all, so
+the record says only which input carries it.
+
+Anything else raises `WorkflowShapeError` rather than being recorded as a
+literal. A runner group selects by membership and names no label. A dynamic
+matrix expression resolves at run time to labels this reader cannot know. A
+list is the subtle case, because GitHub permits a variable among its entries:
+an entry recorded as a literal would read to every contract as a runner named
+`${{ inputs.chosen-os }}`, which no job can be placed on, while the runners the
+expression can actually select stay invisible to the contract that exists to
+pin them.
+
+`tests/workflow_contracts/test_workflow_placement_unit.py` drives the reader
+with mappings rather than with this repository's workflows, because these are
+shapes mxd does not declare. A contract parametrized over the workflows as they
+stand exercises only the accepted shapes, and would pass unchanged with every
+refusal deleted.
+
 ### Ceilings
 
 Every job declares `timeout-minutes`. A job without one inherits GitHub's
