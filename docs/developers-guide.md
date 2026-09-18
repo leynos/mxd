@@ -678,6 +678,54 @@ make lint
 make test
 ```
 
+## CodeScene coverage is owned by `main`
+
+`coverage-main.yml` runs on a push to `main` and uploads the merged lcov report
+to CodeScene. No pull-request lane calls a CodeScene action, runs a
+`cs-coverage` command, or receives `CS_ACCESS_TOKEN` at any scope.
+
+The reason is that a pull request cannot upload: CodeScene accepts coverage
+only for analysed branches. What a pull-request lane could do instead was hand
+CodeScene the token and ask it to judge the branch, which is a different
+operation wearing the same name. It put a secret on a lane that fork traffic
+reaches, and it produced a verdict nobody reading `main` ever saw.
+
+Removing that step also removed the reason for `fetch-depth: 0` on the coverage
+job's checkout. The full history was there so `cs-coverage check` could diff
+against the merge base; the coverage ratchet keeps its baseline in
+`actions/cache` and reads no history at all, so the job now takes the default
+shallow checkout.
+
+`make test-codescene-boundary` asserts the boundary in both directions, and the
+`docs-tooling` job runs it. One direction alone would be satisfied by deleting
+the publisher and leaving CodeScene with no coverage at all, which is the worse
+failure of the two.
+
+The three prohibitions are matched differently, and the difference is the
+point. An action is matched against each step's `uses` value and a command
+against each `run` body, so that naming CodeScene in a step name or a comment,
+which is how the boundary gets explained where people read it, does not itself
+read as a breach. The first draft of this contract matched the file and failed
+on its own CI step's name.
+
+`CS_ACCESS_TOKEN` is matched against the source instead, with whole-line
+comments stripped. A secret reaches a step through `env`, through `with`,
+through a job-level or workflow-level `env` block, or through an expression
+inside a `run` body, and a reader that walked only one of those routes would
+pass on the others. Unlike an action or a command, there is no legitimate
+reason for that name to appear on a pull-request lane at all.
+
+The job walker descends into each job's `steps` and also treats a job carrying
+its own `uses` as a step, because a job that calls a reusable workflow has no
+steps and is the one shape that can run another repository's code.
+
+Proved by adding each forbidden element back. A CodeScene action, a
+`cs-coverage` command and the token each fail exactly one case; a `cs-coverage`
+command in a different job of the same workflow fails the same one, which is
+what says the walk is over jobs rather than over one of them; giving the
+publisher a `pull_request` trigger fails three; deleting its upload step fails
+one.
+
 ## Spelling policy
 
 `make spelling` enforces en-GB-oxendict spelling over tracked text with the
