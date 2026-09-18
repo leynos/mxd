@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-spelling-gate
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -52,10 +52,18 @@ TOOL_PATH_PREFIX := $(shell printf '%s\n' "$(CARGO_BIN_DIR)" "$(WHITAKER_BIN_DIR
 NIXIE ?= nixie
 UV ?= uv
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
-TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.1
+# The commit v0.1.1 points at, not the tag. A tag is a movable ref: the same
+# commit of this repository would run different code if it moved, and this
+# target downloads and executes that code.
+RUFF_VERSION ?= 0.15.12
+# This is v0.1.1.
+TYPOS_CONFIG_BUILDER_COMMIT ?= b2bc36bee84fbe9b958ab64bd4581377ddd60c72
 TYPOS_CONFIG_BUILDER = $(UV_ENV) $(UV) tool run --python 3.14 --from \
-	"git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_VERSION)" \
+	"git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_COMMIT)" \
 	typos-config-builder
+# The tree the gate reads. Overridden only by the gate's own test, which runs
+# this very target against a fixture holding a prohibited phrase.
+SPELLING_ROOT ?= .
 TLC_RUNNER ?= ./scripts/run-tlc.sh
 TLC_IMAGE ?= ghcr.io/leynos/mxd/mxd-tlc:latest
 RSTEST_TIMEOUT ?= 20
@@ -122,7 +130,19 @@ markdownlint: spelling ## Lint Markdown files and enforce spelling
 	$(MDLINT) "**/*.md" "#.uv-cache" "#.uv-tools"
 
 spelling: ## Enforce en-GB-oxendict in tracked text
-	$(TYPOS_CONFIG_BUILDER) gate --repository . --scope all
+	$(TYPOS_CONFIG_BUILDER) gate --repository $(SPELLING_ROOT) --scope all
+
+SPELLING_GATE_SRCS := $(wildcard tests/spelling_gate/*.py)
+
+test-spelling-gate: ## Prove the spelling gate rejects a prohibited phrase
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated \
+		--target-version py313 --check $(SPELLING_GATE_SRCS)
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated \
+		--target-version py313 $(SPELLING_GATE_SRCS)
+	@PYTHONPATH=tests/spelling_gate $(UV_ENV) $(UV) run --no-project \
+		--python 3.14 --with pytest==9.0.2 \
+		python -m pytest tests/spelling_gate -c /dev/null --rootdir=. \
+		-p no:cacheprovider
 
 nixie: ## Validate Mermaid diagrams
 	$(NIXIE) --no-sandbox
