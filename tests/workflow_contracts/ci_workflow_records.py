@@ -61,6 +61,9 @@ class StepRecord:
         where a contract pins a legitimate condition verbatim.
     with_values
         The step's ``with`` mapping, empty when it declares none.
+    execution_overrides
+        Which of ``shell`` and ``working-directory`` the step declares. Either
+        changes what its ``run`` body means without changing the body.
     """
 
     index: int
@@ -72,6 +75,7 @@ class StepRecord:
     has_continue_on_error: bool
     condition: str | None
     with_values: cabc.Mapping[str, object]
+    execution_overrides: tuple[str, ...] = ()
 
 
 @dc.dataclass(frozen=True, slots=True)
@@ -97,6 +101,10 @@ class JobRecord:
         Whether the job declares ``continue-on-error``.
     steps
         The job's steps, in declaration order.
+    run_defaults
+        Each ``defaults.run`` setting that reaches the job's steps, as
+        ``scope:key`` with scope ``workflow`` or ``job``. A default changes the
+        shell or directory of every ``run`` body it reaches.
     """
 
     workflow: str
@@ -106,6 +114,7 @@ class JobRecord:
     has_condition: bool
     has_continue_on_error: bool
     steps: tuple[StepRecord, ...]
+    run_defaults: tuple[str, ...] = ()
 
     @property
     def coordinate(self) -> tuple[str, str]:

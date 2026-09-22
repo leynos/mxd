@@ -842,7 +842,12 @@ command. A step whose body merely contains `make check-fmt` is satisfied by
 `make check-fmt || true`, which reads as a gate in a diff and gates nothing. A
 step carrying `if` or `continue-on-error` is not counted either, and nor is any
 step in a job carrying them, since a job-level `continue-on-error` discards
-every verdict inside while leaving each command untouched.
+every verdict inside while leaving each command untouched. Nor is a step whose
+command is run differently from how it reads: a step declaring `shell` or
+`working-directory`, or any step under a `defaults.run` that sets either, at
+the job or the workflow scope. `shell: python {0}` turns `make check-fmt` into
+a Python syntax error, and a different directory runs a different Makefile, and
+neither changes the body.
 
 **Both directions.** Placements, ceilings and reusable-workflow calls are
 compared as sets, not as subsets. A subset assertion in one direction lets a
@@ -883,17 +888,29 @@ an entry recorded as a literal would read to every contract as a runner named
 expression can actually select stay invisible to the contract that exists to
 pin them.
 
-`tests/workflow_contracts/test_workflow_placement_unit.py` drives the reader
-with mappings rather than with this repository's workflows, because these are
-shapes mxd does not declare. A contract parametrized over the workflows as they
-stand exercises only the accepted shapes, and would pass unchanged with every
-refusal deleted.
+The loader refuses a mapping that declares the same key twice, reporting it as a
+`WorkflowLoadError`; PyYAML would keep the last value and the contracts would
+judge a document that discarded the first `runs-on` or `with`. Workflow files
+are collected by suffix in any case, so `CI.YML` and `release.yaml` are read,
+and a call is taken to name this repository whether it is spelt
+`./.github/workflows/<file>` or `$/.github/workflows/<file>`, the two forms
+GitHub documents.
+
+`tests/workflow_contracts/test_workflow_placement_unit.py` and
+`test_workflow_reader_unit.py` drive the reader with mappings and constructed
+files rather than with this repository's workflows, because these are shapes
+mxd does not declare. A contract parametrized over the workflows as they stand
+exercises only the accepted shapes, and would pass unchanged with every refusal
+deleted.
 
 ### Ceilings
 
-Every job declares `timeout-minutes`. A job without one inherits GitHub's
-six-hour default, which bounds nothing: it is the point at which a wedged job
-stops costing money, not a statement about how long the work takes.
+Every job that declares steps declares `timeout-minutes`. A job calling a
+reusable workflow, such as `release.yml`'s `build-linux`, cannot declare one;
+its ceilings are the called workflow's own jobs'. A job without a ceiling
+inherits GitHub's six-hour default, which bounds nothing: it is the point at
+which a wedged job stops costing money, not a statement about how long the work
+takes.
 
 Ceilings are sized as the estate sizes them, at roughly twice the worst
 observed successful duration plus a quarter of an hour of reporting margin. Two

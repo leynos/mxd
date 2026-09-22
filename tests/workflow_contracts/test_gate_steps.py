@@ -2,8 +2,10 @@
 
 A gate is a promise that a class of defect cannot reach ``main``. The promise
 is kept by a step, and a step keeps it only when three things hold: its whole
-``run`` body is the gate command, the step carries no ``if``, and neither it
-nor its job carries ``continue-on-error``.
+``run`` body is the gate command, the step carries no ``if``, neither it nor
+its job carries ``continue-on-error``, and nothing changes the shell or the
+directory the body runs in: no ``shell`` or ``working-directory`` on the step,
+and no ``defaults.run`` on the job or the workflow.
 
 Whole-value equality is the point. A step whose body merely *contains*
 ``make check-fmt`` is satisfied by ``make check-fmt || true``, by
@@ -70,6 +72,10 @@ def _gating_steps(job: JobRecord, command: str) -> tuple[int, ...]:
     tuple[int, ...]
         The positions of the gating steps, empty when the job has none.
     """
+    if job.run_defaults:
+        # A `defaults.run` shell or directory reaches every step below it,
+        # so no step in the job runs the command as written.
+        return ()
     return tuple(
         step.index
         for step in job.steps
@@ -77,6 +83,7 @@ def _gating_steps(job: JobRecord, command: str) -> tuple[int, ...]:
         and step.run.strip() == command
         and not step.has_condition
         and not step.has_continue_on_error
+        and not step.execution_overrides
     )
 
 
@@ -108,8 +115,9 @@ def test_a_gate_runs_and_its_verdict_is_kept(
     gating = _gating_steps(job, command)
     assert len(gating) == 1, (
         f"{workflow}:{job_id} has {len(gating)} steps whose whole run body is "
-        f"{command!r} and which carry neither if nor continue-on-error; "
-        f"expected exactly one. Steps present: "
+        f"{command!r} and which carry neither if, continue-on-error, shell nor "
+        f"working-directory, under defaults.run {list(job.run_defaults)}; "
+        f"expected exactly one, with no defaults. Steps present: "
         f"{[step.run for step in job.steps if step.run is not None]}"
     )
 

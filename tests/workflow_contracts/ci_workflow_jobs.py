@@ -35,6 +35,31 @@ from ci_workflow_reader import (
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
+# The settings that change how a ``run`` body executes without changing it.
+EXECUTION_SETTINGS: typ.Final = ("shell", "working-directory")
+
+
+def _run_defaults(scope: str, owner: cabc.Mapping[str, object]) -> tuple[str, ...]:
+    """Name each execution setting a ``defaults.run`` block declares.
+
+    Parameters
+    ----------
+    scope
+        ``workflow`` or ``job``, prefixed to each name.
+    owner
+        The workflow or job mapping that may carry ``defaults``.
+
+    Returns
+    -------
+    tuple[str, ...]
+        ``scope:key`` for each setting present, empty when there is none.
+    """
+    defaults = owner.get("defaults")
+    run = defaults.get("run") if isinstance(defaults, dict) else None
+    if not isinstance(run, dict):
+        return ()
+    return tuple(f"{scope}:{key}" for key in EXECUTION_SETTINGS if key in run)
+
 
 def _step_record(
     index: int, step: cabc.Mapping[str, object], coordinate: str
@@ -66,11 +91,15 @@ def _step_record(
         has_continue_on_error="continue-on-error" in step,
         condition=None if condition is None else str(condition),
         with_values=sub_mapping(step.get("with"), coordinate),
+        execution_overrides=tuple(key for key in EXECUTION_SETTINGS if key in step),
     )
 
 
 def _job_record(
-    workflow_name: str, job_id: str, job: cabc.Mapping[str, object]
+    workflow_name: str,
+    job_id: str,
+    job: cabc.Mapping[str, object],
+    workflow_defaults: tuple[str, ...] = (),
 ) -> JobRecord:
     """Build one job record.
 
@@ -82,6 +111,8 @@ def _job_record(
         The job's identifier within that workflow.
     job
         The parsed job mapping.
+    workflow_defaults
+        The workflow-level ``defaults.run`` settings, which reach every job.
 
     Returns
     -------
@@ -110,6 +141,7 @@ def _job_record(
             _step_record(index, sub_mapping(step, coordinate), coordinate)
             for index, step in enumerate(typ.cast("list[object]", steps))
         ),
+        run_defaults=workflow_defaults + _run_defaults("job", job),
     )
 
 
@@ -211,11 +243,12 @@ def job_records(
     """
     records: list[JobRecord] = []
     for name, workflow in documents.items():
+        workflow_defaults = _run_defaults("workflow", workflow)
         for job_id, job in _job_mapping(name, workflow).items():
             narrowed = sub_mapping(job, f"{name}:{job_id}")
             if "uses" in narrowed:
                 continue
-            records.append(_job_record(name, str(job_id), narrowed))
+            records.append(_job_record(name, str(job_id), narrowed, workflow_defaults))
     return tuple(records)
 
 

@@ -43,6 +43,7 @@ WORKFLOW_DIRECTORY: typ.Final = REPO_ROOT / ".github" / "workflows"
 # PyYAML follows YAML 1.1, in which the bare key ``on`` is the boolean true.
 # Every trigger lookup goes through this key, never the string.
 TRIGGER_KEY: typ.Final = True
+WORKFLOW_SUFFIXES: typ.Final = (".yml", ".yaml")
 
 
 class WorkflowReaderError(RuntimeError):
@@ -65,6 +66,34 @@ class WorkflowLoadError(WorkflowReaderError):
     """
 
 
+class _StrictLoader(yaml.SafeLoader):
+    """A safe loader that refuses a mapping declaring the same key twice."""
+
+    def construct_mapping(
+        self, node: yaml.MappingNode, deep: bool = False
+    ) -> dict[object, object]:
+        """Refuse a duplicate key rather than keep the last value silently.
+
+        PyYAML keeps the last of two equal keys, so a workflow repeating
+        ``jobs``, ``runs-on`` or ``with`` would be judged on a document that
+        discarded the first declaration. The refusal is a
+        :class:`yaml.constructor.ConstructorError`, a :class:`yaml.YAMLError`,
+        so :func:`load_workflow` reports it as a :class:`WorkflowLoadError`.
+        """
+        seen: set[object] = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"found duplicate key {key!r}",
+                    key_node.start_mark,
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
 class WorkflowShapeError(WorkflowReaderError):
     """A workflow uses a shape this reader deliberately does not model.
 
@@ -78,7 +107,8 @@ def workflow_paths(directory: Path) -> tuple[Path, ...]:
     """Collect every workflow file, covering both YAML suffixes.
 
     A contract that reads only ``*.yml`` stops seeing a lane the moment
-    somebody renames it, so both suffixes are collected here once.
+    somebody renames it, so both suffixes are collected here once, in any
+    case, since ``glob`` is case-sensitive here and ``CI.YML`` is a workflow.
 
     Parameters
     ----------
@@ -101,7 +131,9 @@ def workflow_paths(directory: Path) -> tuple[Path, ...]:
     """
     try:
         paths = sorted(
-            path for suffix in ("*.yml", "*.yaml") for path in directory.glob(suffix)
+            path
+            for path in directory.iterdir()
+            if path.suffix.lower() in WORKFLOW_SUFFIXES and path.is_file()
         )
     except OSError as error:
         message = f"listing workflows under {directory} failed: {error}"
@@ -138,7 +170,7 @@ def load_workflow(path: Path) -> cabc.Mapping[str, object]:
         message = f"reading {path} failed: {error}"
         raise WorkflowLoadError(message) from error
     try:
-        document = yaml.safe_load(text)
+        document = yaml.load(text, Loader=_StrictLoader)
     except yaml.YAMLError as error:
         message = f"parsing {path} as YAML failed: {error}"
         raise WorkflowLoadError(message) from error

@@ -76,6 +76,15 @@ PINNED_CALLS: typ.Final[cabc.Mapping[tuple[str, str], str]] = {
 # A 40-character lower-case hexadecimal commit, which is the only ref that
 # cannot move under the workflow that names it.
 COMMIT_REF: typ.Final = re.compile(r"^[0-9a-f]{40}$")
+# The two spellings GitHub documents for a call into this repository; either
+# names the tree under review and carries no ref to pin.
+LOCAL_CALL_PREFIXES: typ.Final = ("./", "$/")
+
+
+def is_external_call(calls: str) -> bool:
+    """Whether a ``uses`` value names another repository's workflow."""
+    return not calls.strip().startswith(LOCAL_CALL_PREFIXES)
+
 
 # Ceilings, in minutes. Sized as the estate sizes them: about twice the worst
 # observed successful duration plus a quarter of an hour of reporting margin.
@@ -227,7 +236,7 @@ def test_every_call_outside_this_repository_names_a_commit(
     be moved in place.
     """
     external = [
-        record for record in call_records(documents) if not record.calls.startswith(".")
+        record for record in call_records(documents) if is_external_call(record.calls)
     ]
     assert external, "expected at least one call outside this repository"
     unpinned = [
