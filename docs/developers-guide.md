@@ -739,11 +739,26 @@ twice. The set of workflows carrying the upload action is asserted to be
 exactly the publisher.
 
 Proved by adding each forbidden element back. A CodeScene action, a
-`cs-coverage` command and the token each fail exactly one case; a `cs-coverage`
-command in a different job of the same workflow fails the same one, which is
-what says the walk is over jobs rather than over one of them; giving the
-publisher a `pull_request` trigger fails three; deleting its upload step fails
-one.
+`cs-coverage` command, and the token each fail exactly one case; a
+`cs-coverage` command in a different job of the same workflow fails the same
+one, which is what says the walk is over jobs rather than over one of them;
+giving the publisher a `pull_request` trigger fails three; deleting its upload
+step fails one.
+
+Two shapes are normalized before any of that can run. `on:` is read as a
+mapping, a string, or a list, because `on: [push, pull_request]` is as valid as
+the mapping form and stringifying it produced one key named
+`"['push', 'pull_request']"`; a workflow written that way was not recognized as
+a pull-request lane and escaped every prohibition, while the other workflows
+kept the non-empty guard passing. An unsupported shape is refused rather than
+coerced, since coercion is what caused that.
+
+A local call is recognized by shape rather than by literal prefix: a leading
+`./` is stripped and what remains is asked whether it is a path under this
+repository's workflow directory. Enumerating prefixes means extending the
+matcher for every variant anyone proposes, and each omission is a workflow
+silently outside the surface. A local action and a call carrying a ref both
+stay out, and both are asserted.
 
 The reach of the collection is proved the same way. A CodeScene action added
 inside `release.yml` fails two, the token added there fails one, disabling

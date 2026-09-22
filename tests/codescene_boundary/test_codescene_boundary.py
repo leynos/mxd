@@ -52,16 +52,33 @@ def _documents() -> dict[str, dict[str, object]]:
 
 
 def _triggers(workflow: dict[str, object]) -> dict[str, object]:
-    """A workflow's `on:` block.
+    """A workflow's `on:` block, as a mapping of event name to configuration.
 
     YAML resolves the bare key `on` to the boolean `True`, so a reader keyed on
     the string finds nothing and every workflow reads as triggered by nothing,
     which would make every assertion below vacuously true.
+
+    All three forms GitHub accepts are normalized here. `on: push` is a string
+    and `on: [push, pull_request]` is a list, and both are as valid as the
+    mapping form. Stringifying the list produced one key named
+    `"['push', 'pull_request']"`, so a workflow written that way was not
+    recognized as a pull-request lane and escaped every prohibition below,
+    while the other workflows kept the non-empty guard passing. An unsupported
+    shape is refused rather than coerced, for the same reason.
     """
     for key in (True, "on"):
-        if key in workflow:
-            value = workflow[key]
-            return value if isinstance(value, dict) else {str(value): None}
+        if key not in workflow:
+            continue
+        match workflow[key]:
+            case dict() as mapping:
+                return mapping
+            case str() as event:
+                return {event: None}
+            case list() as events if all(isinstance(e, str) for e in events):
+                return dict.fromkeys(typ.cast("list[str]", events))
+            case other:
+                message = f"unsupported `on:` shape {other!r}"
+                raise AssertionError(message)
     message = "a workflow with no `on:` block cannot be classified"
     raise AssertionError(message)
 
@@ -106,16 +123,36 @@ def _values(workflow: str, key: str) -> list[str]:
     ]
 
 
-# A local reusable-workflow call: `uses: ./.github/workflows/<name>.yml`.
-LOCAL_CALL: typ.Final = re.compile(r"^\./\.github/workflows/(?P<name>[^@\s]+)$")
+# Where this repository's workflows live, as a `uses:` value names them.
+WORKFLOW_PREFIX: typ.Final = ".github/workflows/"
+
+
+def _local_call(used: str) -> str | None:
+    """The workflow a `uses:` value names in this repository, or `None`.
+
+    Matched by shape rather than by prefix. GitHub documents the local form as
+    `./.github/workflows/<name>`, but a matcher enumerating literal prefixes
+    has to be extended for every variant anyone proposes, and each omission is
+    a workflow silently outside the surface. So a leading `./` is stripped and
+    what remains is asked whether it is a path under this repository's
+    workflow directory.
+
+    A call to another repository is not local and is left out: it carries an
+    `owner/repo/` prefix and an `@ref`, so it cannot reach this directory.
+    """
+    candidate = used.strip().removeprefix("./")
+    if not candidate.startswith(WORKFLOW_PREFIX) or "@" in candidate:
+        return None
+    name = candidate.removeprefix(WORKFLOW_PREFIX)
+    return name or None
 
 
 def _called_locally(workflow: str) -> list[str]:
     """The workflows a workflow calls from this repository."""
     return [
-        matched["name"]
+        name
         for step in _steps(_documents()[workflow])
-        if (matched := LOCAL_CALL.match(str(step.get("uses", "")).strip()))
+        if (name := _local_call(str(step.get("uses", ""))))
     ]
 
 
@@ -158,6 +195,62 @@ def test_some_workflow_runs_on_pull_requests() -> None:
     defect turns a contract into decoration.
     """
     assert PULL_REQUEST_WORKFLOWS, "no workflow was classified as pull-request"
+
+
+@pytest.mark.parametrize(
+    ("declared", "expected"),
+    [
+        pytest.param({"pull_request": None}, ["pull_request"], id="mapping"),
+        pytest.param("pull_request", ["pull_request"], id="string"),
+        pytest.param(["push", "pull_request"], ["push", "pull_request"], id="list"),
+    ],
+)
+def test_every_trigger_form_is_read_as_its_events(
+    declared: object, expected: list[str]
+) -> None:
+    """All three forms GitHub accepts name the same events to this reader.
+
+    The list form is the one that mattered. Stringifying it produced a single
+    key named `"['push', 'pull_request']"`, so a workflow written that way was
+    not recognized as a pull-request lane and escaped every prohibition, while
+    the other workflows kept the non-empty guard passing. A hole that leaves
+    the suite green is the only kind worth a case of its own.
+    """
+    assert list(_triggers({"on": declared})) == expected
+
+
+def test_an_unsupported_trigger_shape_is_refused() -> None:
+    """Refused rather than coerced, because coercion is what caused the hole."""
+    with pytest.raises(AssertionError, match="unsupported"):
+        _triggers({"on": 17})
+
+
+@pytest.mark.parametrize(
+    ("used", "expected"),
+    [
+        pytest.param("./.github/workflows/release.yml", "release.yml", id="documented"),
+        pytest.param(".github/workflows/release.yml", "release.yml", id="no-dot"),
+        pytest.param("  ./.github/workflows/release.yml  ", "release.yml", id="padded"),
+        pytest.param("actions/checkout@v7.0.1", None, id="external-action"),
+        pytest.param(
+            "leynos/shared-actions/.github/workflows/x.yml@abc123",
+            None,
+            id="another-repository",
+        ),
+        pytest.param("./.github/actions/export-postgres-url", None, id="local-action"),
+        pytest.param(".github/workflows/release.yml@abc123", None, id="path-with-ref"),
+    ],
+)
+def test_a_local_call_is_recognized_by_shape(used: str, expected: str | None) -> None:
+    """What counts as a call into this repository's own workflows.
+
+    Matched by shape rather than by literal prefix: a matcher enumerating
+    prefixes has to be extended for every variant anyone proposes, and each
+    omission is a workflow silently outside the surface. The last two rows are
+    the narrowness half, since a local *action* and a call to another
+    repository must both stay out.
+    """
+    assert _local_call(used) == expected
 
 
 def test_the_surface_follows_a_local_reusable_call() -> None:
