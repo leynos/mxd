@@ -27,14 +27,18 @@ REPOSITORY: typ.Final = Path(__file__).resolve().parents[2]
 # Declared in the shared dictionary's `[phrases.corrections]`. Split so this
 # file does not itself carry the phrase the gate is asked to reject.
 PROHIBITED: typ.Final = "hand" + "-written"
-# The policy documents the gate reads. The fixture carries the repository's
-# own, so the test measures this repository's policy rather than a stand-in.
-POLICY_FILES: typ.Final = (
-    "typos.toml",
-    "typos.local.toml",
-    ".typos-oxendict-base.toml",
-    ".typos-oxendict-base.json",
-)
+# The policy documents the gate reads, and the only two this repository tracks.
+# The fixture carries its own, so the test measures this repository's policy
+# rather than a stand-in.
+#
+# The shared dictionary is deliberately not among them. `.typos-oxendict-base
+# .toml` and `.typos-oxendict-base.json` are the builder's download cache, are
+# in `.gitignore`, and exist in a working tree only because some earlier
+# command fetched them. Copying them made this test pass on a developer's
+# machine and on a lane where `make spelling` happened to run first, and fail
+# on a clean checkout or a reordered job. The builder fetches them into the
+# fixture itself, which is what every repository relies on anyway.
+POLICY_FILES: typ.Final = ("typos.toml", "typos.local.toml")
 
 
 def _run_gate(root: Path) -> subprocess.CompletedProcess[str]:
