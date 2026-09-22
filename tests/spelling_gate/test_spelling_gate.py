@@ -61,7 +61,7 @@ def tracked_tree(tmp_path: Path) -> cabc.Callable[[str], Path]:
 
     Parameters
     ----------
-    tmp_path
+    tmp_path : Path
         pytest's per-test directory. The fixture builds under it rather than
         beside the repository, so the builder's writes, which include
         refreshing the shared dictionary into the tree it is given, land
