@@ -994,6 +994,34 @@ literal `true` all fail. A floor of the four known workflows keeps discovery
 from emptying into a vacuous pass, and unit cases drive the judgement with each
 refused shape, since the workflows as they stand exercise only the accepted one.
 
+## Dependabot raises the manifest for Cargo
+
+The Cargo entry in `.github/dependabot.yml` sets
+`versioning-strategy: increase-if-necessary`, so a bump that needs a new
+constraint raises `Cargo.toml` rather than pinning the version in `Cargo.lock`
+alone.
+
+Without it, a bump across a major boundary the manifest forbids is not a change
+at all. The next command that writes `Cargo.lock` resolves the edge back, the
+pull request merges with no net effect, and the same bump is proposed again.
+That has happened eight times: `rand` 0.9.5 to 0.10.2 in #522, #524, #533, #537
+and #546, and `clap_mangen` 0.2.33 to 0.3.3 in #523, #535 and #545. Between
+such a merge and the next lockfile write, `main` carries a lockfile nothing
+builds from with `--locked`.
+
+`make check-locked` is the complement, not a substitute: it refuses a lockfile
+the manifest does not admit, which catches the defect once it has landed. This
+setting stops it being proposed.
+
+`make test-dependabot-policy` asserts the key, on the Cargo entry alone, and
+refuses both `lockfile-only`, which reproduces the defect exactly, and `auto`,
+which hands the decision back to Dependabot and is how the repository arrived
+here. The `github-actions` entry is asserted to leave the key unset, because an
+Actions pin has no manifest to raise; without that half, setting the strategy
+everywhere would satisfy the rest while changing behaviour nobody asked about.
+Exactly one Cargo entry is required rather than the first of several, so a
+second entry governing another directory cannot slip past unasserted.
+
 ## Spelling policy
 
 `make spelling` enforces en-GB-oxendict spelling over tracked text.

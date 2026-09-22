@@ -19,6 +19,11 @@ updates:
   # Enable version updates for Cargo
   - package-ecosystem: "cargo"
     directory: "/"
+    # Raise `Cargo.toml` when a new version needs it, rather than pinning it in
+    # `Cargo.lock` alone. A lockfile-only bump across a major boundary the
+    # manifest forbids is resolved back by the next cargo write, so the pull
+    # request merges with no net effect and is proposed again.
+    versioning-strategy: increase-if-necessary
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
