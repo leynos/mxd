@@ -83,7 +83,7 @@ clap = { version = "4", features = ["derive"] }
 cfg-if = "1"
 ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" }
 argon2 = { version = "0.5", features = ["std"] }
-rand = "0.9.3"
+rand = "0.10.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 diesel-cte-ext = { workspace = true }
 futures-util = "0.3"
@@ -101,7 +101,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 url = { version = "2", optional = true }
 figment-json5 = { version = "0.1", optional = true }
 serde_yaml = { version = "0.9", optional = true }
-toml = { version = "0.8", optional = true }
+toml = { version = "0.9", optional = true }
 
 [features]
 default = ["legacy-networking", "sqlite", "toml"]
@@ -153,7 +153,7 @@ wait-timeout = "0.2"
 cap-std = { version = "4.0.0", features = ["fs_utf8"] }
 camino = "1.2.1"
 clap = { version = "4.5.51", features = ["derive"] }
-clap_mangen = "0.2.31"
+clap_mangen = "0.3.3"
 cli-defs = { path = "cli-defs" }
 
 [workspace.lints.clippy]
