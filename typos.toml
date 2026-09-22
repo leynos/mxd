@@ -35,7 +35,7 @@ extend-exclude = [
 [default]
 locale = "en-gb"
 extend-ignore-re = [
-    "(?m)^#\\[tokio::test\\(flavor = \"current_thread\"\\)\\]$",
+    "#\\[tokio::test\\(flavor = \"current_thread\"\\)\\]",
     "(?m)^\\s*-v \\$\\{\\{ github\\.workspace \\}\\}/artifacts:/out \\\\$",
     "(?m)^\\s*@unset FORCE_COLOR;",
     "(?m)^\\s*CARGO_TERM_COLOR: always$",
@@ -61,7 +61,10 @@ extend-ignore-re = [
     "GitHub\\s+Flavored\\s+Markdown\\b(?:\\s\\(GFM\\))?",
     "TRAK",
     "\\brust-analyzer\\b",
-    "`[^`\\n]+`",
+    "`AppFactory<Ser, Ctx, E, Codec>`",
+    "`BackoffConfig::normalised`",
+    "`color`",
+    "`handle_post_article\\(path, title, flags, flavor, data\\)`",
     "data_flavor",
     "read may successed later",
 ]

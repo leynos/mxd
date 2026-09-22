@@ -22,7 +22,10 @@ ignore = [
   # FORCE_COLOR is an environment variable read by markdownlint-cli2.
   '(?m)^\s*@unset FORCE_COLOR;',
   '(?m)^\s*types: \[opened, reopened, synchronize, labeled, ready_for_review\]$',
-  '(?m)^#\[tokio::test\(flavor = "current_thread"\)\]$',
+  # Tokio's runtime-flavour argument, in code blocks and inline code spans
+  # alike. Unanchored because the guides name the attribute mid-sentence; the
+  # whole attribute is matched, so the word alone is still checked in prose.
+  '#\[tokio::test\(flavor = "current_thread"\)\]',
   # Reusable-workflow inputs, outputs, paths and keys retain upstream names.
   '(?m)^\s*artifact-name:$',
   '(?m)^\s*artifact: linux-(?:amd64|arm64)$',
@@ -41,17 +44,17 @@ ignore = [
   '(?m)^\s*path: artifacts(?:/main/crashes/unique)?$',
   # Exact upstream expectrl error text is asserted as a compatibility fixture.
   'read may successed later',
-  # Markdown inline code is machine text, and Typos has no Markdown reader to
-  # tell it from prose. Measured on this tree: removing this pattern reports 16
-  # findings across eight documents, and every one is an identifier rather than
-  # a word. Eleven are Tokio's `flavor` attribute argument, two are `color` in
-  # an environment variable, two are `normalised` inside a Rust identifier, and
-  # one is a `Ser` type abbreviation. Sixteen anchored patterns would restate
-  # one structural fact sixteen times and would need a seventeenth on the next
-  # such line, so the fact is stated once. The cost is a genuine prose typo
-  # written inside backticks, which nothing here would catch; the shared
-  # dictionary masking code spans itself would remove the need for this.
-  '`[^`\n]+`',
+  # Hotline's wire field name, quoted whole from the transaction signature.
+  '`handle_post_article\(path, title, flags, flavor, data\)`',
+  # The API spelling of the colour field, named as an example of exactly this
+  # rule in the style guide and as a packed header field in the transaction
+  # layout. The backticks are part of the pattern, so the word is still
+  # checked wherever it is written as prose.
+  '`color`',
+  # Wireframe's own identifiers, quoted whole: a method that kept the en-GB
+  # spelling upstream, and a generic parameter abbreviating Server.
+  '`BackoffConfig::normalised`',
+  '`AppFactory<Ser, Ctx, E, Codec>`',
 ]
 
 [files]
