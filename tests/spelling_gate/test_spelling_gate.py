@@ -58,6 +58,23 @@ def tracked_tree(tmp_path: Path) -> cabc.Callable[[str], Path]:
 
     The tree is tracked because the gate reads tracked files; an untracked
     fixture would be skipped and the test would pass for the wrong reason.
+
+    Parameters
+    ----------
+    tmp_path
+        pytest's per-test directory. The fixture builds under it rather than
+        beside the repository, so the builder's writes, which include
+        refreshing the shared dictionary into the tree it is given, land
+        somewhere pytest removes.
+
+    Returns
+    -------
+    cabc.Callable[[str], Path]
+        A builder taking the body of `docs/note.md` and returning the root of
+        a git tree holding it, `typos.toml` and `typos.local.toml`, with
+        everything staged. The body is the only thing a caller varies, because
+        the policy is the repository's own and varying it would measure a
+        stand-in.
     """
 
     def _build(body: str) -> Path:
