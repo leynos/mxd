@@ -7,184 +7,93 @@ the same name, and it costs a secret on every fork-adjacent run and a check
 whose verdict nobody on `main` ever sees.
 
 So the boundary is one-directional and stated here rather than left to a
-comment: no pull-request workflow may call a CodeScene action, run a
-`cs-coverage` command, or receive `CS_ACCESS_TOKEN` at any scope, and exactly
-one push-to-`main` workflow does the upload.
+comment: no workflow a pull request can run may call a CodeScene action, run a
+`cs-coverage` command, contact CodeScene, or reach `CS_ACCESS_TOKEN` at any
+scope, and exactly one push-to-`main` workflow does the upload.
 
 Both halves are asserted. Without the second, deleting the publisher outright
 would satisfy the first and leave CodeScene with no coverage at all, which is
 the failure the boundary exists to prevent rather than the one it is named for.
+
+The readers live in `workflow_surface.py` and are driven here with constructed
+workflows as well as this repository's own, because the repository declares
+only the shapes the contract accepts.
 """
 
 from __future__ import annotations
 
-import re
 import typing as typ
 from pathlib import Path
 
 import pytest
-import yaml
+from workflow_surface import (
+    load,
+    local_call,
+    pull_request_surface,
+    searchable,
+    secret_breaches,
+    steps,
+    triggers,
+)
 
 WORKFLOWS: typ.Final = Path(__file__).resolve().parents[2] / ".github" / "workflows"
 
 # The upload lives here and nowhere else.
 PUBLISHER: typ.Final = "coverage-main.yml"
 
-# What a pull-request lane may not carry. Each is a distinct route to the same
-# defect, so each is named rather than folded into one substring search.
+# What a pull-request lane may not call or run. Each is a distinct route to the
+# same defect, so each is named rather than folded into one substring search.
 CODESCENE_ACTION: typ.Final = "codescene"
 CODESCENE_COMMAND: typ.Final = "cs-coverage"
-CODESCENE_SECRET: typ.Final = "CS_ACCESS_TOKEN"
 
 # The action that performs the upload, searched for across every workflow so
 # that a second publisher cannot appear unnoticed.
 UPLOAD_ACTION: typ.Final = "upload-codescene-coverage"
 
 
-def _documents() -> dict[str, dict[str, object]]:
-    """Every workflow in this repository, parsed."""
+def _sources() -> dict[str, str]:
+    """Every workflow in this repository, as source text."""
     found = {
-        path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        path.name: path.read_text(encoding="utf-8")
         for path in sorted(WORKFLOWS.glob("*.yml"))
     }
     assert found, "this contract is meaningless if no workflow was read"
     return found
 
 
-def _triggers(workflow: dict[str, object]) -> dict[str, object]:
-    """A workflow's `on:` block, as a mapping of event name to configuration.
-
-    YAML resolves the bare key `on` to the boolean `True`, so a reader keyed on
-    the string finds nothing and every workflow reads as triggered by nothing,
-    which would make every assertion below vacuously true.
-
-    All three forms GitHub accepts are normalized here. `on: push` is a string
-    and `on: [push, pull_request]` is a list, and both are as valid as the
-    mapping form. Stringifying the list produced one key named
-    `"['push', 'pull_request']"`, so a workflow written that way was not
-    recognized as a pull-request lane and escaped every prohibition below,
-    while the other workflows kept the non-empty guard passing. An unsupported
-    shape is refused rather than coerced, for the same reason.
-    """
-    for key in (True, "on"):
-        if key not in workflow:
-            continue
-        match workflow[key]:
-            case dict() as mapping:
-                return mapping
-            case str() as event:
-                return {event: None}
-            case list() as events if all(isinstance(e, str) for e in events):
-                return dict.fromkeys(typ.cast("list[str]", events))
-            case other:
-                message = f"unsupported `on:` shape {other!r}"
-                raise AssertionError(message)
-    message = "a workflow with no `on:` block cannot be classified"
-    raise AssertionError(message)
-
-
-# A whole-line comment. Stripped before the secret is searched for, so that
-# explaining the boundary in a comment does not read as breaching it.
-COMMENT_LINE: typ.Final = re.compile(r"(?m)^\s*#.*$")
-
-
-def _text(path: str) -> str:
-    """A workflow's source, lowercased, with whole-line comments removed."""
-    source = (WORKFLOWS / path).read_text(encoding="utf-8")
-    return COMMENT_LINE.sub("", source).lower()
-
-
-def _steps(document: dict[str, object]) -> list[dict[str, object]]:
-    """Every step of every job, plus each job that is itself a call.
-
-    A job calling a reusable workflow has no steps and carries its `uses` on
-    the job, so a walker that descended only into `steps` would miss the one
-    shape that can run another repository's code.
-    """
-    jobs = document.get("jobs")
-    if not isinstance(jobs, dict):
-        return []
-    found: list[dict[str, object]] = []
-    for job in jobs.values():
-        if not isinstance(job, dict):
-            continue
-        if "uses" in job:
-            found.append(job)
-        steps = job.get("steps")
-        if isinstance(steps, list):
-            found.extend(step for step in steps if isinstance(step, dict))
-    return found
+def _documents() -> dict[str, dict[str, object]]:
+    """Every workflow in this repository, parsed by the strict loader."""
+    return {name: load(source) for name, source in _sources().items()}
 
 
 def _values(workflow: str, key: str) -> list[str]:
     """Every `uses` or `run` body in a workflow, lowercased."""
     return [
-        str(step[key]).lower() for step in _steps(_documents()[workflow]) if key in step
+        str(step[key]).lower() for step in steps(_documents()[workflow]) if key in step
     ]
 
 
-# Where this repository's workflows live, as a `uses:` value names them.
-WORKFLOW_PREFIX: typ.Final = ".github/workflows/"
+PULL_REQUEST_WORKFLOWS: typ.Final = pull_request_surface(_documents())
 
-
-def _local_call(used: str) -> str | None:
-    """The workflow a `uses:` value names in this repository, or `None`.
-
-    Matched by shape rather than by prefix. GitHub documents the local form as
-    `./.github/workflows/<name>`, but a matcher enumerating literal prefixes
-    has to be extended for every variant anyone proposes, and each omission is
-    a workflow silently outside the surface. So a leading `./` is stripped and
-    what remains is asked whether it is a path under this repository's
-    workflow directory.
-
-    A call to another repository is not local and is left out: it carries an
-    `owner/repo/` prefix and an `@ref`, so it cannot reach this directory.
-    """
-    candidate = used.strip().removeprefix("./")
-    if not candidate.startswith(WORKFLOW_PREFIX) or "@" in candidate:
-        return None
-    name = candidate.removeprefix(WORKFLOW_PREFIX)
-    return name or None
-
-
-def _called_locally(workflow: str) -> list[str]:
-    """The workflows a workflow calls from this repository."""
-    return [
-        name
-        for step in _steps(_documents()[workflow])
-        if (name := _local_call(str(step.get("uses", ""))))
-    ]
-
-
-def _pull_request_surface() -> tuple[str, ...]:
-    """Every workflow a pull request can run, calls included.
-
-    A workflow triggered by `pull_request` is only the entry point. A job that
-    calls a local reusable workflow runs that workflow's jobs with the caller's
-    trigger, and `release-dry-run.yml` does exactly this, with
-    `secrets: inherit`. A reader that stopped at the caller's own `uses` would
-    pass while CodeScene ran on every pull request from inside `release.yml`.
-
-    Followed transitively, since a called workflow may call another, and with
-    a seen set so a cycle cannot hang the collection.
-    """
-    documents = _documents()
-    pending = [
-        name
-        for name, document in documents.items()
-        if "pull_request" in _triggers(document)
-    ]
-    reached: list[str] = []
-    while pending:
-        name = pending.pop()
-        if name in reached or name not in documents:
-            continue
-        reached.append(name)
-        pending.extend(_called_locally(name))
-    return tuple(sorted(reached))
-
-
-PULL_REQUEST_WORKFLOWS: typ.Final = _pull_request_surface()
+# The measured closure hole: a `workflow_call`-only workflow, called from a
+# pull-request job with `secrets: inherit`, curling CodeScene with the token.
+PROBE_CALLER: typ.Final = """\
+on: pull_request
+jobs:
+  call:
+    uses: {spelling}.github/workflows/probe.yml
+    secrets: inherit
+"""
+PROBE: typ.Final = """\
+on: workflow_call
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: >-
+          curl -H "Authorization: Bearer ${{ secrets.CS_ACCESS_TOKEN }}"
+          https://api.codescene.io/v2/projects
+"""
 
 
 def test_some_workflow_runs_on_pull_requests() -> None:
@@ -210,26 +119,39 @@ def test_every_trigger_form_is_read_as_its_events(
 ) -> None:
     """All three forms GitHub accepts name the same events to this reader.
 
-    The list form is the one that mattered. Stringifying it produced a single
-    key named `"['push', 'pull_request']"`, so a workflow written that way was
-    not recognized as a pull-request lane and escaped every prohibition, while
-    the other workflows kept the non-empty guard passing. A hole that leaves
-    the suite green is the only kind worth a case of its own.
+    The list form is the one that mattered: stringified, it became one key and
+    the workflow escaped every prohibition while the suite stayed green.
     """
-    assert list(_triggers({"on": declared})) == expected
+    assert list(triggers({"on": declared})) == expected
+    assert list(triggers(load(f"on: {declared!r}\njobs: {{}}\n"))) == expected
 
 
 def test_an_unsupported_trigger_shape_is_refused() -> None:
     """Refused rather than coerced, because coercion is what caused the hole."""
     with pytest.raises(AssertionError, match="unsupported"):
-        _triggers({"on": 17})
+        triggers({"on": 17})
+
+
+def test_a_duplicate_key_is_refused_rather_than_resolved() -> None:
+    """PyYAML keeps the last of two equal keys and says nothing.
+
+    A lane declaring `runs-on` twice would be judged on the value GitHub may
+    not use, so the loader refuses the file instead of picking one.
+    """
+    twice = "on: push\njobs:\n  a:\n    runs-on: x\n    runs-on: y\n"
+    with pytest.raises(Exception, match="duplicate key 'runs-on'"):
+        load(twice)
+    assert load(twice.replace("    runs-on: y\n", ""))["jobs"] == {
+        "a": {"runs-on": "x"}
+    }
 
 
 @pytest.mark.parametrize(
     ("used", "expected"),
     [
-        pytest.param("./.github/workflows/release.yml", "release.yml", id="documented"),
-        pytest.param(".github/workflows/release.yml", "release.yml", id="no-dot"),
+        pytest.param("./.github/workflows/release.yml", "release.yml", id="dot"),
+        pytest.param("$/.github/workflows/release.yml", "release.yml", id="dollar"),
+        pytest.param(".github/workflows/release.yml", "release.yml", id="bare"),
         pytest.param("  ./.github/workflows/release.yml  ", "release.yml", id="padded"),
         pytest.param("actions/checkout@v7.0.1", None, id="external-action"),
         pytest.param(
@@ -244,13 +166,11 @@ def test_an_unsupported_trigger_shape_is_refused() -> None:
 def test_a_local_call_is_recognized_by_shape(used: str, expected: str | None) -> None:
     """What counts as a call into this repository's own workflows.
 
-    Matched by shape rather than by literal prefix: a matcher enumerating
-    prefixes has to be extended for every variant anyone proposes, and each
-    omission is a workflow silently outside the surface. The last two rows are
-    the narrowness half, since a local *action* and a call to another
-    repository must both stay out.
+    GitHub documents both `./` and `$/` for a same-repository call. The last
+    three rows are the narrowness half: a local *action*, a call to another
+    repository, and a path carrying a ref must all stay out.
     """
-    assert _local_call(used) == expected
+    assert local_call(used) == expected
 
 
 def test_the_surface_follows_a_local_reusable_call() -> None:
@@ -268,14 +188,89 @@ def test_the_surface_follows_a_local_reusable_call() -> None:
     )
 
 
+@pytest.mark.parametrize("spelling", ["./", "$/"])
+def test_the_measured_probe_is_reached_and_refused(spelling: str) -> None:
+    """The closure hole as it was measured elsewhere, in both call spellings.
+
+    The probe declares only `workflow_call`, so a trigger reading never sees
+    it; only following the caller's `uses` puts it on the surface, and only
+    then does the token and host sweep read its `run` body.
+    """
+    sources = {"ci.yml": PROBE_CALLER.format(spelling=spelling), "probe.yml": PROBE}
+    documents = {name: load(source) for name, source in sources.items()}
+    assert pull_request_surface(documents) == ("ci.yml", "probe.yml")
+    assert secret_breaches(documents["probe.yml"], sources["probe.yml"]) == [
+        "names CS_ACCESS_TOKEN",
+        "contacts codescene.io",
+    ]
+
+
+def test_the_surface_is_narrow() -> None:
+    """A reusable workflow nothing calls is not on the surface.
+
+    And `pull_request_target` is an entry point, since it runs for a pull
+    request with the base repository's secrets.
+    """
+    documents = {
+        "target.yml": load("on: pull_request_target\njobs: {}\n"),
+        "unused.yml": load(PROBE),
+        "main.yml": load("on: push\njobs: {}\n"),
+    }
+    assert pull_request_surface(documents) == ("target.yml",)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "on: pull_request\njobs:\n  a:\n"
+            "    uses: other/repo/.github/workflows/x.yml@abc\n"
+            "    secrets: inherit\n",
+            ["inherits every secret into 'other/repo/.github/workflows/x.yml@abc'"],
+            id="inherit-to-another-repository",
+        ),
+        pytest.param(
+            "on: pull_request\njobs:\n  a:\n"
+            "    uses: ./.github/workflows/x.yml\n    secrets: inherit\n",
+            [],
+            id="inherit-to-a-local-call",
+        ),
+        pytest.param(
+            "on: pull_request\njobs:\n  a:\n    steps:\n"
+            "      - run: echo '${{ toJSON(secrets) }}'\n",
+            ["reads the whole secrets context"],
+            id="whole-context",
+        ),
+        pytest.param(
+            "on: pull_request\njobs:\n  a:\n    uses: other/repo/.github/workflows/x.yml@abc\n"
+            "    secrets:\n      token: ${{ secrets.CS_ACCESS_TOKEN }}\n",
+            ["names CS_ACCESS_TOKEN"],
+            id="named-forward",
+        ),
+        pytest.param(
+            "on: pull_request\n# CS_ACCESS_TOKEN lives on main; see codescene.io\n"
+            "jobs: {}\n",
+            [],
+            id="comment",
+        ),
+    ],
+)
+def test_the_token_sweep_reads_every_route(source: str, expected: list[str]) -> None:
+    """Each route by which a pull-request lane could reach the token.
+
+    `secrets: inherit` names nothing, so it is refused where the callee is in
+    another repository and allowed where the callee is local, since a local
+    callee is on the surface and read in turn. A comment is not a route.
+    """
+    assert secret_breaches(load(source), source) == expected
+
+
 @pytest.mark.parametrize("workflow", PULL_REQUEST_WORKFLOWS)
 def test_no_pull_request_step_runs_a_codescene_action(workflow: str) -> None:
     """No pull-request lane calls a CodeScene action.
 
     Matched against each step's `uses` value rather than against the file, so
-    that naming CodeScene in a step name or a comment, which is how the
-    boundary gets explained where people read it, does not itself read as a
-    breach.
+    that naming CodeScene in a step name does not read as a breach.
     """
     offenders = [used for used in _values(workflow, "uses") if CODESCENE_ACTION in used]
     assert not offenders, (
@@ -295,17 +290,15 @@ def test_no_pull_request_step_runs_the_coverage_command(workflow: str) -> None:
 
 
 @pytest.mark.parametrize("workflow", PULL_REQUEST_WORKFLOWS)
-def test_no_pull_request_workflow_receives_the_access_token(workflow: str) -> None:
-    """The token is searched for in the source, and that is deliberate.
+def test_no_pull_request_workflow_reaches_the_token_or_the_host(workflow: str) -> None:
+    """No pull-request lane reaches the token or contacts CodeScene.
 
-    A secret reaches a step through `env`, through `with`, through a job-level
-    or workflow-level `env` block, or through an expression inside a `run`
-    body. A reader that walked only one of those routes would pass on the
-    others, and unlike an action or a command there is no legitimate reason for
-    the name to appear on a pull-request lane at all.
+    That includes inheriting every secret into a workflow this tree cannot
+    read, which names nothing and so is read from the document.
     """
-    assert CODESCENE_SECRET.lower() not in _text(workflow), (
-        f"{workflow} receives {CODESCENE_SECRET}; coverage is owned by the "
+    breaches = secret_breaches(_documents()[workflow], _sources()[workflow])
+    assert not breaches, (
+        f"{workflow} {'; '.join(breaches)}; coverage is owned by the "
         "push-to-main publisher"
     )
 
@@ -314,11 +307,9 @@ def test_the_coverage_job_takes_a_shallow_checkout() -> None:
     """The full clone went with the step that needed it.
 
     `fetch-depth: 0` was on this job's checkout so `cs-coverage check` could
-    diff against the merge base. Nothing left in the job reads history: the
-    coverage ratchet keeps its baseline in `actions/cache`. Asserting its
-    absence is what stops the full clone creeping back with no step to justify
-    it, and it is asserted on this job alone rather than repository-wide,
-    because another lane may have a real reason for one.
+    diff against the merge base. The coverage ratchet keeps its baseline in
+    `actions/cache` and reads no history, so the absence is asserted on this
+    job alone; another lane may have a real reason for a full clone.
     """
     jobs = _documents()["ci.yml"].get("jobs")
     assert isinstance(jobs, dict), "ci.yml must declare jobs"
@@ -338,33 +329,43 @@ def test_the_coverage_job_takes_a_shallow_checkout() -> None:
         )
 
 
-def test_the_publisher_exists_and_runs_only_on_a_push_to_main() -> None:
-    """The other direction: something must still upload.
+def test_the_publisher_runs_on_a_push_to_main_and_nothing_else() -> None:
+    """The other direction: something must still upload, and only from `main`.
 
-    A boundary asserted in one direction is satisfied by deleting the thing it
-    was protecting, so the publisher's existence and its trigger are asserted
-    here. `pull_request` is refused explicitly, because a publisher that also
-    ran on pull requests would satisfy every assertion above by sitting in a
-    file whose name this contract trusts.
+    The upload step carries no ref guard of its own, so the trigger is the
+    guard, and it is asserted by equality over the whole `on:` block. Asserting
+    only that the push entry names `main` would pass a publisher that also
+    answered `workflow_dispatch`, from which any branch could upload.
     """
-    triggers = _triggers(_documents()[PUBLISHER])
-    assert "push" in triggers, f"{PUBLISHER} must run on a push"
-    assert triggers["push"] == {"branches": ["main"]}, (
-        f"{PUBLISHER} must run on a push to main alone"
+    assert triggers(_documents()[PUBLISHER]) == {"push": {"branches": ["main"]}}, (
+        f"{PUBLISHER} must run on a push to main and on nothing else"
     )
-    assert "pull_request" not in triggers, (
-        f"{PUBLISHER} must not also run on a pull request"
-    )
+
+
+def test_the_publisher_queues_rather_than_cancels() -> None:
+    """A cancelled publisher abandons its upload and its ratchet baseline.
+
+    A queued one publishes later and the later push's baseline wins, so a
+    concurrency group is welcome here and `cancel-in-progress: true` is not,
+    at the workflow scope or on any job.
+    """
+    document = _documents()[PUBLISHER]
+    scopes = [document, *(job for job in (document.get("jobs") or {}).values())]
+    cancelling = [
+        scope.get("concurrency")
+        for scope in scopes
+        if isinstance(scope.get("concurrency"), dict)
+        and scope["concurrency"].get("cancel-in-progress") not in (None, False)
+    ]
+    assert not cancelling, f"{PUBLISHER} must not cancel a run in progress"
 
 
 def test_exactly_one_workflow_uploads() -> None:
     """The publisher is the only one, not merely one that exists.
 
-    Naming `coverage-main.yml` and asserting it uploads leaves a second
-    push-to-main workflow with its own upload step invisible: coverage would be
-    published twice, the work done twice, and this suite would pass. The
-    uploader is therefore found by searching every workflow, and the set of
-    workflows carrying one is asserted to be exactly the publisher.
+    The uploader is found by searching every workflow, and the set of
+    workflows carrying one is asserted to be exactly the publisher, so a second
+    push-to-main workflow with its own upload step cannot pass unnoticed.
     """
     uploaders = {
         name
@@ -382,10 +383,6 @@ def test_the_publisher_uploads_with_a_token() -> None:
     Without this, the publisher could be reduced to a coverage run with the
     upload step deleted and every assertion here would still pass.
     """
-    source = _text(PUBLISHER)
-    assert "upload-codescene-coverage" in source, (
-        f"{PUBLISHER} must call the upload action"
-    )
-    assert CODESCENE_SECRET.lower() in source, (
-        f"{PUBLISHER} must receive the access token"
-    )
+    source = searchable(_sources()[PUBLISHER])
+    assert UPLOAD_ACTION in source, f"{PUBLISHER} must call the upload action"
+    assert "cs_access_token" in source, f"{PUBLISHER} must receive the access token"

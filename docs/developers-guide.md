@@ -681,8 +681,9 @@ make test
 ## CodeScene coverage is owned by `main`
 
 `coverage-main.yml` runs on a push to `main` and uploads the merged lcov report
-to CodeScene. No pull-request lane calls a CodeScene action, runs a
-`cs-coverage` command, or receives `CS_ACCESS_TOKEN` at any scope.
+to CodeScene. No workflow a pull request can run calls a CodeScene action, runs
+a `cs-coverage` command, contacts `codescene.io`, or reaches `CS_ACCESS_TOKEN`
+at any scope.
 
 The reason is that a pull request cannot upload: CodeScene accepts coverage
 only for analysed branches. What a pull-request lane could do instead was hand
@@ -708,29 +709,47 @@ which is how the boundary gets explained where people read it, does not itself
 read as a breach. The first draft of this contract matched the file and failed
 on its own CI step's name.
 
-`CS_ACCESS_TOKEN` is matched against the source instead, with whole-line
-comments stripped. A secret reaches a step through `env`, through `with`,
-through a job-level or workflow-level `env` block, or through an expression
-inside a `run` body, and a reader that walked only one of those routes would
-pass on the others. Unlike an action or a command, there is no legitimate
-reason for that name to appear on a pull-request lane at all.
+`CS_ACCESS_TOKEN` and the `codescene.io` host are matched against the source
+instead, with whole-line comments stripped. A secret reaches a step through
+`env`, through `with`, through a job-level or workflow-level `env` block,
+through a named `secrets:` forward, or through an expression inside a `run`
+body, and a reader that walked only one of those routes would pass on the
+others. Unlike an action or a command, there is no legitimate reason for either
+name to appear on a pull-request lane at all.
+
+Two routes name nothing, so they are read separately. An expression over the
+whole secrets context (`toJSON(secrets)` or `secrets[...]`) is refused. So is
+`secrets: inherit` on a call to another repository's workflow, whose content
+this tree cannot read. Inheriting into a local call is allowed, because the
+callee is on the pull-request surface and is read in turn; that is the shape
+`release-dry-run.yml` has.
 
 The job walker descends into each job's `steps` and also treats a job carrying
 its own `uses` as a step, because a job that calls a reusable workflow has no
 steps and is the one shape that can run another repository's code.
 
 The pull-request surface is the set of workflows a pull request can run, not
-the set it triggers. A job calling a local reusable workflow runs that
-workflow's jobs under the caller's trigger, and `release-dry-run.yml` does
-exactly that with `secrets: inherit`. Local calls are therefore followed
-transitively, with a seen set so a cycle cannot hang the collection. Without
-that, every prohibition here could be breached inside `release.yml` and the
-suite would stay green.
+the set it triggers. Its entry points are the workflows answering
+`pull_request` or `pull_request_target`; the second runs with the base
+repository's secrets, so leaving it out would exempt the more dangerous of the
+two. A job calling a local reusable workflow runs that workflow's jobs under
+the caller's trigger, and `release-dry-run.yml` does exactly that with
+`secrets: inherit`. Local calls are therefore followed transitively, with a
+seen set so a cycle cannot hang the collection. Without that, every prohibition
+here could be breached inside `release.yml` and the suite would stay green.
 
 The coverage job's checkout is asserted to declare no `fetch-depth`, on that
 job alone rather than repository-wide, since another lane may have a real
 reason for a full clone. Reintroducing it there fails; adding one to
 `docs-tooling` does not.
+
+The publisher's `on:` block is asserted by equality to a push to `main` and
+nothing else. Its upload step carries no ref guard of its own, so the trigger
+is the guard, and a publisher that also answered `workflow_dispatch` could
+upload from any branch while a check on the push entry alone still passed. The
+publisher may queue behind a concurrency group but may not declare
+`cancel-in-progress: true`, at the workflow scope or on a job: a cancelled
+publisher abandons both its upload and the ratchet baseline it writes.
 
 The publisher is found by searching rather than named. Asserting that
 `coverage-main.yml` uploads leaves a second push-to-main workflow with its own
@@ -743,7 +762,7 @@ Proved by adding each forbidden element back. A CodeScene action, a
 `cs-coverage` command in a different job of the same workflow fails the same
 one, which is what says the walk is over jobs rather than over one of them;
 giving the publisher a `pull_request` trigger fails three; deleting its upload
-step fails one.
+step fails two, the single-upload case and the upload-with-token case.
 
 Two shapes are normalized before any of that can run. `on:` is read as a
 mapping, a string, or a list, because `on: [push, pull_request]` is as valid as
@@ -753,12 +772,26 @@ a pull-request lane and escaped every prohibition, while the other workflows
 kept the non-empty guard passing. An unsupported shape is refused rather than
 coerced, since coercion is what caused that.
 
-A local call is recognized by shape rather than by literal prefix: a leading
-`./` is stripped and what remains is asked whether it is a path under this
-repository's workflow directory. Enumerating prefixes means extending the
-matcher for every variant anyone proposes, and each omission is a workflow
-silently outside the surface. A local action and a call carrying a ref both
-stay out, and both are asserted.
+A local call is recognized by shape: a leading `./` or `$/` (the two spellings
+GitHub documents for a same-repository call) is stripped and what remains is
+asked whether it is a path under this repository's workflow directory.
+Enumerating prefixes means extending the matcher for every variant anyone
+proposes, and each omission is a workflow silently outside the surface. A local
+action and a call carrying a ref both stay out, and both are asserted.
+
+Every workflow is loaded through a strict `SafeLoader` that refuses a mapping
+declaring the same key twice. PyYAML otherwise keeps the last value in silence,
+so a lane declaring `runs-on` or `uses` twice would be judged on a value GitHub
+may not use.
+
+The readers live in `tests/codescene_boundary/workflow_surface.py` and take
+parsed documents and source text rather than reading the repository, so the
+contract drives them with constructed workflows too. This repository declares
+only the shapes the contract accepts, and a reader proved only against those
+would pass with every refusal deleted. The constructed cases include the
+closure probe measured elsewhere in the estate: a `workflow_call`-only
+workflow, called with `secrets: inherit` from a pull-request job, curling
+`codescene.io` with the token, in both call spellings.
 
 The reach of the collection is proved the same way. A CodeScene action added
 inside `release.yml` fails two, the token added there fails one, disabling
