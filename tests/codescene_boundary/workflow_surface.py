@@ -14,6 +14,9 @@ import typing as typ
 
 import yaml
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 # Where this repository's workflows live, as a `uses:` value names them.
 WORKFLOW_PREFIX: typ.Final = ".github/workflows/"
 
@@ -33,10 +36,6 @@ CODESCENE_HOST: typ.Final = "codescene.io"
 # An expression reading the secrets context as a whole rather than by name.
 # `toJSON(secrets)` and `secrets[...]` hand over the token without naming it.
 WHOLE_SECRETS: typ.Final = re.compile(r"tojson\(\s*secrets\s*\)|secrets\s*\[")
-
-# A whole-line comment. Stripped before the source is searched, so that
-# explaining the boundary in a comment does not read as breaching it.
-COMMENT_LINE: typ.Final = re.compile(r"(?m)^\s*#.*$")
 
 MERGE_TAG: typ.Final = "tag:yaml.org,2002:merge"
 
@@ -96,11 +95,6 @@ def load(source: str) -> dict[str, object]:
         message = f"a workflow must be a mapping, not {type(document).__name__}"
         raise TypeError(message)
     return document
-
-
-def searchable(source: str) -> str:
-    """A workflow's source, lowercased, with whole-line comments removed."""
-    return COMMENT_LINE.sub("", source).lower()
 
 
 def triggers(workflow: dict[str, object]) -> dict[str, object]:
@@ -188,28 +182,90 @@ def called_locally(document: dict[str, object]) -> list[str]:
     ]
 
 
-def pull_request_surface(documents: dict[str, dict[str, object]]) -> tuple[str, ...]:
-    """Every workflow a pull request can run, calls included.
+def _closure(
+    documents: dict[str, dict[str, object]], entries: cabc.Iterable[str]
+) -> set[str]:
+    """The entry workflows and everything they call locally, transitively.
 
-    A workflow triggered by a pull request is only the entry point. A job that
-    calls a local reusable workflow runs that workflow's jobs under the
-    caller's trigger, so a workflow declaring only `workflow_call` is on the
-    surface when a pull-request lane calls it. Followed transitively, with a
-    seen set so a cycle cannot hang the collection.
+    A seen set stops a cycle hanging the collection.
     """
-    pending = [
-        name
-        for name, document in documents.items()
-        if any(event in triggers(document) for event in PULL_REQUEST_EVENTS)
-    ]
-    reached: list[str] = []
+    pending = list(entries)
+    reached: set[str] = set()
     while pending:
         name = pending.pop()
         if name in reached or name not in documents:
             continue
-        reached.append(name)
+        reached.add(name)
         pending.extend(called_locally(documents[name]))
+    return reached
+
+
+def _workflow_run_sources(document: dict[str, object]) -> set[str]:
+    """The workflow names a `workflow_run` trigger waits on."""
+    declared = triggers(document).get("workflow_run")
+    waits_on = declared.get("workflows") if isinstance(declared, dict) else None
+    match waits_on:
+        case str():
+            return {waits_on}
+        case list():
+            return {entry for entry in waits_on if isinstance(entry, str)}
+        case _:
+            return set()
+
+
+def _chained_after(
+    documents: dict[str, dict[str, object]], reached: set[str]
+) -> list[str]:
+    """Workflows outside the surface that a `workflow_run` chains onto it.
+
+    `workflow_run` names the workflows it waits on by their `name:`, which
+    defaults to the file's path, so both are matched.
+    """
+    names = {str(documents[name].get("name", name)) for name in reached}
+    names |= {f"{WORKFLOW_PREFIX}{name}" for name in reached}
+    return [
+        name
+        for name, document in documents.items()
+        if name not in reached and _workflow_run_sources(document) & names
+    ]
+
+
+def pull_request_surface(documents: dict[str, dict[str, object]]) -> tuple[str, ...]:
+    """Every workflow a pull request can run, calls and chains included.
+
+    A workflow triggered by a pull request is only the entry point. A job that
+    calls a local reusable workflow runs that workflow's jobs under the
+    caller's trigger, so a workflow declaring only `workflow_call` is on the
+    surface when a pull-request lane calls it. A `workflow_run` workflow
+    waiting on a surface workflow runs after every pull request, with the base
+    repository's secrets, so it joins too; one chained only onto push or
+    schedule lanes does not. Repeated until nothing new joins.
+    """
+    reached = _closure(
+        documents,
+        (
+            name
+            for name, document in documents.items()
+            if any(event in triggers(document) for event in PULL_REQUEST_EVENTS)
+        ),
+    )
+    while chained := _chained_after(documents, reached):
+        reached |= _closure(documents, chained)
     return tuple(sorted(reached))
+
+
+def _scalars(node: object) -> cabc.Iterator[str]:
+    """Every key and scalar value in a parsed document, as text."""
+    match node:
+        case dict():
+            for key, value in node.items():
+                yield str(key)
+                yield from _scalars(value)
+        case list():
+            for item in node:
+                yield from _scalars(item)
+        case _:
+            yield str(node)
 
 
 def _inherits_to_another_repository(job: dict[str, object]) -> bool:
@@ -218,11 +274,14 @@ def _inherits_to_another_repository(job: dict[str, object]) -> bool:
     return inherits and local_call(str(job.get("uses", ""))) is None
 
 
-def secret_breaches(document: dict[str, object], source: str) -> list[str]:
+def secret_breaches(document: dict[str, object]) -> list[str]:
     """How a pull-request workflow could reach CodeScene or its token.
 
-    The token and the host are searched for in the comment-stripped source,
-    because a secret reaches a step through `env` at any scope, through
+    The token and the host are searched for in every key and scalar of the
+    parsed document. The parser has already dropped real comments, and a line
+    starting `#` inside a block scalar is data, which Actions still expands, so
+    stripping such lines from the source would hide an expression. A secret
+    reaches a step through `env` at any scope, through
     `with`, through a named `secrets:` forward, or through an expression in a
     `run` body, and a reader walking one of those routes would pass on the
     others. Two routes name nothing, so they are read separately: an
@@ -230,7 +289,7 @@ def secret_breaches(document: dict[str, object], source: str) -> list[str]:
     call to another repository. Inheriting into a local call is allowed,
     because the callee is on the surface and read in turn.
     """
-    text = searchable(source)
+    text = "\n".join(_scalars(document)).lower()
     found: list[str] = []
     if CODESCENE_SECRET.lower() in text:
         found.append(f"names {CODESCENE_SECRET}")

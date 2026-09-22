@@ -138,7 +138,7 @@ def test_the_measured_probe_is_reached_and_refused(spelling: str) -> None:
     sources = {"ci.yml": PROBE_CALLER.format(spelling=spelling), "probe.yml": PROBE}
     documents = {name: load(source) for name, source in sources.items()}
     assert pull_request_surface(documents) == ("ci.yml", "probe.yml")
-    assert secret_breaches(documents["probe.yml"], sources["probe.yml"]) == [
+    assert secret_breaches(documents["probe.yml"]) == [
         "names CS_ACCESS_TOKEN",
         "contacts codescene.io",
     ]
@@ -192,6 +192,14 @@ def test_the_surface_is_narrow() -> None:
             [],
             id="comment",
         ),
+        pytest.param(
+            "on: pull_request\njobs:\n  a:\n    steps:\n"
+            "      - uses: peter-evans/create-or-update-comment@v4\n"
+            "        with:\n          body: |\n"
+            "            # ${{ secrets.CS_ACCESS_TOKEN }}\n",
+            ["names CS_ACCESS_TOKEN"],
+            id="hash-line-in-a-block-scalar",
+        ),
     ],
 )
 def test_the_token_sweep_reads_every_route(source: str, expected: list[str]) -> None:
@@ -199,9 +207,10 @@ def test_the_token_sweep_reads_every_route(source: str, expected: list[str]) -> 
 
     `secrets: inherit` names nothing, so it is refused where the callee is in
     another repository and allowed where the callee is local, since a local
-    callee is on the surface and read in turn. A comment is not a route.
+    callee is on the surface and read in turn. A comment is not a route, but a
+    `#` line inside a block scalar is data, and Actions expands it.
     """
-    assert secret_breaches(load(source), source) == expected
+    assert secret_breaches(load(source)) == expected
 
 
 @pytest.mark.parametrize(
@@ -226,3 +235,55 @@ def test_a_required_command_is_read_from_the_command_line(
     which runs nothing.
     """
     assert runs_command(script, "make test-codescene-boundary") is expected
+
+
+def _surface(sources: dict[str, str]) -> tuple[str, ...]:
+    """The pull-request surface of a set of constructed workflows."""
+    return pull_request_surface({name: load(text) for name, text in sources.items()})
+
+
+CALLS: typ.Final = "jobs:\n  a:\n    uses: ./.github/workflows/{callee}\n"
+
+
+def test_a_breach_two_calls_deep_is_reached_and_refused() -> None:
+    """The closure is transitive: only the grandchild carries the token."""
+    sources = {
+        "ci.yml": "on: pull_request\n" + CALLS.format(callee="child.yml"),
+        "child.yml": "on: workflow_call\n" + CALLS.format(callee="grandchild.yml"),
+        "grandchild.yml": PROBE,
+    }
+    assert _surface(sources) == ("child.yml", "ci.yml", "grandchild.yml")
+    assert secret_breaches(load(PROBE)) == [
+        "names CS_ACCESS_TOKEN",
+        "contacts codescene.io",
+    ]
+
+
+def test_a_call_cycle_terminates() -> None:
+    """Two workflows calling each other are each collected once."""
+    sources = {
+        "ci.yml": "on: pull_request\n" + CALLS.format(callee="loop.yml"),
+        "loop.yml": "on: workflow_call\n" + CALLS.format(callee="ci.yml"),
+    }
+    assert _surface(sources) == ("ci.yml", "loop.yml")
+
+
+def test_a_workflow_run_chain_joins_only_when_it_follows_the_surface() -> None:
+    """`workflow_run` after a pull-request lane runs with the repository's secrets.
+
+    Its local calls join with it. A chain onto a push-only lane stays out, which
+    is the narrowness half.
+    """
+    sources = {
+        "ci.yml": "name: CI\non: pull_request\njobs: {}\n",
+        "after.yml": (
+            "on:\n  workflow_run:\n    workflows: [CI]\n"
+            + CALLS.format(callee="report.yml")
+        ),
+        "report.yml": "on: workflow_call\njobs: {}\n",
+        "nightly.yml": "name: Nightly\non: push\njobs: {}\n",
+        "after-nightly.yml": (
+            "on:\n  workflow_run:\n    workflows: [Nightly]\njobs: {}\n"
+        ),
+    }
+    assert _surface(sources) == ("after.yml", "ci.yml", "report.yml")

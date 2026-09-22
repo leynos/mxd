@@ -709,11 +709,14 @@ which is how the boundary gets explained where people read it, does not itself
 read as a breach. The first draft of this contract matched the file and failed
 on its own CI step's name.
 
-`CS_ACCESS_TOKEN` and the `codescene.io` host are matched against the source
-instead, with whole-line comments stripped. A secret reaches a step through
-`env`, through `with`, through a job-level or workflow-level `env` block,
-through a named `secrets:` forward, or through an expression inside a `run`
-body, and a reader that walked only one of those routes would pass on the
+`CS_ACCESS_TOKEN` and the `codescene.io` host are matched instead against every
+key and scalar of the parsed workflow. The parser has already dropped the real
+comments; a line beginning `#` inside a block scalar is data, which Actions
+still expands, so stripping such lines from the source text would hide
+`# ${{ secrets.CS_ACCESS_TOKEN }}` in a comment body. A secret reaches a step
+through `env`, through `with`, through a job-level or workflow-level `env`
+block, through a named `secrets:` forward, or through an expression inside a
+`run` body, and a reader that walked only one of those routes would pass on the
 others. Unlike an action or a command, there is no legitimate reason for either
 name to appear on a pull-request lane at all.
 
@@ -737,6 +740,13 @@ the caller's trigger, and `release-dry-run.yml` does exactly that with
 `secrets: inherit`. Local calls are therefore followed transitively, with a
 seen set so a cycle cannot hang the collection. Without that, every prohibition
 here could be breached inside `release.yml` and the suite would stay green.
+
+A `workflow_run` workflow waiting on a surface workflow joins the surface too,
+with everything it calls, because it runs after every pull request with the
+base repository's secrets. It is matched on the waited-on workflow's `name:`,
+or on its path when it has none. One chained only onto push or scheduled lanes
+stays out. Constructed cases cover a breach two calls deep, a call cycle, and a
+chained and an unchained `workflow_run`.
 
 The coverage job's checkout is asserted to declare no `fetch-depth`, on that
 job alone rather than repository-wide, since another lane may have a real

@@ -138,7 +138,7 @@ def test_no_pull_request_workflow_reaches_the_token_or_the_host(workflow: str) -
     That includes inheriting every secret into a workflow this tree cannot
     read, which names nothing and so is read from the document.
     """
-    breaches = secret_breaches(_documents()[workflow], _sources()[workflow])
+    breaches = secret_breaches(_documents()[workflow])
     assert not breaches, (
         f"{workflow} {'; '.join(breaches)}; coverage is owned by the "
         "push-to-main publisher"
