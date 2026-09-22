@@ -40,6 +40,9 @@ COMMENT_LINE: typ.Final = re.compile(r"(?m)^\s*#.*$")
 
 MERGE_TAG: typ.Final = "tag:yaml.org,2002:merge"
 
+# GitHub reads both extensions, in any case, from the workflows directory.
+WORKFLOW_SUFFIXES: typ.Final = (".yml", ".yaml")
+
 
 class _StrictLoader(yaml.SafeLoader):
     """A safe loader that refuses a mapping declaring the same key twice."""
@@ -68,6 +71,18 @@ class _StrictLoader(yaml.SafeLoader):
                 )
             seen.add(key)
         return super().construct_mapping(node, deep=deep)
+
+
+def is_workflow_file(name: str) -> bool:
+    """Whether GitHub would read a file of this name as a workflow.
+
+    A reader globbing `*.yml` skips `release.yaml` and `CI.YML` in silence,
+    and a workflow it never reads is a workflow every prohibition passes over.
+
+    >>> is_workflow_file("Release.YAML")
+    True
+    """
+    return name.lower().endswith(WORKFLOW_SUFFIXES)
 
 
 def load(source: str) -> dict[str, object]:

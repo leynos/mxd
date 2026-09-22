@@ -784,11 +784,16 @@ declaring the same key twice. PyYAML otherwise keeps the last value in silence,
 so a lane declaring `runs-on` or `uses` twice would be judged on a value GitHub
 may not use.
 
+Every file in `.github/workflows/` ending `.yml` or `.yaml`, in any case, is
+read. A reader globbing `*.yml` would skip `release.yaml` or `CI.YML` in
+silence, and a workflow it never opens is one every prohibition passes over.
+
 The readers live in `tests/codescene_boundary/workflow_surface.py` and take
-parsed documents and source text rather than reading the repository, so the
-contract drives them with constructed workflows too. This repository declares
-only the shapes the contract accepts, and a reader proved only against those
-would pass with every refusal deleted. The constructed cases include the
+parsed documents and source text rather than reading the repository.
+`test_codescene_boundary.py` applies them to this repository's workflows, and
+`test_workflow_surface.py` drives them with constructed ones. This repository
+declares only the shapes the contract accepts, and a reader proved only against
+those would pass with every refusal deleted. The constructed cases include the
 closure probe measured elsewhere in the estate: a `workflow_call`-only
 workflow, called with `secrets: inherit` from a pull-request job, curling
 `codescene.io` with the token, in both call spellings.
