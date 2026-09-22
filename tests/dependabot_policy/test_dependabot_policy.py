@@ -33,10 +33,43 @@ REQUIRED_STRATEGY: typ.Final = "increase-if-necessary"
 REFUSED_STRATEGIES: typ.Final = ("lockfile-only", "auto")
 
 
+class _StrictLoader(yaml.SafeLoader):
+    """A safe loader that refuses a mapping declaring the same key twice."""
+
+    def construct_mapping(
+        self, node: yaml.MappingNode, deep: bool = False
+    ) -> dict[object, object]:
+        """Refuse a duplicate key rather than keep the last value silently.
+
+        Dependabot parses this file with a loader that keeps the last of two
+        equal keys too, so a repeated `updates` or `versioning-strategy` would
+        be read as the later declaration while the earlier one sat in the file
+        looking authoritative.
+        """
+        seen: set[object] = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"found duplicate key {key!r}",
+                    key_node.start_mark,
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
+def _load(text: str) -> dict[str, object]:
+    """Parse a Dependabot configuration, refusing duplicate keys."""
+    document = yaml.load(text, Loader=_StrictLoader)
+    assert isinstance(document, dict), "the configuration must be a mapping"
+    return document
+
+
 def _updates() -> list[dict[str, object]]:
     """Every ecosystem entry in the Dependabot configuration."""
-    document = yaml.safe_load(CONFIGURATION.read_text(encoding="utf-8"))
-    updates = document.get("updates")
+    updates = _load(CONFIGURATION.read_text(encoding="utf-8")).get("updates")
     assert isinstance(updates, list) and updates, (
         "this contract is meaningless if no update entry was read"
     )
@@ -44,12 +77,9 @@ def _updates() -> list[dict[str, object]]:
 
 
 def _entry(ecosystem: str) -> dict[str, object]:
-    """The one entry for an ecosystem.
-
-    Exactly one is required rather than the first of several. Two entries for
-    the same ecosystem would let a second, unasserted one govern a directory
-    while this contract read the first and passed.
-    """
+    """The one entry for an ecosystem."""
+    # Exactly one rather than the first of several: a second, unasserted
+    # entry could govern a directory while this contract read the first.
     matching = [
         entry for entry in _updates() if entry.get("package-ecosystem") == ecosystem
     ]
@@ -57,6 +87,28 @@ def _entry(ecosystem: str) -> dict[str, object]:
         f"expected exactly one {ecosystem} entry, found {len(matching)}"
     )
     return matching[0]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("version: 2\nupdates: []\nupdates: []\n", id="updates"),
+        pytest.param(
+            "version: 2\nupdates:\n  - package-ecosystem: cargo\n"
+            "    versioning-strategy: lockfile-only\n"
+            "    versioning-strategy: increase-if-necessary\n",
+            id="versioning-strategy",
+        ),
+    ],
+)
+def test_a_duplicate_key_is_refused(text: str) -> None:
+    """A repeated key fails the load instead of resolving to its last value.
+
+    The second case is the one that matters: read leniently, it passes the
+    assertions below while the file also declares the refused strategy.
+    """
+    with pytest.raises(yaml.constructor.ConstructorError, match="duplicate key"):
+        _load(text)
 
 
 def test_the_cargo_entry_raises_the_manifest() -> None:

@@ -1004,10 +1004,10 @@ alone.
 Without it, a bump across a major boundary the manifest forbids is not a change
 at all. The next command that writes `Cargo.lock` resolves the edge back, the
 pull request merges with no net effect, and the same bump is proposed again.
-That has happened eight times: `rand` 0.9.5 to 0.10.2 in #522, #524, #533, #537
-and #546, and `clap_mangen` 0.2.33 to 0.3.3 in #523, #535 and #545. Between
-such a merge and the next lockfile write, `main` carries a lockfile nothing
-builds from with `--locked`.
+That has happened eight times: `rand` 0.9.5 to 0.10.2 five times[^1] and
+`clap_mangen` 0.2.33 to 0.3.3 three times[^2]. Between such a merge and the
+next lockfile write, `main` carries a lockfile nothing builds from with
+`--locked`.
 
 `make check-locked` is the complement, not a substitute: it refuses a lockfile
 the manifest does not admit, which catches the defect once it has landed. This
@@ -1019,8 +1019,16 @@ which hands the decision back to Dependabot and is how the repository arrived
 here. The `github-actions` entry is asserted to leave the key unset, because an
 Actions pin has no manifest to raise; without that half, setting the strategy
 everywhere would satisfy the rest while changing behaviour nobody asked about.
+
 Exactly one Cargo entry is required rather than the first of several, so a
-second entry governing another directory cannot slip past unasserted.
+second entry governing another directory cannot slip past unasserted. The file
+is loaded through a `SafeLoader` that refuses a repeated key: Dependabot's own
+loader keeps the last value, so a repeated `versioning-strategy` would
+otherwise be read as whichever declaration came second.
+
+[^1]: Pull requests #522, #524, #533, #537 and #546.
+
+[^2]: Pull requests #523, #535 and #545.
 
 ## Spelling policy
 
