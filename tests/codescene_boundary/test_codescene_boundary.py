@@ -27,11 +27,11 @@ import typing as typ
 from pathlib import Path
 
 import pytest
+from shell_commands import runs_command
 from workflow_surface import (
     is_workflow_file,
     load,
     pull_request_surface,
-    searchable,
     secret_breaches,
     steps,
     triggers,
@@ -50,6 +50,10 @@ CODESCENE_COMMAND: typ.Final = "cs-coverage"
 # The action that performs the upload, searched for across every workflow so
 # that a second publisher cannot appear unnoticed.
 UPLOAD_ACTION: typ.Final = "upload-codescene-coverage"
+
+# What the upload step must be handed, and the target that runs this contract.
+SECRET: typ.Final = "${{ secrets.CS_ACCESS_TOKEN }}"
+BOUNDARY_TARGET: typ.Final = "make test-codescene-boundary"
 
 
 def _sources() -> dict[str, str]:
@@ -215,12 +219,58 @@ def test_exactly_one_workflow_uploads() -> None:
     )
 
 
-def test_the_publisher_uploads_with_a_token() -> None:
-    """And it must still do the upload it exists for.
+def _is_upload_step(step: dict[str, object]) -> bool:
+    """Whether a step calls the upload action, read from its `uses` path."""
+    path = str(step.get("uses", "")).partition("@")[0].strip()
+    return path.rsplit("/", 1)[-1] == UPLOAD_ACTION
 
-    Without this, the publisher could be reduced to a coverage run with the
-    upload step deleted and every assertion here would still pass.
+
+def _supplies_the_token(step: dict[str, object]) -> bool:
+    """Whether a step hands the upload action the secret, directly or via env."""
+    options = step.get("with")
+    environment = step.get("env")
+    given = (
+        " ".join(str(options.get("access-token", "")).split())
+        if isinstance(options, dict)
+        else ""
+    )
+    via_env = (
+        isinstance(environment, dict)
+        and " ".join(str(environment.get("CS_ACCESS_TOKEN", "")).split()) == SECRET
+    )
+    return given == SECRET or (given == "${{ env.CS_ACCESS_TOKEN }}" and via_env)
+
+
+def test_the_publisher_uploads_with_a_token() -> None:
+    """And it must still do the upload it exists for, with the credential.
+
+    Read from the steps rather than from the text: the action named in an
+    `echo` or a comment, or the token named anywhere but the upload step's
+    input, would satisfy a substring search while nothing uploaded.
     """
-    source = searchable(_sources()[PUBLISHER])
-    assert UPLOAD_ACTION in source, f"{PUBLISHER} must call the upload action"
-    assert "cs_access_token" in source, f"{PUBLISHER} must receive the access token"
+    uploads = [step for step in steps(_documents()[PUBLISHER]) if _is_upload_step(step)]
+    assert uploads, f"{PUBLISHER} must call the upload action"
+    assert all(_supplies_the_token(step) for step in uploads), (
+        f"{PUBLISHER} must hand the upload action {SECRET}"
+    )
+
+
+def test_the_boundary_lane_runs_this_contract() -> None:
+    """The contract is only a gate while a pull-request lane runs it.
+
+    Read from a tokenized command line, so `echo make
+    test-codescene-boundary`, or the target named in a comment, does not count
+    as running it.
+    """
+    jobs = _documents()["ci.yml"].get("jobs")
+    assert isinstance(jobs, dict), "ci.yml must declare jobs"
+    job = jobs.get("docs-tooling")
+    assert isinstance(job, dict), "ci.yml must declare the docs-tooling job"
+    scripts = [
+        str(step["run"])
+        for step in job.get("steps", [])
+        if isinstance(step, dict) and "run" in step
+    ]
+    assert any(runs_command(script, BOUNDARY_TARGET) for script in scripts), (
+        f"docs-tooling must run `{BOUNDARY_TARGET}`"
+    )

@@ -751,6 +751,18 @@ publisher may queue behind a concurrency group but may not declare
 `cancel-in-progress: true`, at the workflow scope or on a job: a cancelled
 publisher abandons both its upload and the ratchet baseline it writes.
 
+Requirements are read differently from prohibitions. A prohibition is a
+substring test, because over-matching is the safe direction there. A
+requirement is not: `echo make test-codescene-boundary` contains the target and
+runs nothing. So the rule that `docs-tooling` runs this contract reads each
+`run` body as the shell would, through
+`tests/codescene_boundary/shell_commands.py`, and counts the target only when a
+simple command begins with its words. The rule that the publisher uploads finds
+the step whose `uses` path names the upload action and requires that step's
+`access-token` input to carry `secrets.CS_ACCESS_TOKEN`, directly or through
+the step's own `env`; the action named in an `echo`, or the token named
+anywhere else, does not satisfy it.
+
 The publisher is found by searching rather than named. Asserting that
 `coverage-main.yml` uploads leaves a second push-to-main workflow with its own
 upload step invisible: coverage would be published twice and the work done

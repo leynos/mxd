@@ -11,6 +11,7 @@ from __future__ import annotations
 import typing as typ
 
 import pytest
+from shell_commands import runs_command
 from workflow_surface import (
     is_workflow_file,
     load,
@@ -111,14 +112,17 @@ def test_a_duplicate_key_is_refused_rather_than_resolved() -> None:
         ),
         pytest.param("./.github/actions/export-postgres-url", None, id="local-action"),
         pytest.param(".github/workflows/release.yml@abc123", None, id="path-with-ref"),
+        pytest.param(
+            "$/.github/workflows/release.yml@abc123", None, id="dollar-with-ref"
+        ),
     ],
 )
 def test_a_local_call_is_recognized_by_shape(used: str, expected: str | None) -> None:
     """What counts as a call into this repository's own workflows.
 
     GitHub documents both `./` and `$/` for a same-repository call. The last
-    three rows are the narrowness half: a local *action*, a call to another
-    repository, and a path carrying a ref must all stay out.
+    four rows are the narrowness half: a local *action*, a call to another
+    repository, and a path carrying a ref in either spelling must all stay out.
     """
     assert local_call(used) == expected
 
@@ -198,3 +202,27 @@ def test_the_token_sweep_reads_every_route(source: str, expected: list[str]) -> 
     callee is on the surface and read in turn. A comment is not a route.
     """
     assert secret_breaches(load(source), source) == expected
+
+
+@pytest.mark.parametrize(
+    ("script", "expected"),
+    [
+        pytest.param("make test-codescene-boundary", True, id="bare"),
+        pytest.param("make  test-codescene-boundary", True, id="two-spaces"),
+        pytest.param("set -e && FOO=1 make test-codescene-boundary", True, id="list"),
+        pytest.param("true \\\n  ; make test-codescene-boundary", True, id="continued"),
+        pytest.param("echo make test-codescene-boundary", False, id="echo"),
+        pytest.param("# make test-codescene-boundary", False, id="comment"),
+        pytest.param("make test-codescene", False, id="other-target"),
+        pytest.param("make 'test-codescene-boundary", False, id="unbalanced"),
+    ],
+)
+def test_a_required_command_is_read_from_the_command_line(
+    script: str, expected: bool
+) -> None:
+    """A lane runs a command only when a simple command begins with its words.
+
+    A substring requirement passes for `echo make test-codescene-boundary`,
+    which runs nothing.
+    """
+    assert runs_command(script, "make test-codescene-boundary") is expected
