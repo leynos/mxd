@@ -36,6 +36,10 @@ CODESCENE_ACTION: typ.Final = "codescene"
 CODESCENE_COMMAND: typ.Final = "cs-coverage"
 CODESCENE_SECRET: typ.Final = "CS_ACCESS_TOKEN"
 
+# The action that performs the upload, searched for across every workflow so
+# that a second publisher cannot appear unnoticed.
+UPLOAD_ACTION: typ.Final = "upload-codescene-coverage"
+
 
 def _documents() -> dict[str, dict[str, object]]:
     """Every workflow in this repository, parsed."""
@@ -102,21 +106,73 @@ def _values(workflow: str, key: str) -> list[str]:
     ]
 
 
-PULL_REQUEST_WORKFLOWS: typ.Final = tuple(
-    name
-    for name, document in _documents().items()
-    if "pull_request" in _triggers(document)
-)
+# A local reusable-workflow call: `uses: ./.github/workflows/<name>.yml`.
+LOCAL_CALL: typ.Final = re.compile(r"^\./\.github/workflows/(?P<name>[^@\s]+)$")
+
+
+def _called_locally(workflow: str) -> list[str]:
+    """The workflows a workflow calls from this repository."""
+    return [
+        matched["name"]
+        for step in _steps(_documents()[workflow])
+        if (matched := LOCAL_CALL.match(str(step.get("uses", "")).strip()))
+    ]
+
+
+def _pull_request_surface() -> tuple[str, ...]:
+    """Every workflow a pull request can run, calls included.
+
+    A workflow triggered by `pull_request` is only the entry point. A job that
+    calls a local reusable workflow runs that workflow's jobs with the caller's
+    trigger, and `release-dry-run.yml` does exactly this, with
+    `secrets: inherit`. A reader that stopped at the caller's own `uses` would
+    pass while CodeScene ran on every pull request from inside `release.yml`.
+
+    Followed transitively, since a called workflow may call another, and with
+    a seen set so a cycle cannot hang the collection.
+    """
+    documents = _documents()
+    pending = [
+        name
+        for name, document in documents.items()
+        if "pull_request" in _triggers(document)
+    ]
+    reached: list[str] = []
+    while pending:
+        name = pending.pop()
+        if name in reached or name not in documents:
+            continue
+        reached.append(name)
+        pending.extend(_called_locally(name))
+    return tuple(sorted(reached))
+
+
+PULL_REQUEST_WORKFLOWS: typ.Final = _pull_request_surface()
 
 
 def test_some_workflow_runs_on_pull_requests() -> None:
     """The guard on the guard.
 
-    Every assertion below iterates the pull-request workflows. An empty list
+    Every assertion below iterates the pull-request surface. An empty list
     would pass all of them while asserting nothing, which is how a reader
     defect turns a contract into decoration.
     """
     assert PULL_REQUEST_WORKFLOWS, "no workflow was classified as pull-request"
+
+
+def test_the_surface_follows_a_local_reusable_call() -> None:
+    """The collection reaches past the caller, proved on the case that exists.
+
+    `release-dry-run.yml` runs on `pull_request` and calls `release.yml` with
+    `secrets: inherit`. If the surface held only the caller, every prohibition
+    below could be breached inside the callee and this suite would stay green.
+    """
+    assert "release-dry-run.yml" in PULL_REQUEST_WORKFLOWS, (
+        "the caller must be in the surface for this case to mean anything"
+    )
+    assert "release.yml" in PULL_REQUEST_WORKFLOWS, (
+        "a workflow called from a pull-request lane runs on pull requests"
+    )
 
 
 @pytest.mark.parametrize("workflow", PULL_REQUEST_WORKFLOWS)
@@ -177,6 +233,25 @@ def test_the_publisher_exists_and_runs_only_on_a_push_to_main() -> None:
     )
     assert "pull_request" not in triggers, (
         f"{PUBLISHER} must not also run on a pull request"
+    )
+
+
+def test_exactly_one_workflow_uploads() -> None:
+    """The publisher is the only one, not merely one that exists.
+
+    Naming `coverage-main.yml` and asserting it uploads leaves a second
+    push-to-main workflow with its own upload step invisible: coverage would be
+    published twice, the work done twice, and this suite would pass. The
+    uploader is therefore found by searching every workflow, and the set of
+    workflows carrying one is asserted to be exactly the publisher.
+    """
+    uploaders = {
+        name
+        for name in _documents()
+        if any(UPLOAD_ACTION in used for used in _values(name, "uses"))
+    }
+    assert uploaders == {PUBLISHER}, (
+        f"exactly one workflow may upload coverage; found {sorted(uploaders)}"
     )
 
 

@@ -719,12 +719,31 @@ The job walker descends into each job's `steps` and also treats a job carrying
 its own `uses` as a step, because a job that calls a reusable workflow has no
 steps and is the one shape that can run another repository's code.
 
+The pull-request surface is the set of workflows a pull request can run, not
+the set it triggers. A job calling a local reusable workflow runs that
+workflow's jobs under the caller's trigger, and `release-dry-run.yml` does
+exactly that with `secrets: inherit`. Local calls are therefore followed
+transitively, with a seen set so a cycle cannot hang the collection. Without
+that, every prohibition here could be breached inside `release.yml` and the
+suite would stay green.
+
+The publisher is found by searching rather than named. Asserting that
+`coverage-main.yml` uploads leaves a second push-to-main workflow with its own
+upload step invisible: coverage would be published twice and the work done
+twice. The set of workflows carrying the upload action is asserted to be
+exactly the publisher.
+
 Proved by adding each forbidden element back. A CodeScene action, a
 `cs-coverage` command and the token each fail exactly one case; a `cs-coverage`
 command in a different job of the same workflow fails the same one, which is
 what says the walk is over jobs rather than over one of them; giving the
 publisher a `pull_request` trigger fails three; deleting its upload step fails
 one.
+
+The reach of the collection is proved the same way. A CodeScene action added
+inside `release.yml` fails two, the token added there fails one, disabling
+call-following in the reader fails the case that names `release.yml`, and a
+second copy of the publisher fails the single-upload case.
 
 ## Spelling policy
 
