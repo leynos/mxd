@@ -727,6 +727,11 @@ transitively, with a seen set so a cycle cannot hang the collection. Without
 that, every prohibition here could be breached inside `release.yml` and the
 suite would stay green.
 
+The coverage job's checkout is asserted to declare no `fetch-depth`, on that
+job alone rather than repository-wide, since another lane may have a real
+reason for a full clone. Reintroducing it there fails; adding one to
+`docs-tooling` does not.
+
 The publisher is found by searching rather than named. Asserting that
 `coverage-main.yml` uploads leaves a second push-to-main workflow with its own
 upload step invisible: coverage would be published twice and the work done

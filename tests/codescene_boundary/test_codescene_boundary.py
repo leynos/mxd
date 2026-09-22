@@ -217,6 +217,34 @@ def test_no_pull_request_workflow_receives_the_access_token(workflow: str) -> No
     )
 
 
+def test_the_coverage_job_takes_a_shallow_checkout() -> None:
+    """The full clone went with the step that needed it.
+
+    `fetch-depth: 0` was on this job's checkout so `cs-coverage check` could
+    diff against the merge base. Nothing left in the job reads history: the
+    coverage ratchet keeps its baseline in `actions/cache`. Asserting its
+    absence is what stops the full clone creeping back with no step to justify
+    it, and it is asserted on this job alone rather than repository-wide,
+    because another lane may have a real reason for one.
+    """
+    jobs = _documents()["ci.yml"].get("jobs")
+    assert isinstance(jobs, dict), "ci.yml must declare jobs"
+    coverage = jobs.get("coverage")
+    assert isinstance(coverage, dict), "ci.yml must declare a coverage job"
+    checkouts = [
+        step
+        for step in coverage.get("steps", [])
+        if isinstance(step, dict) and "checkout" in str(step.get("uses", ""))
+    ]
+    assert checkouts, "the coverage job must check the repository out"
+    for step in checkouts:
+        options = step.get("with") or {}
+        assert "fetch-depth" not in options, (
+            "the coverage job reads no git history; the full clone belonged to "
+            "the CodeScene check step, which this repository no longer runs"
+        )
+
+
 def test_the_publisher_exists_and_runs_only_on_a_push_to_main() -> None:
     """The other direction: something must still upload.
 
