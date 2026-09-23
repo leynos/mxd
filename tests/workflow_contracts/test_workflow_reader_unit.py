@@ -11,7 +11,12 @@ import typing as typ
 
 import pytest
 from ci_workflow_jobs import job_records
-from ci_workflow_reader import WorkflowLoadError, load_workflow, workflow_paths
+from ci_workflow_reader import (
+    WorkflowLoadError,
+    load_workflow,
+    repository_documents,
+    workflow_paths,
+)
 from test_gate_steps import _gating_steps
 from test_runner_placement import is_external_call
 
@@ -117,3 +122,10 @@ def test_run_defaults_are_recorded_from_both_scopes(
 def test_both_local_spellings_are_this_repository(calls: str, expected: bool) -> None:
     """GitHub documents `./` and `$/` for a call that needs no pinned ref."""
     assert is_external_call(calls) is expected
+
+
+def test_each_repository_read_is_a_fresh_snapshot() -> None:
+    """One caller editing its documents cannot change what the next reads."""
+    first = repository_documents()
+    typ.cast("dict[str, object]", first).clear()
+    assert repository_documents(), "a second read must not see the first's edit"

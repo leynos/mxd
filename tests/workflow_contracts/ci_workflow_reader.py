@@ -29,7 +29,6 @@ change in front of it.
 
 from __future__ import annotations
 
-import functools as ft
 import typing as typ
 from pathlib import Path
 
@@ -206,16 +205,16 @@ def workflow_documents(
     return {path.name: load_workflow(path) for path in workflow_paths(directory)}
 
 
-@ft.cache
 def repository_documents() -> cabc.Mapping[str, cabc.Mapping[str, object]]:
     """Parse this repository's own workflows.
 
     This is the only entry point, here or anywhere, that reads the repository
     without being told to. Contracts call it explicitly and pass the result to
     the record and query functions, so that no query loads a file as a side
-    effect of being called with its arguments omitted. The result is cached
-    because a contract module parametrizes over it at collection time and the
-    documents do not change within a run.
+    effect of being called with its arguments omitted. Each call parses afresh
+    and nothing is cached: a cached mapping is shared and mutable, so one
+    caller editing it would change what every later caller reads. Contracts
+    load it once at their fixture boundary instead.
 
     Returns
     -------
