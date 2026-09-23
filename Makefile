@@ -65,7 +65,6 @@ TYPOS_CONFIG_BUILDER = $(UV_ENV) $(UV) tool run --python 3.14 --from \
 # The tree the gate reads. Overridden only by the gate's own test, which runs
 # this very target against a fixture holding a prohibited phrase.
 SPELLING_ROOT ?= .
-PYYAML_VERSION ?= 6.0.3
 WORKFLOW_CONTRACT_SRCS := $(wildcard tests/workflow_contracts/*.py)
 TLC_RUNNER ?= ./scripts/run-tlc.sh
 TLC_IMAGE ?= ghcr.io/leynos/mxd/mxd-tlc:latest
