@@ -27,6 +27,9 @@ REPOSITORY: typ.Final = Path(__file__).resolve().parents[2]
 # Declared in the shared dictionary's `[phrases.corrections]`. Split so this
 # file does not itself carry the phrase the gate is asked to reject.
 PROHIBITED: typ.Final = "hand" + "-written"
+# US spellings two anchored exceptions quote. Split for the same reason.
+API_COLOUR: typ.Final = "col" + "or"
+API_FLAVOUR: typ.Final = "flav" + "or"
 # The policy documents the gate reads, and the only two this repository tracks.
 # The fixture carries its own, so the test measures this repository's policy
 # rather than a stand-in.
@@ -52,8 +55,16 @@ def _run_gate(root: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _write(root: Path, files: cabc.Mapping[str, str]) -> None:
+    """Write each relative path's text under a root, creating directories."""
+    for relative, text in files.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
 @pytest.fixture
-def tracked_tree(tmp_path: Path) -> cabc.Callable[[str], Path]:
+def tracked_tree(tmp_path: Path) -> cabc.Callable[..., Path]:
     """Build a git tree carrying this repository's policy and one text file.
 
     The tree is tracked because the gate reads tracked files; an untracked
@@ -69,30 +80,35 @@ def tracked_tree(tmp_path: Path) -> cabc.Callable[[str], Path]:
 
     Returns
     -------
-    cabc.Callable[[str], Path]
-        A builder taking the body of `docs/note.md` and returning the root of
-        a git tree holding it, `typos.toml` and `typos.local.toml`, with
-        everything staged. The body is the only thing a caller varies, because
+    cabc.Callable[..., Path]
+        A builder taking the body of `docs/note.md`, optionally further files
+        to track and files to leave untracked, and returning the root of a git
+        tree holding them, `typos.toml` and `typos.local.toml`, with every
+        tracked file staged. The body is the only thing a caller varies, because
         the policy is the repository's own and varying it would measure a
         stand-in.
     """
 
-    def _build(body: str) -> Path:
+    def _build(
+        body: str,
+        tracked: cabc.Mapping[str, str] | None = None,
+        untracked: cabc.Mapping[str, str] | None = None,
+    ) -> Path:
         root = tmp_path / "fixture"
         root.mkdir()
         for name in POLICY_FILES:
             shutil.copy(REPOSITORY / name, root / name)
-        (root / "docs").mkdir()
-        (root / "docs" / "note.md").write_text(f"# Note\n\n{body}\n", encoding="utf-8")
+        _write(root, {"docs/note.md": f"# Note\n\n{body}\n", **(tracked or {})})
         subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
         subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        _write(root, untracked or {})
         return root
 
     return _build
 
 
 def test_a_prohibited_phrase_fails_the_gate(
-    tracked_tree: cabc.Callable[[str], Path],
+    tracked_tree: cabc.Callable[..., Path],
 ) -> None:
     """The unhappy path, which a clean checkout can never exercise.
 
@@ -109,7 +125,7 @@ def test_a_prohibited_phrase_fails_the_gate(
 
 
 def test_the_same_tree_without_the_phrase_passes(
-    tracked_tree: cabc.Callable[[str], Path],
+    tracked_tree: cabc.Callable[..., Path],
 ) -> None:
     """The narrowness half: the fixture is refused for the phrase, nothing else.
 
@@ -121,4 +137,59 @@ def test_the_same_tree_without_the_phrase_passes(
     assert result.returncode == 0, (
         f"the fixture must pass once the phrase is corrected; "
         f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
+def test_a_prohibited_phrase_in_tracked_code_fails_the_gate(
+    tracked_tree: cabc.Callable[..., Path],
+) -> None:
+    """The gate reads every tracked file, not Markdown alone."""
+    root = tracked_tree(
+        "A clean note.", tracked={"src/lib.rs": f"// A {PROHIBITED} comment.\n"}
+    )
+    result = _run_gate(root)
+    assert result.returncode != 0, "a tracked source file must be checked too"
+    assert "src/lib.rs" in result.stdout + result.stderr, (
+        "the gate must name the source file it rejected"
+    )
+
+
+def test_an_untracked_file_is_not_read(
+    tracked_tree: cabc.Callable[..., Path],
+) -> None:
+    """The gate's scope is the tracked tree, so scratch files cannot fail it."""
+    root = tracked_tree(
+        "A clean note.", untracked={"scratch.md": f"A {PROHIBITED} scratch note.\n"}
+    )
+    result = _run_gate(root)
+    assert result.returncode == 0, (
+        f"an untracked file must not be scanned; stdout={result.stdout!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("body", "passes"),
+    [
+        pytest.param(f"The `{API_COLOUR}` field is packed.", True, id="api-name"),
+        pytest.param(f"The {API_COLOUR} field is packed.", False, id="api-word-prose"),
+        pytest.param(
+            f'`#[tokio::test({API_FLAVOUR} = "current_thread")]` runs one thread.',
+            True,
+            id="tokio-attribute",
+        ),
+        pytest.param(f"A different {API_FLAVOUR} of runtime.", False, id="tokio-prose"),
+    ],
+)
+def test_an_inline_code_exception_covers_only_its_pattern(
+    tracked_tree: cabc.Callable[..., Path], body: str, *, passes: bool
+) -> None:
+    """Each anchored exception admits its interface and nothing else.
+
+    The prose rows are the narrowness half: the word the exception quotes is
+    still checked wherever it is written outside the pattern.
+    """
+    result = _run_gate(tracked_tree(body))
+    assert (result.returncode == 0) is passes, (
+        f"expected the gate to {'pass' if passes else 'fail'} for {body!r}; "
+        f"stdout={result.stdout!r}"
     )
