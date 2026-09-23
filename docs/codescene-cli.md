@@ -3,9 +3,9 @@
 This repository uses the CodeScene CLI to report code coverage metrics in CI.
 The shared GitHub Action
 `leynos/shared-actions/.github/actions/upload-codescene-coverage` downloads,
-caches, verifies and runs the CLI: `ci.yml` uses it to gate a pull request's
-changed-line coverage, and `coverage-main.yml` uses it to upload the trunk
-report.
+caches, verifies and runs the CLI. `coverage-main.yml` uses it to upload the
+trunk report, and no pull-request lane calls it: see "CodeScene coverage is
+owned by `main`" in the developers' guide.
 
 ## Where the CLI's trust comes from
 

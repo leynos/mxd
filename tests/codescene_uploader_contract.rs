@@ -198,8 +198,8 @@ fn no_workflow_references_the_deprecated_checksum_variable() {
 ///
 /// The references are checked for content before they are checked for
 /// compliance. Deleting the `CodeScene` steps would otherwise satisfy this
-/// contract instead of failing it, and this repository both gates pull
-/// requests and publishes from main through that action.
+/// contract instead of failing it, and this repository publishes from main
+/// through that action.
 #[test]
 fn every_uploader_reference_is_pinned_to_the_approved_revision() {
     let references = uploader_references();
