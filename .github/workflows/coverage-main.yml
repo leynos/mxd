@@ -1,11 +1,13 @@
 name: Coverage (main)
 
 # CodeScene accepts `cs-coverage upload` only for analysed branches, so
-# main-branch coverage is uploaded here on push; pull requests run the
-# changed-line gate (`cs-coverage check`) in ci.yml instead. This
-# workflow also advances the coverage ratchet baseline: caches saved on
-# main are readable by every pull-request run, so the baseline written
-# here is the one PR ratchet checks compare against.
+# main-branch coverage is uploaded here on push, and nowhere else. A pull
+# request runs no CodeScene command at all: see "CodeScene coverage is owned
+# by `main`" in the developers' guide, and `make test-codescene-boundary`,
+# which asserts it. This workflow also advances the coverage ratchet
+# baseline: caches saved on main are readable by every pull-request run, so
+# the baseline written here is the one a pull request's ratchet compares
+# against.
 
 on:
   push:
