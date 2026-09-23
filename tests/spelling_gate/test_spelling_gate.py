@@ -30,6 +30,8 @@ PROHIBITED: typ.Final = "hand" + "-written"
 # US spellings two anchored exceptions quote. Split for the same reason.
 API_COLOUR: typ.Final = "col" + "or"
 API_FLAVOUR: typ.Final = "flav" + "or"
+API_NORMALIZED: typ.Final = "normal" + "ised"
+API_SERVER: typ.Final = "S" + "er"
 # The policy documents the gate reads, and the only two this repository tracks.
 # The fixture carries its own, so the test measures this repository's policy
 # rather than a stand-in.
@@ -167,29 +169,58 @@ def test_an_untracked_file_is_not_read(
     )
 
 
-@pytest.mark.parametrize(
-    ("body", "passes"),
-    [
-        pytest.param(f"The `{API_COLOUR}` field is packed.", True, id="api-name"),
-        pytest.param(f"The {API_COLOUR} field is packed.", False, id="api-word-prose"),
-        pytest.param(
-            f'`#[tokio::test({API_FLAVOUR} = "current_thread")]` runs one thread.',
-            True,
-            id="tokio-attribute",
-        ),
-        pytest.param(f"A different {API_FLAVOUR} of runtime.", False, id="tokio-prose"),
-    ],
+# (body, the flagged word or None when the gate must pass). Each exception
+# appears once inside its pattern and once in prose, where it is still checked.
+INLINE_CODE_CASES: typ.Final = (
+    pytest.param(f"The `{API_COLOUR}` field is packed.", None, id="colour-api"),
+    pytest.param(f"The {API_COLOUR} field.", API_COLOUR, id="colour-prose"),
+    pytest.param(
+        f'`#[tokio::test({API_FLAVOUR} = "current_thread")]` runs one thread.',
+        None,
+        id="tokio-attribute",
+    ),
+    pytest.param(f"A different {API_FLAVOUR}.", API_FLAVOUR, id="tokio-prose"),
+    pytest.param(
+        f"`handle_post_article(path, title, flags, {API_FLAVOUR}, data)` posts.",
+        None,
+        id="hotline-signature",
+    ),
+    pytest.param(
+        f"`handle_post_article(path, {API_FLAVOUR})` posts.",
+        API_FLAVOUR,
+        id="hotline-partial",
+    ),
+    pytest.param(
+        f"`BackoffConfig::{API_NORMALIZED}` clamps.", None, id="wireframe-method"
+    ),
+    pytest.param(
+        f"The delays are {API_NORMALIZED}.", API_NORMALIZED, id="wireframe-prose"
+    ),
+    pytest.param(
+        f"`AppFactory<{API_SERVER}, Ctx, E, Codec>` builds apps.",
+        None,
+        id="wireframe-generic",
+    ),
+    pytest.param(
+        f"`AppFactory<{API_SERVER}>` builds apps.", API_SERVER, id="generic-partial"
+    ),
 )
+
+
+@pytest.mark.parametrize(("body", "flagged"), INLINE_CODE_CASES)
 def test_an_inline_code_exception_covers_only_its_pattern(
-    tracked_tree: cabc.Callable[..., Path], body: str, *, passes: bool
+    tracked_tree: cabc.Callable[..., Path], body: str, flagged: str | None
 ) -> None:
     """Each anchored exception admits its interface and nothing else.
 
-    The prose rows are the narrowness half: the word the exception quotes is
-    still checked wherever it is written outside the pattern.
+    The second row of each pair is the narrowness half: the word the exception
+    quotes is still checked outside the exact pattern, and the rejection must
+    name that word so an unrelated failure cannot satisfy it.
     """
     result = _run_gate(tracked_tree(body))
-    assert (result.returncode == 0) is passes, (
-        f"expected the gate to {'pass' if passes else 'fail'} for {body!r}; "
-        f"stdout={result.stdout!r}"
-    )
+    output = result.stdout + result.stderr
+    if flagged is None:
+        assert result.returncode == 0, f"{body!r} must pass; output={output!r}"
+    else:
+        assert result.returncode != 0, f"{body!r} must fail the gate"
+        assert f"`{flagged}`" in output, f"the gate must name {flagged!r}: {output!r}"
