@@ -108,11 +108,16 @@ def triggers(workflow: dict[str, object]) -> dict[str, object]:
     `on: [push, pull_request]` is a list, and both are as valid as the mapping
     form. Stringifying the list produced one key named
     `"['push', 'pull_request']"`, so a workflow written that way escaped every
-    prohibition. An unsupported shape is refused rather than coerced.
+    prohibition. An unsupported shape is refused rather than coerced, and so
+    is a workflow declaring both spellings of the key: GitHub merges them, and
+    a reader that picked one would be blind to the events under the other.
 
     >>> triggers({True: ["push", "pull_request"]})
     {'push': None, 'pull_request': None}
     """
+    if True in workflow and "on" in workflow:
+        message = "a workflow declaring `on:` under both spellings cannot be read whole"
+        raise AssertionError(message)
     for key in (True, "on"):
         if key not in workflow:
             continue
