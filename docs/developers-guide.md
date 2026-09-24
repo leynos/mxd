@@ -756,12 +756,36 @@ reason for a full clone. Reintroducing it there fails; adding one to
 `docs-tooling` does not.
 
 The publisher's `on:` block is asserted by equality to a push to `main` and
-nothing else. Its upload step carries no ref guard of its own, so the trigger
-is the guard, and a publisher that also answered `workflow_dispatch` could
-upload from any branch while a check on the push entry alone still passed. The
-publisher may queue behind a concurrency group but may not declare
-`cancel-in-progress: true`, at the workflow scope or on a job: a cancelled
-publisher abandons both its upload and the ratchet baseline it writes.
+nothing else, so a publisher that also answered `workflow_dispatch` could not
+upload from any branch while a check on the push entry alone still passed.
+
+The publisher's concurrency block is asserted whole:
+`group: ${{ github.workflow }}-${{ github.ref }}` and
+`cancel-in-progress: false`, at the workflow scope, with no job declaring one
+of its own. Runs never overlap, and a newer push replaces an older run still
+pending rather than queueing behind it. A cancelled publisher would abandon
+both its upload and the ratchet baseline it writes. A group keyed on the event
+would let an earlier dispatch finish after a newer push. A run-unique key would
+group nothing. GitHub does not promise to start runs in trigger order, so no
+commit-order promise is made beyond that. A manual "Re-run jobs" on an older
+main run keeps its `run_id`: it republishes that commit's coverage, but
+replaces no baseline saved under a run-keyed cache key.
+
+Two gaps are known and accepted. A Dependabot automerge merged with
+`GITHUB_TOKEN` fires no push, so no publisher runs for that commit, and the
+next push publishes. There is no `schedule` trigger to cover it.
+
+The upload is guarded by a token check rather than by the token itself. A step
+with the id `codescene-token`, no `if` and no `env`, runs exactly
+`echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"`.
+The expression is evaluated before the shell runs, so the step writes `true` or
+`false` and the token enters no process. The upload's whole condition is
+`steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main'`,
+compared by equality, so an appended `||` cannot widen it. The upload action
+takes `access-token: ${{ secrets.CS_ACCESS_TOKEN }}` directly, and the token is
+refused in every `env` on the publisher. The action is composite and passes a
+step's `env` on to its nested steps, and a guard on `env.CS_ACCESS_TOKEN`
+passes with the binding deleted while the upload skips forever.
 
 Requirements are read differently from prohibitions. A prohibition is a
 substring test, because over-matching is the safe direction there. A
@@ -771,9 +795,8 @@ runs nothing. So the rule that `docs-tooling` runs this contract reads each
 `tests/codescene_boundary/shell_commands.py`, and counts the target only when a
 simple command begins with its words. The rule that the publisher uploads finds
 the step whose `uses` path names the upload action and requires that step's
-`access-token` input to carry `secrets.CS_ACCESS_TOKEN`, directly or through
-the step's own `env`; the action named in an `echo`, or the token named
-anywhere else, does not satisfy it.
+`access-token` input to carry `secrets.CS_ACCESS_TOKEN` directly; the action
+named in an `echo`, or the token named anywhere else, does not satisfy it.
 
 The publisher is found by searching rather than named. Asserting that
 `coverage-main.yml` uploads leaves a second push-to-main workflow with its own
@@ -786,7 +809,17 @@ Proved by adding each forbidden element back. A CodeScene action, a
 `cs-coverage` command in a different job of the same workflow fails the same
 one, which is what says the walk is over jobs rather than over one of them;
 giving the publisher a `pull_request` trigger fails three; deleting its upload
-step fails two, the single-upload case and the upload-with-token case.
+step fails two, the single-upload case and the upload-with-token case. Each of
+these fails exactly one case:
+
+- deleting the token check, conditioning it, or making it write a literal
+  `true`;
+- binding the token in the upload step's `env`, or reading `access-token` from
+  `env`;
+- widening the upload's condition with
+  `|| github.event_name == 'workflow_dispatch'`;
+- keying the group on the event or on `github.run_id`, or setting
+  `cancel-in-progress: true`.
 
 Two shapes are normalized before any of that can run. `on:` is read as a
 mapping, a string, or a list, because `on: [push, pull_request]` is as valid as
@@ -794,7 +827,9 @@ the mapping form and stringifying it produced one key named
 `"['push', 'pull_request']"`; a workflow written that way was not recognized as
 a pull-request lane and escaped every prohibition, while the other workflows
 kept the non-empty guard passing. An unsupported shape is refused rather than
-coerced, since coercion is what caused that.
+coerced, since coercion is what caused that. So is a workflow declaring both a
+bare `on:` and a quoted `'on':`. GitHub merges the two, and a reader that
+picked one would be blind to the events under the other.
 
 A local call is recognized by shape: a leading `./` or `$/` (the two spellings
 GitHub documents for a same-repository call) is stripped and what remains is

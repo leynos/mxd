@@ -55,6 +55,29 @@ UPLOAD_ACTION: typ.Final = "upload-codescene-coverage"
 SECRET: typ.Final = "${{ secrets.CS_ACCESS_TOKEN }}"
 BOUNDARY_TARGET: typ.Final = "make test-codescene-boundary"
 
+# The publisher's concurrency block, compared whole. Keyed on the ref alone:
+# a group keyed on the event lets an earlier dispatch finish after a newer push
+# and upload older coverage last, and a run-unique key never groups at all.
+PUBLISHER_CONCURRENCY: typ.Final = {
+    "group": "${{ github.workflow }}-${{ github.ref }}",
+    "cancel-in-progress": False,
+}
+
+# The availability check. Its expression is evaluated before the shell runs,
+# so the token enters no process and no `env`, and the step's only command
+# writes `true` or `false`.
+TOKEN_CHECK_ID: typ.Final = "codescene-token"
+TOKEN_CHECK_COMMAND: typ.Final = (
+    'echo "available=${{ secrets.CS_ACCESS_TOKEN != \'\' }}" >> "$GITHUB_OUTPUT"'
+)
+# The upload's whole condition. Compared by equality, so an appended `||`
+# cannot widen it, and a guard on `env.CS_ACCESS_TOKEN`, which passes with
+# the binding deleted, cannot replace it.
+UPLOAD_CONDITION: typ.Final = (
+    f"steps.{TOKEN_CHECK_ID}.outputs.available == 'true' "
+    "&& github.ref == 'refs/heads/main'"
+)
+
 
 def _sources() -> dict[str, str]:
     """Every workflow in this repository, as source text."""
@@ -184,22 +207,24 @@ def test_the_publisher_runs_on_a_push_to_main_and_nothing_else() -> None:
     )
 
 
-def test_the_publisher_queues_rather_than_cancels() -> None:
-    """A cancelled publisher abandons its upload and its ratchet baseline.
+def test_the_publisher_never_overlaps_and_never_cancels() -> None:
+    """One group per ref, never cancelled, at the workflow scope.
 
-    A queued one publishes later and the later push's baseline wins, so a
-    concurrency group is welcome here and `cancel-in-progress: true` is not,
-    at the workflow scope or on any job.
+    A cancelled publisher abandons its upload and its ratchet baseline. With
+    one group, runs never overlap and a newer push replaces a pending run.
+    No job may declare a block of its own that would sit beside this one.
     """
     document = _documents()[PUBLISHER]
-    scopes = [document, *(job for job in (document.get("jobs") or {}).values())]
-    cancelling = [
-        scope.get("concurrency")
-        for scope in scopes
-        if isinstance(scope.get("concurrency"), dict)
-        and scope["concurrency"].get("cancel-in-progress") not in (None, False)
+    assert document.get("concurrency") == PUBLISHER_CONCURRENCY, (
+        f"{PUBLISHER} must declare concurrency {PUBLISHER_CONCURRENCY}, "
+        f"found {document.get('concurrency')!r}"
+    )
+    job_blocks = [
+        job.get("concurrency")
+        for job in (document.get("jobs") or {}).values()
+        if isinstance(job, dict) and "concurrency" in job
     ]
-    assert not cancelling, f"{PUBLISHER} must not cancel a run in progress"
+    assert not job_blocks, f"{PUBLISHER} jobs must not declare concurrency"
 
 
 def test_exactly_one_workflow_uploads() -> None:
@@ -225,34 +250,69 @@ def _is_upload_step(step: dict[str, object]) -> bool:
     return path.rsplit("/", 1)[-1] == UPLOAD_ACTION
 
 
-def _supplies_the_token(step: dict[str, object]) -> bool:
-    """Whether a step hands the upload action the secret, directly or via env."""
-    options = step.get("with")
-    environment = step.get("env")
-    given = (
-        " ".join(str(options.get("access-token", "")).split())
-        if isinstance(options, dict)
-        else ""
-    )
-    via_env = (
-        isinstance(environment, dict)
-        and " ".join(str(environment.get("CS_ACCESS_TOKEN", "")).split()) == SECRET
-    )
-    return given == SECRET or (given == "${{ env.CS_ACCESS_TOKEN }}" and via_env)
+def _publisher_steps() -> list[dict[str, object]]:
+    """The publisher's steps, in order."""
+    return steps(_documents()[PUBLISHER])
 
 
-def test_the_publisher_uploads_with_a_token() -> None:
-    """And it must still do the upload it exists for, with the credential.
+def test_the_publisher_uploads_with_the_token_given_directly() -> None:
+    """The upload is called once, handed the secret itself, on its condition.
 
     Read from the steps rather than from the text: the action named in an
-    `echo` or a comment, or the token named anywhere but the upload step's
-    input, would satisfy a substring search while nothing uploaded.
+    `echo` or a comment would satisfy a substring search while nothing
+    uploaded.
     """
-    uploads = [step for step in steps(_documents()[PUBLISHER]) if _is_upload_step(step)]
-    assert uploads, f"{PUBLISHER} must call the upload action"
-    assert all(_supplies_the_token(step) for step in uploads), (
-        f"{PUBLISHER} must hand the upload action {SECRET}"
+    uploads = [step for step in _publisher_steps() if _is_upload_step(step)]
+    assert len(uploads) == 1, f"{PUBLISHER} must call the upload action once"
+    (upload,) = uploads
+    options = upload.get("with")
+    assert isinstance(options, dict) and options.get("access-token") == SECRET, (
+        f"the upload must be handed access-token: {SECRET} directly"
     )
+    assert upload.get("if") == UPLOAD_CONDITION, (
+        f"the upload's condition must be exactly {UPLOAD_CONDITION!r}, "
+        f"found {upload.get('if')!r}"
+    )
+
+
+def test_the_token_check_runs_its_one_command_unconditionally() -> None:
+    """Deleting or conditioning the check would skip the upload forever.
+
+    The check precedes the upload, carries the id the condition reads, has no
+    `if` and no `env`, and its whole `run` body is the one command.
+    """
+    publisher = _publisher_steps()
+    checks = [i for i, step in enumerate(publisher) if step.get("id") == TOKEN_CHECK_ID]
+    uploads = [i for i, step in enumerate(publisher) if _is_upload_step(step)]
+    assert len(checks) == 1, f"{PUBLISHER} must declare one {TOKEN_CHECK_ID!r} step"
+    assert uploads and checks[0] < uploads[0], "the check must precede the upload"
+    check = publisher[checks[0]]
+    assert "if" not in check, "the token check must be unconditional"
+    assert "env" not in check, "the token check must bind nothing in env"
+    assert str(check.get("run", "")).strip() == TOKEN_CHECK_COMMAND, (
+        f"the token check's whole run body must be {TOKEN_CHECK_COMMAND!r}"
+    )
+
+
+def test_no_env_on_the_publisher_holds_the_token() -> None:
+    """The upload action is composite and passes a step's env to its steps.
+
+    So the token is refused in every `env` on the publisher: the workflow,
+    each job, and each step. It reaches the action through `access-token`
+    alone.
+    """
+    document = _documents()[PUBLISHER]
+    job_list = [
+        job for job in (document.get("jobs") or {}).values() if isinstance(job, dict)
+    ]
+    scopes = [document, *job_list, *_publisher_steps()]
+    holding = [
+        env
+        for scope in scopes
+        if isinstance(env := scope.get("env"), dict)
+        and any("CS_ACCESS_TOKEN" in f"{key} {value}" for key, value in env.items())
+    ]
+    assert not holding, f"{PUBLISHER} binds the token in env: {holding}"
 
 
 def test_the_boundary_lane_runs_this_contract() -> None:
