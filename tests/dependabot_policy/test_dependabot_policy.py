@@ -1,19 +1,15 @@
-"""Dependabot raises the manifest for Cargo, asserted against its configuration.
+"""What the Dependabot configuration must hold, asserted against the file.
 
-A lockfile-only bump across a major boundary the manifest forbids is not a
-change: the next command that writes `Cargo.lock` resolves the edge back, so the
-pull request merges with no net effect and the same bump is proposed again. It
-has happened eight times here, and each round leaves `main` carrying a lockfile
-nothing builds from with `--locked` until somebody runs cargo.
+serial_test 4 declares `rust-version = "1.93.1"`, newer than the pinned
+nightly, so Cargo resolves any bump to 4 back to 3.x. Dependabot does not read
+`rust-version`: it proposed that lockfile-only bump twice, and automerge
+landed the second while `make check-locked` refused the lockfile. The Cargo
+entry therefore ignores serial_test at `>= 4`, and this contract holds the
+rule and the toolchain pin it depends on.
 
-`versioning-strategy: increase-if-necessary` is what stops it, by letting
-Dependabot raise `Cargo.toml` when the new version needs it. This asserts the
-key is set, on the Cargo entry specifically, and refuses the two values that
-would bring the churn back.
-
-The complement is `make check-locked`, which refuses a lockfile the manifest
-does not admit. That gate catches the defect after it lands; this setting stops
-it being proposed.
+It also holds the one shape Dependabot rejects outright. For Cargo,
+`versioning-strategy` accepts only `lockfile-only` and `auto`; any other value
+makes the whole file invalid, and every ecosystem in it stops updating.
 """
 
 from __future__ import annotations
@@ -31,10 +27,9 @@ TOOLCHAIN: typ.Final = REPO_ROOT / "rust-toolchain.toml"
 # 1.93.0-nightly, so Cargo resolves any 4.x bump back to 3.x.
 TOOLCHAIN_BELOW_SERIAL_TEST_4: typ.Final = 'channel = "nightly-2025-11-08"'
 SERIAL_TEST_IGNORE: typ.Final = {"dependency-name": "serial_test", "versions": [">= 4"]}
-REQUIRED_STRATEGY: typ.Final = "increase-if-necessary"
-# `lockfile-only` is the value that reproduces the defect exactly, and
-# `auto` leaves the choice to Dependabot rather than stating it here.
-REFUSED_STRATEGIES: typ.Final = ("lockfile-only", "auto")
+# The only values Dependabot accepts for a Cargo entry's versioning-strategy.
+# `increase-if-necessary`, valid for other ecosystems, fails the file's schema.
+CARGO_STRATEGIES: typ.Final = frozenset({"lockfile-only", "auto"})
 
 
 class _StrictLoader(yaml.SafeLoader):
@@ -46,9 +41,9 @@ class _StrictLoader(yaml.SafeLoader):
         """Refuse a duplicate key rather than keep the last value silently.
 
         Dependabot parses this file with a loader that keeps the last of two
-        equal keys too, so a repeated `updates` or `versioning-strategy` would
-        be read as the later declaration while the earlier one sat in the file
-        looking authoritative.
+        equal keys too, so a repeated `updates` or `ignore` would be read as
+        the later declaration while the earlier one sat in the file looking
+        authoritative.
         """
         seen: set[object] = set()
         for key_node, _ in node.value:
@@ -99,9 +94,9 @@ def _entry(ecosystem: str) -> dict[str, object]:
         pytest.param("version: 2\nupdates: []\nupdates: []\n", id="updates"),
         pytest.param(
             "version: 2\nupdates:\n  - package-ecosystem: cargo\n"
-            "    versioning-strategy: lockfile-only\n"
-            "    versioning-strategy: increase-if-necessary\n",
-            id="versioning-strategy",
+            "    ignore: []\n"
+            "    ignore:\n      - dependency-name: serial_test\n",
+            id="ignore",
         ),
     ],
 )
@@ -109,45 +104,22 @@ def test_a_duplicate_key_is_refused(text: str) -> None:
     """A repeated key fails the load instead of resolving to its last value.
 
     The second case is the one that matters: read leniently, it passes the
-    assertions below while the file also declares the refused strategy.
+    ignore assertion below while the file also declares an empty `ignore`.
     """
     with pytest.raises(yaml.constructor.ConstructorError, match="duplicate key"):
         _load(text)
 
 
-def test_the_cargo_entry_raises_the_manifest() -> None:
-    """The setting that stops a lockfile-only major bump being proposed."""
-    assert _entry("cargo").get("versioning-strategy") == REQUIRED_STRATEGY, (
-        f"the cargo entry must set versioning-strategy: {REQUIRED_STRATEGY}, or "
-        "Dependabot proposes lockfile pins the manifest forbids"
-    )
+def test_a_cargo_versioning_strategy_is_one_dependabot_accepts() -> None:
+    """An invalid value would disable Dependabot for the whole repository.
 
-
-@pytest.mark.parametrize("refused", REFUSED_STRATEGIES)
-def test_the_cargo_entry_refuses_a_strategy_that_restores_the_churn(
-    refused: str,
-) -> None:
-    """Named values, not merely "something other than the required one".
-
-    `lockfile-only` reproduces the defect exactly. `auto` hands the decision
-    back to Dependabot, which is how the repository arrived here: the key was
-    absent and the default behaved as `auto` does.
+    The key may be absent, which means `auto`. When present it must be one of
+    the two values the Cargo updater accepts.
     """
-    assert _entry("cargo").get("versioning-strategy") != refused, (
-        f"versioning-strategy: {refused} restores the lockfile-only churn"
-    )
-
-
-def test_the_github_actions_entry_is_left_alone() -> None:
-    """The narrowness half.
-
-    Setting the strategy across every ecosystem would satisfy the assertions
-    above while changing behaviour nobody asked about. Actions pins carry no
-    manifest to raise, so the key means nothing there and its absence is the
-    state this asserts.
-    """
-    assert "versioning-strategy" not in _entry("github-actions"), (
-        "the github-actions entry has no manifest to raise; leave it unset"
+    strategy = _entry("cargo").get("versioning-strategy")
+    assert strategy is None or strategy in CARGO_STRATEGIES, (
+        f"versioning-strategy {strategy!r} is not valid for cargo; Dependabot "
+        f"accepts only {sorted(CARGO_STRATEGIES)} and rejects the whole file"
     )
 
 

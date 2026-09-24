@@ -57,7 +57,7 @@ jobs:
           globs: '**/*.md'
       - name: Assert CodeScene coverage stays owned by main
         run: make test-codescene-boundary
-      - name: Assert Dependabot raises the manifest for Cargo
+      - name: Assert the Dependabot configuration holds what it must
         run: make test-dependabot-policy
       - name: Validate Mermaid diagrams
         run: make nixie

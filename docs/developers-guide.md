@@ -994,56 +994,36 @@ literal `true` all fail. A floor of the four known workflows keeps discovery
 from emptying into a vacuous pass, and unit cases drive the judgement with each
 refused shape, since the workflows as they stand exercise only the accepted one.
 
-## Dependabot raises the manifest for Cargo
+## Dependabot and the Cargo toolchain floor
 
-The Cargo entry in `.github/dependabot.yml` sets
-`versioning-strategy: increase-if-necessary`, so a bump that needs a new
-constraint raises `Cargo.toml` rather than pinning the version in `Cargo.lock`
-alone.
+Dependabot's Cargo updater does not raise `Cargo.toml`. Its
+`versioning-strategy` accepts only `lockfile-only` and `auto`. The
+`increase-if-necessary` value that other ecosystems accept fails the file's
+schema, and an invalid file stops Dependabot for every ecosystem in it. So a
+bump across a boundary the manifest forbids arrives as a lockfile-only change.
+`make check-locked` refuses such a lockfile, and a manifest raise is made by
+hand, as in pull request #554.
 
-Without it, a bump across a major boundary the manifest forbids is not a change
-at all. The next command that writes `Cargo.lock` resolves the edge back, the
-pull request merges with no net effect, and the same bump is proposed again.
-That has happened eight times: `rand` 0.9.5 to 0.10.2 five times[^1] and
-`clap_mangen` 0.2.33 to 0.3.3 three times[^2]. Between such a merge and the
-next lockfile write, `main` carries a lockfile nothing builds from with
-`--locked`.
-
-`make check-locked` is the complement, not a substitute: it refuses a lockfile
-the manifest does not admit, which catches the defect once it has landed. This
-setting stops it being proposed.
-
-`make test-dependabot-policy` asserts the key, on the Cargo entry alone, and
-refuses both `lockfile-only`, which reproduces the defect exactly, and `auto`,
-which hands the decision back to Dependabot and is how the repository arrived
-here. The `github-actions` entry is asserted to leave the key unset, because an
-Actions pin has no manifest to raise; without that half, setting the strategy
-everywhere would satisfy the rest while changing behaviour nobody asked about.
-
-Exactly one Cargo entry is required rather than the first of several, so a
-second entry governing another directory cannot slip past unasserted. The file
-is loaded through a `SafeLoader` that refuses a repeated key: Dependabot's own
-loader keeps the last value, so a repeated `versioning-strategy` would
-otherwise be read as whichever declaration came second.
-
-### serial_test 4 is ignored until the toolchain reaches it
-
-Raising the manifest does not help when the new version cannot build here at
-all. serial_test 4 declares `rust-version = "1.93.1"`, newer than the pinned
-`nightly-2025-11-08`, so Cargo's MSRV-aware resolver resolves any bump to 4
-back to 3.x. Dependabot does not read `rust-version`: it proposed the
-lockfile-only bump twice (#566 and #575), and automerge landed the second while
-`make check-locked` failed, because `build-test` is not a required check.
+Dependabot does not read `rust-version` either. serial_test 4 declares
+`rust-version = "1.93.1"`, newer than the pinned `nightly-2025-11-08`, so
+Cargo's MSRV-aware resolver resolves any bump to 4 back to 3.x. Dependabot
+proposed that lockfile-only bump twice (#566 and #575), and automerge landed
+the second while `make check-locked` failed, because `build-test` is not a
+required check. #576 restored the lockfile.
 
 The Cargo entry therefore ignores `serial_test` at `>= 4`, with a comment
-naming the toolchain floor. `make test-dependabot-policy` asserts that exact
-rule, and it also asserts the toolchain pin the rule depends on. When the pin
-moves, that case fails, so the ignore gets reconsidered instead of holding
-serial_test back after its reason has gone.
+naming the toolchain floor. `make test-dependabot-policy`, run by
+`docs-tooling`, asserts:
 
-[^1]: Pull requests #522, #524, #533, #537 and #546.
-
-[^2]: Pull requests #523, #535 and #545.
+- the exact ignore rule;
+- the toolchain pin the rule depends on, so moving the pin fails a case and the
+  ignore gets reconsidered instead of holding serial_test back after its reason
+  has gone;
+- that any Cargo `versioning-strategy` is one of the two values Dependabot
+  accepts, so the invalid shape cannot return unnoticed;
+- that there is exactly one Cargo entry, not merely a first one, and that the
+  file carries no repeated key, which Dependabot's own loader would resolve to
+  the last value.
 
 ## Spelling policy
 

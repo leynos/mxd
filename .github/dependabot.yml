@@ -19,11 +19,6 @@ updates:
   # Enable version updates for Cargo
   - package-ecosystem: "cargo"
     directory: "/"
-    # Raise `Cargo.toml` when a new version needs it, rather than pinning it in
-    # `Cargo.lock` alone. A lockfile-only bump across a major boundary the
-    # manifest forbids is resolved back by the next cargo write, so the pull
-    # request merges with no net effect and is proposed again.
-    versioning-strategy: increase-if-necessary
     # serial_test 4 declares rust-version 1.93.1, newer than the pinned
     # nightly-2025-11-08 (rustc 1.93.0-nightly). Cargo's MSRV-aware resolver
     # resolves it back to 3.x, so a bump to 4 lands a lockfile nothing builds

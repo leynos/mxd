@@ -170,7 +170,7 @@ test-codescene-boundary: ## Assert CodeScene coverage stays owned by main
 
 DEPENDABOT_POLICY_SRCS := $(wildcard tests/dependabot_policy/*.py)
 
-test-dependabot-policy: ## Assert Dependabot raises the manifest for Cargo
+test-dependabot-policy: ## Assert the Dependabot configuration holds what it must
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated \
 		--target-version py313 --check $(DEPENDABOT_POLICY_SRCS)
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated \
