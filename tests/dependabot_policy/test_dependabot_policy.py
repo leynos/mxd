@@ -24,9 +24,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-CONFIGURATION: typ.Final = (
-    Path(__file__).resolve().parents[2] / ".github" / "dependabot.yml"
-)
+REPO_ROOT: typ.Final = Path(__file__).resolve().parents[2]
+CONFIGURATION: typ.Final = REPO_ROOT / ".github" / "dependabot.yml"
+TOOLCHAIN: typ.Final = REPO_ROOT / "rust-toolchain.toml"
+# serial_test 4 declares rust-version 1.93.1; this nightly is rustc
+# 1.93.0-nightly, so Cargo resolves any 4.x bump back to 3.x.
+TOOLCHAIN_BELOW_SERIAL_TEST_4: typ.Final = 'channel = "nightly-2025-11-08"'
+SERIAL_TEST_IGNORE: typ.Final = {"dependency-name": "serial_test", "versions": [">= 4"]}
 REQUIRED_STRATEGY: typ.Final = "increase-if-necessary"
 # `lockfile-only` is the value that reproduces the defect exactly, and
 # `auto` leaves the choice to Dependabot rather than stating it here.
@@ -144,4 +148,35 @@ def test_the_github_actions_entry_is_left_alone() -> None:
     """
     assert "versioning-strategy" not in _entry("github-actions"), (
         "the github-actions entry has no manifest to raise; leave it unset"
+    )
+
+
+def test_the_cargo_entry_ignores_serial_test_4() -> None:
+    """A serial_test 4 bump is never proposed while the toolchain predates it.
+
+    Dependabot does not read `rust-version`, so it proposed the lockfile-only
+    bump twice (#566, #575) and automerge landed a lockfile that
+    `make check-locked` refuses.
+    """
+    ignored = _entry("cargo").get("ignore")
+    assert isinstance(ignored, list), "the cargo entry must declare ignore rules"
+    matching = [
+        rule
+        for rule in ignored
+        if isinstance(rule, dict) and rule.get("dependency-name") == "serial_test"
+    ]
+    assert matching == [SERIAL_TEST_IGNORE], (
+        f"expected exactly {SERIAL_TEST_IGNORE}, found {matching}"
+    )
+
+
+def test_the_serial_test_ignore_still_has_its_reason() -> None:
+    """The ignore is tied to the toolchain that needs it.
+
+    When the pin moves, this fails so the ignore is reconsidered rather than
+    left holding serial_test back after the reason has gone.
+    """
+    assert TOOLCHAIN_BELOW_SERIAL_TEST_4 in TOOLCHAIN.read_text(encoding="utf-8"), (
+        "the toolchain pin moved: if it now reaches rustc 1.93.1, drop the "
+        "serial_test ignore from .github/dependabot.yml and this case"
     )

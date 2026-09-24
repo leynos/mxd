@@ -1026,6 +1026,21 @@ is loaded through a `SafeLoader` that refuses a repeated key: Dependabot's own
 loader keeps the last value, so a repeated `versioning-strategy` would
 otherwise be read as whichever declaration came second.
 
+### serial_test 4 is ignored until the toolchain reaches it
+
+Raising the manifest does not help when the new version cannot build here at
+all. serial_test 4 declares `rust-version = "1.93.1"`, newer than the pinned
+`nightly-2025-11-08`, so Cargo's MSRV-aware resolver resolves any bump to 4
+back to 3.x. Dependabot does not read `rust-version`: it proposed the
+lockfile-only bump twice (#566 and #575), and automerge landed the second while
+`make check-locked` failed, because `build-test` is not a required check.
+
+The Cargo entry therefore ignores `serial_test` at `>= 4`, with a comment
+naming the toolchain floor. `make test-dependabot-policy` asserts that exact
+rule, and it also asserts the toolchain pin the rule depends on. When the pin
+moves, that case fails, so the ignore gets reconsidered instead of holding
+serial_test back after its reason has gone.
+
 [^1]: Pull requests #522, #524, #533, #537 and #546.
 
 [^2]: Pull requests #523, #535 and #545.
