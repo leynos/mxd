@@ -20,7 +20,7 @@ resolver = "2"
 diesel-cte-ext = { git = "https://github.com/leynos/diesel-cte-ext", rev = "1457bb199adefd0ed368dfa9458fd4f07ae81679", default-features = false, features = ["async"] }
 rstest = "0.26.1"
 rstest-bdd = "0.5.0"
-rstest-bdd-macros = { version = "0.5.0", features = ["compile-time-validation"] }
+rstest-bdd-macros = { version = "0.6.0", features = ["compile-time-validation"] }
 
 [package]
 name = "mxd"
