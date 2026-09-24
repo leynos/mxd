@@ -130,10 +130,8 @@ fn request_file_list(
 #[fixture]
 fn test_stream(
     #[default(setup_files_db as SetupFn)] setup: SetupFn,
-) -> TestResult<Option<(TestServer, TcpStream)>> {
-    let Some(server) = common::start_server_or_skip(setup)? else {
-        return Ok(None);
-    };
+) -> TestResult<(TestServer, TcpStream)> {
+    let server = common::start_server(setup)?;
     let addr = server.bind_addr();
     debug!(addr = %addr, "connecting to server");
     let mut stream = TcpStream::connect(addr)?;
@@ -144,14 +142,12 @@ fn test_stream(
     debug!("performing handshake");
     handshake(&mut stream)?;
     info!("handshake complete");
-    Ok(Some((server, stream)))
+    Ok((server, stream))
 }
 
 #[rstest]
-fn list_files_acl(test_stream: TestResult<Option<(TestServer, TcpStream)>>) -> TestResult<()> {
-    let Some((server, mut stream)) = test_stream? else {
-        return Ok(());
-    };
+fn list_files_acl(test_stream: TestResult<(TestServer, TcpStream)>) -> TestResult<()> {
+    let (server, mut stream) = test_stream?;
     let _server = server;
     debug!("performing login");
     perform_login(&mut stream, b"alice", b"secret")?;
@@ -164,11 +160,9 @@ fn list_files_acl(test_stream: TestResult<Option<(TestServer, TcpStream)>>) -> T
 
 #[rstest]
 fn list_files_ignores_request_payload(
-    test_stream: TestResult<Option<(TestServer, TcpStream)>>,
+    test_stream: TestResult<(TestServer, TcpStream)>,
 ) -> TestResult<()> {
-    let Some((server, mut stream)) = test_stream? else {
-        return Ok(());
-    };
+    let (server, mut stream) = test_stream?;
     let _server = server;
     perform_login(&mut stream, b"alice", b"secret")?;
     debug!("sending decorated file list payload");

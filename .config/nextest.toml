@@ -6,3 +6,20 @@ slow-timeout = { period = "60s", terminate-after = 1, grace-period = "5s" }
 # Put a hard ceiling on the whole run.
 global-timeout = "10m"
 
+
+# The postgres leg runs every database test against an embedded cluster, and
+# every cluster in a run shares one data directory. pg-embed-setup-unpriv
+# coordinates cluster start-up within a process but not across the processes
+# nextest runs, so two tests starting clusters at once collide on
+# `postmaster.pid`. This profile serializes the run and gives a cold cluster
+# start the headroom it needs.
+[profile.postgres]
+slow-timeout = { period = "180s", terminate-after = 1, grace-period = "5s" }
+global-timeout = "60m"
+
+[test-groups]
+pg-embed = { max-threads = 1 }
+
+[[profile.postgres.overrides]]
+filter = "all()"
+test-group = "pg-embed"

@@ -123,7 +123,7 @@ fn verify_article_titles(db_url: &str, expected: &[&str]) -> Result<(), AnyError
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_articles_invalid_path() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|db| {
+    let server = common::start_server(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 // Create test user for authentication
@@ -144,10 +144,7 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
                 Ok(())
             })
         })
-    })?
-    else {
-        return Ok(());
-    };
+    })?;
 
     let addr = server.bind_addr();
     let mut stream = connect_handshake_and_login(addr)?;
@@ -166,9 +163,7 @@ fn list_news_articles_invalid_path() -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_articles_valid_path() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(setup_news_db)? else {
-        return Ok(());
-    };
+    let server = common::start_server(setup_news_db)?;
 
     let mut stream = connect_handshake_and_login(server.bind_addr())?;
     send_transaction_with_params(
@@ -197,14 +192,11 @@ fn list_news_articles_valid_path() -> Result<(), AnyError> {
 #[test]
 fn get_news_article_data() -> Result<(), AnyError> {
     let article_id = Cell::new(None);
-    let Some(server) = common::start_server_or_skip(|db| {
+    let server = common::start_server(|db| {
         let id = setup_news_with_article(db)?;
         article_id.set(Some(id));
         Ok(())
-    })?
-    else {
-        return Ok(());
-    };
+    })?;
 
     let article_id_value = article_id.get().expect("fixture should set article id");
     let mut stream = connect_handshake_and_login(server.bind_addr())?;
@@ -236,7 +228,7 @@ fn get_news_article_data() -> Result<(), AnyError> {
 #[expect(clippy::big_endian_bytes, reason = "network protocol")]
 #[test]
 fn post_news_article_root() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|db| {
+    let server = common::start_server(|db| {
         with_db(db, |conn| {
             Box::pin(async move {
                 // Create test user for authentication
@@ -257,10 +249,7 @@ fn post_news_article_root() -> Result<(), AnyError> {
                 Ok(())
             })
         })
-    })?
-    else {
-        return Ok(());
-    };
+    })?;
 
     let mut stream = connect_handshake_and_login(server.bind_addr())?;
 

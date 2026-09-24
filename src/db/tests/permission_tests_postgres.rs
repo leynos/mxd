@@ -5,7 +5,7 @@
 //!   table; non-deleted principals remain.
 //!
 //! Utilities and execution model:
-//! - Runs against embedded or `POSTGRES_TEST_URL` connections and is serialized with
+//! - Runs against an embedded `PostgreSQL` cluster and is serialized with
 //!   `serial_test::file_serial(postgres_embedded_setup)` to avoid shared cluster race conditions.
 
 use diesel::prelude::*;
@@ -125,7 +125,6 @@ fn test_user_permission_cascades() -> TestResult<()> {
         .enable_all()
         .build()?;
     runtime.block_on(super::file_node_tests::with_embedded_pg(
-        "permission_cascade",
         |conn| {
             Box::pin(async move {
                 let user = NewUser {

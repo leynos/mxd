@@ -13,9 +13,7 @@ mod common;
 
 #[test]
 fn handshake() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
-        return Ok(());
-    };
+    let server = common::start_server(|_: DatabaseUrl| Ok(()))?;
     let addr = server.bind_addr();
 
     let mut stream = TcpStream::connect(addr)?;

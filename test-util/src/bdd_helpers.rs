@@ -120,11 +120,7 @@ async fn build_sqlite_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, An
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 async fn build_postgres_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
-    let db = match PostgresTestDb::new_async().await {
-        Ok(db) => db,
-        Err(err) if err.is_unavailable() => return Ok(None),
-        Err(err) => return Err(err.into()),
-    };
+    let db = PostgresTestDb::new_async().await?;
     let db_url = DatabaseUrl::from(db.url.as_ref());
     run_setup_fn(
         setup,
@@ -156,7 +152,7 @@ macro_rules! dispatch_by_backend {
     }};
 }
 
-/// Build a test database, returning `None` when the backend is unavailable.
+/// Build a test database, returning `None` when no backend is compiled in.
 ///
 /// # Errors
 ///
@@ -172,7 +168,7 @@ pub async fn build_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyEr
     )
 }
 
-/// Build a test database, returning `None` when the backend is unavailable.
+/// Build a test database, returning `None` when no backend is compiled in.
 ///
 /// # Errors
 ///

@@ -35,16 +35,10 @@ impl XorWorld {
     fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> { self.base.setup_db(setup) }
 
     fn authenticate(&self) {
-        if self.is_skipped() {
-            return;
-        }
         self.base.authenticate_default_user(1);
     }
 
     fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
-        if self.is_skipped() {
-            return;
-        }
         let frame = match build_frame(ty, id, params) {
             Ok(frame) => frame,
             Err(err) => {
@@ -59,7 +53,6 @@ impl XorWorld {
 
     fn is_xor_enabled(&self) -> bool { self.base.is_xor_enabled() }
 
-    const fn is_skipped(&self) -> bool { self.base.is_skipped() }
 }
 
 #[fixture]
@@ -68,7 +61,6 @@ fn world() -> XorWorld {
         panic!("failed to configure wireframe test binary path: {error}");
     }
     let world = XorWorld::new();
-    assert!(!world.is_skipped(), "world starts active");
     world
 }
 
@@ -142,9 +134,6 @@ fn when_post_news_xor(world: &XorWorld) {
 
 #[then("the reply error code is {code}")]
 fn then_error_code(world: &XorWorld, code: u32) {
-    if world.is_skipped() {
-        return;
-    }
     world.with_reply(|tx| {
         assert_eq!(tx.header.error, code, "unexpected reply error");
     });
@@ -152,17 +141,11 @@ fn then_error_code(world: &XorWorld, code: u32) {
 
 #[then("XOR compatibility is enabled")]
 fn then_xor_enabled(world: &XorWorld) {
-    if world.is_skipped() {
-        return;
-    }
     assert!(world.is_xor_enabled());
 }
 
 #[then("XOR compatibility is disabled")]
 fn then_xor_disabled(world: &XorWorld) {
-    if world.is_skipped() {
-        return;
-    }
     assert!(!world.is_xor_enabled());
 }
 

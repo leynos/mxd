@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -82,6 +82,10 @@ LOOM_MAX_PREEMPTIONS ?= 3
 LOOM_TARGETS := --test loom_presence --test loom_context
 LOOM_EXPECTED := crates/mxd-concurrency/loom-models.txt
 LOOM_RUNNER_SRCS := scripts/run_loom_models.py $(wildcard tests/loom_runner/*.py)
+
+# Throwaway install and data directories for the warm-up run, so it never
+# touches the cluster directory the tests themselves use.
+PG_WARM_DIR ?= $(CURDIR)/.pg-embedded/warm
 
 all: check-fmt typecheck lint test spelling
 
@@ -231,8 +235,16 @@ test: test-postgres test-sqlite test-wireframe-only test-verification test-concu
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
 # timeout feature requires Send. See docs/pg-embed-setup-unpriv-users-guide.md
 # "Thread safety constraints (v0.4.0)" for details.
+# NEXTEST_PROFILE=postgres serializes the run: every embedded cluster shares
+# one data directory and pg-embed-setup-unpriv does not coordinate across the
+# processes nextest runs. See "Embedded PostgreSQL in tests" in the
+# developers' guide.
 test-postgres: ## Run tests with the postgres backend
-	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
+	NEXTEST_PROFILE=postgres RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
+
+warm-postgres: ## Download the embedded PostgreSQL binaries into PG_BINARY_CACHE_DIR
+	PG_RUNTIME_DIR="$(PG_WARM_DIR)/install" PG_DATA_DIR="$(PG_WARM_DIR)/data" pg_embedded_setup_unpriv
+	test -n "$$(ls -A "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}")"
 
 test-sqlite: ## Run tests with the sqlite backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_SQLITE_FEATURES)

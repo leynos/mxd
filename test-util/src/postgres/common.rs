@@ -1,18 +1,11 @@
-//! Shared URL, database-name, and external database helpers for `PostgreSQL` tests.
+//! Shared URL, database-name, and cleanup helpers for embedded `PostgreSQL` tests.
 
-use std::{
-    error::Error as StdError,
-    net::{TcpStream, ToSocketAddrs},
-    ops::Deref,
-    time::Duration,
-};
+use std::{error::Error as StdError, ops::Deref};
 
 use pg_embedded_setup_unpriv::test_support::hash_directory;
 use postgres::{Client, NoTls};
 use url::Url;
 use uuid::Uuid;
-
-const DEFAULT_POSTGRES_PORT: u16 = 5432;
 
 /// A validated `PostgreSQL` database connection URL.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,125 +90,39 @@ impl DatabaseName {
     }
 }
 
-/// Error indicating that a `PostgreSQL` server could not be reached.
-#[derive(Debug)]
-pub struct PostgresUnavailable;
-
-impl std::fmt::Display for PostgresUnavailable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("PostgreSQL server unreachable")
-    }
-}
-
-impl std::error::Error for PostgresUnavailable {}
-
 /// Error type for [`PostgresTestDb::new`].
+///
+/// There is no "unavailable" outcome: every `PostgreSQL` test runs against an
+/// embedded cluster, so a cluster that cannot be bootstrapped is a failure to
+/// report, never a reason to skip.
 #[derive(Debug)]
 pub enum PostgresTestDbError {
-    /// `PostgreSQL` binary not found or server unreachable.
-    Unavailable(PostgresUnavailable),
-    /// `POSTGRES_TEST_URL` or a generated database URL could not be parsed.
-    UrlParse(url::ParseError),
-    /// External database creation failed.
-    DbCreateFailed(String),
-    /// Embedded `PostgreSQL` initialization failed.
+    /// The embedded `PostgreSQL` cluster could not be bootstrapped or started.
+    EmbeddedBootstrapFailed(String),
+    /// The embedded cluster started but a test database could not be prepared.
     EmbeddedInitFailed(String),
-    /// Blocking database setup task failed before returning a result.
-    BlockingTaskFailed(tokio::task::JoinError),
 }
 
 impl std::fmt::Display for PostgresTestDbError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unavailable(e) => write!(f, "{e}"),
-            Self::UrlParse(e) => write!(f, "PostgreSQL URL parse failed: {e}"),
-            Self::DbCreateFailed(e) => write!(f, "PostgreSQL database creation failed: {e}"),
+            Self::EmbeddedBootstrapFailed(e) => {
+                write!(f, "embedded PostgreSQL bootstrap failed: {e}")
+            }
             Self::EmbeddedInitFailed(e) => {
                 write!(f, "embedded PostgreSQL initialization failed: {e}")
             }
-            Self::BlockingTaskFailed(e) => write!(f, "PostgreSQL setup task failed: {e}"),
         }
     }
 }
 
-impl StdError for PostgresTestDbError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::Unavailable(e) => Some(e),
-            Self::UrlParse(e) => Some(e),
-            Self::BlockingTaskFailed(e) => Some(e),
-            Self::DbCreateFailed(_) | Self::EmbeddedInitFailed(_) => None,
-        }
-    }
-}
-
-impl From<PostgresUnavailable> for PostgresTestDbError {
-    fn from(e: PostgresUnavailable) -> Self { Self::Unavailable(e) }
-}
-
-impl PostgresTestDbError {
-    /// Returns `true` if this error indicates `PostgreSQL` is unavailable.
-    #[must_use]
-    pub const fn is_unavailable(&self) -> bool { matches!(self, Self::Unavailable(_)) }
-}
-
-#[expect(clippy::shadow_reuse, reason = "clearer flow with shadowing")]
-fn postgres_available(url: &Url) -> bool {
-    if let Some((host, port)) = tcp_probe_target(url) {
-        let addr = (host, port)
-            .to_socket_addrs()
-            .ok()
-            .and_then(|mut a| a.next());
-        if let Some(addr) = addr {
-            return TcpStream::connect_timeout(&addr, Duration::from_secs(1)).is_ok();
-        }
-    }
-    false
-}
-
-fn tcp_probe_target(url: &Url) -> Option<(String, u16)> {
-    let query_host = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "host").then(|| value.into_owned()))
-        .filter(|host| !host.starts_with('/'));
-    let host = url.host_str().map(str::to_owned).or(query_host)?;
-    let query_port = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "port").then(|| value.parse::<u16>().ok()))
-        .flatten();
-    let port = query_port.or_else(|| probe_port(url))?;
-    Some((host, port))
-}
-
-pub(super) fn probe_port(url: &Url) -> Option<u16> {
-    url.port().or_else(|| match url.scheme() {
-        "postgres" | "postgresql" => Some(DEFAULT_POSTGRES_PORT),
-        _ => url.port_or_known_default(),
-    })
-}
+impl StdError for PostgresTestDbError {}
 
 pub(super) fn generate_db_name(prefix: &str) -> Result<DatabaseName, DatabaseNameError> {
     let name = format!("{prefix}{}", Uuid::now_v7().simple());
     DatabaseName::new(name)
 }
 
-pub(super) fn create_external_db_if_available(
-    admin_url: &DatabaseUrl,
-) -> Result<(DatabaseUrl, DatabaseName), PostgresTestDbError> {
-    let parsed = Url::parse(admin_url.as_ref()).map_err(PostgresTestDbError::UrlParse)?;
-    if tcp_probe_target(&parsed).is_some() && !postgres_available(&parsed) {
-        return Err(PostgresTestDbError::Unavailable(PostgresUnavailable));
-    }
-    create_external_db(admin_url)
-        .map_err(|error| PostgresTestDbError::DbCreateFailed(error.to_string()))
-}
-
-pub(super) fn postgres_test_url_from_env() -> Option<String> {
-    std::env::var("POSTGRES_TEST_URL")
-        .ok()
-        .map(|url| url.trim().to_owned())
-        .filter(|url| !url.is_empty())
-}
 /// Generates a stable template name based on migration content hash.
 /// Template name changes when migrations change, forcing template recreation.
 pub(super) fn migration_template_name() -> Result<DatabaseName, Box<dyn StdError + Send + Sync>> {
@@ -280,21 +187,4 @@ fn redacted_database_url(url: &DatabaseUrl) -> String {
         return "<invalid database URL>".to_owned();
     }
     parsed_url.to_string()
-}
-
-fn create_external_db(
-    base_url: &DatabaseUrl,
-) -> Result<(DatabaseUrl, DatabaseName), Box<dyn StdError + Send + Sync>> {
-    let mut url = Url::parse(base_url.as_ref())?;
-    let db_name = generate_db_name("test_")?;
-    let admin_url = url.to_string();
-    let mut client = Client::connect(&admin_url, NoTls)?;
-    let query = format!("CREATE DATABASE \"{db_name}\"");
-    client.batch_execute(&query)?;
-    url.set_path(&db_name);
-    Ok((DatabaseUrl::parse(url.as_str())?, db_name))
-}
-
-pub(super) fn drop_external_db(admin_url: &DatabaseUrl, db_name: &DatabaseName) {
-    drop_database(admin_url, db_name);
 }

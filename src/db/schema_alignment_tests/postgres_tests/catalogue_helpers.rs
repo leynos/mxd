@@ -276,10 +276,8 @@ pub(super) async fn assert_permission_round_trip(conn: &mut DbConnection) -> Tes
     .await
 }
 
-fn is_ci() -> bool { std::env::var("CI").is_ok_and(|value| !value.is_empty()) }
-
-/// Runs `test` inside a single-thread runtime against a URL-backed or embedded
-/// `PostgreSQL` database, passing the connection URL and returning `TestResult<()>`.
+/// Runs `test` inside a single-thread runtime against a fresh database in an
+/// embedded `PostgreSQL` cluster, passing the connection URL.
 pub(super) fn with_postgres_test_db<F, Fut>(test: F) -> TestResult<()>
 where
     F: FnOnce(String) -> Fut + Send + 'static,
@@ -289,95 +287,7 @@ where
         .enable_all()
         .build()?;
     runtime.block_on(async move {
-        if std::env::var_os("POSTGRES_TEST_URL").is_some() {
-            let db = PostgresTestDb::new_async().await?;
-            return test(db.url.to_string()).await;
-        }
-
-        run_with_embedded_postgres(test).await
+        let db = PostgresTestDb::new_async().await?;
+        test(db.url.to_string()).await
     })
-}
-
-async fn run_with_embedded_postgres<F, Fut>(test: F) -> TestResult<()>
-where
-    F: FnOnce(String) -> Fut + Send + 'static,
-    Fut: Future<Output = TestResult<()>> + Send + 'static,
-{
-    let Some(pg) = start_optional_embedded_postgres().await? else {
-        return Ok(());
-    };
-
-    let db_name = format!(
-        "schema_alignment_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_nanos()
-    );
-    let result = async {
-        pg.create_database(&db_name).await?;
-        let url = pg.settings().url(&db_name);
-        test(url).await
-    }
-    .await;
-
-    let stop_result = stop_embedded_postgres(pg);
-    combine_postgres_test_result(result, stop_result)
-}
-
-async fn start_optional_embedded_postgres() -> TestResult<Option<postgresql_embedded::PostgreSQL>> {
-    let mut pg = postgresql_embedded::PostgreSQL::default();
-    if let Err(error) = pg.setup().await {
-        if is_ci() {
-            return Err(error.into());
-        }
-        tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
-        return Ok(None);
-    }
-    handle_optional_postgres_start(pg).await
-}
-
-async fn handle_optional_postgres_start(
-    mut pg: postgresql_embedded::PostgreSQL,
-) -> TestResult<Option<postgresql_embedded::PostgreSQL>> {
-    let Err(error) = pg.start().await else {
-        return Ok(Some(pg));
-    };
-    handle_optional_postgres_error(error)
-}
-
-fn handle_optional_postgres_error(
-    error: impl Into<anyhow::Error>,
-) -> TestResult<Option<postgresql_embedded::PostgreSQL>> {
-    if is_ci() {
-        return Err(error.into());
-    }
-    tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
-    Ok(None)
-}
-
-fn stop_embedded_postgres(pg: postgresql_embedded::PostgreSQL) -> TestResult<()> {
-    std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
-        runtime.block_on(pg.stop()).map_err(anyhow::Error::from)
-    })
-    .join()
-    .map_err(|_| anyhow::anyhow!("embedded postgres shutdown thread panicked"))?
-}
-
-fn combine_postgres_test_result(
-    result: TestResult<()>,
-    stop_result: TestResult<()>,
-) -> TestResult<()> {
-    match (result, stop_result) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(test_error), Ok(())) => Err(test_error),
-        (Ok(()), Err(stop_error)) => Err(stop_error),
-        (Err(test_error), Err(stop_error)) => Err(anyhow::anyhow!(
-            "postgres schema alignment test failed: {test_error}; embedded postgres shutdown \
-             failed: {stop_error}"
-        )),
-    }
 }
