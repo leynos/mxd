@@ -1014,6 +1014,37 @@ literal `true` all fail. A floor of the four known workflows keeps discovery
 from emptying into a vacuous pass, and unit cases drive the judgement with each
 refused shape, since the workflows as they stand exercise only the accepted one.
 
+## Dependabot and the Cargo toolchain floor
+
+Dependabot's Cargo updater does not raise `Cargo.toml`. Its
+`versioning-strategy` accepts only `lockfile-only` and `auto`. The
+`increase-if-necessary` value that other ecosystems accept fails the file's
+schema, and an invalid file stops Dependabot for every ecosystem in it. So a
+bump across a boundary the manifest forbids arrives as a lockfile-only change.
+`make check-locked` refuses such a lockfile, and a manifest raise is made by
+hand, as in pull request #554.
+
+Dependabot does not read `rust-version` either. serial_test 4 declares
+`rust-version = "1.93.1"`, newer than the pinned `nightly-2025-11-08`, so
+Cargo's MSRV-aware resolver resolves any bump to 4 back to 3.x. Dependabot
+proposed that lockfile-only bump twice (#566 and #575), and automerge landed
+the second while `make check-locked` failed, because `build-test` is not a
+required check. #576 restored the lockfile.
+
+The Cargo entry therefore ignores `serial_test` at `>= 4`, with a comment
+naming the toolchain floor. `make test-dependabot-policy`, run by
+`docs-tooling`, asserts:
+
+- the exact ignore rule;
+- the toolchain pin the rule depends on, so moving the pin fails a case and the
+  ignore gets reconsidered instead of holding serial_test back after its reason
+  has gone;
+- that any Cargo `versioning-strategy` is one of the two values Dependabot
+  accepts, so the invalid shape cannot return unnoticed;
+- that there is exactly one Cargo entry, not merely a first one, and that the
+  file carries no repeated key, which Dependabot's own loader would resolve to
+  the last value.
+
 ## Spelling policy
 
 `make spelling` enforces en-GB-oxendict spelling over tracked text.

@@ -19,6 +19,13 @@ updates:
   # Enable version updates for Cargo
   - package-ecosystem: "cargo"
     directory: "/"
+    # serial_test 4 declares rust-version 1.93.1, newer than the pinned
+    # nightly-2025-11-08 (rustc 1.93.0-nightly). Cargo's MSRV-aware resolver
+    # resolves it back to 3.x, so a bump to 4 lands a lockfile nothing builds
+    # from (#566, #575). Drop this when the toolchain reaches 1.93.1.
+    ignore:
+      - dependency-name: "serial_test"
+        versions: [">= 4"]
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
