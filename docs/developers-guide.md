@@ -896,6 +896,13 @@ and a call is taken to name this repository whether it is spelt
 `./.github/workflows/<file>` or `$/.github/workflows/<file>`, the two forms
 GitHub documents.
 
+Triggers are read under both spellings of the key, since a bare `on:` parses to
+the boolean `True` and a quoted `'on':` to the string, and in all three forms
+GitHub accepts: a mapping, one event name, and a list of event names. A
+workflow declaring both spellings, neither, or any other shape raises
+`WorkflowShapeError`. GitHub merges the two spellings, so a reader that picked
+one would be blind to the events under the other.
+
 `tests/workflow_contracts/test_workflow_placement_unit.py` and
 `test_workflow_reader_unit.py` drive the reader with mappings and constructed
 files rather than with this repository's workflows, because these are shapes
@@ -944,6 +951,48 @@ A new job fails the contracts until it is pinned: its coordinate must appear in
 `PINNED_PLACEMENTS` or `PLACEMENT_FROM_INPUT`, and in `PINNED_CEILINGS` with a
 ceiling sized from three green runs. That refusal is the point. A lane nobody
 pinned is a lane nobody decided the placement or the bound of.
+
+## Cancelling superseded pull-request runs
+
+Every push to a pull request starts a fresh run of each gate. The run already
+in flight is answering a question about a commit nobody will merge, and left
+alone it holds a runner until it finishes, so the branch pays twice for one
+answer. Every workflow a pull request can start, currently `ci.yml`,
+`release-dry-run.yml`, `tlc.yml` and `tlc-image.yml`, therefore carries this
+block:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+Two halves matter, and each fails in a way nothing else would notice.
+
+- **Only a pull request shares a group.** The group keys on the pull request
+  number, so a newer push to one branch cancels that branch's older run and no
+  other. Every other event falls back to its own run id. A fallback of
+  `github.ref` would put every push to `main`, schedule and dispatch of a
+  workflow in one group, and a third trigger would replace a pending second run
+  that was meant to complete. `tlc.yml` and `tlc-image.yml` also run on pushes
+  to `main`, and `tlc-image.yml` publishes the image the verification jobs
+  pull, so this is load-bearing there.
+- **Cancellation is conditioned on the event.** A literal
+  `cancel-in-progress: true` reads as the stricter setting and is a regression
+  for any event that shares a group.
+
+`pull_request_target` workflows are out of scope. `dependabot-automerge.yml`
+automates pull-request housekeeping rather than building, and cancelling an
+auto-merge mid-flight is a hazard with no minutes to win. `release.yml` keeps
+its own `release-${{ github.ref }}` group, which queues rather than cancels.
+
+`tests/workflow_contracts/test_pull_request_concurrency.py` discovers every
+workflow declaring a `pull_request` trigger and asserts that its concurrency
+block is exactly the one above, by whole-value equality, so a run id anywhere
+but the fallback position, a `github.ref` fallback, a constant group, and a
+literal `true` all fail. A floor of the four known workflows keeps discovery
+from emptying into a vacuous pass, and unit cases drive the judgement with each
+refused shape, since the workflows as they stand exercise only the accepted one.
 
 ## Spelling policy
 

@@ -39,9 +39,10 @@ if typ.TYPE_CHECKING:
 
 REPO_ROOT: typ.Final = Path(__file__).resolve().parents[2]
 WORKFLOW_DIRECTORY: typ.Final = REPO_ROOT / ".github" / "workflows"
-# PyYAML follows YAML 1.1, in which the bare key ``on`` is the boolean true.
-# Every trigger lookup goes through this key, never the string.
-TRIGGER_KEY: typ.Final = True
+# PyYAML follows YAML 1.1, in which the bare key ``on`` is the boolean true,
+# while a quoted ``'on'`` stays a string. GitHub accepts both spellings, so
+# every trigger lookup reads both.
+TRIGGER_KEYS: typ.Final = (True, "on")
 WORKFLOW_SUFFIXES: typ.Final = (".yml", ".yaml")
 
 
@@ -229,12 +230,18 @@ def repository_documents() -> cabc.Mapping[str, cabc.Mapping[str, object]]:
 
 
 def triggers(workflow: cabc.Mapping[str, object]) -> cabc.Mapping[str, object]:
-    """Read a workflow's trigger mapping.
+    """Read a workflow's triggers as a mapping of event to configuration.
 
     ``pull_request:`` with no filters parses to ``None``, which is the value a
     trigger contract needs: a membership test passes just as happily when a
     ``branches`` or ``paths`` filter excludes every pull request the repository
     opens, so the absence of filters has to be readable.
+
+    The key is read under both spellings, since a quoted ``'on':`` parses to
+    the string and a bare ``on:`` to the boolean, and a reader keyed on one
+    reads the other as triggered by nothing. All three forms GitHub accepts
+    are normalized: ``on: push`` and ``on: [push, pull_request]`` name events
+    exactly as the mapping form does.
 
     Parameters
     ----------
@@ -249,13 +256,27 @@ def triggers(workflow: cabc.Mapping[str, object]) -> cabc.Mapping[str, object]:
     Raises
     ------
     WorkflowShapeError
-        When the triggers do not parse to a mapping.
+        When the workflow declares no triggers, declares them under both
+        spellings of the key, or in a shape other than a mapping, an event
+        name or a list of event names.
     """
-    value = workflow.get(TRIGGER_KEY)
-    if not isinstance(value, dict):
-        message = "workflow triggers must parse to a mapping"
+    declared = [key for key in TRIGGER_KEYS if key in workflow]
+    if len(declared) != 1:
+        # Both spellings at once is refused rather than resolved: GitHub
+        # merges them, and a reader that picked one would be blind to the
+        # events under the other.
+        message = f"workflow must declare `on:` exactly once, found {len(declared)}"
         raise WorkflowShapeError(message)
-    return typ.cast("cabc.Mapping[str, object]", value)
+    match workflow[declared[0]]:
+        case dict() as mapping:
+            return typ.cast("cabc.Mapping[str, object]", mapping)
+        case str() as event:
+            return {event: None}
+        case list() as events if all(isinstance(event, str) for event in events):
+            return dict.fromkeys(typ.cast("list[str]", events))
+        case other:
+            message = f"unsupported `on:` shape {other!r}"
+            raise WorkflowShapeError(message)
 
 
 def _narrowed(
