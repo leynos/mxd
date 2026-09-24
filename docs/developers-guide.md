@@ -827,6 +827,26 @@ inside `release.yml` fails two, the token added there fails one, disabling
 call-following in the reader fails the case that names `release.yml`, and a
 second copy of the publisher fails the single-upload case.
 
+### The uploader contract
+
+`tests/codescene_uploader_contract.rs` runs in the normal test job, under
+`cargo test` or `cargo nextest`. It holds four rules about main's CodeScene
+upload. From the pinned revision, the uploader treats its committed
+`cli-manifest.json` as the trust anchor for the CLI archive. It rejects a
+non-empty `installer-checksum`, which is why these rules exist:
+
+- no workflow passes `installer-checksum`;
+- no workflow names the `CODESCENE_CLI_SHA256` variable that fed it;
+- every active `uses:` of `upload-codescene-coverage` names the approved
+  revision, and at least one exists. A comment or a commented-out step does not
+  count as a reference, so commenting out the upload fails the contract rather
+  than satisfying it;
+- no `get-codescene-sha` workflow exists under any extension the workflow
+  reader accepts, in any case.
+
+The approved revision is an allowlist, not a floor. A floor would need to order
+two commit SHAs, which a checkout cannot do.
+
 ## The workflow contracts
 
 `make test-workflow-contracts` asserts that the CI workflows place and gate
