@@ -11,6 +11,14 @@ on:
       - 'crates/mxd-verification/Dockerfile'
       - '.github/workflows/tlc-image.yml'
 
+# A push to a pull request supersedes the run already in flight, and there is
+# nothing left to learn from the superseded one. Only a pull request shares a
+# group: every other event falls back to its own run id, so a push to `main`,
+# a schedule or a dispatch is neither cancelled nor replaced while it waits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/mxd-tlc

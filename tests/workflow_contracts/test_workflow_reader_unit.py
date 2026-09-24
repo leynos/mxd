@@ -13,8 +13,10 @@ import pytest
 from ci_workflow_jobs import job_records
 from ci_workflow_reader import (
     WorkflowLoadError,
+    WorkflowShapeError,
     load_workflow,
     repository_documents,
+    triggers,
     workflow_paths,
 )
 from test_gate_steps import _gating_steps
@@ -129,3 +131,48 @@ def test_each_repository_read_is_a_fresh_snapshot() -> None:
     first = repository_documents()
     typ.cast("dict[str, object]", first).clear()
     assert repository_documents(), "a second read must not see the first's edit"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        pytest.param("on:\n  pull_request:\n", ["pull_request"], id="mapping"),
+        pytest.param("on: pull_request\n", ["pull_request"], id="event"),
+        pytest.param("on: [push, pull_request]\n", ["push", "pull_request"], id="list"),
+        pytest.param(
+            "'on': [push, pull_request]\n", ["push", "pull_request"], id="quoted"
+        ),
+    ],
+)
+def test_every_trigger_form_names_its_events(
+    tmp_path: Path, text: str, expected: list[str]
+) -> None:
+    """Each form and spelling GitHub accepts names the same events.
+
+    A reader keyed on the boolean alone read a quoted `'on':` as no trigger,
+    and a mapping-only reader stringified the list into one event name.
+    """
+    path = tmp_path / "ci.yml"
+    path.write_text(f"{text}jobs: {{}}\n", encoding="utf-8")
+    assert list(triggers(load_workflow(path))) == expected
+
+
+@pytest.mark.parametrize(
+    ("workflow", "match"),
+    [
+        pytest.param(
+            {True: ["push"], "on": ["pull_request"]}, "exactly once", id="both"
+        ),
+        pytest.param({"jobs": {}}, "exactly once", id="absent"),
+        pytest.param({True: 17}, "unsupported", id="number"),
+        pytest.param(
+            {True: ["push", {"pull_request": None}]}, "unsupported", id="mixed"
+        ),
+    ],
+)
+def test_a_trigger_block_it_cannot_read_whole_is_refused(
+    workflow: dict[object, object], match: str
+) -> None:
+    """Refused rather than read in part, since GitHub merges both spellings."""
+    with pytest.raises(WorkflowShapeError, match=match):
+        triggers(typ.cast("dict[str, object]", workflow))

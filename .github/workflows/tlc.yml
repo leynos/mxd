@@ -18,6 +18,14 @@ on:
       - 'Makefile'
       - '.github/workflows/tlc.yml'
 
+# A push to a pull request supersedes the run already in flight, and there is
+# nothing left to learn from the superseded one. Only a pull request shares a
+# group: every other event falls back to its own run id, so a push to `main`,
+# a schedule or a dispatch is neither cancelled nor replaced while it waits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # Use :latest for bootstrap; the local build fallback ensures reproducibility
   # when the registry image is unavailable. After first push to ghcr.io, consider
