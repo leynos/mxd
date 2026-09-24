@@ -1,0 +1,17 @@
+[package]
+name = "mxd-concurrency"
+version = "0.1.0"
+edition = "2024"
+description = "Shared-state kernels of the mxd server, model-checked with Loom"
+publish = false
+
+[dependencies]
+
+# The kernels lock through `src/sync.rs`, which resolves to Loom's mutex under
+# `--cfg loom`, so the crate itself needs Loom in that configuration. No
+# ordinary build compiles or links it.
+[target.'cfg(loom)'.dependencies]
+loom = "0.7.2"
+
+[lints]
+workspace = true

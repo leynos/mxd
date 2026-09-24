@@ -59,7 +59,7 @@ CANCEL_IN_PROGRESS: typ.Final = "${{ github.event_name == 'pull_request' }}"
 #: empties turns every parametrized contract into a vacuous pass. This is the
 #: floor discovery must still reach.
 KNOWN_PULL_REQUEST_WORKFLOWS: typ.Final = frozenset(
-    {"ci.yml", "release-dry-run.yml", "tlc-image.yml", "tlc.yml"}
+    {"ci.yml", "loom-check.yml", "release-dry-run.yml", "tlc-image.yml", "tlc.yml"}
 )
 
 

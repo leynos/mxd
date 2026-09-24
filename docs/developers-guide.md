@@ -978,8 +978,8 @@ Every push to a pull request starts a fresh run of each gate. The run already
 in flight is answering a question about a commit nobody will merge, and left
 alone it holds a runner until it finishes, so the branch pays twice for one
 answer. Every workflow a pull request can start, currently `ci.yml`,
-`release-dry-run.yml`, `tlc.yml` and `tlc-image.yml`, therefore carries this
-block:
+`release-dry-run.yml`, `tlc.yml`, `tlc-image.yml` and `loom-check.yml`,
+therefore carries this block:
 
 ```yaml
 concurrency:
@@ -1010,7 +1010,7 @@ its own `release-${{ github.ref }}` group, which queues rather than cancels.
 workflow declaring a `pull_request` trigger and asserts that its concurrency
 block is exactly the one above, by whole-value equality, so a run id anywhere
 but the fallback position, a `github.ref` fallback, a constant group, and a
-literal `true` all fail. A floor of the four known workflows keeps discovery
+literal `true` all fail. A floor of the five known workflows keeps discovery
 from emptying into a vacuous pass, and unit cases drive the judgement with each
 refused shape, since the workflows as they stand exercise only the accepted one.
 
@@ -1044,6 +1044,46 @@ naming the toolchain floor. `make test-dependabot-policy`, run by
 - that there is exactly one Cargo entry, not merely a first one, and that the
   file carries no repeated key, which Dependabot's own loader would resolve to
   the last value.
+
+## Loom models
+
+The Loom models check the shared-state kernels in `crates/mxd-concurrency`,
+which `mxd::presence::PresenceRegistry` and the Wireframe adapter's
+connection-context registry are built on. `docs/verification-strategy.md`
+states what they assert and what stays outside them.
+
+| Target                  | What it runs                                                                |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `make test-concurrency` | The kernels' ordinary tests and doctests. Part of `make test`.              |
+| `make check-loom`       | Clippy and a `--no-run` build of the models under `--cfg loom`.             |
+| `make test-loom`        | The models, at `LOOM_MAX_PREEMPTIONS=3`, checked against the expected list. |
+| `make test-loom-runner` | Ruff and the tests for `scripts/run_loom_models.py`.                        |
+
+`make test-loom` runs `cargo test` under `scripts/run_loom_models.py`, which
+compares the models the run reports as passed with
+`crates/mxd-concurrency/loom-models.txt` in both directions. A run that drops
+`--cfg loom` compiles every model out and reports zero tests, and a filter that
+matches nothing does the same; both pass `cargo test` and both fail the runner.
+So does a passing test the list does not name, so ordinary tests cannot stand
+in for models. The workflow contracts in
+`tests/workflow_contracts/test_loom_lane.py` require the list to name exactly
+the `#[test]` functions in the model targets.
+
+Adding a model therefore takes three edits: the test in
+`crates/mxd-concurrency/tests/`, its name in `loom-models.txt`, and, for a new
+test file, its target in `LOOM_TARGETS` in the `Makefile`.
+
+The models run daily at 17:30 UTC, and on manual dispatch, in
+`.github/workflows/loom.yml` on a GitHub-hosted runner. The job's 30-minute
+ceiling is also the models' liveness bound: a model that cannot finish hangs
+rather than failing. A pull request touching the kernels, their production
+callers, the runner or the lane runs `.github/workflows/loom-check.yml`, which
+compiles the models and explores nothing. Both keep their Cargo cache under
+their own key, apart from the ordinary build's.
+
+The kernels' unit tests are compiled only outside `--cfg loom`, because a Loom
+mutex used outside a Loom model panics. For the same reason the lane selects
+the model targets with `--test` and never runs the doctests under Loom.
 
 ## Spelling policy
 

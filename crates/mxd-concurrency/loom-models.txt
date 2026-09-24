@@ -1,0 +1,9 @@
+# Every Loom model `make test-loom` must report as passed, one per line.
+# A model missing from a run, or a passing test not named here, fails the
+# lane: a run that selected nothing, or selected ordinary tests instead,
+# cannot report success.
+loom_concurrent_upserts_get_distinct_ids
+loom_departure_racing_arrival_is_serializable
+loom_update_keeps_its_id_beside_an_arrival
+loom_reader_sees_only_whole_upserts
+loom_connections_see_only_their_own_context

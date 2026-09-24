@@ -160,6 +160,7 @@ Additional workspace crates:
 
 ```text
 crates/
+├── mxd-concurrency/       # Shared-state kernels, model-checked with Loom
 └── mxd-verification/      # Formal verification and model checking
 ```
 
