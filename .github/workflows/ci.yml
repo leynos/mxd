@@ -104,7 +104,7 @@ jobs:
       WHITAKER_INSTALLER_VERSION: '0.2.8'
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@82feb2b7aac45b7efff40c9c4bb632551b14521c
+      - uses: leynos/shared-actions/.github/actions/setup-rust@3822201c597078a5ed1939bdf067fe06a3d78a9d
         with:
           install-postgres-deps: ${{ matrix.install_postgres_deps }}
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
@@ -138,7 +138,7 @@ jobs:
       - name: Install mdtablefix
         # `make check-fmt` runs `mdtablefix --check --git`; 0.6.0 is the
         # first release with `--check` and `--git`.
-        uses: leynos/shared-actions/.github/actions/install-mdtablefix@82feb2b7aac45b7efff40c9c4bb632551b14521c
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@3822201c597078a5ed1939bdf067fe06a3d78a9d
         with:
           version: "0.6.0"
 
@@ -196,7 +196,7 @@ jobs:
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@82feb2b7aac45b7efff40c9c4bb632551b14521c
+      - uses: leynos/shared-actions/.github/actions/setup-rust@3822201c597078a5ed1939bdf067fe06a3d78a9d
         with:
           install-sqlite-deps: true
       - name: Cache Cargo directories
@@ -245,7 +245,7 @@ jobs:
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@82feb2b7aac45b7efff40c9c4bb632551b14521c
+      - uses: leynos/shared-actions/.github/actions/setup-rust@3822201c597078a5ed1939bdf067fe06a3d78a9d
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
@@ -265,7 +265,7 @@ jobs:
           fi
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@v2.87.12
+      - uses: taiki-e/install-action@v2.87.14
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
@@ -278,7 +278,7 @@ jobs:
       # on main, which every PR run can restore; baselines saved here
       # stay scoped to the PR branch.
       - name: Generate coverage for SQLite
-        uses: leynos/shared-actions/.github/actions/generate-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
+        uses: leynos/shared-actions/.github/actions/generate-coverage@3822201c597078a5ed1939bdf067fe06a3d78a9d
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
@@ -288,7 +288,7 @@ jobs:
           artefact-name-suffix: sqlite
           with-ratchet: 'true'
       - name: Generate coverage for Postgres
-        uses: leynos/shared-actions/.github/actions/generate-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
+        uses: leynos/shared-actions/.github/actions/generate-coverage@3822201c597078a5ed1939bdf067fe06a3d78a9d
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
           POSTGRES_TEST_URL: postgres://postgres:password@127.0.0.1/test

@@ -43,7 +43,7 @@ jobs:
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@82feb2b7aac45b7efff40c9c4bb632551b14521c
+      - uses: leynos/shared-actions/.github/actions/setup-rust@3822201c597078a5ed1939bdf067fe06a3d78a9d
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
@@ -63,7 +63,7 @@ jobs:
           fi
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375  # v2.87.12
+      - uses: taiki-e/install-action@76c2e6406e52637deed7160d77bded76bd83e06e  # v2.87.14
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
@@ -74,7 +74,7 @@ jobs:
       # (the default feature set and broadest suite) carries it; the
       # postgres leg is generated unratcheted.
       - name: Generate coverage for SQLite
-        uses: leynos/shared-actions/.github/actions/generate-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
+        uses: leynos/shared-actions/.github/actions/generate-coverage@3822201c597078a5ed1939bdf067fe06a3d78a9d
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
@@ -84,7 +84,7 @@ jobs:
           artefact-name-suffix: sqlite-main
           with-ratchet: 'true'
       - name: Generate coverage for Postgres
-        uses: leynos/shared-actions/.github/actions/generate-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
+        uses: leynos/shared-actions/.github/actions/generate-coverage@3822201c597078a5ed1939bdf067fe06a3d78a9d
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
           POSTGRES_TEST_URL: postgres://postgres:password@127.0.0.1/test
@@ -100,7 +100,7 @@ jobs:
         env:
           CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
         if: env.CS_ACCESS_TOKEN != ''
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@3822201c597078a5ed1939bdf067fe06a3d78a9d
         with:
           format: lcov
           access-token: ${{ env.CS_ACCESS_TOKEN }}
