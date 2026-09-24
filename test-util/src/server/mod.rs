@@ -214,8 +214,10 @@ pub struct TestServer {
     port: u16,
     bind_addr: SocketAddr,
     db_url: DbUrl,
+    /// Held so the test database outlives the server; dropping it drops the
+    /// database.
     #[cfg(feature = "postgres")]
-    db: PostgresTestDb,
+    _db: PostgresTestDb,
     temp_dir: Option<TempDir>,
 }
 
@@ -281,7 +283,7 @@ impl TestServer {
                     port: bind_addr.port(),
                     bind_addr,
                     db_url: db_url_value,
-                    db,
+                    _db: db,
                     temp_dir: None,
                 },
             )
@@ -317,12 +319,6 @@ impl TestServer {
     /// applicable. Returns `None` when using `PostgreSQL`.
     #[must_use]
     pub const fn temp_dir(&self) -> Option<&TempDir> { self.temp_dir.as_ref() }
-
-    /// Returns `true` when the server is using an embedded `PostgreSQL` instance
-    /// rather than an external server.
-    #[cfg(feature = "postgres")]
-    #[must_use]
-    pub const fn uses_embedded_postgres(&self) -> bool { self.db.uses_embedded() }
 }
 
 impl Drop for TestServer {

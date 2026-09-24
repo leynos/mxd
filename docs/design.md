@@ -3160,14 +3160,10 @@ create a fresh database, run migrations, and provide a connection URL(
 [15](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/README.md#L88-L95)).
 This is managed by our `test-util` helper:
 
-- We spin up the PG server on a random free port. Our fixture code checks if
-  `POSTGRES_TEST_URL` env var is set; if so, it will use that as an existing
-  database (perhaps to speed up or allow testing on a manually provided server)(
-  [15](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/README.md#L87-L95)).
-  If not, it calls `start_embedded_postgres()` to boot the embedded one(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L76-L84)
-  )(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L146-L155)).
+- The fixture starts an embedded cluster through `pg-embed-setup-unpriv` and
+  never connects to an external server. The `POSTGRES_TEST_URL` override that
+  once let a test reuse a manually provided server was removed, so every
+  PostgreSQL test runs against a cluster it started.
 
 - `start_embedded_postgres()` in our test util ensures a single global Postgres
   binary download/installation (with a lock file to avoid races between tests)(

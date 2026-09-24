@@ -65,20 +65,6 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     strategy:
       matrix:
         include:
@@ -102,6 +88,9 @@ jobs:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
       WHITAKER_INSTALLER_VERSION: '0.2.8'
+      # One binary cache shared by the warm-up step and the tests, so the
+      # download happens before any test runs.
+      PG_BINARY_CACHE_DIR: ${{ github.workspace }}/.pg-embedded/binaries
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: leynos/shared-actions/.github/actions/setup-rust@82feb2b7aac45b7efff40c9c4bb632551b14521c
@@ -120,6 +109,16 @@ jobs:
           if ! cargo nextest --version >/dev/null 2>&1; then
             cargo binstall --locked --no-confirm cargo-nextest
           fi
+      - name: Install pg-embed-setup-unpriv
+        if: matrix.name == 'postgres'
+        run: cargo binstall --no-confirm pg-embed-setup-unpriv@0.5.2
+      # pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest
+      # of a test process, so a download failing mid-suite would fail every
+      # later test in that process. Downloading first leaves no download inside
+      # the suite.
+      - name: Download the embedded PostgreSQL binaries
+        if: matrix.name == 'postgres'
+        run: make warm-postgres
       # Dependency audits report advisories against the whole lockfile, so a
       # newly published advisory would fail every Dependabot PR regardless of
       # content and deadlock auto-merge. The scheduled audit workflow covers
@@ -130,11 +129,6 @@ jobs:
       - name: Audit dependencies
         if: matrix.name == 'postgres' && github.actor != 'dependabot[bot]'
         run: make audit
-      - name: Export POSTGRES_TEST_URL
-        if: matrix.name == 'postgres'
-        uses: ./.github/actions/export-postgres-url
-        with:
-          url: postgres://postgres:password@127.0.0.1/test
       - name: Install mdtablefix
         # `make check-fmt` runs `mdtablefix --check --git`; 0.6.0 is the
         # first release with `--check` and `--git`.
@@ -174,6 +168,10 @@ jobs:
       - name: Lint with Whitaker
         run: RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
       - name: Test
+        env:
+          # The postgres profile serializes the run; see the developers'
+          # guide, "Embedded PostgreSQL in tests".
+          NEXTEST_PROFILE: ${{ matrix.name == 'postgres' && 'postgres' || 'default' }}
         run: |
           if [[ "${{ matrix.rstest_timeout }}" == "true" ]]; then
             RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
@@ -220,24 +218,13 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 60
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      # One binary cache shared by the warm-up step and the tests, so the
+      # download happens before any test runs.
+      PG_BINARY_CACHE_DIR: ${{ github.workspace }}/.pg-embedded/binaries
       HX_BIN_DIR: ${{ github.workspace }}/.bin
       HX_WORK_ROOT: ${{ github.workspace }}/.cache/hx
       HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client
@@ -269,9 +256,6 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
-      - uses: ./.github/actions/export-postgres-url
-        with:
-          url: postgres://postgres:password@127.0.0.1/test
       # The ratchet supports one baseline per job, so the sqlite leg
       # (the default feature set and broadest suite) carries it. The
       # authoritative baseline is the cache saved by coverage-main.yml
@@ -287,11 +271,19 @@ jobs:
           format: lcov
           artefact-name-suffix: sqlite
           with-ratchet: 'true'
+      - name: Install pg-embed-setup-unpriv
+        run: cargo binstall --no-confirm pg-embed-setup-unpriv@0.5.2
+      # pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest
+      # of a test process, so a download failing mid-suite would fail every
+      # later test in that process. Downloading first leaves no download inside
+      # the suite.
+      - name: Download the embedded PostgreSQL binaries
+        run: make warm-postgres
       - name: Generate coverage for Postgres
         uses: leynos/shared-actions/.github/actions/generate-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
-          POSTGRES_TEST_URL: postgres://postgres:password@127.0.0.1/test
+          NEXTEST_PROFILE: postgres
         with:
           with-default-features: false
           features: postgres test-support

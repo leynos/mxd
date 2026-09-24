@@ -29,19 +29,19 @@ impl Drop for EmbeddedPg {
     fn drop(&mut self) { drop_database(&self.admin_url, &self.db_name) }
 }
 
-/// Error type distinguishing `PostgreSQL` unavailability from initialization failures.
+/// Error type distinguishing a cluster that never started from one that did.
 #[derive(Debug)]
 pub(crate) enum EmbeddedPgError {
-    /// `PostgreSQL` binary not found or cannot be started (unavailable).
-    Unavailable(String),
-    /// `PostgreSQL` started but initialization failed (genuine error).
+    /// The cluster could not be bootstrapped or started.
+    BootstrapFailed(String),
+    /// The cluster started but preparing the test database failed.
     InitFailed(Box<dyn StdError + Send + Sync>),
 }
 
 impl std::fmt::Display for EmbeddedPgError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unavailable(msg) => write!(f, "PostgreSQL unavailable: {msg}"),
+            Self::BootstrapFailed(msg) => write!(f, "PostgreSQL bootstrap failed: {msg}"),
             Self::InitFailed(e) => write!(f, "PostgreSQL initialization failed: {e}"),
         }
     }
@@ -50,7 +50,7 @@ impl std::fmt::Display for EmbeddedPgError {
 impl StdError for EmbeddedPgError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            Self::Unavailable(_) => None,
+            Self::BootstrapFailed(_) => None,
             Self::InitFailed(e) => Some(&**e),
         }
     }
@@ -75,7 +75,7 @@ where
 {
     if use_template {
         let handle = shared_cluster_handle().map_err(|e| {
-            EmbeddedPgError::Unavailable(format!("bootstrapping shared embedded PostgreSQL: {e}"))
+            EmbeddedPgError::BootstrapFailed(format!("bootstrapping shared embedded PostgreSQL: {e}"))
         })?;
         let connection = handle.connection();
         let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
@@ -112,7 +112,7 @@ where
     }
 
     let (handle, guard) = TestCluster::new_split().map_err(|e| {
-        EmbeddedPgError::Unavailable(format!("bootstrapping embedded PostgreSQL: {e}"))
+        EmbeddedPgError::BootstrapFailed(format!("bootstrapping embedded PostgreSQL: {e}"))
     })?;
     let connection = handle.connection();
     let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
@@ -157,7 +157,7 @@ where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>> + Send + 'static,
 {
     let (handle, guard) = TestCluster::start_async_split().await.map_err(|e| {
-        EmbeddedPgError::Unavailable(format!("bootstrapping embedded PostgreSQL: {e}"))
+        EmbeddedPgError::BootstrapFailed(format!("bootstrapping embedded PostgreSQL: {e}"))
     })?;
     let admin_url = DatabaseUrl::parse(&handle.connection().database_url("postgres"))
         .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
