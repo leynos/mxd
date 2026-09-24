@@ -78,6 +78,10 @@ POSTGRES_TARGET_DIR := target/postgres
 # Throwaway install and data directories for the warm-up run, so it never
 # touches the cluster directory the tests themselves use.
 PG_WARM_DIR ?= $(CURDIR)/.pg-embedded/warm
+# pg-embed-setup-unpriv 0.5.2 generates a password per process, and a cluster
+# directory left by one test process then refuses the next. A fixed password
+# for these throwaway local clusters keeps every process in agreement.
+PG_PASSWORD ?= mxd-embedded-test
 
 all: check-fmt typecheck lint test spelling
 
@@ -232,7 +236,7 @@ test: test-postgres test-sqlite test-wireframe-only test-verification test-doc #
 # processes nextest runs. See "Embedded PostgreSQL in tests" in the
 # developers' guide.
 test-postgres: ## Run tests with the postgres backend
-	NEXTEST_PROFILE=postgres RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
+	NEXTEST_PROFILE=postgres PG_PASSWORD="$(PG_PASSWORD)" RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
 
 warm-postgres: ## Download the embedded PostgreSQL binaries into PG_BINARY_CACHE_DIR
 	PG_RUNTIME_DIR="$(PG_WARM_DIR)/install" PG_DATA_DIR="$(PG_WARM_DIR)/data" pg_embedded_setup_unpriv

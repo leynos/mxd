@@ -34,9 +34,7 @@ impl XorWorld {
 
     fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> { self.base.setup_db(setup) }
 
-    fn authenticate(&self) {
-        self.base.authenticate_default_user(1);
-    }
+    fn authenticate(&self) { self.base.authenticate_default_user(1); }
 
     fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
         let frame = match build_frame(ty, id, params) {
@@ -52,7 +50,6 @@ impl XorWorld {
     fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T { self.base.with_reply(f) }
 
     fn is_xor_enabled(&self) -> bool { self.base.is_xor_enabled() }
-
 }
 
 #[fixture]
@@ -60,8 +57,7 @@ fn world() -> XorWorld {
     if let Err(error) = ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server")) {
         panic!("failed to configure wireframe test binary path: {error}");
     }
-    let world = XorWorld::new();
-    world
+    XorWorld::new()
 }
 
 #[given("a routing context with user accounts")]

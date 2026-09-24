@@ -10,7 +10,10 @@ The embedded path brings two obligations of its own, asserted here per job
 that runs the PostgreSQL tests. Every cluster in a run shares one data
 directory and pg-embed-setup-unpriv does not coordinate across the processes
 nextest runs, so the tests run under the `postgres` nextest profile, whose
-single-slot group serializes them. And a cluster bootstrap failure is cached
+single-slot group serializes them. Each process also generates its own
+superuser password unless `PG_PASSWORD` fixes one, and a cluster directory left
+by one process then refuses the next, so each such job pins it. And a cluster
+bootstrap failure is cached
 for the rest of a test process, so the binaries are downloaded by
 `make warm-postgres` before the tests start rather than by the first test.
 """
@@ -128,8 +131,14 @@ def test_the_postgres_tests_run_serialized_after_the_download(
     profile: str,
     documents: cabc.Mapping[str, cabc.Mapping[str, object]],
 ) -> None:
-    """The profile is on the step, and the warm-up runs earlier in the job."""
-    steps = _steps(_jobs(documents[workflow])[job_id])
+    """The password is pinned, the profile set, and the warm-up run first."""
+    job = _jobs(documents[workflow])[job_id]
+    job_env = job.get("env")
+    assert isinstance(job_env, dict) and job_env.get("PG_PASSWORD"), (
+        f"{workflow}:{job_id} must pin PG_PASSWORD, or a cluster directory left "
+        "by one test process refuses the next"
+    )
+    steps = _steps(job)
     positions = [i for i, step in enumerate(steps) if step.get("name") == step_name]
     assert len(positions) == 1, f"expected one {step_name!r} step in {job_id}"
     (test_at,) = positions

@@ -72,8 +72,9 @@ impl WireframeBddWorld {
     pub fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> {
         self.reply.borrow_mut().take();
 
-        let server = TestServer::start_with_setup("./Cargo.toml", |db| setup(DatabaseUrl::from(db)))
-            .context("failed to start wireframe test server")?;
+        let server =
+            TestServer::start_with_setup("./Cargo.toml", |db| setup(DatabaseUrl::from(db)))
+                .context("failed to start wireframe test server")?;
 
         self.server.borrow_mut().replace(server);
         self.reconnect()

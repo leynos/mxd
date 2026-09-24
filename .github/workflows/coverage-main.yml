@@ -25,6 +25,10 @@ jobs:
       # One binary cache shared by the warm-up step and the tests, so the
       # download happens before any test runs.
       PG_BINARY_CACHE_DIR: ${{ github.workspace }}/.pg-embedded/binaries
+      # A throwaway password for the embedded test clusters, pinned so a
+      # cluster directory left by one test process authenticates in the next.
+      # Not a secret: the cluster listens on localhost inside this job.
+      PG_PASSWORD: mxd-embedded-test
       HX_BIN_DIR: ${{ github.workspace }}/.bin
       HX_WORK_ROOT: ${{ github.workspace }}/.cache/hx
       HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client
