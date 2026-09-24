@@ -2,6 +2,7 @@
 members = [
     ".",
     "cli-defs",
+    "crates/mxd-concurrency",
     "crates/mxd-verification",
     "fuzz",
     "test-util",
@@ -69,6 +70,7 @@ path = "tests/wireframe_xor_compat.rs"
 required-features = ["test-support"]
 
 [dependencies]
+mxd-concurrency = { path = "crates/mxd-concurrency" }
 bitflags = "2.10.0"
 tokio = { version = "1", features = ["full"] }
 cap-std = { version = "4.0.0", features = ["fs_utf8"] }
@@ -222,7 +224,7 @@ result_large_err                    = "deny"
 unknown_lints                       = "deny"
 renamed_and_removed_lints           = "deny"
 missing_docs                        = "deny"
-unexpected_cfgs                     = { level = "warn", check-cfg = ["cfg(kani)"] }
+unexpected_cfgs                     = { level = "warn", check-cfg = ["cfg(kani)", "cfg(loom)"] }
 
 [workspace.lints.rustdoc]
 missing_crate_level_docs            = "deny"

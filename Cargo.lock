@@ -2453,6 +2453,7 @@ dependencies = [
  "figment-json5",
  "futures-util",
  "kani",
+ "mxd-concurrency",
  "ortho_config 0.3.0",
  "paste",
  "pg-embed-setup-unpriv",
@@ -2478,6 +2479,13 @@ dependencies = [
  "wait-timeout",
  "wireframe",
  "xdg",
+]
+
+[[package]]
+name = "mxd-concurrency"
+version = "0.1.0"
+dependencies = [
+ "loom",
 ]
 
 [[package]]

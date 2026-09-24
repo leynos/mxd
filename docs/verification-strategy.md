@@ -100,6 +100,70 @@ harnesses prove XOR encode/decode round-trips for bounded payloads and
 sub-version/version gating behaviour for bounded handshake and login values,
 without panics.
 
+### Loom
+
+Loom model-checks Rust code that shares state between threads. It runs a test
+many times, choosing a different interleaving of every lock acquisition each
+time, until it has explored every interleaving within a preemption bound. It
+can only schedule operations performed through its own primitives, so code
+under a Loom model must lock with `loom::sync::Mutex` rather than the standard
+library's.
+
+Use Loom when:
+
+- several tasks mutate one piece of mxd-owned state behind a lock, and
+- the contract is about what concurrent callers observe, such as unique IDs,
+  isolation between connections, or results a serial order would produce.
+
+The `mxd` crate cannot be built under `--cfg loom`: Tokio compiles its
+networking out in that configuration. The shared-state logic Loom checks
+therefore lives in `crates/mxd-concurrency`, a crate with no dependencies whose
+lock resolves to Loom's under `--cfg loom` and to the standard library's
+otherwise. Production calls those kernels, so the models exercise the code the
+server runs rather than a copy of it.
+
+| Kernel                     | Production caller                                  | Models                                          |
+| -------------------------- | -------------------------------------------------- | ----------------------------------------------- |
+| `presence::PresenceTable`  | `mxd::presence::PresenceRegistry`                  | `crates/mxd-concurrency/tests/loom_presence.rs` |
+| `context::ContextRegistry` | `mxd::wireframe::connection`'s task-keyed registry | `crates/mxd-concurrency/tests/loom_context.rs`  |
+
+The models assert:
+
+- two connections coming online together get distinct presence IDs, and each
+  sees the other as a peer exactly as some serial order would have it;
+- a departure racing an arrival leaves a result one of the two serial orders
+  produces;
+- an updating connection keeps its presence ID beside an arrival;
+- a reader never sees an entry without its assigned ID; and
+- concurrent connection tasks each see and remove only their own context,
+  while another live connection's context survives.
+
+Each model uses two threads, the model's own included, and runs at
+`LOOM_MAX_PREEMPTIONS=3`. Every model builds a fresh table or registry, so no
+state survives from one explored interleaving to the next.
+
+Outside the model, by design:
+
+- the process-wide `OnceLock` holding the context registry, Tokio's task
+  identifiers and task-local storage, which are the environment the kernel is
+  called from;
+- the routes' shared session, a `tokio::sync::Mutex`. Loom cannot schedule
+  Tokio's own primitives from a downstream crate. The session's gating
+  semantics are covered by the Stateright session model instead; and
+- networking, the database, and wall-clock time.
+
+Assurance is bounded. Loom explores every interleaving within its preemption
+bound for the participants each model names. That is a strong statement about a
+bounded space, not a proof for all executions.
+
+Each assertion was shown able to fail. Five mutations were each applied alone
+and rejected: splitting the upsert's or the removal's critical section in two,
+reallocating an updating connection's ID, inserting an entry before assigning
+its ID, and storing a context by copying the map out of the lock and back. The
+two split critical sections and the copy-on-write store can only be observed
+between two acquisitions of the lock, so their rejection shows the models
+explore interleavings rather than run one.
+
 ## TLA+ specifications
 
 ### Handshake specification (MxdHandshake.tla)
@@ -214,6 +278,12 @@ every pull request:
 Nightly jobs run deeper bounds and the full verification set. Failures should
 publish counterexample artefacts for triage.
 
+The Loom models run daily at 17:30 UTC and on manual dispatch in
+`.github/workflows/loom.yml`. A pull request touching the kernels runs
+`.github/workflows/loom-check.yml` instead, which lints and compiles the models
+under `--cfg loom` without exploring them. See "Loom models" in
+`docs/developers-guide.md`.
+
 ## Running locally
 
 ```sh
@@ -228,6 +298,9 @@ cargo test -p mxd-verification -- --nocapture
 
 # Session gating model (explicit harness)
 cargo test -p mxd-verification --test session_gating -- --nocapture
+
+# Loom models (bounded, checked against the expected-model list)
+make test-loom
 
 # Kani harnesses (transaction framing invariants)
 cargo kani -p mxd --harness kani_validate_header_matches_predicate

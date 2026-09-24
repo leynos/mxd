@@ -1,0 +1,52 @@
+name: Loom check
+
+# The pull-request smoke check for the Loom models: it lints and compiles them
+# under `--cfg loom`, runs the kernels' ordinary tests, and tests the model
+# runner, but explores nothing. The exploration itself runs in loom.yml, daily
+# and on demand. See "Loom models" in docs/developers-guide.md.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/mxd-concurrency/**'
+      - 'src/presence.rs'
+      - 'src/wireframe/connection.rs'
+      - 'scripts/run_loom_models.py'
+      - 'tests/loom_runner/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Makefile'
+      - '.github/workflows/loom.yml'
+      - '.github/workflows/loom-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: leynos/shared-actions/.github/actions/setup-rust@82feb2b7aac45b7efff40c9c4bb632551b14521c
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - name: Cache Cargo directories
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: cfg-loom-release
+      - name: Lint and compile the Loom models
+        run: make check-loom
+      - name: Test the shared-state kernels
+        run: make test-concurrency
+      - name: Test the Loom model runner
+        run: make test-loom-runner

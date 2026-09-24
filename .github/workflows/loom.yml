@@ -1,0 +1,47 @@
+name: Loom models
+
+# The Loom models explore every interleaving of the shared-state kernels in
+# crates/mxd-concurrency within a preemption bound. Exploration is too slow
+# for every pull request, so it runs daily and on demand; loom-check.yml is
+# the pull-request smoke check that compiles and lints the models without
+# exploring them. See "Loom models" in docs/developers-guide.md.
+#
+# The schedule is 17:30 UTC, staggered from Wireframe's and Femtologging's
+# Loom lanes. A manual dispatch runs the workflow file and tree of the ref it
+# is dispatched on.
+
+on:
+  schedule:
+    - cron: '30 17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  models:
+    runs-on: ubuntu-latest
+    # A model that cannot finish hangs rather than failing, so this ceiling is
+    # what turns a liveness defect into a red run.
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: leynos/shared-actions/.github/actions/setup-rust@82feb2b7aac45b7efff40c9c4bb632551b14521c
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      # A separate key keeps the `--cfg loom` build apart from the ordinary
+      # build's cache; the action adds the toolchain and lockfile hashes.
+      - name: Cache Cargo directories
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: cfg-loom-release
+      - name: Run the Loom models
+        run: make test-loom
