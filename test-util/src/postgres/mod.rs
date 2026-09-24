@@ -8,8 +8,8 @@
 pub(crate) mod common;
 mod embedded;
 
-pub use common::{DatabaseName, DatabaseNameError, DatabaseUrl, PostgresTestDbError};
 use common::reset_postgres_db;
+pub use common::{DatabaseName, DatabaseNameError, DatabaseUrl, PostgresTestDbError};
 use embedded::{
     EmbeddedPg,
     EmbeddedPgError,

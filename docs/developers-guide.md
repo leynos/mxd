@@ -118,8 +118,23 @@ cluster deletes that directory. Two tests starting clusters at once therefore
 collide. The `postgres` profile in `.config/nextest.toml` puts every test in a
 single-slot group, and `make test-postgres` and each CI step running the
 PostgreSQL tests select it through `NEXTEST_PROFILE=postgres`. The profile also
-allows a cold cluster start 180 seconds. A local run of the whole leg takes
-about fifteen minutes.
+allows a cold cluster start 300 seconds; one took 156 seconds on a quiet host.
+A local run of the whole leg spends about fourteen minutes in its tests. With
+the service container and parallel tests, CI's postgres test step took under
+three minutes.
+
+Serial is not enough on its own. pg-embed-setup-unpriv 0.5.2 generates a
+superuser password per process, and a test using the shared template cluster
+leaves state that the next process, holding a different password, cannot
+authenticate against: the first test after it failed with "failed to connect to
+admin database" on every local run until the password was fixed.
+`make test-postgres` and each CI job running the PostgreSQL tests therefore set
+`PG_PASSWORD` to a fixed throwaway value. It is not a secret; the clusters
+listen on localhost and live only as long as the run.
+
+The serial group is an interim measure for pg-embed-setup-unpriv 0.5.2. Revisit
+it when mxd moves to the 0.6.0 release, and drop it if that release keeps
+concurrent clusters apart.
 
 Because the default directory is per user rather than per checkout, a second
 checkout running PostgreSQL tests at the same time collides with the first.
@@ -147,13 +162,13 @@ tests read one cache.
 `tests/workflow_contracts/test_embedded_postgres.py` asserts that no job
 declares a service container, that no workflow mentions `POSTGRES_TEST_URL`,
 and that no Rust source reads it. For each job that runs the PostgreSQL tests,
-it asserts that the step sets the `postgres` profile and that
-`make warm-postgres` runs once earlier in the same job. It also asserts that
-the profile's group has one slot and applies to every test. Seven mutations
-each fail exactly the case named for them: a service container, the URL in a
-step's `env`, the URL read in `test-util`, the profile dropped, the warm-up
-removed, the group widened to two slots, and the build-test profile made a
-literal `default`.
+it asserts that the job pins `PG_PASSWORD`, that the step sets the `postgres`
+profile, and that `make warm-postgres` runs once earlier in the same job. It
+also asserts that the profile's group has one slot and applies to every test.
+Eight mutations each fail exactly the case named for them: a service container,
+the URL in a step's `env`, the URL read in `test-util`, the profile dropped,
+the warm-up removed, the password dropped, the group widened to two slots, and
+the build-test profile made a literal `default`.
 
 ## PostgreSQL migration strategy (v0.5.0)
 

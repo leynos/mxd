@@ -74,64 +74,79 @@ where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
 {
     if use_template {
-        let handle = shared_cluster_handle().map_err(|e| {
-            EmbeddedPgError::BootstrapFailed(format!("bootstrapping shared embedded PostgreSQL: {e}"))
-        })?;
-        let connection = handle.connection();
-        let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
-            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-        let db_name =
-            generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-
-        // Template-based database creation uses per-template locking in the
-        // shared handle, so migration setup only runs once per process.
-        let template_name = migration_template_name().map_err(EmbeddedPgError::InitFailed)?;
-        handle
-            .ensure_template_exists(
-                template_name.as_ref(),
-                |template_db| -> PgBootstrapResult<()> {
-                    let template_url = DatabaseUrl::parse(&connection.database_url(template_db))
-                        .map_err(|e| eyre!("failed to parse template URL: {e}"))?;
-                    setup(&template_url).map_err(|e| eyre!("migration failed: {e}"))?;
-                    Ok(())
-                },
-            )
-            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-        handle
-            .create_database_from_template(db_name.as_ref(), template_name.as_ref())
-            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-        let url = DatabaseUrl::parse(&connection.database_url(db_name.as_ref()))
-            .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-
-        return Ok(EmbeddedPg {
-            url,
-            db_name,
-            admin_url,
-            _guard: None,
-        });
+        start_from_template(setup)
+    } else {
+        start_fresh_cluster(setup)
     }
+}
 
+/// Clone a test database from the migrated template in the shared cluster.
+///
+/// Template-based creation uses per-template locking in the shared handle, so
+/// migration setup runs only once per process.
+fn start_from_template<F>(setup: F) -> Result<EmbeddedPg, EmbeddedPgError>
+where
+    F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
+{
+    let handle = shared_cluster_handle().map_err(|e| {
+        EmbeddedPgError::BootstrapFailed(format!("bootstrapping shared embedded PostgreSQL: {e}"))
+    })?;
+    let connection = handle.connection();
+    let admin_url = parse_url(&connection.database_url("postgres"))?;
+    let db_name =
+        generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let template_name = migration_template_name().map_err(EmbeddedPgError::InitFailed)?;
+    handle
+        .ensure_template_exists(
+            template_name.as_ref(),
+            |template_db| -> PgBootstrapResult<()> {
+                let template_url = DatabaseUrl::parse(&connection.database_url(template_db))
+                    .map_err(|e| eyre!("failed to parse template URL: {e}"))?;
+                setup(&template_url).map_err(|e| eyre!("migration failed: {e}"))?;
+                Ok(())
+            },
+        )
+        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    handle
+        .create_database_from_template(db_name.as_ref(), template_name.as_ref())
+        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let url = parse_url(&connection.database_url(db_name.as_ref()))?;
+    Ok(EmbeddedPg {
+        url,
+        db_name,
+        admin_url,
+        _guard: None,
+    })
+}
+
+/// Start a cluster of this database's own, create the database and run setup.
+fn start_fresh_cluster<F>(setup: F) -> Result<EmbeddedPg, EmbeddedPgError>
+where
+    F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
+{
     let (handle, guard) = TestCluster::new_split().map_err(|e| {
         EmbeddedPgError::BootstrapFailed(format!("bootstrapping embedded PostgreSQL: {e}"))
     })?;
     let connection = handle.connection();
-    let admin_url = DatabaseUrl::parse(&connection.database_url("postgres"))
-        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let admin_url = parse_url(&connection.database_url("postgres"))?;
     let db_name =
         generate_db_name("test_").map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
     handle
         .create_database(db_name.as_ref())
         .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
-    let url = DatabaseUrl::parse(&connection.database_url(db_name.as_ref()))
-        .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
+    let url = parse_url(&connection.database_url(db_name.as_ref()))?;
     setup(&url).map_err(EmbeddedPgError::InitFailed)?;
-
     Ok(EmbeddedPg {
         url,
         db_name,
         admin_url,
         _guard: Some(guard),
     })
+}
+
+/// Parse a URL the cluster produced, as an initialization failure if invalid.
+fn parse_url(url: &str) -> Result<DatabaseUrl, EmbeddedPgError> {
+    DatabaseUrl::parse(url).map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))
 }
 
 /// Starts an embedded `PostgreSQL` cluster (backward compatibility wrapper).

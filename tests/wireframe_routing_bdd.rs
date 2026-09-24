@@ -40,9 +40,7 @@ impl RoutingWorld {
 
     fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> { self.base.setup_db(setup) }
 
-    fn authenticate(&self) {
-        self.base.authenticate_default_user(1);
-    }
+    fn authenticate(&self) { self.base.authenticate_default_user(1); }
 
     fn send(&self, ty: TransactionType, id: u32, params: &[(FieldId, &[u8])]) {
         let frame = match build_frame(ty, id, params) {
@@ -55,9 +53,7 @@ impl RoutingWorld {
         self.base.send_raw(&frame);
     }
 
-    fn send_raw(&self, frame: &[u8]) {
-        self.base.send_raw(frame);
-    }
+    fn send_raw(&self, frame: &[u8]) { self.base.send_raw(frame); }
 
     fn with_reply<T>(&self, f: impl FnOnce(&Transaction) -> T) -> T { self.base.with_reply(f) }
 
@@ -86,9 +82,7 @@ fn world() -> RoutingWorld {
 }
 
 #[given("a wireframe server handling transactions")]
-fn given_server(world: &RoutingWorld) -> Result<(), AnyError> {
-    world.setup_db(noop_setup)
-}
+fn given_server(world: &RoutingWorld) -> Result<(), AnyError> { world.setup_db(noop_setup) }
 
 #[given("a routing context with user accounts")]
 fn given_users(world: &RoutingWorld) -> Result<(), AnyError> { world.setup_db(setup_files_db) }
