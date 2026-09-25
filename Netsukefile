@@ -1,21 +1,45 @@
 netsuke_version: "1.0.0"
 
+# MXD_BACKEND selects exactly one feature lane: postgres, sqlite, or
+# wireframe-only. Manifest-time `when` removes every other lane before Netsuke
+# builds its graph, so `lint` and `test` can never run another lane's
+# features, and the lanes stay distinct rather than collapsing into
+# `--all-features`. The variable is required: `env()` fails when it is unset.
+vars:
+  lanes:
+    - name: postgres
+      features: "--no-default-features --features 'postgres test-support legacy-networking'"
+      test_env: ""
+    - name: sqlite
+      features: "--features 'sqlite test-support'"
+      test_env: "RSTEST_TIMEOUT=20 "
+    - name: wireframe-only
+      features: "--no-default-features --features 'sqlite toml test-support'"
+      test_env: "RSTEST_TIMEOUT=20 "
+
 actions:
   - name: check-fmt
+    description: Check Rust formatting across the workspace.
     command: "cargo fmt --all -- --check"
-  - name: lint-postgres
-    command: "RUSTFLAGS='-D warnings' cargo clippy --no-default-features --features 'postgres test-support legacy-networking' --workspace --all-targets -- -D warnings"
-  - name: lint-sqlite
-    command: "RUSTFLAGS='-D warnings' cargo clippy --features 'sqlite test-support' --workspace --all-targets -- -D warnings"
-  - name: lint-wireframe-only
-    command: "RUSTFLAGS='-D warnings' cargo clippy --no-default-features --features 'sqlite toml test-support' --workspace --all-targets -- -D warnings"
-  - name: test-postgres
-    command: "RUSTFLAGS='-D warnings' cargo nextest run --no-default-features --features 'postgres test-support legacy-networking' --filter-expr 'not package(=validator)'"
-  - name: test-sqlite
-    command: "RSTEST_TIMEOUT=20 RUSTFLAGS='-D warnings' cargo nextest run --features 'sqlite test-support' --filter-expr 'not package(=validator)'"
-  - name: test-wireframe-only
-    command: "RSTEST_TIMEOUT=20 RUSTFLAGS='-D warnings' cargo nextest run --no-default-features --features 'sqlite toml test-support' --filter-expr 'not package(=validator)'"
+  - foreach: lanes
+    when: item.name == env('MXD_BACKEND')
+    name: lint
+    description: "Deny Clippy warnings for the {{ item.name }} lane."
+    command: "RUSTFLAGS='-D warnings' cargo clippy {{ item.features }} --workspace --all-targets -- -D warnings"
+  - foreach: lanes
+    when: item.name == env('MXD_BACKEND')
+    name: test
+    description: "Run the {{ item.name }} lane's tests, excluding the validator."
+    command: "{{ item.test_env }}RUSTFLAGS='-D warnings' cargo nextest run {{ item.features }} --filter-expr 'not package(=validator)'"
 
-defaults: [check-fmt, lint-postgres, lint-sqlite, lint-wireframe-only, test-postgres, test-sqlite, test-wireframe-only]
+  # An unrecognized MXD_BACKEND selects no lane. Rather than leave `lint` and
+  # `test` undefined, both fail with the reason.
+  - foreach: [lint, test]
+    when: env('MXD_BACKEND') not in (lanes | map(attribute='name') | list)
+    name: "{{ item }}"
+    description: Refuse an unrecognized MXD_BACKEND.
+    command: "echo 'MXD_BACKEND must be postgres, sqlite, or wireframe-only' >&2; exit 2"
+
+defaults: [check-fmt, lint, test]
 
 targets: []
