@@ -257,11 +257,12 @@ def directory_glob_matches(glob: str, directory: str) -> bool:
 
     `*` stays within one path segment and `**` spans segments, so
     `/.github/actions/*` covers `/.github/actions/setup-rust` and not
-    `/.github/actions/release/sign`.
+    `/.github/actions/release/sign`. `**/` also matches zero levels, so
+    `/.github/actions/**/*` covers `/.github/actions/setup-rust` too.
     """
+    tokens = {"**/": "(?:.*/)?", "**": ".*", "*": "[^/]*"}
     regex = "".join(
-        ".*" if part == "**" else "[^/]*" if part == "*" else re.escape(part)
-        for part in re.split(r"(\*\*|\*)", glob)
+        tokens.get(part, re.escape(part)) for part in re.split(r"(\*\*/|\*\*|\*)", glob)
     )
     return re.fullmatch(regex, directory) is not None
 
@@ -354,6 +355,7 @@ def test_github_actions_reaches_every_composite_action(
         ("/.github/actions/*", "/.github/actions/setup-rust", True),
         ("/.github/actions/*", "/.github/actions/release/sign", False),
         ("/.github/actions/**", "/.github/actions/release/sign", True),
+        ("/.github/actions/**/*", "/.github/actions/setup-rust", True),
     ],
 )
 def test_directory_globs_match_like_dependabot(
