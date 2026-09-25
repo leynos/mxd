@@ -31,6 +31,8 @@ PROHIBITED: typ.Final = "hand" + "-written"
 API_COLOUR: typ.Final = "col" + "or"
 API_FLAVOUR: typ.Final = "flav" + "or"
 API_NORMALIZED: typ.Final = "normal" + "ised"
+# Wireframe's generic parameter, admitted by the estate dictionary itself.
+API_SERVER: typ.Final = "S" + "er"
 # The policy documents the gate reads, and the only two this repository tracks.
 # The fixture carries its own, so the test measures this repository's policy
 # rather than a stand-in.
@@ -195,6 +197,11 @@ INLINE_CODE_CASES: typ.Final = (
     pytest.param(
         f"The delays are {API_NORMALIZED}.", API_NORMALIZED, id="wireframe-prose"
     ),
+    # The estate dictionary, not this repository, admits `AppFactory<Ser`, so
+    # the generic passes anywhere it is written, and the bare word is still
+    # checked in prose.
+    pytest.param(f"`AppFactory<{API_SERVER}>` builds apps.", None, id="estate-generic"),
+    pytest.param(f"A {API_SERVER} handles it.", API_SERVER, id="estate-generic-prose"),
 )
 
 
