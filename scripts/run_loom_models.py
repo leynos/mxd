@@ -20,7 +20,8 @@ An ignored model needs no rule of its own: it is not reported as ``ok``, so it
 is already a missing model.
 
 The Cargo command follows ``--`` so the Makefile, not this script, states it.
-A summary goes to ``GITHUB_STEP_SUMMARY`` when that file is set.
+The run ends with a summary of the verdict, the counts, the preemption bound
+and ``RUSTFLAGS``, so the job log states what was checked.
 """
 
 from __future__ import annotations
@@ -103,22 +104,26 @@ def problems(
     return found
 
 
-def write_summary(
-    summary: Path, passed: frozenset[str], expected: frozenset[str], found: list[str]
-) -> None:
-    """Append a Markdown summary of the run to the job summary file."""
+def summary(passed: frozenset[str], expected: frozenset[str], found: list[str]) -> str:
+    """Summarize the run: the verdict, the counts, the bound and the flags.
+
+    >>> print(summary(frozenset({"a"}), frozenset({"a"}), []).splitlines()[0])
+    Loom models: passed
+
+    Returns
+    -------
+    str
+        The summary, one fact per line, ending in each problem found.
+    """
     verdict = "failed" if found else "passed"
     lines = [
-        f"## Loom models: {verdict}",
-        "",
-        f"- Expected: {len(expected)}; passed: {len(passed & expected)}",
-        f"- Preemption bound: `{os.environ.get('LOOM_MAX_PREEMPTIONS', 'unset')}`",
-        f"- `RUSTFLAGS`: `{os.environ.get('RUSTFLAGS', 'unset')}`",
-        *(f"- {problem}" for problem in found),
-        "",
+        f"Loom models: {verdict}",
+        f"  expected: {len(expected)}; passed: {len(passed & expected)}",
+        f"  LOOM_MAX_PREEMPTIONS: {os.environ.get('LOOM_MAX_PREEMPTIONS', 'unset')}",
+        f"  RUSTFLAGS: {os.environ.get('RUSTFLAGS', 'unset')}",
+        *(f"  problem: {problem}" for problem in found),
     ]
-    with summary.open("a", encoding="utf-8") as handle:
-        handle.write("\n".join(lines))
+    return "\n".join(lines)
 
 
 @app.default
@@ -142,10 +147,7 @@ def main(
     passed = passed_tests(run.stdout)
     wanted = read_expected(expected)
     found = problems(run.returncode, passed, wanted)
-    if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
-        write_summary(Path(summary), passed, wanted, found)
-    for problem in found:
-        print(f"run_loom_models: {problem}", file=sys.stderr)
+    print(summary(passed, wanted, found), file=sys.stderr)
     return 1 if found else 0
 
 
