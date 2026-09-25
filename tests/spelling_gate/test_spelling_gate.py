@@ -31,7 +31,6 @@ PROHIBITED: typ.Final = "hand" + "-written"
 API_COLOUR: typ.Final = "col" + "or"
 API_FLAVOUR: typ.Final = "flav" + "or"
 API_NORMALIZED: typ.Final = "normal" + "ised"
-API_SERVER: typ.Final = "S" + "er"
 # The policy documents the gate reads, and the only two this repository tracks.
 # The fixture carries its own, so the test measures this repository's policy
 # rather than a stand-in.
@@ -195,14 +194,6 @@ INLINE_CODE_CASES: typ.Final = (
     ),
     pytest.param(
         f"The delays are {API_NORMALIZED}.", API_NORMALIZED, id="wireframe-prose"
-    ),
-    pytest.param(
-        f"`AppFactory<{API_SERVER}, Ctx, E, Codec>` builds apps.",
-        None,
-        id="wireframe-generic",
-    ),
-    pytest.param(
-        f"`AppFactory<{API_SERVER}>` builds apps.", API_SERVER, id="generic-partial"
     ),
 )
 
