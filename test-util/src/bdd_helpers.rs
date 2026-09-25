@@ -102,36 +102,51 @@ async fn run_setup_fn(
     Ok(())
 }
 
+/// Failure messages naming the backend a test database was built on.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+struct BackendContext {
+    setup: &'static str,
+    join: &'static str,
+    pool: &'static str,
+}
+
+/// Run the fixture setup against a database, then open a pool on it.
+///
+/// # Errors
+///
+/// Returns the setup failure, or the pool failure, under the backend's
+/// message.
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+async fn prepare_pool(
+    setup: SetupFn,
+    db_url: DatabaseUrl,
+    context: &BackendContext,
+) -> Result<DbPool, AnyError> {
+    run_setup_fn(setup, db_url.clone(), context.setup, context.join).await?;
+    establish_pool(db_url.as_str()).await.context(context.pool)
+}
+
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 async fn build_sqlite_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
     let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
-    run_setup_fn(
-        setup,
-        db_url.clone(),
-        "failed to run SQLite test database setup",
-        "failed to receive SQLite setup result",
-    )
-    .await?;
-    let pool = establish_pool(db_url.as_str())
-        .await
-        .context("failed to establish SQLite connection pool")?;
+    let context = BackendContext {
+        setup: "failed to run SQLite test database setup",
+        join: "failed to receive SQLite setup result",
+        pool: "failed to establish SQLite connection pool",
+    };
+    let pool = prepare_pool(setup, db_url, &context).await?;
     Ok(Some(sqlite_test_db(pool, temp_dir)))
 }
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 async fn build_postgres_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
     let db = PostgresTestDb::new_async().await?;
-    let db_url = DatabaseUrl::from(db.url.as_ref());
-    run_setup_fn(
-        setup,
-        db_url.clone(),
-        "failed to run Postgres test database setup",
-        "failed to receive Postgres setup result",
-    )
-    .await?;
-    let pool = establish_pool(db_url.as_str())
-        .await
-        .context("failed to establish Postgres connection pool")?;
+    let context = BackendContext {
+        setup: "failed to run Postgres test database setup",
+        join: "failed to receive Postgres setup result",
+        pool: "failed to establish Postgres connection pool",
+    };
+    let pool = prepare_pool(setup, DatabaseUrl::from(db.url.as_ref()), &context).await?;
     Ok(Some(postgres_test_db(pool, db)))
 }
 

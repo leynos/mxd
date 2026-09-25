@@ -20,6 +20,7 @@ for the rest of a test process, so the binaries are downloaded by
 
 from __future__ import annotations
 
+import json
 import tomllib
 import typing as typ
 
@@ -33,17 +34,30 @@ WARM_COMMAND: typ.Final = "make warm-postgres"
 PROFILE: typ.Final = "postgres"
 URL_VARIABLE: typ.Final = "POSTGRES_TEST_URL"
 
-# Each job that runs the PostgreSQL tests, with the name of the step that runs
-# them and the profile expression that step must carry.
+
+class PostgresTestStep(typ.NamedTuple):
+    """A job that runs the PostgreSQL tests, and what its test step must set."""
+
+    workflow: str
+    job_id: str
+    step_name: str
+    profile: str
+
+
 POSTGRES_TEST_STEPS: typ.Final = (
-    (
+    PostgresTestStep(
         "ci.yml",
         "build-test",
         "Test",
         "${{ matrix.name == 'postgres' && 'postgres' || 'default' }}",
     ),
-    ("ci.yml", "coverage", "Generate coverage for Postgres", PROFILE),
-    ("coverage-main.yml", "coverage-upload", "Generate coverage for Postgres", PROFILE),
+    PostgresTestStep("ci.yml", "coverage", "Generate coverage for Postgres", PROFILE),
+    PostgresTestStep(
+        "coverage-main.yml",
+        "coverage-upload",
+        "Generate coverage for Postgres",
+        PROFILE,
+    ),
 )
 
 
@@ -69,17 +83,9 @@ def _steps(job: cabc.Mapping[str, object]) -> list[dict[str, object]]:
     return [step for step in declared if isinstance(step, dict)]
 
 
-def _scalars(value: object) -> cabc.Iterator[str]:
-    """Every key and string value in a parsed document, depth first."""
-    if isinstance(value, dict):
-        for key, item in value.items():
-            yield str(key)
-            yield from _scalars(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _scalars(item)
-    elif isinstance(value, str):
-        yield value
+def _text(document: cabc.Mapping[str, object]) -> str:
+    """Every key and value of a parsed document, as one searchable text."""
+    return json.dumps(document, default=str)
 
 
 def test_no_job_declares_a_service_container(
@@ -102,7 +108,7 @@ def test_no_workflow_mentions_the_external_url(
     offenders = [
         workflow
         for workflow, document in documents.items()
-        if any(URL_VARIABLE in scalar for scalar in _scalars(document))
+        if URL_VARIABLE in _text(document)
     ]
     assert not offenders, f"{URL_VARIABLE} appears in {offenders}"
 
@@ -120,35 +126,36 @@ def test_no_rust_source_reads_the_external_url() -> None:
 
 
 @pytest.mark.parametrize(
-    ("workflow", "job_id", "step_name", "profile"),
+    "expected",
     POSTGRES_TEST_STEPS,
-    ids=[f"{w}:{j}" for w, j, _, _ in POSTGRES_TEST_STEPS],
+    ids=[f"{step.workflow}:{step.job_id}" for step in POSTGRES_TEST_STEPS],
 )
 def test_the_postgres_tests_run_serialized_after_the_download(
-    workflow: str,
-    job_id: str,
-    step_name: str,
-    profile: str,
+    expected: PostgresTestStep,
     documents: cabc.Mapping[str, cabc.Mapping[str, object]],
 ) -> None:
     """The password is pinned, the profile set, and the warm-up run first."""
-    job = _jobs(documents[workflow])[job_id]
+    where = f"{expected.workflow}:{expected.job_id}"
+    job = _jobs(documents[expected.workflow])[expected.job_id]
     job_env = job.get("env")
     assert isinstance(job_env, dict) and job_env.get("PG_PASSWORD"), (
-        f"{workflow}:{job_id} must pin PG_PASSWORD, or a cluster directory left "
-        "by one test process refuses the next"
+        f"{where} must pin PG_PASSWORD, or a cluster directory left by one test "
+        "process refuses the next"
     )
     steps = _steps(job)
-    positions = [i for i, step in enumerate(steps) if step.get("name") == step_name]
-    assert len(positions) == 1, f"expected one {step_name!r} step in {job_id}"
+    positions = [
+        i for i, step in enumerate(steps) if step.get("name") == expected.step_name
+    ]
+    assert len(positions) == 1, f"expected one {expected.step_name!r} step in {where}"
     (test_at,) = positions
     env = steps[test_at].get("env")
-    assert isinstance(env, dict) and env.get("NEXTEST_PROFILE") == profile, (
-        f"{workflow}:{job_id} {step_name!r} must set NEXTEST_PROFILE to {profile!r}"
+    assert isinstance(env, dict) and env.get("NEXTEST_PROFILE") == expected.profile, (
+        f"{where} {expected.step_name!r} must set NEXTEST_PROFILE to "
+        f"{expected.profile!r}"
     )
     warm_at = [i for i, step in enumerate(steps) if step.get("run") == WARM_COMMAND]
     assert len(warm_at) == 1 and warm_at[0] < test_at, (
-        f"{workflow}:{job_id} must run {WARM_COMMAND!r} once, before {step_name!r}"
+        f"{where} must run {WARM_COMMAND!r} once, before {expected.step_name!r}"
     )
 
 
