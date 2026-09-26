@@ -13,6 +13,13 @@ on:
   push:
     branches: [main]
 
+# One group per ref, never cancelled. Runs never overlap, and a newer push
+# replaces an older run still pending rather than queueing behind it. A
+# cancelled run would abandon its upload and its ratchet baseline.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   coverage-upload:
     runs-on: ubuntu-latest
@@ -96,11 +103,15 @@ jobs:
           artefact-name-suffix: postgres-main
       - name: Merge coverage results
         run: bun x lcov-result-merger 'lcov-*.info' > lcov.info
+      # The expression is evaluated before the shell runs, so the token enters
+      # no process and no step's env: the composite upload action would pass
+      # a step env on to its nested steps.
+      - name: Check the CodeScene token is available
+        id: codescene-token
+        run: echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
       - name: Upload coverage data to CodeScene
-        env:
-          CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
-        if: env.CS_ACCESS_TOKEN != ''
+        if: steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main'
         uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
         with:
           format: lcov
-          access-token: ${{ env.CS_ACCESS_TOKEN }}
+          access-token: ${{ secrets.CS_ACCESS_TOKEN }}
