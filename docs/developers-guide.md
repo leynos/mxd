@@ -100,40 +100,86 @@ That prefix means Cargo subcommands installed under `~/.cargo/bin`, Whitaker
 installed under its resolved directory, and user-local tools under
 `~/.local/bin` are found before system defaults during the Whitaker lint pass.
 
-## PostgreSQL test helper
+## Embedded PostgreSQL in tests
 
-Install the helper once:
+Every PostgreSQL test, locally and in CI, runs against an embedded cluster
+started by `pg-embed-setup-unpriv` 0.5.2. There is no external database option:
+the `POSTGRES_TEST_URL` override and the CI `postgres:15` service container
+that fed it are gone, and a cluster that fails to start fails the test rather
+than skipping it. `make test-postgres` needs no database running.
+
+### The postgres leg runs serially
+
+Each test process starts its own cluster, and every cluster in a run uses the
+same data directory, `/var/tmp/pg-embed-<uid>/data` unless `PG_DATA_DIR` says
+otherwise. pg-embed-setup-unpriv coordinates cluster start-up within one
+process but not across the processes nextest runs, and the guard that drops a
+cluster deletes that directory. Two tests starting clusters at once therefore
+collide. The `postgres` profile in `.config/nextest.toml` puts every test in a
+single-slot group, and `make test-postgres` and each CI step running the
+PostgreSQL tests select it through `NEXTEST_PROFILE=postgres`. The profile also
+allows a cold cluster start 300 seconds; one took 156 seconds on a quiet host.
+A local run of the whole leg spends about fourteen minutes in its tests. With
+the service container and parallel tests, CI's postgres test step took under
+three minutes.
+
+Serial is not enough on its own. pg-embed-setup-unpriv 0.5.2 generates a
+superuser password per process, and a test using the shared template cluster
+leaves state that the next process, holding a different password, cannot
+authenticate against: the first test after it failed with "failed to connect to
+admin database" on every local run until the password was fixed.
+`make test-postgres` and each CI job running the PostgreSQL tests therefore set
+`PG_PASSWORD` to a fixed throwaway value. It is not a secret; the clusters
+listen on localhost and live only as long as the run.
+
+The serial group is an interim measure for pg-embed-setup-unpriv 0.5.2. Revisit
+it when mxd moves to the 0.6.0 release, and drop it if that release keeps
+concurrent clusters apart.
+
+Because the default directory is per user rather than per checkout, a second
+checkout running PostgreSQL tests at the same time collides with the first.
+Give each concurrent run its own directories:
 
 ```sh
-cargo install --locked pg-embed-setup-unpriv --version 0.5.0
+PG_RUNTIME_DIR=/var/tmp/mxd-pg-b/install PG_DATA_DIR=/var/tmp/mxd-pg-b/data \
+  make test-postgres
 ```
 
-Run the helper before `make test` whenever PostgreSQL coverage is required. The
-helper runs unprivileged; root access is not required.
+### The binaries are downloaded before the tests
 
-```sh
-export PG_VERSION_REQ="=16.4.0"
-export PG_RUNTIME_DIR="/var/tmp/pg-embedded-setup-unpriv/install"
-export PG_DATA_DIR="/var/tmp/pg-embedded-setup-unpriv/data"
-export PG_SUPERUSER="postgres"
-export PG_PASSWORD="postgres_pass"
-export PG_TEST_BACKEND="postgresql_embedded"
-pg_embedded_setup_unpriv
-```
+pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest of a test
+process, so a download failing inside the suite would fail every later test in
+that process. CI installs the `pg_embedded_setup_unpriv` binary at the crate's
+version and runs `make warm-postgres` first. That target runs setup with
+throwaway install and data directories under `.pg-embedded/warm`, which fills
+the binary cache named by `PG_BINARY_CACHE_DIR`. It then fails if the cache is
+still empty, because the tool skips caching silently when it cannot take the
+cache lock. Each job sets `PG_BINARY_CACHE_DIR` once, so the warm-up and the
+tests read one cache.
 
-`PG_TEST_BACKEND` accepts only unset or `postgresql_embedded` for embedded
-cluster bootstrapping. Any other value should be treated as an intentional
-skip/fail signal from the test harness.
+### The contract
 
-See `docs/pg-embed-setup-unpriv-users-guide.md` for the full reference and
-troubleshooting tips.
+`tests/workflow_contracts/test_embedded_postgres.py` asserts that no job
+declares a service container, that no workflow mentions `POSTGRES_TEST_URL`,
+and that no Rust source reads it. For each job that runs the PostgreSQL tests,
+it asserts that the job pins `PG_PASSWORD`, that the step sets the `postgres`
+profile, and that `make warm-postgres` runs once earlier in the same job. It
+also asserts that the profile's group has one slot and applies to every test.
+Eight mutations each fail exactly the case named for them: a service container,
+the URL in a step's `env`, the URL read in `test-util`, the profile dropped,
+the warm-up removed, the password dropped, the group widened to two slots, and
+the build-test profile made a literal `default`.
 
 ## PostgreSQL migration strategy (v0.5.0)
 
 The migration target for this branch adopts v0.5.0 lifecycle APIs to improve
 test reliability and throughput without changing test semantics.
 
-- Keep `POSTGRES_TEST_URL` support for external PostgreSQL integration tests.
+- Run every PostgreSQL test against an embedded cluster. The
+  `POSTGRES_TEST_URL` route to an external server, the CI service container
+  that fed it, and the skip taken when a cluster could not start were all
+  removed, so a PostgreSQL test either runs against the cluster it started or
+  fails.
 - Use template-based provisioning (`postgres_db_fast`) with a process-shared
   `ClusterHandle` and `CREATE DATABASE ... TEMPLATE` clones so migration
   amortization remains effective under v0.5.0 cleanup defaults.
@@ -443,8 +489,7 @@ The shared helper surface is intentionally split between writers and readers:
 
 SQLite tests run against a fresh in-memory database per test or fixture.
 PostgreSQL tests run through `with_postgres_test_db`, which creates an isolated
-database using `POSTGRES_TEST_URL` when supplied or an embedded PostgreSQL
-cluster otherwise. PostgreSQL tests use
+database in an embedded PostgreSQL cluster. PostgreSQL tests use
 `serial_test::file_serial(postgres_embedded_setup)` locks so the embedded
 cluster setup and teardown are not raced by concurrent tests.
 

@@ -55,3 +55,6 @@ __pycache__/
 *.swp
 *.swo
 *~
+
+# Embedded PostgreSQL binary cache and warm-up directories
+.pg-embedded/

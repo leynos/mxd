@@ -4,11 +4,7 @@
 //! These scenarios start a disposable cluster via `PostgresTestDb::new()`,
 //! exercise `run_command(Commands::CreateUser)` end to end, then verify the
 //! user record exists in the database. The helper tears the cluster down
-//! automatically on drop. In CI, the suite skips gracefully when the embedded
-//! worker binary is unavailable, emitting `SKIP-TEST-CLUSTER` so the failure
-//! is visible without breaking the pipeline. The suite also skips when an
-//! external `POSTGRES_TEST_URL` is configured because this test targets the
-//! embedded workflow specifically.
+//! automatically on drop. A cluster that fails to start fails the test.
 
 use anyhow::Result;
 use argon2::Params;
@@ -18,32 +14,15 @@ use mxd::{
     server::{AppConfig, Commands, CreateUserArgs, run_command},
 };
 use rstest::rstest;
-use test_util::postgres::{PostgresTestDb, PostgresTestDbError};
+use test_util::postgres::PostgresTestDb;
 use tokio::runtime::Builder;
 
 #[rstest]
 fn create_user_against_embedded_postgres() -> Result<()> {
-    if std::env::var_os("POSTGRES_TEST_URL").is_some() {
-        tracing::warn!(concat!(
-            "SKIP-TEST-CLUSTER: POSTGRES_TEST_URL set, skipping embedded ",
-            "postgres test"
-        ));
-        return Ok(());
-    }
-
     // PostgresTestDb::new() uses block_on internally when starting an embedded
     // cluster, so must be called outside any tokio runtime to avoid runtime
     // nesting errors.
-    let pg = match PostgresTestDb::new() {
-        Ok(db) => db,
-        Err(PostgresTestDbError::Unavailable(_)) => {
-            tracing::warn!("SKIP-TEST-CLUSTER: PostgreSQL unavailable");
-            return Ok(());
-        }
-        Err(err) => {
-            anyhow::bail!("Failed to initialize PostgreSQL test database: {err}");
-        }
-    };
+    let pg = PostgresTestDb::new()?;
 
     let rt = Builder::new_current_thread().enable_all().build()?;
 

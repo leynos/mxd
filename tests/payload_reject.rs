@@ -45,9 +45,7 @@ fn handshake(stream: &mut TcpStream) -> std::io::Result<()> {
 
 #[test]
 fn download_banner_reject_payload() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
-        return Ok(());
-    };
+    let server = common::start_server(|_: DatabaseUrl| Ok(()))?;
     let addr = server.bind_addr();
     let mut stream = TcpStream::connect(addr)?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
@@ -80,9 +78,7 @@ fn download_banner_reject_payload() -> Result<(), AnyError> {
 
 #[test]
 fn user_name_list_reject_payload() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
-        return Ok(());
-    };
+    let server = common::start_server(|_: DatabaseUrl| Ok(()))?;
     let addr = server.bind_addr();
     let mut stream = TcpStream::connect(addr)?;
     handshake(&mut stream)?;

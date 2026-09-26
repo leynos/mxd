@@ -134,9 +134,7 @@ fn assert_connection_closed(stream: &mut TcpStream) -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn fragmented_request_within_explicit_budget_still_routes() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
-        return Ok(());
-    };
+    let server = common::start_server(|_: DatabaseUrl| Ok(()))?;
     let mut stream = connect_and_handshake(server.bind_addr())?;
     let payload = build_payload_at_least(SOFT_PRESSURE_PAYLOAD_BYTES)?;
     let fragments = fragmented_request(&payload, LARGE_REQUEST_ID, HALF_FRAME_DATA)?;
@@ -157,9 +155,7 @@ fn fragmented_request_within_explicit_budget_still_routes() -> Result<(), AnyErr
 
 #[test]
 fn oversized_fragmented_request_is_disconnected_on_first_frame() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
-        return Ok(());
-    };
+    let server = common::start_server(|_: DatabaseUrl| Ok(()))?;
     let mut stream = connect_and_handshake(server.bind_addr())?;
     let oversized_total = u32::try_from(MAX_PAYLOAD_SIZE + 1)?;
     let first_chunk_len = MAX_FRAME_DATA;
@@ -182,9 +178,7 @@ fn oversized_fragmented_request_is_disconnected_on_first_frame() -> Result<(), A
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn stalled_fragmented_request_is_disconnected_when_continuation_resumes() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|_: DatabaseUrl| Ok(()))? else {
-        return Ok(());
-    };
+    let server = common::start_server(|_: DatabaseUrl| Ok(()))?;
     let mut stream = connect_and_handshake(server.bind_addr())?;
     let payload = build_payload_at_least(MAX_FRAME_DATA + 1024)?;
     let fragments = fragmented_request(&payload, 7003, MAX_FRAME_DATA)?;

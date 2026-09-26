@@ -6,3 +6,23 @@ slow-timeout = { period = "60s", terminate-after = 1, grace-period = "5s" }
 # Put a hard ceiling on the whole run.
 global-timeout = "10m"
 
+
+# The postgres leg runs every database test against an embedded cluster, and
+# in pg-embed-setup-unpriv 0.5.2 every cluster in a run shares one data
+# directory. The crate coordinates cluster start-up within a process but not
+# across the processes nextest runs, and a dropped cluster deletes that
+# directory, so two tests starting clusters at once collide. This profile
+# serializes the run and gives a cold cluster start the headroom it needs.
+# It is an interim measure: revisit it with the pg-embed-setup-unpriv 0.6.0
+# release, and drop the group if that release separates the clusters.
+[profile.postgres]
+# A cold cluster start took up to 156 s on a quiet host.
+slow-timeout = { period = "300s", terminate-after = 1, grace-period = "5s" }
+global-timeout = "60m"
+
+[test-groups]
+pg-embed = { max-threads = 1 }
+
+[[profile.postgres.overrides]]
+filter = "all()"
+test-group = "pg-embed"

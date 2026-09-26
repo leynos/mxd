@@ -101,9 +101,7 @@ mod rstest_tests {
     #[case(Some("/"))]
     #[case(None)]
     fn list_news_categories_root(#[case] path: Option<&str>) -> Result<(), AnyError> {
-        let Some(server) = common::start_server_or_skip(setup_news_categories_root_db)? else {
-            return Ok(());
-        };
+        let server = common::start_server(setup_news_categories_root_db)?;
 
         let addr = server.bind_addr();
         let (_, mut names) = list_categories(addr, path)?;
@@ -126,9 +124,7 @@ mod rstest_tests {
     #[case("Bundle/Sub")]
     #[case("/Bundle/Sub/")]
     fn list_news_categories_nested(#[case] path: &str) -> Result<(), AnyError> {
-        let Some(server) = common::start_server_or_skip(setup_news_categories_nested_db)? else {
-            return Ok(());
-        };
+        let server = common::start_server(setup_news_categories_nested_db)?;
 
         let addr = server.bind_addr();
         let (_, names) = list_categories(addr, Some(path))?;
@@ -149,7 +145,7 @@ mod rstest_tests {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_invalid_path() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|db: DatabaseUrl| {
+    let server = common::start_server(|db: DatabaseUrl| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db.as_str()).await?;
@@ -172,10 +168,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
             .await?;
             Ok(())
         })
-    })?
-    else {
-        return Ok(());
-    };
+    })?;
 
     let addr = server.bind_addr();
     let (hdr, _) = list_categories(addr, Some("some/path"))?;
@@ -201,7 +194,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
 fn list_news_categories_empty() -> Result<(), AnyError> {
-    let Some(server) = common::start_server_or_skip(|db: DatabaseUrl| {
+    let server = common::start_server(|db: DatabaseUrl| {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(async {
             let mut conn = DbConnection::establish(db.as_str()).await?;
@@ -212,10 +205,7 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
 
             Ok(())
         })
-    })?
-    else {
-        return Ok(());
-    };
+    })?;
 
     let addr = server.bind_addr();
     let (_, names) = list_categories(addr, None)?;

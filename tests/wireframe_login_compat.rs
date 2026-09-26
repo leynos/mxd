@@ -90,9 +90,6 @@ impl LoginCompatWorld {
     }
 
     fn set_handshake_sub_version(&self, handshake_sub_version: HandshakeSubVersion) {
-        if self.base.is_skipped() {
-            return;
-        }
         let handshake = HandshakeMetadata {
             sub_version: handshake_sub_version.as_u16(),
             ..HandshakeMetadata::default()
@@ -109,9 +106,6 @@ impl LoginCompatWorld {
         version: ClientVersion,
         credentials: LoginCredentials<'_>,
     ) {
-        if self.base.is_skipped() {
-            return;
-        }
         #[expect(
             clippy::big_endian_bytes,
             reason = "test fixture uses explicit network byte order payload"
@@ -198,9 +192,6 @@ impl LoginCompatWorld {
         expected_error: ErrorCode,
         validate_params: impl FnOnce(&[(FieldId, Vec<u8>)]) -> Result<(), Box<dyn std::error::Error>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if self.base.is_skipped() {
-            return Ok(());
-        }
         self.with_reply(|tx| {
             let expected_error_value = expected_error.as_i32();
             let actual_error_value = i64::from(tx.header.error.cast_signed());
@@ -249,9 +240,7 @@ fn world() -> LoginCompatWorld {
     if let Err(error) = ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server")) {
         panic!("failed to configure wireframe test binary path: {error}");
     }
-    let world = LoginCompatWorld::new();
-    assert!(!world.base.is_skipped());
-    world
+    LoginCompatWorld::new()
 }
 
 #[given("a routing context with user accounts")]
