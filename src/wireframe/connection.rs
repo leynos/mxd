@@ -12,13 +12,9 @@
 
 #![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
 
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    net::SocketAddr,
-    sync::{Mutex, OnceLock},
-};
+use std::{cell::RefCell, net::SocketAddr, sync::OnceLock};
 
+use mxd_concurrency::context::ContextRegistry;
 use tokio::task::{self, Id};
 
 use crate::protocol::{Handshake, VERSION};
@@ -113,38 +109,32 @@ tokio::task_local! {
     static CONNECTION_CONTEXT: RefCell<Option<ConnectionContext>>;
 }
 
-fn registry() -> &'static Mutex<HashMap<Id, ConnectionContext>> {
-    static CONNECTION_CONTEXT_REGISTRY: OnceLock<Mutex<HashMap<Id, ConnectionContext>>> =
+/// The process-wide registry every connection task mirrors its context into.
+///
+/// The registry's logic is `mxd_concurrency::context::ContextRegistry`, which
+/// the Loom models in that crate check with concurrent connection tasks.
+fn registry() -> &'static ContextRegistry<Id, ConnectionContext> {
+    static CONNECTION_CONTEXT_REGISTRY: OnceLock<ContextRegistry<Id, ConnectionContext>> =
         OnceLock::new();
-    CONNECTION_CONTEXT_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+    CONNECTION_CONTEXT_REGISTRY.get_or_init(ContextRegistry::default)
 }
 
 fn current_task_id() -> Option<Id> { task::try_id() }
 
 fn store_registry_context(context: &ConnectionContext) {
     if let Some(task_id) = current_task_id() {
-        registry()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(task_id, context.clone());
+        registry().store(task_id, context.clone());
     }
 }
 
 fn registry_context() -> Option<ConnectionContext> {
     let task_id = current_task_id()?;
-    registry()
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&task_id)
-        .cloned()
+    registry().get(&task_id)
 }
 
 fn take_registry_context() -> Option<ConnectionContext> {
     let task_id = current_task_id()?;
-    registry()
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .remove(&task_id)
+    registry().take(&task_id)
 }
 
 /// Scope connection context metadata for the current Tokio task.
@@ -223,12 +213,7 @@ mod tests {
     }
 
     fn registry_count_for_metadata(metadata: &[HandshakeMetadata]) -> usize {
-        registry()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .values()
-            .filter(|context| metadata.contains(context.handshake()))
-            .count()
+        registry().count(|context| metadata.contains(context.handshake()))
     }
 
     #[rstest]

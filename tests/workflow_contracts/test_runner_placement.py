@@ -45,6 +45,8 @@ PINNED_PLACEMENTS: typ.Final[cabc.Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("ci.yml", "coverage"): ("ubuntu-latest",),
     ("coverage-main.yml", "coverage-upload"): ("ubuntu-latest",),
     ("fuzz.yml", "fuzz"): ("ubuntu-latest",),
+    ("loom-check.yml", "check"): ("ubuntu-latest",),
+    ("loom.yml", "models"): ("ubuntu-latest",),
     ("release.yml", "metadata"): ("ubuntu-latest",),
     ("release.yml", "release"): ("ubuntu-latest",),
     ("tlc-image.yml", "build-and-push"): ("ubuntu-latest",),
@@ -91,6 +93,10 @@ def is_external_call(calls: str) -> bool:
 # A lane with no ceiling inherits GitHub's six-hour default, which is not a
 # bound on anything: it is the point at which a wedged job stops costing money.
 #
+# The two Loom lanes are placeholders until they have run: `models` is bounded
+# at 30 minutes because a model that cannot finish hangs rather than failing,
+# and `check` builds one small crate twice.
+#
 # `tlc-image` is sized on the image build rather than on the median. It skips
 # in 24 to 29 s on nearly every run because the Dockerfile rarely changes, and
 # a ceiling sized on that would cancel the only run that matters.
@@ -107,6 +113,8 @@ PINNED_CEILINGS: typ.Final[cabc.Mapping[tuple[str, str], int]] = {
     ("ci.yml", "coverage"): 45,
     ("coverage-main.yml", "coverage-upload"): 50,
     ("fuzz.yml", "fuzz"): 360,
+    ("loom-check.yml", "check"): 30,
+    ("loom.yml", "models"): 30,
     ("release.yml", "metadata"): 30,
     ("release.yml", "release"): 30,
     ("tlc-image.yml", "build-and-push"): 120,

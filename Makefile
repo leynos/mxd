@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -75,6 +75,13 @@ TEST_SQLITE_FEATURES := --features "sqlite test-support"
 TEST_POSTGRES_FEATURES := --no-default-features --features "postgres test-support legacy-networking"
 WIREFRAME_ONLY_FEATURES := --no-default-features --features "sqlite toml test-support"
 POSTGRES_TARGET_DIR := target/postgres
+# The Loom models: the preemption bound, the model targets, and the list of
+# model names a run must report as passed. See "Loom models" in
+# docs/developers-guide.md.
+LOOM_MAX_PREEMPTIONS ?= 3
+LOOM_TARGETS := --test loom_presence --test loom_context
+LOOM_EXPECTED := crates/mxd-concurrency/loom-models.txt
+LOOM_RUNNER_SRCS := scripts/run_loom_models.py $(wildcard tests/loom_runner/*.py)
 
 all: check-fmt typecheck lint test spelling
 
@@ -218,7 +225,7 @@ tlc: tlc-handshake ## Run all TLA+ model checks
 tlc-handshake: ## Run TLC on handshake spec
 	TLC_IMAGE=$(TLC_IMAGE) $(TLC_RUNNER) crates/mxd-verification/tla/MxdHandshake.tla
 
-test: test-postgres test-sqlite test-wireframe-only test-verification test-doc ## Run sqlite, postgres, wireframe-only, verification, and doc suites
+test: test-postgres test-sqlite test-wireframe-only test-verification test-concurrency test-doc ## Run sqlite, postgres, wireframe-only, verification, concurrency-kernel, and doc suites
 
 # Note: RSTEST_TIMEOUT is intentionally omitted for postgres tests because
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
@@ -235,6 +242,25 @@ test-wireframe-only: ## Run tests with legacy networking disabled
 
 test-verification: ## Run verification crate tests
 	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p mxd-verification
+
+test-concurrency: ## Run the shared-state kernels' ordinary tests and doctests
+	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p mxd-concurrency
+	RUSTFLAGS="-D warnings" $(CARGO) test --doc -p mxd-concurrency
+
+check-loom: ## Lint and compile the Loom models without running them
+	RUSTFLAGS="--cfg loom -D warnings" $(CARGO) clippy -p mxd-concurrency --all-targets -- -D warnings
+	RUSTFLAGS="--cfg loom -D warnings" $(CARGO) test -p mxd-concurrency --release $(LOOM_TARGETS) --no-run
+
+test-loom: ## Run the Loom models and require every expected model to pass
+	LOOM_MAX_PREEMPTIONS=$(LOOM_MAX_PREEMPTIONS) RUSTFLAGS="--cfg loom -D warnings" $(UV_ENV) $(UV) run --script scripts/run_loom_models.py --expected $(LOOM_EXPECTED) -- $(CARGO) test -p mxd-concurrency --release $(LOOM_TARGETS)
+
+test-loom-runner: ## Test the Loom model runner script
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(LOOM_RUNNER_SRCS)
+	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(LOOM_RUNNER_SRCS)
+	@PYTHONPATH=scripts $(UV_ENV) $(UV) run --no-project --python 3.14 \
+		--with pytest==9.0.2 --with cmd-mox==0.2.0 --with "cyclopts>=4,<5" \
+		python -m pytest tests/loom_runner scripts/run_loom_models.py --doctest-modules \
+		-c /dev/null --rootdir=. -p no:cacheprovider -p cmd_mox.pytest_plugin
 
 # nextest does not execute doctests; run them separately with the
 # default (sqlite) backend, mirroring the template's split.
