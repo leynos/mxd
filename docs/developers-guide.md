@@ -776,7 +776,8 @@ Two gaps are known and accepted. A Dependabot automerge merged with
 next push publishes. There is no `schedule` trigger to cover it.
 
 The upload is guarded by a token check rather than by the token itself. A step
-with the id `codescene-token`, no `if` and no `env`, runs exactly
+with the id `codescene-token`, in the upload's own job and before it (a step
+output does not cross jobs), with no `if` and no `env`, runs exactly
 `echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"`.
 The expression is evaluated before the shell runs, so the step writes `true` or
 `false` and the token enters no process. The upload's whole condition is

@@ -30,6 +30,7 @@ import pytest
 from shell_commands import runs_command
 from workflow_surface import (
     is_workflow_file,
+    jobs,
     load,
     pull_request_surface,
     secret_breaches,
@@ -275,18 +276,37 @@ def test_the_publisher_uploads_with_the_token_given_directly() -> None:
     )
 
 
-def test_the_token_check_runs_its_one_command_unconditionally() -> None:
-    """Deleting or conditioning the check would skip the upload forever.
+def _upload_job_steps() -> list[dict[str, object]]:
+    """The steps of the one publisher job that calls the upload action.
 
-    The check precedes the upload, carries the id the condition reads, has no
+    A step output is readable only within its own job, so the token check is
+    judged against this job's steps, never against the workflow's flattened.
+    """
+    upload_jobs = [
+        job
+        for job in jobs(_documents()[PUBLISHER])
+        if any(_is_upload_step(step) for step in job.get("steps") or [])
+    ]
+    assert len(upload_jobs) == 1, f"{PUBLISHER} must upload from exactly one job"
+    return [step for step in upload_jobs[0]["steps"] if isinstance(step, dict)]
+
+
+def test_the_token_check_runs_its_one_command_unconditionally() -> None:
+    """Deleting, moving or conditioning the check would skip the upload forever.
+
+    The check sits in the upload's own job, before the upload, because a step
+    output does not cross jobs. It carries the id the condition reads, has no
     `if` and no `env`, and its whole `run` body is the one command.
     """
-    publisher = _publisher_steps()
-    checks = [i for i, step in enumerate(publisher) if step.get("id") == TOKEN_CHECK_ID]
-    uploads = [i for i, step in enumerate(publisher) if _is_upload_step(step)]
-    assert len(checks) == 1, f"{PUBLISHER} must declare one {TOKEN_CHECK_ID!r} step"
-    assert uploads and checks[0] < uploads[0], "the check must precede the upload"
-    check = publisher[checks[0]]
+    job_steps = _upload_job_steps()
+    checks = [i for i, step in enumerate(job_steps) if step.get("id") == TOKEN_CHECK_ID]
+    uploads = [i for i, step in enumerate(job_steps) if _is_upload_step(step)]
+    assert len(checks) == 1, (
+        f"the upload's job must declare one {TOKEN_CHECK_ID!r} step; a check in "
+        "another job cannot be read by the upload's condition"
+    )
+    assert checks[0] < uploads[0], "the check must precede the upload"
+    check = job_steps[checks[0]]
     assert "if" not in check, "the token check must be unconditional"
     assert "env" not in check, "the token check must bind nothing in env"
     assert str(check.get("run", "")).strip() == TOKEN_CHECK_COMMAND, (
