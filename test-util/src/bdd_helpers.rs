@@ -127,26 +127,30 @@ async fn prepare_pool(
 }
 
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+const SQLITE: BackendContext = BackendContext {
+    setup: "failed to run SQLite test database setup",
+    join: "failed to receive SQLite setup result",
+    pool: "failed to establish SQLite connection pool",
+};
+
+#[cfg(all(feature = "postgres", not(feature = "sqlite")))]
+const POSTGRES: BackendContext = BackendContext {
+    setup: "failed to run Postgres test database setup",
+    join: "failed to receive Postgres setup result",
+    pool: "failed to establish Postgres connection pool",
+};
+
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 async fn build_sqlite_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
     let (temp_dir, db_url) = sqlite_temp_dir_and_url()?;
-    let context = BackendContext {
-        setup: "failed to run SQLite test database setup",
-        join: "failed to receive SQLite setup result",
-        pool: "failed to establish SQLite connection pool",
-    };
-    let pool = prepare_pool(setup, db_url, &context).await?;
+    let pool = prepare_pool(setup, db_url, &SQLITE).await?;
     Ok(Some(sqlite_test_db(pool, temp_dir)))
 }
 
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 async fn build_postgres_test_db_async(setup: SetupFn) -> Result<Option<TestDb>, AnyError> {
     let db = PostgresTestDb::new_async().await?;
-    let context = BackendContext {
-        setup: "failed to run Postgres test database setup",
-        join: "failed to receive Postgres setup result",
-        pool: "failed to establish Postgres connection pool",
-    };
-    let pool = prepare_pool(setup, DatabaseUrl::from(db.url.as_ref()), &context).await?;
+    let pool = prepare_pool(setup, DatabaseUrl::from(db.url.as_ref()), &POSTGRES).await?;
     Ok(Some(postgres_test_db(pool, db)))
 }
 
