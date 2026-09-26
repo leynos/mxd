@@ -51,10 +51,10 @@ ignore = [
   # layout. The backticks are part of the pattern, so the word is still
   # checked wherever it is written as prose.
   '`color`',
-  # Wireframe's own identifiers, quoted whole: a method that kept the en-GB
-  # spelling upstream, and a generic parameter abbreviating Server.
+  # Wireframe's own identifier, quoted whole: a method that kept the en-GB
+  # spelling upstream. Wireframe's `AppFactory<Ser` generic is admitted by the
+  # estate dictionary itself, so it needs no entry here.
   '`BackoffConfig::normalised`',
-  '`AppFactory<Ser, Ctx, E, Codec>`',
 ]
 
 [files]
