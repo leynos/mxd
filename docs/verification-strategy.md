@@ -117,10 +117,11 @@ Use Loom when:
 
 The `mxd` crate cannot be built under `--cfg loom`: Tokio compiles its
 networking out in that configuration. The shared-state logic Loom checks
-therefore lives in `crates/mxd-concurrency`, a crate with no dependencies whose
-lock resolves to Loom's under `--cfg loom` and to the standard library's
-otherwise. Production calls those kernels, so the models exercise the code the
-server runs rather than a copy of it.
+therefore lives in `crates/mxd-concurrency` (see "Shared-state kernels" in
+`docs/design.md`), a crate with no dependencies whose lock resolves to Loom's
+under `--cfg loom` and to the standard library's otherwise. Production calls
+those kernels, so the models exercise the code the server runs rather than a
+copy of it.
 
 | Kernel                     | Production caller                                  | Models                                          |
 | -------------------------- | -------------------------------------------------- | ----------------------------------------------- |

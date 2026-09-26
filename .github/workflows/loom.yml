@@ -9,6 +9,10 @@ name: Loom models
 # The schedule is 17:30 UTC, staggered from Wireframe's and Femtologging's
 # Loom lanes. A manual dispatch runs the workflow file and tree of the ref it
 # is dispatched on.
+#
+# There is no concurrency group: a group would let a third trigger replace a
+# pending second run, and every scheduled or dispatched run should complete.
+# Overlapping runs share nothing but the read-only cache.
 
 on:
   schedule:
@@ -17,10 +21,6 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
   models:

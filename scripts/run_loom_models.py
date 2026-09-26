@@ -133,19 +133,32 @@ def main(
 ) -> int:
     """Run ``command`` and check it reported every expected model as passed.
 
+    An expected-model list that cannot be read, or a command that cannot be
+    started, is reported and fails the run with status 2, as a usage error
+    does, rather than escaping as a traceback.
+
     Returns
     -------
     int
-        Zero when every expected model passed and nothing else did.
+        0 when every expected model passed and nothing else did, 1 when not,
+        and 2 when the run could not be checked at all.
     """
     if not command:
         print("run_loom_models: no cargo command given after --", file=sys.stderr)
         return 2
-    run = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+    try:
+        wanted = read_expected(expected)
+    except (OSError, UnicodeDecodeError) as error:
+        print(f"run_loom_models: cannot read {expected}: {error}", file=sys.stderr)
+        return 2
+    try:
+        run = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+    except OSError as error:
+        print(f"run_loom_models: cannot run {command[0]}: {error}", file=sys.stderr)
+        return 2
     sys.stdout.write(run.stdout)
     sys.stderr.write(run.stderr)
     passed = passed_tests(run.stdout)
-    wanted = read_expected(expected)
     found = problems(run.returncode, passed, wanted)
     print(summary(passed, wanted, found), file=sys.stderr)
     return 1 if found else 0

@@ -74,3 +74,27 @@ fn reports_peers_and_remaining_connections() {
     assert_eq!(removed.remaining, [20]);
     assert!(table.remove(10).is_none());
 }
+
+/// Once every ID up to the ceiling is held, an arrival is refused, and a
+/// departure frees its ID for the next arrival.
+#[test]
+fn refuses_an_arrival_when_every_id_is_held() {
+    let table = PresenceTable::with_ceiling(2);
+    assert_eq!(upsert_id(&table, 10), 1);
+    assert_eq!(upsert_id(&table, 20), 2);
+    assert_eq!(table.upsert(entry(30)), Err(PresenceIdsExhausted));
+
+    assert!(table.remove(10).is_some());
+    assert_eq!(upsert_id(&table, 30), 1);
+}
+
+/// The cursor wraps from the ceiling back to 1, never issuing 0.
+#[test]
+fn wraps_from_the_ceiling_to_one() {
+    let table = PresenceTable::with_ceiling(2);
+    assert_eq!(upsert_id(&table, 10), 1);
+    assert!(table.remove(10).is_some());
+    assert_eq!(upsert_id(&table, 20), 2);
+    assert!(table.remove(20).is_some());
+    assert_eq!(upsert_id(&table, 30), 1);
+}

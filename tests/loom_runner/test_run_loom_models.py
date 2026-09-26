@@ -148,3 +148,73 @@ def test_only_ok_lines_count_as_passed() -> None:
         }
     )
     assert run_loom_models.passed_tests(output) == {MODELS[0]}
+
+
+@manual_lifecycle
+def test_the_cli_prints_a_passing_summary(
+    cmd_mox: CmdMox, expected: pathlib.Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the entry point runs a Cargo that reports every model.
+
+    Invariant: Cargo's output is passed through and the summary states the
+    verdict and the counts, so the job log says what was checked.
+    """
+    output = libtest_output(dict.fromkeys(MODELS, "ok"))
+    assert run_with_cargo(cmd_mox, expected, output) == 0
+    captured = capsys.readouterr()
+    assert f"test {MODELS[0]} ... ok" in captured.out
+    assert "Loom models: passed" in captured.err
+    assert f"expected: {len(MODELS)}; passed: {len(MODELS)}" in captured.err
+
+
+@manual_lifecycle
+def test_the_cli_names_each_problem_in_a_failing_summary(
+    cmd_mox: CmdMox, expected: pathlib.Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the entry point runs a Cargo that reports one model.
+
+    Invariant: the summary says the run failed and names the missing model.
+    """
+    output = libtest_output({MODELS[0]: "ok"})
+    assert run_with_cargo(cmd_mox, expected, output) == 1
+    captured = capsys.readouterr().err
+    assert "Loom models: failed" in captured
+    assert f"expected models not reported as passed: {MODELS[1]}" in captured
+
+
+@pytest.mark.parametrize(
+    ("case", "content"),
+    [
+        ("missing", None),
+        ("not UTF-8", b"\xff\xfe\x00loom"),
+    ],
+)
+def test_an_unreadable_model_list_is_a_usage_error(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+    content: bytes | None,
+) -> None:
+    """Scenario: the expected-model list is missing or is not UTF-8.
+
+    Invariant: the checker reports the path and exits 2 rather than raising.
+    """
+    path = tmp_path / "loom-models.txt"
+    if content is not None:
+        path.write_bytes(content)
+    status = run_loom_models.run_cli(["--expected", str(path), "--", "cargo"])
+    assert status == 2, f"{case}: an unreadable list must be a usage error"
+    assert f"cannot read {path}" in capsys.readouterr().err
+
+
+def test_an_unstartable_command_is_a_usage_error(
+    expected: pathlib.Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scenario: the command after ``--`` does not exist.
+
+    Invariant: the checker reports the command and exits 2 rather than raising.
+    """
+    missing = "loom-runner-no-such-command"
+    status = run_loom_models.run_cli(["--expected", str(expected), "--", missing])
+    assert status == 2
+    assert f"cannot run {missing}" in capsys.readouterr().err

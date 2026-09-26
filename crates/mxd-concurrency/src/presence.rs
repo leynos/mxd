@@ -60,6 +60,9 @@ pub struct Removed<E: PresenceEntry> {
 struct State<E: PresenceEntry> {
     entries: HashMap<E::Key, E>,
     cursor: u16,
+    /// The highest presence ID the table issues: `u16::MAX`, the largest a
+    /// field-300 entry can carry, except in tests that exhaust a small space.
+    ceiling: u16,
 }
 
 /// Active presence entries, keyed by connection.
@@ -69,17 +72,24 @@ pub struct PresenceTable<E: PresenceEntry> {
 }
 
 impl<E: PresenceEntry> Default for PresenceTable<E> {
-    fn default() -> Self {
+    fn default() -> Self { Self::with_ceiling(u16::MAX) }
+}
+
+impl<E: PresenceEntry> PresenceTable<E> {
+    /// Create an empty table issuing presence IDs from 1 to `ceiling`.
+    ///
+    /// Production uses [`Default`], whose ceiling is `u16::MAX`; a smaller
+    /// ceiling lets a test exhaust the space without 65,535 connections.
+    fn with_ceiling(ceiling: u16) -> Self {
         Self {
             state: Mutex::new(State {
                 entries: HashMap::new(),
                 cursor: 0,
+                ceiling,
             }),
         }
     }
-}
 
-impl<E: PresenceEntry> PresenceTable<E> {
     /// Insert or replace `entry`, assigning it a presence ID.
     ///
     /// A connection already present keeps the ID it holds. The ID is chosen
@@ -202,8 +212,12 @@ impl<E: PresenceEntry> State<E> {
             .values()
             .filter_map(|entry| u16::try_from(entry.presence_id()).ok())
             .collect();
-        for _ in 0..u16::MAX {
-            self.cursor = self.cursor.wrapping_add(1).max(1);
+        for _ in 0..self.ceiling {
+            self.cursor = if self.cursor >= self.ceiling {
+                1
+            } else {
+                self.cursor + 1
+            };
             if !active.contains(&self.cursor) {
                 return Some(self.cursor);
             }
