@@ -981,9 +981,12 @@ not required, and automerge landed a Dependabot lockfile bump (#575) that
 `tests/workflow_contracts/test_build_test_result.py` asserts that shape. It
 refuses a job without `always()`, a dependency other than `build-test`, a
 `continue-on-error` on the job or the step, and any command other than the
-exact one. For example, `!= failure` would pass a skipped matrix. Four
-mutations of `ci.yml` each fail the contract, and unit cases drive the same
-judgement with constructed jobs.
+exact one; `!= failure`, for instance, would pass a skipped matrix. It also
+refuses a `shell` or `working-directory` on the step or under `defaults.run` at
+the job or workflow scope, since a shell template such as `bash {0} || true`
+masks the command's status. The job must declare `permissions: {}`, because it
+reads only the matrix result. Seven mutations of `ci.yml` each fail the
+contract, and unit cases drive the same judgement with constructed jobs.
 
 ### Adding a lane
 

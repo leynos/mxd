@@ -35,6 +35,12 @@ MATRIX_JOB: typ.Final = "build-test"
 RESULT_COMMAND: typ.Final = 'test "${{ needs.build-test.result }}" = success'
 
 
+# Execution overrides that change how the step's command runs. A shell
+# template such as `bash {0} || true` masks the command's status, and a
+# directory runs a different tree.
+OVERRIDES: typ.Final = ("shell", "working-directory")
+
+
 def _job_defects(job: cabc.Mapping[str, object]) -> list[str]:
     """How the job itself fails to depend on and run after the matrix."""
     needs = job.get("needs")
@@ -45,15 +51,32 @@ def _job_defects(job: cabc.Mapping[str, object]) -> list[str]:
         ),
         (job.get("if") == "always()", f"if must be 'always()', not {job.get('if')!r}"),
         ("continue-on-error" not in job, "the job must not carry continue-on-error"),
+        (
+            job.get("permissions") == {},
+            "the job must declare permissions: {}, since it reads only the result",
+        ),
     )
     return [message for holds, message in checks if not holds]
+
+
+def _run_defaults_defects(scope: str, owner: cabc.Mapping[str, object]) -> list[str]:
+    """Execution overrides a `defaults.run` block at one scope would impose."""
+    match owner.get("defaults"):
+        case {"run": dict() as run}:
+            return [
+                f"{scope} defaults.run must not set {key}"
+                for key in OVERRIDES
+                if key in run
+            ]
+        case _:
+            return []
 
 
 def _step_defects(step: cabc.Mapping[str, object]) -> list[str]:
     """How the job's one step fails to reject every non-success result."""
     defects = [
         f"its step must not carry {key}"
-        for key in ("if", "continue-on-error", "shell", "working-directory")
+        for key in ("if", "continue-on-error", *OVERRIDES)
         if key in step
     ]
     if str(step.get("run", "")).strip() != RESULT_COMMAND:
@@ -61,20 +84,36 @@ def _step_defects(step: cabc.Mapping[str, object]) -> list[str]:
     return defects
 
 
-def result_job_defects(job: cabc.Mapping[str, object]) -> tuple[str, ...]:
+def result_job_defects(
+    job: cabc.Mapping[str, object],
+    workflow: cabc.Mapping[str, object] | None = None,
+) -> tuple[str, ...]:
     """Describe how an aggregate job fails to gate on the matrix.
+
+    Parameters
+    ----------
+    job
+        The parsed aggregate job.
+    workflow
+        The parsed workflow declaring it, read for a workflow-level
+        `defaults.run` override. Omitted when judging a job alone.
 
     Returns
     -------
     tuple[str, ...]
         One sentence per defect, empty when the job gates as required.
     """
-    steps = job.get("steps")
-    single = isinstance(steps, list) and len(steps) == 1 and isinstance(steps[0], dict)
-    step_defects = (
-        _step_defects(steps[0]) if single else ["the job must have exactly one step"]
+    match job.get("steps"):
+        case [dict() as step]:
+            step_defects = _step_defects(step)
+        case _:
+            step_defects = ["the job must have exactly one step"]
+    return (
+        *_job_defects(job),
+        *_run_defaults_defects("the job's", job),
+        *_run_defaults_defects("the workflow's", workflow or {}),
+        *step_defects,
     )
-    return (*_job_defects(job), *step_defects)
 
 
 @pytest.fixture(scope="module")
@@ -87,16 +126,20 @@ def test_the_result_job_gates_on_the_matrix(
     documents: cabc.Mapping[str, cabc.Mapping[str, object]],
 ) -> None:
     """ci.yml's aggregate job depends on, runs after, and fails with the matrix."""
-    jobs = documents["ci.yml"].get("jobs")
-    assert isinstance(jobs, dict), "ci.yml must declare jobs"
-    job = jobs.get(RESULT_JOB)
-    assert isinstance(job, dict), f"ci.yml must declare {RESULT_JOB}"
-    assert result_job_defects(job) == ()
+    workflow = documents["ci.yml"]
+    match workflow.get("jobs"):
+        case {"build-test-result": dict() as job}:
+            pass
+        case _:
+            pytest.fail(f"ci.yml must declare {RESULT_JOB} as a mapping")
+    defects = result_job_defects(job, workflow)
+    assert defects == (), f"{RESULT_JOB} does not gate on the matrix: {defects}"
 
 
 GATING_JOB: typ.Final = {
     "if": "always()",
     "needs": MATRIX_JOB,
+    "permissions": {},
     "steps": [{"run": RESULT_COMMAND}],
 }
 
@@ -119,6 +162,12 @@ GATING_JOB: typ.Final = {
             id="step-soft",
         ),
         pytest.param({"steps": []}, "exactly one step", id="no-step"),
+        pytest.param({"permissions": None}, "permissions", id="default-token"),
+        pytest.param(
+            {"defaults": {"run": {"shell": "bash {0} || true"}}},
+            "defaults.run must not set shell",
+            id="job-shell",
+        ),
     ],
 )
 def test_a_job_that_would_pass_a_failed_matrix_is_refused(
@@ -130,9 +179,22 @@ def test_a_job_that_would_pass_a_failed_matrix_is_refused(
         for key, value in {**GATING_JOB, **change}.items()
         if value is not None
     }
-    assert any(expected in defect for defect in result_job_defects(job))
+    defects = result_job_defects(job)
+    assert any(expected in defect for defect in defects), (
+        f"expected a defect naming {expected!r}, found {defects}"
+    )
+
+
+def test_a_workflow_shell_override_is_refused() -> None:
+    """A workflow-level `defaults.run.shell` reaches the step as well."""
+    workflow = {"defaults": {"run": {"shell": "bash {0} || true"}}}
+    defects = result_job_defects(GATING_JOB, workflow)
+    assert any("the workflow's defaults.run" in defect for defect in defects), (
+        f"a workflow shell override must be refused, found {defects}"
+    )
 
 
 def test_the_gating_shape_is_accepted() -> None:
     """The narrowness half: the required shape yields no defect."""
-    assert result_job_defects(GATING_JOB) == ()
+    defects = result_job_defects(GATING_JOB, {})
+    assert defects == (), f"the gating shape must pass, found {defects}"

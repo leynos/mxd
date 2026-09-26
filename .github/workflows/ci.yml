@@ -191,6 +191,8 @@ jobs:
   build-test-result:
     if: always()
     needs: build-test
+    # It reads only the matrix result, so it holds no token permission.
+    permissions: {}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
