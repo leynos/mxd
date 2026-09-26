@@ -35,6 +35,32 @@ MATRIX_JOB: typ.Final = "build-test"
 RESULT_COMMAND: typ.Final = 'test "${{ needs.build-test.result }}" = success'
 
 
+def _job_defects(job: cabc.Mapping[str, object]) -> list[str]:
+    """How the job itself fails to depend on and run after the matrix."""
+    needs = job.get("needs")
+    checks = (
+        (
+            needs in (MATRIX_JOB, [MATRIX_JOB]),
+            f"needs must be {MATRIX_JOB!r}, not {needs!r}",
+        ),
+        (job.get("if") == "always()", f"if must be 'always()', not {job.get('if')!r}"),
+        ("continue-on-error" not in job, "the job must not carry continue-on-error"),
+    )
+    return [message for holds, message in checks if not holds]
+
+
+def _step_defects(step: cabc.Mapping[str, object]) -> list[str]:
+    """How the job's one step fails to reject every non-success result."""
+    defects = [
+        f"its step must not carry {key}"
+        for key in ("if", "continue-on-error", "shell", "working-directory")
+        if key in step
+    ]
+    if str(step.get("run", "")).strip() != RESULT_COMMAND:
+        defects.append(f"its step must run exactly {RESULT_COMMAND!r}")
+    return defects
+
+
 def result_job_defects(job: cabc.Mapping[str, object]) -> tuple[str, ...]:
     """Describe how an aggregate job fails to gate on the matrix.
 
@@ -43,26 +69,12 @@ def result_job_defects(job: cabc.Mapping[str, object]) -> tuple[str, ...]:
     tuple[str, ...]
         One sentence per defect, empty when the job gates as required.
     """
-    defects: list[str] = []
-    needs = job.get("needs")
-    if needs not in (MATRIX_JOB, [MATRIX_JOB]):
-        defects.append(f"needs must be {MATRIX_JOB!r}, not {needs!r}")
-    if job.get("if") != "always()":
-        defects.append(f"if must be 'always()', not {job.get('if')!r}")
-    if "continue-on-error" in job:
-        defects.append("the job must not carry continue-on-error")
     steps = job.get("steps")
-    if not (isinstance(steps, list) and len(steps) == 1 and isinstance(steps[0], dict)):
-        return (*defects, "the job must have exactly one step")
-    (step,) = steps
-    if str(step.get("run", "")).strip() != RESULT_COMMAND:
-        defects.append(f"its step must run exactly {RESULT_COMMAND!r}")
-    defects.extend(
-        f"its step must not carry {key}"
-        for key in ("if", "continue-on-error", "shell", "working-directory")
-        if key in step
+    single = isinstance(steps, list) and len(steps) == 1 and isinstance(steps[0], dict)
+    step_defects = (
+        _step_defects(steps[0]) if single else ["the job must have exactly one step"]
     )
-    return tuple(defects)
+    return (*_job_defects(job), *step_defects)
 
 
 @pytest.fixture(scope="module")
