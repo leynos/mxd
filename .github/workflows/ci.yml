@@ -183,6 +183,20 @@ jobs:
               --filter-expr 'not package(=validator)'
           fi
 
+  # One stable context for the ruleset to require. The matrix legs' check
+  # names are truncated by GitHub and change with the matrix, so requiring them
+  # directly is brittle. `always()` makes this job run when a leg fails; without
+  # it the job would be skipped, and a skipped required check passes. Every
+  # result other than success fails it, skipped and cancelled included.
+  build-test-result:
+    if: always()
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every build-test leg to succeed
+        run: test "${{ needs.build-test.result }}" = success
+
   validator-sqlite:
     runs-on: ubuntu-latest
     timeout-minutes: 27

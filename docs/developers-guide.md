@@ -965,6 +965,26 @@ build it would assert a file that build had already rewritten, which is the one
 arrangement in which the gate reads green while the defect is present in the
 tree under review. The contract asserts that ordering as well as the command.
 
+### The build-test result
+
+The ruleset requires `build-test-result`, not the `build-test` matrix legs.
+GitHub truncates the legs' check names, and the names change whenever the
+matrix does. A required leg would therefore either go stale or block every pull
+request after a matrix edit. `build-test-result` depends on `build-test` and
+runs under `always()`. Without `always()` it would be skipped when a leg fails,
+and GitHub counts a skipped required check as passing. Its single step runs
+exactly `test "${{ needs.build-test.result }}" = success`, so a failed, skipped
+or cancelled matrix fails it. The requirement exists because `build-test` was
+not required, and automerge landed a Dependabot lockfile bump (#575) that
+`make check-locked` had refused.
+
+`tests/workflow_contracts/test_build_test_result.py` asserts that shape. It
+refuses a job without `always()`, a dependency other than `build-test`, a
+`continue-on-error` on the job or the step, and any command other than the
+exact one. For example, `!= failure` would pass a skipped matrix. Four
+mutations of `ci.yml` each fail the contract, and unit cases drive the same
+judgement with constructed jobs.
+
 ### Adding a lane
 
 A new job fails the contracts until it is pinned: its coordinate must appear in
