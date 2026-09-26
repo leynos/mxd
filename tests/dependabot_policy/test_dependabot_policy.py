@@ -14,6 +14,7 @@ makes the whole file invalid, and every ecosystem in it stops updating.
 
 from __future__ import annotations
 
+import re
 import typing as typ
 from pathlib import Path
 
@@ -216,4 +217,151 @@ def test_the_serial_test_ignore_still_has_its_reason() -> None:
     assert TOOLCHAIN_BELOW_SERIAL_TEST_4 in read_text(TOOLCHAIN), (
         "the toolchain pin moved: if it now reaches rustc 1.93.1, drop the "
         "serial_test ignore from .github/dependabot.yml and this case"
+    )
+
+
+# Estate Dependabot policy (2026-09-24): every entry runs daily, one catch-all
+# group per ecosystem batches minor and patch bumps, and majors stay ungrouped
+# except for a named lockstep family, which must precede the catch-all because
+# Dependabot assigns a dependency to the first group that matches it.
+ECOSYSTEMS: typ.Final = ("github-actions", "cargo")
+CATCH_ALL_UPDATE_TYPES: typ.Final = frozenset({"minor", "patch"})
+# rstest-bdd and rstest-bdd-macros release together; Cargo counts a 0.x minor
+# as a major, which the catch-all leaves ungrouped, so the pair would split.
+LOCKSTEP_GROUPS: typ.Final = {"cargo": {"rstest-bdd": ["rstest-bdd*"]}}
+ACTION_MANIFESTS: typ.Final = frozenset({"action.yml", "action.yaml"})
+
+
+def _groups(entry: dict[str, object], ecosystem: str) -> dict[str, dict[str, object]]:
+    """The groups an entry declares, in file order."""
+    groups = entry.get("groups")
+    assert isinstance(groups, dict) and groups, f"{ecosystem} must declare groups"
+    assert all(isinstance(group, dict) for group in groups.values()), (
+        f"every {ecosystem} group must be a mapping"
+    )
+    return typ.cast("dict[str, dict[str, object]]", groups)
+
+
+def _is_catch_all(group: dict[str, object]) -> bool:
+    """Whether a group matches every dependency but only minor and patch."""
+    update_types = group.get("update-types")
+    return (
+        group.get("patterns") == ["*"]
+        and isinstance(update_types, list)
+        and frozenset(update_types) == CATCH_ALL_UPDATE_TYPES
+    )
+
+
+def directory_glob_matches(glob: str, directory: str) -> bool:
+    """Whether a Dependabot directory glob covers a directory.
+
+    `*` stays within one path segment and `**` spans segments, so
+    `/.github/actions/*` covers `/.github/actions/setup-rust` and not
+    `/.github/actions/release/sign`. `**/` also matches zero levels, so
+    `/.github/actions/**/*` covers `/.github/actions/setup-rust` too.
+    """
+    tokens = {"**/": "(?:.*/)?", "**": ".*", "*": "[^/]*"}
+    regex = "".join(
+        tokens.get(part, re.escape(part)) for part in re.split(r"(\*\*/|\*\*|\*)", glob)
+    )
+    return re.fullmatch(regex, directory) is not None
+
+
+def test_every_ecosystem_is_under_the_policy(configuration: dict[str, object]) -> None:
+    """A new ecosystem joins the policy deliberately rather than bypassing it."""
+    declared = sorted(
+        str(entry.get("package-ecosystem")) for entry in _updates(configuration)
+    )
+    assert declared == sorted(ECOSYSTEMS), (
+        f"the policy covers {sorted(ECOSYSTEMS)}; the file declares {declared}"
+    )
+
+
+@pytest.mark.parametrize("ecosystem", ECOSYSTEMS)
+def test_every_entry_runs_daily(
+    configuration: dict[str, object], ecosystem: str
+) -> None:
+    """Each ecosystem is checked for updates every day."""
+    schedule = _entry(configuration, ecosystem).get("schedule")
+    assert isinstance(schedule, dict) and schedule.get("interval") == "daily", (
+        f"{ecosystem} must run daily; found {schedule!r}"
+    )
+
+
+@pytest.mark.parametrize("ecosystem", ECOSYSTEMS)
+def test_each_entry_batches_minor_and_patch_and_leaves_majors_alone(
+    configuration: dict[str, object], ecosystem: str
+) -> None:
+    """One trailing catch-all takes routine bumps; only lockstep groups take majors."""
+    groups = _groups(_entry(configuration, ecosystem), ecosystem)
+    catch_all_names = [name for name, group in groups.items() if _is_catch_all(group)]
+    assert len(catch_all_names) == 1, (
+        f"{ecosystem} needs exactly one catch-all limited to minor and patch; "
+        f"found {catch_all_names}"
+    )
+    catch_all = groups[catch_all_names[0]]
+    assert "exclude-patterns" not in catch_all, (
+        f"the {ecosystem} catch-all must not exclude dependencies"
+    )
+    assert catch_all.get("applies-to", "version-updates") == "version-updates", (
+        f"the {ecosystem} catch-all must apply to version updates"
+    )
+    assert list(groups)[-1] == catch_all_names[0], (
+        f"the {ecosystem} catch-all must come last so lockstep groups claim "
+        "their members first"
+    )
+    lockstep = LOCKSTEP_GROUPS.get(ecosystem, {})
+    others = {
+        name: group for name, group in groups.items() if name != catch_all_names[0]
+    }
+    assert sorted(others) == sorted(lockstep), (
+        f"{ecosystem} may group majors only in {sorted(lockstep)}; found {sorted(others)}"
+    )
+    for name, patterns in lockstep.items():
+        assert others[name] == {"patterns": patterns}, (
+            f"the {ecosystem} {name} group must be exactly patterns {patterns}; "
+            f"found {others[name]}"
+        )
+
+
+def test_github_actions_reaches_every_composite_action(
+    configuration: dict[str, object],
+) -> None:
+    """Dependabot does not descend from `/` into `.github/actions`."""
+    entry = _entry(configuration, "github-actions")
+    globs = entry.get("directories") or [entry.get("directory")]
+    assert isinstance(globs, list), "github-actions directories must be a list"
+    actions = sorted(
+        "/" + manifest.parent.relative_to(REPO_ROOT).as_posix()
+        for manifest in (REPO_ROOT / ".github" / "actions").rglob("action.y*ml")
+        if manifest.name in ACTION_MANIFESTS
+    )
+    assert actions, "expected composite actions under .github/actions"
+    uncovered = [
+        action
+        for action in actions
+        if not any(directory_glob_matches(str(glob), action) for glob in globs)
+    ]
+    assert not uncovered, (
+        f"github-actions lists {globs}, which does not reach {uncovered}; "
+        "their pins would drift behind the workflows"
+    )
+
+
+@pytest.mark.parametrize(
+    ("glob", "directory", "expected"),
+    [
+        ("/", "/", True),
+        ("/.github/actions/*", "/.github/actions/setup-rust", True),
+        ("/.github/actions/*", "/.github/actions/release/sign", False),
+        ("/.github/actions/**", "/.github/actions/release/sign", True),
+        ("/.github/actions/**/*", "/.github/actions/setup-rust", True),
+    ],
+)
+def test_directory_globs_match_like_dependabot(
+    glob: str, directory: str, *, expected: bool
+) -> None:
+    """`*` stays within one path segment; `**` spans segments."""
+    assert directory_glob_matches(glob, directory) is expected, (
+        f"{glob!r} should {'cover' if expected else 'not cover'} {directory!r}"
     )

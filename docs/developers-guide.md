@@ -1043,7 +1043,18 @@ naming the toolchain floor. `make test-dependabot-policy`, run by
   accepts, so the invalid shape cannot return unnoticed;
 - that there is exactly one Cargo entry, not merely a first one, and that the
   file carries no repeated key, which Dependabot's own loader would resolve to
-  the last value.
+  the last value;
+- the estate update policy: every entry runs daily, and each has one trailing
+  catch-all group limited to minor and patch updates, with no
+  `exclude-patterns` and no `applies-to` other than `version-updates`, so each
+  major arrives in its own pull request;
+- that the only other group is Cargo's `rstest-bdd` lockstep group
+  (`rstest-bdd*`, no `update-types`), listed first. `rstest-bdd` and
+  `rstest-bdd-macros` release together, and Cargo counts a 0.x minor as a
+  major, which the catch-all would leave ungrouped;
+- that the github-actions entry reaches every composite action under
+  `.github/actions`, at any depth, because Dependabot does not descend there
+  from `/`.
 
 ## Spelling policy
 
