@@ -84,8 +84,11 @@ def is_workflow_file(name: str) -> bool:
     return name.lower().endswith(WORKFLOW_SUFFIXES)
 
 
-def load(source: str) -> dict[str, object]:
+def load(source: str) -> dict[str | bool, object]:
     """Parse a workflow, refusing duplicate keys and non-mapping documents.
+
+    Keys are strings except the bare `on`, which YAML 1.1 reads as `True`, so
+    the document is typed with both.
 
     >>> load("on: push\\njobs: {}\\n")[True]
     'push'
@@ -97,7 +100,7 @@ def load(source: str) -> dict[str, object]:
     return document
 
 
-def triggers(workflow: dict[str, object]) -> dict[str, object]:
+def triggers(workflow: dict[str | bool, object]) -> dict[str, object]:
     """A workflow's `on:` block, as a mapping of event name to configuration.
 
     YAML resolves the bare key `on` to the boolean `True`, so a reader keyed on
