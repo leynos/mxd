@@ -2486,6 +2486,7 @@ name = "mxd-concurrency"
 version = "0.1.0"
 dependencies = [
  "loom",
+ "rstest",
 ]
 
 [[package]]

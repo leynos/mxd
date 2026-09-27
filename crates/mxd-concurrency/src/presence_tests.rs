@@ -3,6 +3,8 @@
 //! The server's own tests cover the registry built on this table; these pin
 //! the allocator's order, which the Loom models' expected outcomes rely on.
 
+use rstest::rstest;
+
 use super::*;
 
 /// A minimal entry: a connection key and the presence ID it holds.
@@ -30,41 +32,69 @@ const fn entry(key: u64) -> Entry {
     }
 }
 
-/// Upsert `key`, failing the test if the table refuses it.
-fn upsert_id(table: &PresenceTable<Entry>, key: u64) -> i32 {
-    table
-        .upsert(entry(key))
-        .unwrap_or_else(|exhausted| panic!("the table has free IDs: {exhausted:?}"))
-        .entry
-        .presence_id
+/// One step of an allocation scenario, with the outcome it must produce.
+#[derive(Clone, Copy, Debug)]
+enum Step {
+    /// Connection `key` upserts and must hold presence ID `id`.
+    Arrive(u64, i32),
+    /// Connection `key` is removed and must have been active.
+    Depart(u64),
+    /// Connection `key` upserts and must be refused: every ID is held.
+    Refused(u64),
 }
 
-/// IDs are issued from 1 upwards, and a connection that upserts again keeps
-/// the ID it already holds.
-#[test]
-fn issues_ids_in_order_and_keeps_them_across_updates() {
-    let table = PresenceTable::default();
-    assert_eq!(upsert_id(&table, 10), 1);
-    assert_eq!(upsert_id(&table, 20), 2);
-    assert_eq!(upsert_id(&table, 10), 1);
+/// Play `steps` against a table issuing IDs up to `ceiling`.
+fn play(ceiling: u16, steps: &[Step]) {
+    let table = PresenceTable::with_ceiling(ceiling);
+    for (index, step) in steps.iter().enumerate() {
+        match *step {
+            Step::Arrive(key, id) => {
+                let outcome = table
+                    .upsert(entry(key))
+                    .map(|upserted| upserted.entry.presence_id);
+                assert_eq!(outcome, Ok(id), "step {index}: {step:?}");
+            }
+            Step::Depart(key) => {
+                assert!(table.remove(key).is_some(), "step {index}: {step:?}");
+            }
+            Step::Refused(key) => {
+                assert_eq!(
+                    table.upsert(entry(key)).map(|_| ()),
+                    Err(PresenceIdsExhausted),
+                    "step {index}: {step:?}"
+                );
+            }
+        }
+    }
 }
 
-/// A departed connection's ID is not reissued until the cursor wraps back
-/// round to it.
-#[test]
-fn does_not_reissue_a_departed_id_immediately() {
-    let table = PresenceTable::default();
-    assert_eq!(upsert_id(&table, 10), 1);
-    assert!(table.remove(10).is_some());
-    assert_eq!(upsert_id(&table, 20), 2);
-}
+/// Allocation scenarios, each a sequence of arrivals and departures:
+///
+/// - IDs are issued from 1 upwards, and a connection that upserts again keeps the ID it already
+///   holds;
+/// - a departed connection's ID is not reissued until the cursor wraps back round to it;
+/// - once every ID up to the ceiling is held an arrival is refused, and a departure frees its ID
+///   for the next arrival;
+/// - the cursor wraps from the ceiling back to 1, never issuing 0.
+#[rstest]
+#[case::in_order_and_kept(u16::MAX, &[Step::Arrive(10, 1), Step::Arrive(20, 2), Step::Arrive(10, 1)])]
+#[case::departed_id_not_reissued(u16::MAX, &[Step::Arrive(10, 1), Step::Depart(10), Step::Arrive(20, 2)])]
+#[case::refused_when_exhausted(
+    2,
+    &[Step::Arrive(10, 1), Step::Arrive(20, 2), Step::Refused(30), Step::Depart(10), Step::Arrive(30, 1)]
+)]
+#[case::wraps_to_one(
+    2,
+    &[Step::Arrive(10, 1), Step::Depart(10), Step::Arrive(20, 2), Step::Depart(20), Step::Arrive(30, 1)]
+)]
+fn allocates_presence_ids(#[case] ceiling: u16, #[case] steps: &[Step]) { play(ceiling, steps); }
 
 /// Upsert reports every other active connection, and remove reports every
 /// connection left.
 #[test]
 fn reports_peers_and_remaining_connections() {
     let table = PresenceTable::default();
-    upsert_id(&table, 10);
+    table.upsert(entry(10)).expect("free IDs");
     let mut peers = table.upsert(entry(20)).expect("free IDs").peers;
     peers.sort_unstable();
     assert_eq!(peers, [10]);
@@ -73,28 +103,4 @@ fn reports_peers_and_remaining_connections() {
     assert_eq!(removed.departed.key, 10);
     assert_eq!(removed.remaining, [20]);
     assert!(table.remove(10).is_none());
-}
-
-/// Once every ID up to the ceiling is held, an arrival is refused, and a
-/// departure frees its ID for the next arrival.
-#[test]
-fn refuses_an_arrival_when_every_id_is_held() {
-    let table = PresenceTable::with_ceiling(2);
-    assert_eq!(upsert_id(&table, 10), 1);
-    assert_eq!(upsert_id(&table, 20), 2);
-    assert_eq!(table.upsert(entry(30)), Err(PresenceIdsExhausted));
-
-    assert!(table.remove(10).is_some());
-    assert_eq!(upsert_id(&table, 30), 1);
-}
-
-/// The cursor wraps from the ceiling back to 1, never issuing 0.
-#[test]
-fn wraps_from_the_ceiling_to_one() {
-    let table = PresenceTable::with_ceiling(2);
-    assert_eq!(upsert_id(&table, 10), 1);
-    assert!(table.remove(10).is_some());
-    assert_eq!(upsert_id(&table, 20), 2);
-    assert!(table.remove(20).is_some());
-    assert_eq!(upsert_id(&table, 30), 1);
 }
