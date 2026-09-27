@@ -84,8 +84,11 @@ def is_workflow_file(name: str) -> bool:
     return name.lower().endswith(WORKFLOW_SUFFIXES)
 
 
-def load(source: str) -> dict[str, object]:
+def load(source: str) -> dict[str | bool, object]:
     """Parse a workflow, refusing duplicate keys and non-mapping documents.
+
+    Keys are strings except the bare `on`, which YAML 1.1 reads as `True`, so
+    the document is typed with both.
 
     >>> load("on: push\\njobs: {}\\n")[True]
     'push'
@@ -97,7 +100,7 @@ def load(source: str) -> dict[str, object]:
     return document
 
 
-def triggers(workflow: dict[str, object]) -> dict[str, object]:
+def triggers(workflow: dict[str | bool, object]) -> dict[str, object]:
     """A workflow's `on:` block, as a mapping of event name to configuration.
 
     YAML resolves the bare key `on` to the boolean `True`, so a reader keyed on
@@ -108,11 +111,16 @@ def triggers(workflow: dict[str, object]) -> dict[str, object]:
     `on: [push, pull_request]` is a list, and both are as valid as the mapping
     form. Stringifying the list produced one key named
     `"['push', 'pull_request']"`, so a workflow written that way escaped every
-    prohibition. An unsupported shape is refused rather than coerced.
+    prohibition. An unsupported shape is refused rather than coerced, and so
+    is a workflow declaring both spellings of the key: GitHub merges them, and
+    a reader that picked one would be blind to the events under the other.
 
     >>> triggers({True: ["push", "pull_request"]})
     {'push': None, 'pull_request': None}
     """
+    if True in workflow and "on" in workflow:
+        message = "a workflow declaring `on:` under both spellings cannot be read whole"
+        raise AssertionError(message)
     for key in (True, "on"):
         if key not in workflow:
             continue

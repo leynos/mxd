@@ -77,6 +77,12 @@ def test_both_workflow_extensions_are_read(name: str, expected: bool) -> None:
     assert is_workflow_file(name) is expected
 
 
+def test_both_spellings_of_the_trigger_key_are_refused() -> None:
+    """GitHub merges them, so reading either alone misses events."""
+    with pytest.raises(AssertionError, match="both spellings"):
+        triggers({True: ["push"], "on": ["pull_request"]})
+
+
 def test_an_unsupported_trigger_shape_is_refused() -> None:
     """Refused rather than coerced, because coercion is what caused the hole."""
     with pytest.raises(AssertionError, match="unsupported"):
