@@ -83,6 +83,28 @@ domain logic without duplicating setup code. The change is protected by new
 `rstest` fixtures around `AppConfig::load_from_iter` plus `rstest-bdd`
 behaviour tests covering successful and failing `create-user` invocations.
 
+### Shared-state kernels (`mxd-concurrency`)
+
+Two pieces of server state are shared between connection tasks behind a lock:
+the presence table behind `mxd::presence::PresenceRegistry`, and the task-keyed
+connection-context registry behind `mxd::wireframe::connection`. Their logic
+lives in `crates/mxd-concurrency` as `presence::PresenceTable` and
+`context::ContextRegistry`, and the `mxd` crate calls them.
+
+The separate crate exists for model checking. The `mxd` crate cannot be built
+under `--cfg loom`, because Tokio compiles its networking out in that
+configuration, so logic that Loom is to check has to build without Tokio. The
+kernel crate has no dependencies, and its lock resolves to `loom::sync::Mutex`
+under `--cfg loom` and to `std::sync::Mutex` otherwise.
+
+What stays in `mxd` is the environment around the kernels: the process-wide
+`OnceLock` holding the context registry, Tokio task identifiers and task-local
+storage, protocol ordering of peer lists and snapshots, and the mapping of an
+exhausted presence-ID space to `TransactionError`. The Loom models, the lane
+that runs them and the bounds they explore are described in
+`docs/verification-strategy.md` and in "Loom models" in
+`docs/developers-guide.md`.
+
 ### Runtime selection via feature flags
 
 The bespoke Tokio loop is now gated behind a `legacy-networking` Cargo feature.
