@@ -3022,7 +3022,7 @@ dependencies = [
  "anyhow",
  "postgresql_archive",
  "postgresql_commands",
- "rand 0.10.2",
+ "rand 0.10.3",
  "semver",
  "sqlx",
  "target-triple",
@@ -3513,7 +3513,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc05fbf560421a0357a750cbe78c7ca19d4923918490daabba313d5dbc871e47"
 dependencies = [
- "rand 0.10.2",
+ "rand 0.10.3",
 ]
 
 [[package]]
