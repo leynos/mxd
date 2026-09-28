@@ -259,12 +259,69 @@ def directory_glob_matches(glob: str, directory: str) -> bool:
     `/.github/actions/*` covers `/.github/actions/setup-rust` and not
     `/.github/actions/release/sign`. `**/` also matches zero levels, so
     `/.github/actions/**/*` covers `/.github/actions/setup-rust` too.
+
+    Parameters
+    ----------
+    glob
+        A Dependabot `directory` or `directories` pattern, such as
+        `/.github/actions/*`.
+    directory
+        A repository-relative directory in Dependabot form, with a leading
+        slash, such as `/.github/actions/setup-rust`.
+
+    Returns
+    -------
+    bool
+        Whether `glob` covers `directory`.
     """
     tokens = {"**/": "(?:.*/)?", "**": ".*", "*": "[^/]*"}
     regex = "".join(
         tokens.get(part, re.escape(part)) for part in re.split(r"(\*\*/|\*\*|\*)", glob)
     )
     return re.fullmatch(regex, directory) is not None
+
+
+def composite_action_directories(root: Path) -> list[str]:
+    """Every composite-action directory under `root`, at any depth.
+
+    Parameters
+    ----------
+    root
+        A repository root holding `.github/actions`.
+
+    Returns
+    -------
+    list[str]
+        Sorted directories in Dependabot form, such as
+        `/.github/actions/setup-rust`.
+    """
+    return sorted(
+        "/" + manifest.parent.relative_to(root).as_posix()
+        for manifest in (root / ".github" / "actions").rglob("action.y*ml")
+        if manifest.name in ACTION_MANIFESTS
+    )
+
+
+def uncovered_actions(globs: list[object], actions: list[str]) -> list[str]:
+    """The composite-action directories no github-actions glob reaches.
+
+    Parameters
+    ----------
+    globs
+        The github-actions entry's `directory` or `directories` values.
+    actions
+        Composite-action directories in Dependabot form.
+
+    Returns
+    -------
+    list[str]
+        Every directory in `actions` that no glob covers.
+    """
+    return [
+        action
+        for action in actions
+        if not any(directory_glob_matches(str(glob), action) for glob in globs)
+    ]
 
 
 def test_every_ecosystem_is_under_the_policy(configuration: dict[str, object]) -> None:
@@ -331,20 +388,35 @@ def test_github_actions_reaches_every_composite_action(
     entry = _entry(configuration, "github-actions")
     globs = entry.get("directories") or [entry.get("directory")]
     assert isinstance(globs, list), "github-actions directories must be a list"
-    actions = sorted(
-        "/" + manifest.parent.relative_to(REPO_ROOT).as_posix()
-        for manifest in (REPO_ROOT / ".github" / "actions").rglob("action.y*ml")
-        if manifest.name in ACTION_MANIFESTS
-    )
+    actions = composite_action_directories(REPO_ROOT)
     assert actions, "expected composite actions under .github/actions"
-    uncovered = [
-        action
-        for action in actions
-        if not any(directory_glob_matches(str(glob), action) for glob in globs)
-    ]
+    uncovered = uncovered_actions(globs, actions)
     assert not uncovered, (
         f"github-actions lists {globs}, which does not reach {uncovered}; "
         "their pins would drift behind the workflows"
+    )
+
+
+def test_a_nested_action_is_found_and_needs_a_reaching_glob(tmp_path: Path) -> None:
+    """Discovery reaches a nested action, and one-level globs leave it uncovered.
+
+    The repository has only direct-child actions, so this builds a tree with
+    a nested one rather than adding a fake action to `.github/actions`.
+    """
+    for action in ("setup-rust", "release/sign"):
+        directory = tmp_path / ".github" / "actions" / action
+        directory.mkdir(parents=True)
+        (directory / "action.yml").write_text("runs:\n  using: composite\n", "utf-8")
+    actions = composite_action_directories(tmp_path)
+    assert actions == [
+        "/.github/actions/release/sign",
+        "/.github/actions/setup-rust",
+    ], f"discovery should reach both actions; found {actions}"
+    assert uncovered_actions(["/", "/.github/actions/*"], actions) == [
+        "/.github/actions/release/sign"
+    ], "a one-level glob must leave the nested action uncovered"
+    assert uncovered_actions(["/", "/.github/actions/**/*"], actions) == [], (
+        "a recursive glob must reach both actions"
     )
 
 
