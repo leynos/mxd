@@ -311,3 +311,61 @@ def test_only_a_skipped_job_holds_write_in_this_repository_dry_run() -> None:
     """Hold the real dry-run chain, including the workflows it calls in turn."""
     documents = repository_documents()
     assert dry_run_write_defects(documents, "release-dry-run.yml") == [], "write defect"
+
+
+#: Every shape a `permissions` value can take for the two scopes the cases use.
+_SCOPES: typ.Final = ("contents", "id-token")
+_LEVEL_NAMES: typ.Final = ("none", "read", "write")
+
+
+def _expected_shortfall(caller: dict[str, int], callee: dict[str, int]) -> bool:
+    """Model the rule directly: some scope is requested above what is granted."""
+    return any(callee.get(scope, 0) > caller.get(scope, 0) for scope in _SCOPES)
+
+
+def _every_grant() -> list[dict[str, int]]:
+    """Return every assignment of a level to each scope, as level numbers."""
+    return [{"contents": a, "id-token": b} for a in range(3) for b in range(3)]
+
+
+def _as_permissions(grant: dict[str, int]) -> dict[str, str]:
+    """Write a numeric grant as a `permissions` mapping."""
+    return {scope: _LEVEL_NAMES[level] for scope, level in grant.items()}
+
+
+def test_the_shortfall_matches_a_direct_model_for_every_pair_of_grants() -> None:
+    """Exhaust caller and callee grants over both scopes and all three levels.
+
+    The invariant ranges over arbitrary mappings, but the space that matters is
+    finite (two scopes, three levels, on either side), so it is checked in
+    full against a model written independently of the implementation, rather
+    than sampled. Job-level grants are exercised on both sides, and the
+    workflow-level default for the callee.
+    """
+    for caller in _every_grant():
+        for callee in _every_grant():
+            documents = _pair("", "")
+            documents["caller.yml"]["jobs"]["call"]["permissions"] = _as_permissions(
+                caller
+            )
+            documents["callee.yml"]["jobs"]["work"]["permissions"] = _as_permissions(
+                callee
+            )
+            found = bool(permission_shortfalls(documents))
+            assert found == _expected_shortfall(caller, callee), (caller, callee)
+
+
+def test_wildcard_grants_cover_or_fall_short_as_the_levels_say() -> None:
+    """`read-all` and `write-all` on the caller cover exactly what their level covers."""
+    for wildcard, level in (("read-all", 1), ("write-all", 2)):
+        for callee in _every_grant():
+            documents = _pair("", "")
+            documents["caller.yml"]["jobs"]["call"]["permissions"] = wildcard
+            documents["callee.yml"]["jobs"]["work"]["permissions"] = _as_permissions(
+                callee
+            )
+            expected = any(want > level for want in callee.values())
+            assert bool(permission_shortfalls(documents)) == expected, (
+                wildcard,
+                callee,
+            )
