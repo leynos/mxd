@@ -171,7 +171,13 @@ jobs:
           whitaker-installer
       - name: Lint with Whitaker
         run: RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
+      # The sqlite leg stays for the lint above, which covers the default
+      # feature set, but its tests are not run here: the coverage job runs the
+      # same suite (`--features sqlite,test-support`) as its SQLite step, so a
+      # second run would only spend the minutes. Both backends stay first-class;
+      # see the developers' guide, "Each backend runs once per event".
       - name: Test
+        if: matrix.name != 'sqlite'
         env:
           # The postgres profile serializes the run; see the developers'
           # guide, "Embedded PostgreSQL in tests".

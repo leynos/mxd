@@ -1089,6 +1089,33 @@ masks the command's status. The job must declare `permissions: {}`, because it
 reads only the matrix result. Seven mutations of `ci.yml` each fail the
 contract, and unit cases drive the same judgement with constructed jobs.
 
+### Each backend runs once per event
+
+SQLite and PostgreSQL are both first-class backends, and a deduplication must
+never drop one. The `build-test` sqlite leg used to run the same suite as the
+coverage job's SQLite step (`--features sqlite,test-support`, default features
+on), so every event paid for it twice. Its `Test` step is now skipped with
+`if: matrix.name != 'sqlite'`. The leg stays, because its Clippy and Whitaker
+passes are the only lint of the default feature set; the `wireframe-only` leg
+builds `--no-default-features` and lints something else. The coverage job's
+SQLite step is the surviving run, and it carries the coverage ratchet.
+
+`tests/workflow_contracts/test_backend_runs_once.py` lists every suite `ci.yml`
+runs as a feature set, from the build-test matrix legs whose test step runs and
+from every `generate-coverage` step. It asserts that the default-feature SQLite
+suite has exactly one run, at `coverage`, that a PostgreSQL suite has a run,
+and that the sqlite leg is still present with unguarded lint steps. A condition
+on the test step other than `matrix.name == 'x'` or `matrix.name != 'x'` fails
+the contract instead of being guessed at, so a cleverer condition cannot make a
+running leg look skipped. Four mutations of `ci.yml` each fail the cases named
+for them: the guard deleted, the guard pointed at the postgres leg, a lint step
+skipped on the sqlite leg, and the coverage step's features narrowed. Unit
+cases drive the same query with constructed copies of the workflow.
+
+The PostgreSQL suite still runs in two jobs: the `build-test` postgres leg and
+the coverage job's Postgres step. That is deliberate for now; removing either
+is a separate decision, made with the backend rule above in view.
+
 ### Adding a lane
 
 A new job fails the contracts until it is pinned: its coordinate must appear in
