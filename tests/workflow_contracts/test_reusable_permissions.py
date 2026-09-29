@@ -87,17 +87,33 @@ def permission_shortfalls(
     A caller that declares no permissions at all gets the repository default,
     which this reader cannot know, so it is not judged.
     """
-    found: list[str] = []
-    for name, document in sorted(documents.items()):
-        for job_id, job in _jobs(document).items():
-            callee = _local_name(job.get("uses"))
-            if callee is None or callee not in documents:
-                continue
-            granted = _job_scopes(document, job)
-            if granted is None:
-                continue
-            found += _shortfalls(f"{name}:{job_id}", granted, documents[callee], callee)
-    return found
+    return [
+        shortfall
+        for name, job_id, granted, callee in _local_calls(documents)
+        for shortfall in _shortfalls(
+            f"{name}:{job_id}", granted, documents[callee], callee
+        )
+    ]
+
+
+def _local_calls(
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> list[tuple[str, str, dict[str, int], str]]:
+    """Return each local call with the caller's grant and the callee's name.
+
+    Calls whose callee is not in the tree, and calls from a job whose grant is
+    the unjudgeable default, are left out.
+    """
+    calls = [
+        (name, job_id, _job_scopes(document, job), _local_name(job.get("uses")))
+        for name, document in sorted(documents.items())
+        for job_id, job in _jobs(document).items()
+    ]
+    return [
+        (name, job_id, granted, callee)
+        for name, job_id, granted, callee in calls
+        if granted is not None and callee is not None and callee in documents
+    ]
 
 
 def _shortfalls(
@@ -107,16 +123,13 @@ def _shortfalls(
     callee: str,
 ) -> list[str]:
     """Return the scopes any job of one callee requests beyond `granted`."""
-    found: list[str] = []
-    for job_id, job in _jobs(callee_document).items():
-        wanted = _job_scopes(callee_document, job) or {}
-        found += [
-            f"{caller} grants {scope}: {_name(_granted(granted, scope))} but "
-            f"{callee}:{job_id} requests {_name(level)}"
-            for scope, level in sorted(wanted.items())
-            if level > _granted(granted, scope)
-        ]
-    return found
+    return [
+        f"{caller} grants {scope}: {_name(_granted(granted, scope))} but "
+        f"{callee}:{job_id} requests {_name(level)}"
+        for job_id, job in _jobs(callee_document).items()
+        for scope, level in sorted((_job_scopes(callee_document, job) or {}).items())
+        if level > _granted(granted, scope)
+    ]
 
 
 def _name(level: int) -> str:
@@ -235,19 +248,43 @@ def dry_run_write_defects(
     the chain from `entry` must therefore declare its own block, and one that
     holds write must be skipped under the dry-run condition.
     """
-    found: list[str] = []
-    pending, seen = [entry], set()
+    return [
+        defect
+        for name in _chain_from(documents, entry)
+        for job_id, job in _jobs(documents[name]).items()
+        for defect in _job_defects(f"{name}:{job_id}", job)
+    ]
+
+
+def _chain_from(
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]], entry: str
+) -> list[str]:
+    """Return the workflows reachable from `entry` through local calls, in order."""
+    order: list[str] = []
+    pending = [entry]
     while pending:
         name = pending.pop()
-        if name in seen or name not in documents:
+        if name in order or name not in documents:
             continue
-        seen.add(name)
-        for job_id, job in _jobs(documents[name]).items():
-            found += _job_defects(f"{name}:{job_id}", job)
-            callee = _local_name(job.get("uses"))
-            if callee is not None:
-                pending.append(callee)
-    return found
+        order.append(name)
+        pending.extend(_local_callees(documents[name]))
+    return order
+
+
+def _local_callees(document: cabc.Mapping[str, object]) -> list[str]:
+    """Return the local workflows a workflow's jobs call."""
+    names = (_local_name(job.get("uses")) for job in _jobs(document).values())
+    return [name for name in names if name is not None]
+
+
+def _holds_write(scopes: dict[str, int]) -> bool:
+    """Return whether any scope is granted above read."""
+    return any(level > LEVELS["read"] for level in scopes.values())
+
+
+def _is_skipped_in_a_dry_run(job: cabc.Mapping[str, object]) -> bool:
+    """Return whether the job's own condition names the dry-run skip."""
+    return DRY_RUN_SKIP in str(job.get("if", ""))
 
 
 def _job_defects(coordinate: str, job: cabc.Mapping[str, object]) -> list[str]:
@@ -259,10 +296,9 @@ def _job_defects(coordinate: str, job: cabc.Mapping[str, object]) -> list[str]:
     own = _scopes(job.get("permissions"))
     if own is None:
         return [f"{coordinate} declares no permissions of its own"]
-    holds_write = any(level > LEVELS["read"] for level in own.values())
-    if holds_write and "uses" not in job and DRY_RUN_SKIP not in str(job.get("if", "")):
-        return [f"{coordinate} holds write but is not skipped in a dry run"]
-    return []
+    if "uses" in job or not _holds_write(own) or _is_skipped_in_a_dry_run(job):
+        return []
+    return [f"{coordinate} holds write but is not skipped in a dry run"]
 
 
 def _chain(write_if: str, drop_block: bool) -> dict[str, dict]:
