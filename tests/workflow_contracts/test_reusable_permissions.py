@@ -109,11 +109,18 @@ def _local_calls(
         for name, document in sorted(documents.items())
         for job_id, job in _jobs(document).items()
     ]
-    return [
-        (name, job_id, granted, callee)
-        for name, job_id, granted, callee in calls
-        if granted is not None and callee is not None and callee in documents
-    ]
+    return [call for call in calls if _is_judgeable(call, documents)]
+
+
+def _is_judgeable(
+    call: tuple[str, str, dict[str, int] | None, str | None],
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> bool:
+    """Return whether a call has a readable grant and a callee in the tree."""
+    _, _, granted, callee = call
+    if granted is None or callee is None:
+        return False
+    return callee in documents
 
 
 def _shortfalls(
@@ -287,6 +294,13 @@ def _is_skipped_in_a_dry_run(job: cabc.Mapping[str, object]) -> bool:
     return DRY_RUN_SKIP in str(job.get("if", ""))
 
 
+def _needs_no_write_check(job: cabc.Mapping[str, object], own: dict[str, int]) -> bool:
+    """Return whether a job may hold its grant: it calls on, reads, or is skipped."""
+    if "uses" in job:
+        return True
+    return not _holds_write(own) or _is_skipped_in_a_dry_run(job)
+
+
 def _job_defects(coordinate: str, job: cabc.Mapping[str, object]) -> list[str]:
     """Return what is wrong with one job's own permissions.
 
@@ -296,7 +310,7 @@ def _job_defects(coordinate: str, job: cabc.Mapping[str, object]) -> list[str]:
     own = _scopes(job.get("permissions"))
     if own is None:
         return [f"{coordinate} declares no permissions of its own"]
-    if "uses" in job or not _holds_write(own) or _is_skipped_in_a_dry_run(job):
+    if _needs_no_write_check(job, own):
         return []
     return [f"{coordinate} holds write but is not skipped in a dry run"]
 
