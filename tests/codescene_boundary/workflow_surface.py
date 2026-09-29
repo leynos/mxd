@@ -276,10 +276,15 @@ def _scalars(node: object) -> cabc.Iterator[str]:
             yield str(node)
 
 
-def _inherits_to_another_repository(job: dict[str, object]) -> bool:
-    """Whether a job hands every secret to a workflow this tree cannot read."""
-    inherits = str(job.get("secrets", "")).strip() == "inherit"
-    return inherits and local_call(str(job.get("uses", ""))) is None
+def _forwards_every_secret(job: dict[str, object]) -> bool:
+    """Whether a job hands every secret to the workflow it calls.
+
+    Local or not: a local callee is read in turn, but it still receives every
+    repository and organization secret, and a pull request should be handed
+    none it does not need. A called workflow has `GITHUB_TOKEN` without being
+    forwarded it.
+    """
+    return str(job.get("secrets", "")).strip() == "inherit"
 
 
 def secret_breaches(document: dict[str, object]) -> list[str]:
@@ -293,9 +298,8 @@ def secret_breaches(document: dict[str, object]) -> list[str]:
     `with`, through a named `secrets:` forward, or through an expression in a
     `run` body, and a reader walking one of those routes would pass on the
     others. Two routes name nothing, so they are read separately: an
-    expression over the whole secrets context, and `secrets: inherit` on a
-    call to another repository. Inheriting into a local call is allowed,
-    because the callee is on the surface and read in turn.
+    expression over the whole secrets context, and `secrets: inherit` on any
+    call, local or not.
     """
     text = "\n".join(_scalars(document)).lower()
     found: list[str] = []
@@ -308,6 +312,6 @@ def secret_breaches(document: dict[str, object]) -> list[str]:
     found.extend(
         f"inherits every secret into {job.get('uses')!r}"
         for job in jobs(document)
-        if _inherits_to_another_repository(job)
+        if _forwards_every_secret(job)
     )
     return found

@@ -177,7 +177,7 @@ def test_the_surface_is_narrow() -> None:
         pytest.param(
             "on: pull_request\njobs:\n  a:\n"
             "    uses: ./.github/workflows/x.yml\n    secrets: inherit\n",
-            [],
+            ["inherits every secret into './.github/workflows/x.yml'"],
             id="inherit-to-a-local-call",
         ),
         pytest.param(
@@ -211,10 +211,9 @@ def test_the_surface_is_narrow() -> None:
 def test_the_token_sweep_reads_every_route(source: str, expected: list[str]) -> None:
     """Each route by which a pull-request lane could reach the token.
 
-    `secrets: inherit` names nothing, so it is refused where the callee is in
-    another repository and allowed where the callee is local, since a local
-    callee is on the surface and read in turn. A comment is not a route, but a
-    `#` line inside a block scalar is data, and Actions expands it.
+    `secrets: inherit` names nothing, so it is refused on any call, whether
+    the callee is in another repository or local. A comment is not a route, but
+    a `#` line inside a block scalar is data, and Actions expands it.
     """
     assert secret_breaches(load(source)) == expected
 
