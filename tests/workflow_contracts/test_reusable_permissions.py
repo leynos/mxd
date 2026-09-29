@@ -219,3 +219,95 @@ def test_every_local_call_in_this_repository_is_within_its_grant() -> None:
     """Hold the real workflows to the rule, so the dry run starts on every pull request."""
     documents = repository_documents()
     assert permission_shortfalls(documents) == [], "a callee requests more than granted"
+
+
+#: The condition that skips a job in a dry run.
+DRY_RUN_SKIP: typ.Final = "should_publish"
+
+
+def dry_run_write_defects(
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]], entry: str
+) -> list[str]:
+    """Return the jobs a pull-request dry run could run with write access.
+
+    The calling job's grant is the ceiling for the whole called workflow, so a
+    callee job with no `permissions` of its own could hold it. Every job in
+    the chain from `entry` must therefore declare its own block, and one that
+    holds write must be skipped under the dry-run condition.
+    """
+    found: list[str] = []
+    pending, seen = [entry], set()
+    while pending:
+        name = pending.pop()
+        if name in seen or name not in documents:
+            continue
+        seen.add(name)
+        for job_id, job in _jobs(documents[name]).items():
+            found += _job_defects(f"{name}:{job_id}", job)
+            callee = _local_name(job.get("uses"))
+            if callee is not None:
+                pending.append(callee)
+    return found
+
+
+def _job_defects(coordinate: str, job: cabc.Mapping[str, object]) -> list[str]:
+    """Return what is wrong with one job's own permissions.
+
+    A job that calls another workflow only sets the ceiling for it, so it is
+    held to declaring one; the jobs it calls are held to the write rule.
+    """
+    own = _scopes(job.get("permissions"))
+    if own is None:
+        return [f"{coordinate} declares no permissions of its own"]
+    holds_write = any(level > LEVELS["read"] for level in own.values())
+    if holds_write and "uses" not in job and DRY_RUN_SKIP not in str(job.get("if", "")):
+        return [f"{coordinate} holds write but is not skipped in a dry run"]
+    return []
+
+
+def _chain(write_if: str, drop_block: bool) -> dict[str, dict]:
+    """Return a dry-run caller and callee for the constructed cases."""
+    import yaml  # noqa: PLC0415 - only the constructed cases need it.
+
+    perms = "" if drop_block else "    permissions:\n      contents: read\n"
+    caller = yaml.safe_load(
+        "on: pull_request\njobs:\n  run:\n    permissions:\n      contents: write\n"
+        "    uses: ./.github/workflows/callee.yml\n"
+    )
+    callee = yaml.safe_load(
+        "on: workflow_call\njobs:\n  build:\n    runs-on: x\n"
+        + perms
+        + "    steps:\n      - run: 'true'\n  ship:\n    runs-on: x\n"
+        + write_if
+        + "    permissions:\n      contents: write\n"
+        "    steps:\n      - run: 'true'\n"
+    )
+    return {"caller.yml": caller, "callee.yml": callee}
+
+
+def test_a_callee_job_without_its_own_permissions_is_refused() -> None:
+    """Deleting one job's read block leaves it holding the caller's ceiling."""
+    documents = _chain("    if: needs.m.outputs.should_publish == 'true'\n", True)
+    assert dry_run_write_defects(documents, "caller.yml") == [
+        "callee.yml:build declares no permissions of its own"
+    ]
+
+
+def test_a_write_job_not_skipped_in_a_dry_run_is_refused() -> None:
+    """Only a job the dry-run condition skips may hold write."""
+    documents = _chain("", False)
+    assert dry_run_write_defects(documents, "caller.yml") == [
+        "callee.yml:ship holds write but is not skipped in a dry run"
+    ]
+
+
+def test_read_jobs_and_a_skipped_write_job_are_accepted() -> None:
+    """The narrow case: read blocks everywhere, write only where skipped."""
+    documents = _chain("    if: needs.m.outputs.should_publish == 'true'\n", False)
+    assert dry_run_write_defects(documents, "caller.yml") == [], "no defect expected"
+
+
+def test_only_a_skipped_job_holds_write_in_this_repository_dry_run() -> None:
+    """Hold the real dry-run chain, including the workflows it calls in turn."""
+    documents = repository_documents()
+    assert dry_run_write_defects(documents, "release-dry-run.yml") == [], "write defect"

@@ -1086,6 +1086,13 @@ itself; the job is skipped in a dry run, so write is never exercised.
 to the rule, and unit cases drive the judgement with each shortfall shape and
 each accepted shape, since the workflows as they stand exercise only one.
 
+The calling job's grant is the ceiling for the whole called workflow, so a
+second contract holds the dry-run chain to least privilege: every job that
+`release-dry-run.yml` reaches, through local calls in turn, declares its own
+`permissions`, and only a job skipped by the dry-run condition
+(`should_publish`) may hold write. Deleting one job's block, or its skip
+condition, fails the contract.
+
 ## Dependabot and the Cargo toolchain floor
 
 Dependabot's Cargo updater does not raise `Cargo.toml`. Its

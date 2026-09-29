@@ -46,6 +46,8 @@ permissions:
 
 jobs:
   build:
+    permissions:
+      contents: read
     name: Build ${{ inputs.platform }} artefacts
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 45

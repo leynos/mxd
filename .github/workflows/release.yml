@@ -48,6 +48,8 @@ concurrency:
 
 jobs:
   metadata:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -95,6 +97,8 @@ jobs:
 
   build-linux:
     needs: metadata
+    permissions:
+      contents: read
     strategy:
       matrix:
         include:
