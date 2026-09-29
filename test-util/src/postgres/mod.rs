@@ -75,11 +75,13 @@ impl PostgresTestDb {
             .map_err(Self::map_embedded_err)
     }
 
-    /// Creates a test database by cloning a migrated template.
+    /// Creates a test database by cloning a template.
     ///
-    /// The template is created once per process in the shared cluster, with
-    /// migrations applied, and each later database is cloned from it, which
-    /// takes tens of milliseconds rather than seconds.
+    /// The template is created once per process in the shared cluster and
+    /// holds a reset, empty `public` schema: no migrations are applied, and
+    /// the migrations hash only names the template as a cache key. Each later
+    /// database is cloned from it, which takes tens of milliseconds rather
+    /// than seconds.
     ///
     /// # Errors
     ///

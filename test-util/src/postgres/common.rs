@@ -95,28 +95,15 @@ impl DatabaseName {
 /// There is no "unavailable" outcome: every `PostgreSQL` test runs against an
 /// embedded cluster, so a cluster that cannot be bootstrapped is a failure to
 /// report, never a reason to skip.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PostgresTestDbError {
     /// The embedded `PostgreSQL` cluster could not be bootstrapped or started.
+    #[error("embedded PostgreSQL bootstrap failed: {0}")]
     EmbeddedBootstrapFailed(String),
     /// The embedded cluster started but a test database could not be prepared.
+    #[error("embedded PostgreSQL initialization failed: {0}")]
     EmbeddedInitFailed(String),
 }
-
-impl std::fmt::Display for PostgresTestDbError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EmbeddedBootstrapFailed(e) => {
-                write!(f, "embedded PostgreSQL bootstrap failed: {e}")
-            }
-            Self::EmbeddedInitFailed(e) => {
-                write!(f, "embedded PostgreSQL initialization failed: {e}")
-            }
-        }
-    }
-}
-
-impl StdError for PostgresTestDbError {}
 
 pub(super) fn generate_db_name(prefix: &str) -> Result<DatabaseName, DatabaseNameError> {
     let name = format!("{prefix}{}", Uuid::now_v7().simple());

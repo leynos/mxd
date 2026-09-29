@@ -36,7 +36,19 @@ URL_VARIABLE: typ.Final = "POSTGRES_TEST_URL"
 
 
 class PostgresTestStep(typ.NamedTuple):
-    """A job that runs the PostgreSQL tests, and what its test step must set."""
+    """A job that runs the PostgreSQL tests, and what its test step must set.
+
+    Attributes
+    ----------
+    workflow : str
+        File name of the workflow under `.github/workflows`.
+    job_id : str
+        Identifier of the job that runs the PostgreSQL tests.
+    step_name : str
+        Name of the step inside that job that invokes the tests.
+    profile : str
+        The nextest profile the step must select, as a literal or expression.
+    """
 
     workflow: str
     job_id: str
