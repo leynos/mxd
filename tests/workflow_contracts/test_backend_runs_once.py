@@ -40,6 +40,7 @@ class Suite(typ.NamedTuple):
     where: str
     features: frozenset[str]
     has_default_features: bool
+    is_blocking: bool = True
 
     @property
     def key(self) -> tuple[frozenset[str], bool]:
@@ -60,6 +61,16 @@ def _steps(job: cabc.Mapping[str, object]) -> list[dict[str, object]]:
         if isinstance(declared, list)
         else []
     )
+
+
+def _is_blocking(*owners: cabc.Mapping[str, object]) -> bool:
+    """Say whether a failure of the owners' run fails the job.
+
+    A step or job declaring `continue-on-error` at all, even `false` written as
+    an expression, is treated as tolerant: the contract only trusts the
+    absence of the key.
+    """
+    return all("continue-on-error" not in owner for owner in owners)
 
 
 def _features(text: str) -> frozenset[str]:
@@ -96,7 +107,11 @@ def _build_test_runs(document: Document) -> list[Suite]:
         return []
     tests = [s for s in _steps(job) if NEXTEST_STEP in str(s.get("run", ""))]
     return [
-        Suite(f"build-test:{leg['name']}", *_leg_flags(str(leg.get("cargo_flags", ""))))
+        Suite(
+            f"build-test:{leg['name']}",
+            *_leg_flags(str(leg.get("cargo_flags", ""))),
+            _is_blocking(job, step),
+        )
         for leg in legs
         if isinstance(leg, dict)
         for step in tests
@@ -112,12 +127,16 @@ def _coverage_runs(document: Document) -> list[Suite]:
             if COVERAGE_ACTION not in str(step.get("uses", "")):
                 continue
             inputs = _mapping(step.get("with"))
-            has_defaults = str(inputs.get("with-default-features", "true")) != "false"
+            # YAML reads an unquoted `false` as a boolean, and a quoted one as text.
+            has_defaults = (
+                str(inputs.get("with-default-features", "true")).lower() != "false"
+            )
             runs.append(
                 Suite(
                     f"{job_id}:{step.get('name')}",
                     _features(str(inputs.get("features", ""))),
                     has_defaults,
+                    _is_blocking(_mapping(job), step),
                 )
             )
     return runs
@@ -156,9 +175,31 @@ def test_the_sqlite_suite_runs_exactly_once(ci: Document) -> None:
     assert _sqlite_runs(ci) == ["coverage:Generate coverage for SQLite"]
 
 
-def test_the_postgres_suite_has_a_run(ci: Document) -> None:
-    """Deduplicating SQLite must not have taken PostgreSQL with it."""
-    assert _postgres_runs(ci), "no job runs the PostgreSQL suite"
+def test_the_postgres_suites_each_have_a_run(ci: Document) -> None:
+    """Both PostgreSQL feature sets run: coverage's and build-test's.
+
+    The build-test leg also builds `legacy-networking`, which the coverage
+    step does not, so the two are different suites and neither duplicates the
+    other. Losing the leg would leave those tests uncompiled under PostgreSQL.
+    """
+    keys = {s.key for s in test_runs(ci) if "postgres" in s.features}
+    assert keys == {
+        (frozenset({"postgres", "test-support"}), False),
+        (frozenset({"postgres", "test-support", "legacy-networking"}), False),
+    }
+
+
+def test_no_suite_runs_twice(ci: Document) -> None:
+    """Every feature set is run in one place, per event."""
+    counts = collections.Counter(s.key for s in test_runs(ci))
+    twice = {tuple(sorted(key[0])): n for key, n in counts.items() if n > 1}
+    assert not twice, f"these suites run more than once: {twice}"
+
+
+def test_every_run_fails_the_job_that_holds_it(ci: Document) -> None:
+    """A run whose failure is tolerated would not stand in for a test run."""
+    tolerant = [s.where for s in test_runs(ci) if not s.is_blocking]
+    assert not tolerant, f"these runs cannot fail their job: {tolerant}"
 
 
 def test_the_sqlite_leg_still_lints_the_default_features(ci: Document) -> None:
@@ -224,3 +265,24 @@ def test_an_unrecognized_condition_fails_rather_than_passing() -> None:
     """A condition the query cannot read must not make a leg look skipped."""
     with pytest.raises(AssertionError, match="unsupported"):
         _leg_runs_step("contains(matrix.name, 'sql')", "sqlite")
+
+
+def test_a_tolerated_coverage_step_is_not_blocking(ci: Document) -> None:
+    """`continue-on-error` on the surviving SQLite run makes it non-blocking."""
+
+    def tolerate(document: dict[str, typ.Any]) -> None:
+        for step in document["jobs"]["coverage"]["steps"]:
+            if step.get("name") == "Generate coverage for SQLite":
+                step["continue-on-error"] = True
+
+    tolerated = [
+        s.where for s in test_runs(_mutated(ci, tolerate)) if not s.is_blocking
+    ]
+    assert tolerated == ["coverage:Generate coverage for SQLite"]
+
+
+def test_a_second_run_of_a_feature_set_is_seen(ci: Document) -> None:
+    """The guard deleted, the same feature set appears twice."""
+    doubled = _mutated(ci, lambda d: _test_step(d).pop("if"))
+    counts = collections.Counter(s.key for s in test_runs(doubled))
+    assert counts[SQLITE_SUITE] == 2

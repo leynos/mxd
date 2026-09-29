@@ -1102,19 +1102,36 @@ SQLite step is the surviving run, and it carries the coverage ratchet.
 
 `tests/workflow_contracts/test_backend_runs_once.py` lists every suite `ci.yml`
 runs as a feature set, from the build-test matrix legs whose test step runs and
-from every `generate-coverage` step. It asserts that the default-feature SQLite
-suite has exactly one run, at `coverage`, that a PostgreSQL suite has a run,
-and that the sqlite leg is still present with unguarded lint steps. A condition
-on the test step other than `matrix.name == 'x'` or `matrix.name != 'x'` fails
-the contract instead of being guessed at, so a cleverer condition cannot make a
-running leg look skipped. Four mutations of `ci.yml` each fail the cases named
-for them: the guard deleted, the guard pointed at the postgres leg, a lint step
-skipped on the sqlite leg, and the coverage step's features narrowed. Unit
-cases drive the same query with constructed copies of the workflow.
+from every `generate-coverage` step. It asserts that:
 
-The PostgreSQL suite still runs in two jobs: the `build-test` postgres leg and
-the coverage job's Postgres step. That is deliberate for now; removing either
-is a separate decision, made with the backend rule above in view.
+- no feature set is run twice, so the default-feature SQLite suite runs once,
+  at `coverage`;
+- both PostgreSQL feature sets run, which the next paragraph explains;
+- no run sits in a step or job that declares `continue-on-error`, so a failing
+  test fails the job that holds it, and through `coverage` or
+  `build-test-result` the pull request's required checks;
+- the sqlite leg is still in the matrix with unguarded lint steps.
+
+A condition on the test step other than `matrix.name == 'x'` or
+`matrix.name != 'x'` fails the contract instead of being guessed at, so a
+cleverer condition cannot make a running leg look skipped.
+
+The `build-test` postgres leg is not a duplicate of coverage's Postgres step,
+so its `Test` step stays. The coverage step builds `postgres test-support`; the
+leg builds `postgres test-support legacy-networking`, and the
+`legacy-networking` tests (`tests/integration.rs`,
+`tests/runtime_selection_bdd.rs` and the `mxd` binary's `required-features`)
+compile only in the leg. Removing the leg's tests would leave them unbuilt
+under PostgreSQL. The contract pins both PostgreSQL feature sets for that
+reason. Adding `legacy-networking` to the coverage step would make the two
+identical, and the contract would then demand that one go.
+
+Five mutations of `ci.yml` each fail the cases named for them, in both
+directions. Too many runs: the guard deleted, and `legacy-networking` added to
+the coverage step. Too few: the leg's tests skipped on every leg, and default
+features switched on for the coverage Postgres step. And one that tolerates
+failure: `continue-on-error` on the SQLite coverage step. Unit cases drive the
+same query with constructed copies of the workflow.
 
 ### Adding a lane
 
