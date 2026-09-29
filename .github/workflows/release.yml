@@ -105,13 +105,18 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             artifact: linux-amd64
             package_arch: amd64
+            runner: ubuntu-latest
+          # Built natively. A GitHub-hosted x86_64 runner cannot start the
+          # privileged podman container a cross build needs (`podman missing
+          # CAP_SYS_ADMIN`), which failed the first dry run that ever started.
           - target: aarch64-unknown-linux-gnu
             artifact: linux-arm64
             package_arch: arm64
+            runner: ubuntu-24.04-arm
     uses: ./.github/workflows/build-and-package.yml
     with:
       platform: linux
-      runner: ubuntu-latest
+      runner: ${{ matrix.runner }}
       target: ${{ matrix.target }}
       bin-name: ${{ needs.metadata.outputs.bin_name }}
       version: ${{ needs.metadata.outputs.version }}

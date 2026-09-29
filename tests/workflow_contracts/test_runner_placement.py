@@ -215,10 +215,27 @@ def test_the_caller_sends_the_package_build_to_a_pinned_runner(
         for record in call_records(documents)
         if record.coordinate == ("release.yml", "build-linux")
     ]
-    assert call.inputs.get("runner") == "ubuntu-latest", (
+    assert call.inputs.get("runner") == "${{ matrix.runner }}", (
         f"release.yml:build-linux sends the package build to "
         f"{call.inputs.get('runner')!r}"
     )
+
+
+def test_each_linux_target_builds_natively(
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> None:
+    """Each Linux target is built on a runner of its own architecture.
+
+    A cross build needs a privileged container that GitHub-hosted x86_64
+    runners refuse, so the aarch64 target names a native arm runner. Compared
+    as a whole mapping, so neither a target nor its label can change alone.
+    """
+    job = documents["release.yml"]["jobs"]["build-linux"]  # type: ignore[index]
+    include = job["strategy"]["matrix"]["include"]
+    assert {row["target"]: row["runner"] for row in include} == {
+        "x86_64-unknown-linux-gnu": "ubuntu-latest",
+        "aarch64-unknown-linux-gnu": "ubuntu-24.04-arm",
+    }, "each target must name a runner of its own architecture"
 
 
 def test_every_call_is_pinned_and_every_pin_is_a_call(
