@@ -105,6 +105,11 @@ def is_external_call(calls: str) -> bool:
 # The release path cannot be measured while `release-dry-run` fails at startup
 # (#549), so `metadata`, `release` and `build` carry placeholders generous
 # enough not to cancel a real run and tight enough to catch a wedged one.
+#
+# The two coverage ceilings rose by fifteen minutes when the postgres leg moved
+# from a service container to serialized embedded clusters (see the
+# developers' guide, "Embedded PostgreSQL in tests"); resize them from three
+# green runs of that shape.
 PINNED_CEILINGS: typ.Final[cabc.Mapping[tuple[str, str], int]] = {
     ("audit.yml", "audit"): 20,
     ("build-and-package.yml", "build"): 45,
@@ -112,8 +117,8 @@ PINNED_CEILINGS: typ.Final[cabc.Mapping[tuple[str, str], int]] = {
     ("ci.yml", "build-test"): 45,
     ("ci.yml", "build-test-result"): 5,
     ("ci.yml", "validator-sqlite"): 27,
-    ("ci.yml", "coverage"): 45,
-    ("coverage-main.yml", "coverage-upload"): 50,
+    ("ci.yml", "coverage"): 60,
+    ("coverage-main.yml", "coverage-upload"): 65,
     ("fuzz.yml", "fuzz"): 360,
     ("loom-check.yml", "check"): 30,
     ("loom.yml", "models"): 30,

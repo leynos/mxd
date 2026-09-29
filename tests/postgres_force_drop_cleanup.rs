@@ -62,29 +62,9 @@ fn ensure_database_was_removed(admin_url: &str, db_name: &str) -> Result<()> {
 }
 
 #[cfg(feature = "postgres")]
-fn create_fast_db_or_skip_unavailable() -> Result<Option<PostgresTestDb>> {
-    PostgresTestDb::new_from_template()
-        .map(Some)
-        .or_else(|error| {
-            if error.is_unavailable() {
-                tracing::warn!("skipping test: embedded PostgreSQL unavailable");
-                Ok(None)
-            } else {
-                Err(error.into())
-            }
-        })
-}
-
-#[cfg(feature = "postgres")]
 #[test]
 fn dropping_fast_database_forcibly_terminates_leaked_connections() -> Result<()> {
-    if std::env::var_os("POSTGRES_TEST_URL").is_some() {
-        tracing::warn!("skipping test: external POSTGRES_TEST_URL backend in use");
-        return Ok(());
-    }
-    let Some(db) = create_fast_db_or_skip_unavailable()? else {
-        return Ok(());
-    };
+    let db = PostgresTestDb::new_from_template()?;
 
     let (admin_url, db_name) = derive_admin_url_and_db_name(db.url.as_ref())?;
     let mut leaked_connection = PgConnection::establish(db.url.as_ref())?;

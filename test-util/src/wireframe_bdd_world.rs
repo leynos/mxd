@@ -20,8 +20,6 @@ use mxd::{
     wireframe::{connection::HandshakeMetadata, test_helpers::build_frame},
 };
 
-#[cfg(feature = "postgres")]
-use crate::postgres::PostgresTestDbError;
 use crate::{AnyError, DatabaseUrl, SetupFn, TestServer, protocol::handshake_with_sub_version};
 
 const DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(10);
@@ -37,7 +35,6 @@ pub struct WireframeBddWorld {
     reply: RefCell<Option<Result<Transaction, String>>>,
     io_timeout: Cell<Duration>,
     handshake_sub_version: Cell<u16>,
-    skipped: Cell<bool>,
 }
 
 impl Default for WireframeBddWorld {
@@ -54,13 +51,8 @@ impl WireframeBddWorld {
             reply: RefCell::new(None),
             io_timeout: Cell::new(DEFAULT_IO_TIMEOUT),
             handshake_sub_version: Cell::new(0),
-            skipped: Cell::new(false),
         }
     }
-
-    /// Return true when backend availability caused this scenario to be skipped.
-    #[must_use]
-    pub const fn is_skipped(&self) -> bool { self.skipped.get() }
 
     /// Override socket read and write timeout for this world.
     ///
@@ -78,26 +70,11 @@ impl WireframeBddWorld {
     /// Returns an error when fixture setup, server startup, or client
     /// connection/handshake fails.
     pub fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> {
-        if self.is_skipped() {
-            return Ok(());
-        }
         self.reply.borrow_mut().take();
 
         let server =
-            match TestServer::start_with_setup("./Cargo.toml", |db| setup(DatabaseUrl::from(db))) {
-                Ok(server) => server,
-                Err(error) => {
-                    #[cfg(feature = "postgres")]
-                    if error
-                        .downcast_ref::<PostgresTestDbError>()
-                        .is_some_and(PostgresTestDbError::is_unavailable)
-                    {
-                        self.skipped.set(true);
-                        return Ok(());
-                    }
-                    return Err(error).context("failed to start wireframe test server");
-                }
-            };
+            TestServer::start_with_setup("./Cargo.toml", |db| setup(DatabaseUrl::from(db)))
+                .context("failed to start wireframe test server")?;
 
         self.server.borrow_mut().replace(server);
         self.reconnect()
@@ -111,7 +88,7 @@ impl WireframeBddWorld {
     /// request uses the updated handshake values.
     pub fn set_client_compat_from_handshake(&self, handshake: &HandshakeMetadata) {
         self.handshake_sub_version.set(handshake.sub_version);
-        if self.is_skipped() || self.server.borrow().is_none() {
+        if self.server.borrow().is_none() {
             return;
         }
         if let Err(error) = self.reconnect() {
@@ -309,9 +286,6 @@ impl WireframeBddWorld {
 
     /// Route a raw frame through the running wireframe server binary.
     pub fn send_raw(&self, frame: &[u8]) {
-        if self.is_skipped() {
-            return;
-        }
         let outcome = self.send_frame(frame).map_err(|error| error.to_string());
         self.reply.borrow_mut().replace(outcome);
     }
@@ -348,9 +322,6 @@ impl WireframeBddWorld {
         reason = "signature retained for existing BDD step helper compatibility"
     )]
     pub fn authenticate_default_user(&self, user_id: i32) {
-        if self.is_skipped() {
-            return;
-        }
         let outcome = self
             .send_login_with_credentials(b"alice", b"secret")
             .and_then(|reply| {
@@ -373,9 +344,6 @@ impl WireframeBddWorld {
     /// as a signal that compatibility decoding is active for text fields.
     #[must_use]
     pub fn is_xor_enabled(&self) -> bool {
-        if self.is_skipped() {
-            return false;
-        }
         let Ok(reply) = self.send_login_with_credentials(b"alice", b"secret") else {
             return false;
         };
