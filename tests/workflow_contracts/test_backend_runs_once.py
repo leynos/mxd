@@ -63,14 +63,35 @@ def _steps(job: cabc.Mapping[str, object]) -> list[dict[str, object]]:
     )
 
 
+MASKING: typ.Final = re.compile(
+    r"\|\|\s*(true|:|exit\s+0)\b|;\s*exit\s+0\b|\bset\s+\+e\b", re.IGNORECASE
+)
+
+
 def _is_blocking(*owners: cabc.Mapping[str, object]) -> bool:
     """Say whether a failure of the owners' run fails the job.
 
     A step or job declaring `continue-on-error` at all, even `false` written as
     an expression, is treated as tolerant: the contract only trusts the
-    absence of the key.
+    absence of the key. A `run` body that swallows the command's status, such
+    as a trailing `|| true`, is tolerant for the same reason.
     """
-    return all("continue-on-error" not in owner for owner in owners)
+    return all(
+        "continue-on-error" not in owner
+        and not MASKING.search(str(owner.get("run", "")))
+        for owner in owners
+    )
+
+
+def _may_be_skipped(*owners: cabc.Mapping[str, object]) -> bool:
+    """Say whether any owner carries a condition that could skip its run.
+
+    An unconditional owner is the only one the contract counts. A condition
+    such as `if: false` would otherwise leave a run in the workflow that never
+    executes, and reading conditions to find out which ones are constant would
+    be a second, weaker workflow evaluator.
+    """
+    return any("if" in owner for owner in owners)
 
 
 def _features(text: str) -> frozenset[str]:
@@ -105,6 +126,8 @@ def _build_test_runs(document: Document) -> list[Suite]:
     legs = _mapping(_mapping(job.get("strategy")).get("matrix")).get("include")
     if not isinstance(legs, list):
         return []
+    if _may_be_skipped(job):
+        return []
     tests = [s for s in _steps(job) if NEXTEST_STEP in str(s.get("run", ""))]
     return [
         Suite(
@@ -125,6 +148,8 @@ def _coverage_runs(document: Document) -> list[Suite]:
     for job_id, job in _mapping(document.get("jobs")).items():
         for step in _steps(_mapping(job)):
             if COVERAGE_ACTION not in str(step.get("uses", "")):
+                continue
+            if _may_be_skipped(_mapping(job), step):
                 continue
             inputs = _mapping(step.get("with"))
             # YAML reads an unquoted `false` as a boolean, and a quoted one as text.
@@ -202,15 +227,45 @@ def test_every_run_fails_the_job_that_holds_it(ci: Document) -> None:
     assert not tolerant, f"these runs cannot fail their job: {tolerant}"
 
 
+LINT_FLAGS: typ.Final = "${{ matrix.cargo_flags }}"
+SQLITE_LEG_FLAGS: typ.Final = "--features sqlite,test-support"
+
+
+def _lint_problems(document: Document) -> list[str]:
+    """Say what stops the sqlite leg linting the default feature set."""
+    job = _mapping(_mapping(document.get("jobs")).get("build-test"))
+    legs = _mapping(_mapping(job.get("strategy")).get("matrix")).get("include")
+    sqlite = [
+        leg
+        for leg in legs or ()
+        if isinstance(leg, dict) and leg.get("name") == "sqlite"
+    ]
+    problems: list[str] = []
+    if _may_be_skipped(job):
+        problems.append("the build-test job is conditional")
+    if len(sqlite) != 1:
+        return [*problems, f"expected one sqlite leg, found {len(sqlite)}"]
+    if str(sqlite[0].get("cargo_flags", "")).strip() != SQLITE_LEG_FLAGS:
+        problems.append(f"the sqlite leg must build {SQLITE_LEG_FLAGS!r}")
+    lints = [s for s in _steps(job) if str(s.get("name", "")).startswith("Lint with")]
+    if len(lints) != 2:
+        problems.append(f"expected the Clippy and Whitaker steps, got {len(lints)}")
+    problems += [
+        f"{step.get('name')!r} must not be conditional"
+        for step in lints
+        if "if" in step
+    ]
+    problems += [
+        f"{step.get('name')!r} must lint {LINT_FLAGS}"
+        for step in lints
+        if LINT_FLAGS not in str(step.get("run", ""))
+    ]
+    return problems
+
+
 def test_the_sqlite_leg_still_lints_the_default_features(ci: Document) -> None:
     """Skipping the leg's tests keeps its Clippy and Whitaker passes."""
-    job = _mapping(_mapping(ci.get("jobs")).get("build-test"))
-    legs = _mapping(_mapping(job.get("strategy")).get("matrix")).get("include")
-    names = [leg.get("name") for leg in legs if isinstance(leg, dict)]
-    assert "sqlite" in names, "the sqlite leg carries the default-feature lint"
-    lints = [s for s in _steps(job) if str(s.get("name", "")).startswith("Lint with")]
-    assert len(lints) == 2, f"expected the Clippy and Whitaker steps, got {lints}"
-    assert all("if" not in step for step in lints), "a lint step must not be skipped"
+    assert not _lint_problems(ci)
 
 
 def _mutated(
@@ -286,3 +341,55 @@ def test_a_second_run_of_a_feature_set_is_seen(ci: Document) -> None:
     doubled = _mutated(ci, lambda d: _test_step(d).pop("if"))
     counts = collections.Counter(s.key for s in test_runs(doubled))
     assert counts[SQLITE_SUITE] == 2
+
+
+def test_a_constant_false_condition_removes_the_sqlite_run(ci: Document) -> None:
+    """`if: false` on the coverage step leaves a run that never executes."""
+
+    def skip(document: dict[str, typ.Any]) -> None:
+        for step in document["jobs"]["coverage"]["steps"]:
+            if step.get("name") == "Generate coverage for SQLite":
+                step["if"] = "false"
+
+    assert _sqlite_runs(_mutated(ci, skip)) == []
+
+
+def test_a_conditional_coverage_job_removes_its_runs(ci: Document) -> None:
+    """The same, at the job."""
+    skipped = _mutated(ci, lambda d: d["jobs"]["coverage"].update({"if": "false"}))
+    assert _sqlite_runs(skipped) == []
+
+
+def test_a_masked_test_command_is_not_blocking(ci: Document) -> None:
+    """`|| true` on the nextest command lets failures pass."""
+
+    def mask(document: dict[str, typ.Any]) -> None:
+        step = _test_step(document)
+        step["run"] = step["run"].replace("--filter-expr", "|| true --filter-expr")
+
+    masked = [s.where for s in test_runs(_mutated(ci, mask)) if not s.is_blocking]
+    assert masked == ["build-test:postgres", "build-test:wireframe-only"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["flags", "clippy-if", "whitaker-flags", "no-leg"],
+)
+def test_lint_problems_are_seen(ci: Document, mutation: str) -> None:
+    """Each way of hollowing out the sqlite lint is reported."""
+
+    def mutate(document: dict[str, typ.Any]) -> None:
+        job = document["jobs"]["build-test"]
+        legs = job["strategy"]["matrix"]["include"]
+        sqlite = next(leg for leg in legs if leg["name"] == "sqlite")
+        lints = [s for s in job["steps"] if s.get("name", "").startswith("Lint with")]
+        if mutation == "flags":
+            sqlite["cargo_flags"] = "--no-default-features --features sqlite"
+        elif mutation == "clippy-if":
+            lints[0]["if"] = "matrix.name != 'sqlite'"
+        elif mutation == "whitaker-flags":
+            lints[1]["run"] = lints[1]["run"].replace(LINT_FLAGS, "")
+        else:
+            legs.remove(sqlite)
+
+    assert _lint_problems(_mutated(ci, mutate))

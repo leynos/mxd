@@ -1107,10 +1107,14 @@ from every `generate-coverage` step. It asserts that:
 - no feature set is run twice, so the default-feature SQLite suite runs once,
   at `coverage`;
 - both PostgreSQL feature sets run, which the next paragraph explains;
-- no run sits in a step or job that declares `continue-on-error`, so a failing
-  test fails the job that holds it, and through `coverage` or
-  `build-test-result` the pull request's required checks;
-- the sqlite leg is still in the matrix with unguarded lint steps.
+- no run sits in a step or job that declares `continue-on-error`, and no
+  run's `run` body swallows the command's status (`|| true`, `; exit 0`,
+  `set +e`), so a failing test fails the job that holds it, and through
+  `coverage` or `build-test-result` the pull request's required checks;
+- a run counts only when neither its step nor its job carries an `if`, so a
+  constant `if: false` cannot leave a run that never executes;
+- the sqlite leg builds `--features sqlite,test-support`, and both lint steps
+  are unconditional and lint `${{ matrix.cargo_flags }}`.
 
 A condition on the test step other than `matrix.name == 'x'` or
 `matrix.name != 'x'` fails the contract instead of being guessed at, so a
@@ -1126,12 +1130,14 @@ under PostgreSQL. The contract pins both PostgreSQL feature sets for that
 reason. Adding `legacy-networking` to the coverage step would make the two
 identical, and the contract would then demand that one go.
 
-Five mutations of `ci.yml` each fail the cases named for them, in both
-directions. Too many runs: the guard deleted, and `legacy-networking` added to
-the coverage step. Too few: the leg's tests skipped on every leg, and default
-features switched on for the coverage Postgres step. And one that tolerates
-failure: `continue-on-error` on the SQLite coverage step. Unit cases drive the
-same query with constructed copies of the workflow.
+Nine mutations of `ci.yml` each fail the cases named for them. Too many runs:
+the guard deleted, and `legacy-networking` added to the coverage step. Too few:
+the leg's tests skipped on every leg, and default features switched on for the
+coverage Postgres step. Tolerated failure: `continue-on-error` on the SQLite
+coverage step, and `|| true` on the nextest command. Hollowed out without being
+removed: `if: false` on the SQLite coverage step, the sqlite leg's flags
+narrowed, and the Whitaker step's flags dropped. Unit cases drive the same
+query with constructed copies of the workflow.
 
 ### Adding a lane
 
