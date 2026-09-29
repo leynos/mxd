@@ -1073,6 +1073,19 @@ literal `true` all fail. A floor of the five known workflows keeps discovery
 from emptying into a vacuous pass, and unit cases drive the judgement with each
 refused shape, since the workflows as they stand exercise only the accepted one.
 
+### A callee may not request more than its caller grants
+
+GitHub checks a reusable-workflow call before it starts any job. If a job of
+the called workflow requests a token scope the calling job does not grant, the
+run fails at startup: no job is listed and no check appears on the pull request.
+`release-dry-run.yml` capped the token at `contents: read` while
+`release.yml`'s `release` job requests `contents: write`, so the dry run never
+started on any pull request. The calling job now grants `contents: write`
+itself; the job is skipped in a dry run, so write is never exercised.
+`tests/workflow_contracts/test_reusable_permissions.py` holds every local call
+to the rule, and unit cases drive the judgement with each shortfall shape and
+each accepted shape, since the workflows as they stand exercise only one.
+
 ## Dependabot and the Cargo toolchain floor
 
 Dependabot's Cargo updater does not raise `Cargo.toml`. Its
