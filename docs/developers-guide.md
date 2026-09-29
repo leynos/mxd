@@ -170,6 +170,16 @@ the URL in a step's `env`, the URL read in `test-util`, the profile dropped,
 the warm-up removed, the password dropped, the group widened to two slots, and
 the build-test profile made a literal `default`.
 
+`tests/workflow_contracts/test_postgres_make_targets.py` holds the local twins
+of those steps. It reads the `test-postgres` recipe from `make --dry-run` and
+asserts the `postgres` profile and the default and overridden `PG_PASSWORD`. It
+runs `make warm-postgres` against a stand-in `pg_embedded_setup_unpriv` under a
+fake home and asserts the throwaway directories, success when the cache fills,
+and failure when it stays empty or `PG_BINARY_CACHE_DIR` is unset. Five
+Makefile mutations each fail the cases named for them: the profile dropped, the
+default password changed, the emptiness guard deleted, the data directory
+moved, and the password made a literal.
+
 ## PostgreSQL migration strategy (v0.5.0)
 
 The migration target for this branch adopts v0.5.0 lifecycle APIs to improve
