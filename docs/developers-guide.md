@@ -157,6 +157,13 @@ still empty, because the tool skips caching silently when it cannot take the
 cache lock. Each job sets `PG_BINARY_CACHE_DIR` once, so the warm-up and the
 tests read one cache.
 
+The warm-up step sets `GITHUB_TOKEN: ${{ github.token }}`. postgresql_embedded
+lists the PostgreSQL releases through the GitHub API, which rate limits
+anonymous callers by runner address, and one such 403 failed the coverage job's
+warm-up, and with it the only PostgreSQL run in the job. The contract asserts
+the token on the warm-up step of both coverage jobs; removing it, or replacing
+it with a literal, fails the named case.
+
 ### The contract
 
 `tests/workflow_contracts/test_embedded_postgres.py` asserts that no job

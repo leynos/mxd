@@ -31,6 +31,7 @@ if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
 WARM_COMMAND: typ.Final = "make warm-postgres"
+TOKEN_EXPRESSION: typ.Final = "${{ github.token }}"
 PROFILE: typ.Final = "postgres"
 URL_VARIABLE: typ.Final = "POSTGRES_TEST_URL"
 
@@ -162,6 +163,30 @@ def test_the_postgres_tests_run_serialized_after_the_download(
     warm_at = [i for i, step in enumerate(steps) if step.get("run") == WARM_COMMAND]
     assert len(warm_at) == 1 and warm_at[0] < test_at, (
         f"{where} must run {WARM_COMMAND!r} once, before {expected.step_name!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "expected",
+    POSTGRES_TEST_STEPS,
+    ids=[f"{step.workflow}:{step.job_id}" for step in POSTGRES_TEST_STEPS],
+)
+def test_the_warm_up_is_authenticated(
+    expected: PostgresTestStep,
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> None:
+    """The warm-up sends the workflow token, or GitHub may refuse it with 403.
+
+    postgresql_embedded lists releases through the GitHub API, which rate limits
+    anonymous callers by runner address. A refusal fails the warm-up, and with
+    it the only PostgreSQL run in the job.
+    """
+    where = f"{expected.workflow}:{expected.job_id}"
+    job = _jobs(documents[expected.workflow])[expected.job_id]
+    (warm,) = [s for s in _steps(job) if s.get("run") == WARM_COMMAND]
+    env = warm.get("env")
+    assert isinstance(env, dict) and env.get("GITHUB_TOKEN") == TOKEN_EXPRESSION, (
+        f"{where} warm-up must set GITHUB_TOKEN to {TOKEN_EXPRESSION!r}, found {env!r}"
     )
 
 
