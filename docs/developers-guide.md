@@ -1100,9 +1100,10 @@ passes are the only lint of the default feature set; the `wireframe-only` leg
 builds `--no-default-features` and lints something else. The coverage job's
 SQLite step is the surviving run, and it carries the coverage ratchet.
 
-`tests/workflow_contracts/test_backend_runs_once.py` lists every suite `ci.yml`
-runs as a feature set, from the build-test matrix legs whose test step runs and
-from every `generate-coverage` step. It asserts that:
+`tests/workflow_contracts/test_backend_runs_once.py` applies a query,
+`ci_backend_runs.suite_runs`, that lists every suite `ci.yml` runs as a feature
+set, from the build-test matrix legs whose test step runs and from every
+`generate-coverage` step. It asserts that:
 
 - no feature set is run twice, so the default-feature SQLite suite runs once,
   at `coverage`;
