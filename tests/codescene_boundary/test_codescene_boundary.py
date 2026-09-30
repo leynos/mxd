@@ -119,9 +119,10 @@ def test_some_workflow_runs_on_pull_requests() -> None:
 def test_the_surface_follows_a_local_reusable_call() -> None:
     """The collection reaches past the caller, proved on the case that exists.
 
-    `release-dry-run.yml` runs on `pull_request` and calls `release.yml` with
-    `secrets: inherit`. If the surface held only the caller, every prohibition
-    below could be breached inside the callee and this suite would stay green.
+    `release-dry-run.yml` runs on `pull_request` and calls `release.yml`,
+    forwarding no secret. If the surface held only the caller, every
+    prohibition below could be breached inside the callee and this suite would
+    stay green.
     """
     assert "release-dry-run.yml" in PULL_REQUEST_WORKFLOWS, (
         "the caller must be in the surface for this case to mean anything"
@@ -159,8 +160,8 @@ def test_no_pull_request_step_runs_the_coverage_command(workflow: str) -> None:
 def test_no_pull_request_workflow_reaches_the_token_or_the_host(workflow: str) -> None:
     """No pull-request lane reaches the token or contacts CodeScene.
 
-    That includes inheriting every secret into a workflow this tree cannot
-    read, which names nothing and so is read from the document.
+    That includes inheriting every secret into any called workflow, local or
+    not, which names nothing and so is read from the document.
     """
     breaches = secret_breaches(_documents()[workflow])
     assert not breaches, (

@@ -779,10 +779,10 @@ name to appear on a pull-request lane at all.
 
 Two routes name nothing, so they are read separately. An expression over the
 whole secrets context (`toJSON(secrets)` or `secrets[...]`) is refused. So is
-`secrets: inherit` on a call to another repository's workflow, whose content
-this tree cannot read. Inheriting into a local call is allowed, because the
-callee is on the pull-request surface and is read in turn; that is the shape
-`release-dry-run.yml` has.
+`secrets: inherit` on any call, local or not: a local callee is read in turn,
+but it would still receive every secret, and a called workflow has
+`GITHUB_TOKEN` without being forwarded it. `release-dry-run.yml` calls
+`release.yml` and forwards none.
 
 The job walker descends into each job's `steps` and also treats a job carrying
 its own `uses` as a step, because a job that calls a reusable workflow has no
@@ -793,10 +793,10 @@ the set it triggers. Its entry points are the workflows answering
 `pull_request` or `pull_request_target`; the second runs with the base
 repository's secrets, so leaving it out would exempt the more dangerous of the
 two. A job calling a local reusable workflow runs that workflow's jobs under
-the caller's trigger, and `release-dry-run.yml` does exactly that with
-`secrets: inherit`. Local calls are therefore followed transitively, with a
-seen set so a cycle cannot hang the collection. Without that, every prohibition
-here could be breached inside `release.yml` and the suite would stay green.
+the caller's trigger, and `release-dry-run.yml` does exactly that. Local calls
+are therefore followed transitively, with a seen set so a cycle cannot hang the
+collection. Without that, every prohibition here could be breached inside
+`release.yml` and the suite would stay green.
 
 A `workflow_run` workflow waiting on a surface workflow joins the surface too,
 with everything it calls, because it runs after every pull request with the
