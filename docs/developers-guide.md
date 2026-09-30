@@ -981,6 +981,16 @@ its label from `inputs.runner`, so its own file decides nothing. `release.yml`'s
 contract reading the callee's `runs-on` would pass while the caller sent the
 package build to any runner it liked.
 
+**Each Linux target is built natively.** `release.yml`'s `build-linux` matrix
+names a `runner` per target and passes `${{ matrix.runner }}`, and
+`test_each_linux_target_builds_natively` judges each target by architecture.
+Any free GitHub-hosted label of the target's own architecture passes
+(`ubuntu-latest` for x86_64, `ubuntu-24.04-arm` for aarch64); a cross build,
+the other architecture's label or an unlisted label is refused. A hosted x86_64
+runner cannot start the privileged podman container a cross build needs
+(`podman missing CAP_SYS_ADMIN`), which failed the first dry run that ever
+started.
+
 ### What the reader refuses
 
 Every placement contract rests on one reader, so a shape it reads wrongly is a
