@@ -215,10 +215,91 @@ def test_the_caller_sends_the_package_build_to_a_pinned_runner(
         for record in call_records(documents)
         if record.coordinate == ("release.yml", "build-linux")
     ]
-    assert call.inputs.get("runner") == "ubuntu-latest", (
+    assert call.inputs.get("runner") == "${{ matrix.runner }}", (
         f"release.yml:build-linux sends the package build to "
         f"{call.inputs.get('runner')!r}"
     )
+
+
+#: Free GitHub-hosted labels by architecture. A target may use any label of
+#: its own architecture; what it may not do is name another architecture's.
+NATIVE_LABELS: typ.Final[cabc.Mapping[str, frozenset[str]]] = {
+    "x86_64": frozenset({"ubuntu-latest", "ubuntu-24.04", "ubuntu-22.04"}),
+    "aarch64": frozenset({"ubuntu-24.04-arm", "ubuntu-22.04-arm"}),
+}
+
+
+def cross_built_targets(rows: cabc.Iterable[cabc.Mapping[str, object]]) -> list[str]:
+    """Return each Linux target whose runner is not of its own architecture.
+
+    A cross build needs a privileged container that GitHub-hosted x86_64
+    runners refuse, so every target must name a native label. Any free native
+    label is accepted, so moving a target between them is not a failure.
+
+    Parameters
+    ----------
+    rows
+        Matrix rows, each with a `target` triple and a `runner` label.
+
+    Returns
+    -------
+    list[str]
+        The targets whose runner is not of their own architecture; empty when
+        every target is built natively.
+    """
+    return [
+        str(row["target"])
+        for row in rows
+        if row.get("runner") not in NATIVE_LABELS[str(row["target"]).split("-")[0]]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("target", "runner"),
+    [
+        ("x86_64-unknown-linux-gnu", "ubuntu-latest"),
+        ("x86_64-unknown-linux-gnu", "ubuntu-24.04"),
+        ("x86_64-unknown-linux-gnu", "ubuntu-22.04"),
+        ("aarch64-unknown-linux-gnu", "ubuntu-24.04-arm"),
+        ("aarch64-unknown-linux-gnu", "ubuntu-22.04-arm"),
+    ],
+)
+def test_a_native_label_of_either_architecture_is_accepted(
+    target: str, runner: str
+) -> None:
+    """The narrow direction: moving a target between native labels passes."""
+    found = cross_built_targets([{"target": target, "runner": runner}])
+    assert found == [], (
+        f"unexpected placement result for {target!r} on {runner!r}: {found}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "runner"),
+    [
+        ("aarch64-unknown-linux-gnu", "ubuntu-latest"),
+        ("aarch64-unknown-linux-gnu", "${{ matrix.other }}"),
+        ("x86_64-unknown-linux-gnu", "ubuntu-24.04-arm"),
+        ("x86_64-unknown-linux-gnu", "ubicloud-standard-2"),
+    ],
+)
+def test_a_cross_or_unlisted_label_is_refused(target: str, runner: str) -> None:
+    """A target on another architecture's runner, or an unlisted one, is refused."""
+    found = cross_built_targets([{"target": target, "runner": runner}])
+    assert found == [target], (
+        f"unexpected placement result for {target!r} on {runner!r}: {found}"
+    )
+
+
+def test_each_linux_target_builds_natively(
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> None:
+    """Every Linux target in the release matrix is built on a native runner."""
+    job = documents["release.yml"]["jobs"]["build-linux"]  # type: ignore[index]
+    include = job["strategy"]["matrix"]["include"]
+    targets = sorted(row["target"] for row in include)
+    assert targets == ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"], targets
+    assert cross_built_targets(include) == [], "a target would be cross-built"
 
 
 def test_every_call_is_pinned_and_every_pin_is_a_call(
