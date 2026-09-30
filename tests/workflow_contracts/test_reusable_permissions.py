@@ -86,6 +86,17 @@ def permission_shortfalls(
 
     A caller that declares no permissions at all gets the repository default,
     which this reader cannot know, so it is not judged.
+
+    Parameters
+    ----------
+    documents
+        Every parsed workflow, keyed by file name.
+
+    Returns
+    -------
+    list[str]
+        One message per scope a local callee job requests above the grant of
+        the job that calls it; empty when every call is within its grant.
     """
     return [
         shortfall
