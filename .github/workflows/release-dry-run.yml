@@ -18,6 +18,14 @@ permissions:
 
 jobs:
   release:
+    # GitHub checks a reusable-workflow call before it starts any job, and
+    # `release.yml`'s `release` job asks for `contents: write`. With the
+    # workflow-level cap alone the call failed at startup on every pull
+    # request, with no job and no check. The job is skipped in a dry run, so
+    # write is never exercised here; test_reusable_permissions.py holds the
+    # caller to what any callee job requests.
+    permissions:
+      contents: write
     uses: ./.github/workflows/release.yml
     with:
       dry-run: true
