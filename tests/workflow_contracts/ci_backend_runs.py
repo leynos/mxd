@@ -21,6 +21,10 @@ COVERAGE_ACTION: typ.Final = "generate-coverage"
 NEXTEST_STEP: typ.Final = "cargo nextest run ${{ matrix.cargo_flags }}"
 LEG_CONDITION: typ.Final = re.compile(r"^matrix\.name (==|!=) '([\w-]+)'$")
 SQLITE_SUITE: typ.Final = (frozenset({"sqlite", "test-support"}), True)
+POSTGRES_SUITE: typ.Final = (
+    frozenset({"postgres", "test-support", "legacy-networking"}),
+    False,
+)
 
 
 class Suite(typ.NamedTuple):
@@ -162,28 +166,28 @@ def suite_runs(document: Document) -> list[Suite]:
 
 
 LINT_FLAGS: typ.Final = "${{ matrix.cargo_flags }}"
-SQLITE_LEG_FLAGS: typ.Final = "--features sqlite,test-support"
-
-
-def _sqlite_legs(job: cabc.Mapping[str, object]) -> list[dict[str, object]]:
-    """The build-test matrix legs named `sqlite`."""
-    legs = mapping(mapping(job.get("strategy")).get("matrix")).get("include")
-    return [
-        leg
-        for leg in legs or ()
-        if isinstance(leg, dict) and leg.get("name") == "sqlite"
-    ]
+# The legs that stay in the matrix only to lint a feature set nothing else
+# lints, since the coverage job runs their tests.
+LINT_LEG_FLAGS: typ.Final = {
+    "sqlite": "--features sqlite,test-support",
+    "postgres": (
+        "--no-default-features --features postgres,test-support,legacy-networking"
+    ),
+}
 
 
 def _leg_problems(job: cabc.Mapping[str, object]) -> list[str]:
-    """Problems with the sqlite leg's presence and feature set."""
-    legs = _sqlite_legs(job)
-    if len(legs) != 1:
-        return [f"expected one sqlite leg, found {len(legs)}"]
-    flags = str(legs[0].get("cargo_flags", "")).strip()
-    if flags != SQLITE_LEG_FLAGS:
-        return [f"the sqlite leg must build {SQLITE_LEG_FLAGS!r}"]
-    return []
+    """Problems with the lint-only legs' presence and feature sets."""
+    legs = mapping(mapping(job.get("strategy")).get("matrix")).get("include")
+    named = [leg for leg in legs or () if isinstance(leg, dict)]
+    problems: list[str] = []
+    for name, expected in LINT_LEG_FLAGS.items():
+        found = [leg for leg in named if leg.get("name") == name]
+        if len(found) != 1:
+            problems.append(f"expected one {name} leg, found {len(found)}")
+        elif str(found[0].get("cargo_flags", "")).strip() != expected:
+            problems.append(f"the {name} leg must build {expected!r}")
+    return problems
 
 
 def _step_problems(job: cabc.Mapping[str, object]) -> list[str]:
@@ -203,7 +207,7 @@ def _step_problems(job: cabc.Mapping[str, object]) -> list[str]:
 
 
 def lint_problems(document: Document) -> list[str]:
-    """Say what stops the sqlite leg linting the default feature set."""
+    """Say what stops the lint-only legs linting their feature sets."""
     job = mapping(mapping(document.get("jobs")).get("build-test"))
     conditional = ["the build-test job is conditional"] if may_be_skipped(job) else []
     return [*conditional, *_leg_problems(job), *_step_problems(job)]

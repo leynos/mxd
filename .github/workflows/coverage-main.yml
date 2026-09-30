@@ -99,7 +99,7 @@ jobs:
           NEXTEST_PROFILE: postgres
         with:
           with-default-features: false
-          features: postgres test-support
+          features: postgres test-support legacy-networking
           output-path: lcov-postgres.info
           format: lcov
           artefact-name-suffix: postgres-main

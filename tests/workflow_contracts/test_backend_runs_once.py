@@ -23,6 +23,7 @@ import pytest
 from ci_backend_runs import (
     LINT_FLAGS,
     NEXTEST_STEP,
+    POSTGRES_SUITE,
     SQLITE_SUITE,
     leg_runs_step,
     lint_problems,
@@ -61,18 +62,23 @@ def test_the_sqlite_suite_runs_exactly_once(ci: Document) -> None:
     assert _sqlite_runs(ci) == ["coverage:Generate coverage for SQLite"]
 
 
-def test_the_postgres_suites_each_have_a_run(ci: Document) -> None:
-    """Both PostgreSQL feature sets run: coverage's and build-test's.
+def test_the_postgres_suite_runs_once_with_legacy_networking(ci: Document) -> None:
+    """One PostgreSQL run, at coverage, and it builds `legacy-networking`.
 
-    The build-test leg also builds `legacy-networking`, which the coverage
-    step does not, so the two are different suites and neither duplicates the
-    other. Losing the leg would leave those tests uncompiled under PostgreSQL.
+    The `legacy-networking` tests (`tests/integration.rs`,
+    `tests/runtime_selection_bdd.rs`) compile only when that feature is on, so
+    a PostgreSQL run without it would leave them untested.
     """
     keys = {s.key for s in suite_runs(ci) if "postgres" in s.features}
-    assert keys == {
-        (frozenset({"postgres", "test-support"}), False),
-        (frozenset({"postgres", "test-support", "legacy-networking"}), False),
-    }
+    assert keys == {POSTGRES_SUITE}
+    assert _postgres_runs(ci) == ["coverage:Generate coverage for Postgres"]
+
+
+def test_the_main_branch_run_builds_the_same_postgres_suite() -> None:
+    """`coverage-main.yml` builds what the pull-request run builds."""
+    main = repository_documents()["coverage-main.yml"]
+    keys = {s.key for s in suite_runs(main) if "postgres" in s.features}
+    assert keys == {POSTGRES_SUITE}
 
 
 def test_no_suite_runs_twice(ci: Document) -> None:
@@ -166,6 +172,7 @@ def test_a_second_run_of_a_feature_set_is_seen(ci: Document) -> None:
     doubled = _mutated(ci, lambda d: _test_step(d).pop("if"))
     counts = collections.Counter(s.key for s in suite_runs(doubled))
     assert counts[SQLITE_SUITE] == 2
+    assert counts[POSTGRES_SUITE] == 2
 
 
 def test_a_constant_false_condition_removes_the_sqlite_run(ci: Document) -> None:
@@ -193,15 +200,15 @@ def test_a_masked_test_command_is_not_blocking(ci: Document) -> None:
         step["run"] = step["run"].replace("--filter-expr", "|| true --filter-expr")
 
     masked = [s.where for s in suite_runs(_mutated(ci, mask)) if not s.is_blocking]
-    assert masked == ["build-test:postgres", "build-test:wireframe-only"]
+    assert masked == ["build-test:wireframe-only"]
 
 
 @pytest.mark.parametrize(
     "mutation",
-    ["flags", "clippy-if", "whitaker-flags", "no-leg"],
+    ["flags", "clippy-if", "whitaker-flags", "no-leg", "postgres-flags"],
 )
 def test_lint_problems_are_seen(ci: Document, mutation: str) -> None:
-    """Each way of hollowing out the sqlite lint is reported."""
+    """Each way of hollowing out a lint-only leg is reported."""
 
     def mutate(document: dict[str, typ.Any]) -> None:
         job = document["jobs"]["build-test"]
@@ -214,6 +221,11 @@ def test_lint_problems_are_seen(ci: Document, mutation: str) -> None:
             lints[0]["if"] = "matrix.name != 'sqlite'"
         elif mutation == "whitaker-flags":
             lints[1]["run"] = lints[1]["run"].replace(LINT_FLAGS, "")
+        elif mutation == "postgres-flags":
+            postgres = next(leg for leg in legs if leg["name"] == "postgres")
+            postgres["cargo_flags"] = postgres["cargo_flags"].replace(
+                ",legacy-networking", ""
+            )
         else:
             legs.remove(sqlite)
 

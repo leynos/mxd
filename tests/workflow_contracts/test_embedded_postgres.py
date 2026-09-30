@@ -57,12 +57,6 @@ class PostgresTestStep(typ.NamedTuple):
 
 
 POSTGRES_TEST_STEPS: typ.Final = (
-    PostgresTestStep(
-        "ci.yml",
-        "build-test",
-        "Test",
-        "${{ matrix.name == 'postgres' && 'postgres' || 'default' }}",
-    ),
     PostgresTestStep("ci.yml", "coverage", "Generate coverage for Postgres", PROFILE),
     PostgresTestStep(
         "coverage-main.yml",

@@ -72,28 +72,18 @@ jobs:
             cargo_flags: --no-default-features --features postgres,test-support,legacy-networking
             install_postgres_deps: true
             install_sqlite_deps: false
-            rstest_timeout: false
           - name: sqlite
             cargo_flags: --features sqlite,test-support
             install_postgres_deps: false
             install_sqlite_deps: true
-            rstest_timeout: true
           - name: wireframe-only
             cargo_flags: --no-default-features --features sqlite,toml,test-support
             install_postgres_deps: false
             install_sqlite_deps: true
-            rstest_timeout: true
       fail-fast: false
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
-      # One binary cache shared by the warm-up step and the tests, so the
-      # download happens before any test runs.
-      PG_BINARY_CACHE_DIR: ${{ github.workspace }}/.pg-embedded/binaries
-      # A throwaway password for the embedded test clusters, pinned so a
-      # cluster directory left by one test process authenticates in the next.
-      # Not a secret: the cluster listens on localhost inside this job.
-      PG_PASSWORD: mxd-embedded-test
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: leynos/shared-actions/.github/actions/setup-rust@82feb2b7aac45b7efff40c9c4bb632551b14521c
@@ -112,16 +102,6 @@ jobs:
           if ! cargo nextest --version >/dev/null 2>&1; then
             cargo binstall --locked --no-confirm cargo-nextest
           fi
-      - name: Install pg-embed-setup-unpriv
-        if: matrix.name == 'postgres'
-        run: cargo binstall --no-confirm pg-embed-setup-unpriv@0.5.2
-      # pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest
-      # of a test process, so a download failing mid-suite would fail every
-      # later test in that process. Downloading first leaves no download inside
-      # the suite.
-      - name: Download the embedded PostgreSQL binaries
-        if: matrix.name == 'postgres'
-        run: make warm-postgres
       # Dependency audits report advisories against the whole lockfile, so a
       # newly published advisory would fail every Dependabot PR regardless of
       # content and deadlock auto-merge. The scheduled audit workflow covers
@@ -147,25 +127,17 @@ jobs:
         uses: leynos/shared-actions/.github/actions/install-whitaker@6dea5677a84fec60ca51b07202570e3af12ffdb4
       - name: Lint with Whitaker
         run: RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
-      # The sqlite leg stays for the lint above, which covers the default
-      # feature set, but its tests are not run here: the coverage job runs the
-      # same suite (`--features sqlite,test-support`) as its SQLite step, so a
-      # second run would only spend the minutes. Both backends stay first-class;
-      # see the developers' guide, "Each backend runs once per event".
+      # Only the wireframe-only leg runs tests here. The sqlite and postgres
+      # legs stay for their Clippy and Whitaker passes, which lint feature sets
+      # nothing else lints, but the coverage job runs their suites (SQLite with
+      # default features, PostgreSQL with `legacy-networking`), so a second run
+      # would only spend the minutes. Both backends stay first-class; see the
+      # developers' guide, "Each backend runs once per event".
       - name: Test
-        if: matrix.name != 'sqlite'
-        env:
-          # The postgres profile serializes the run; see the developers'
-          # guide, "Embedded PostgreSQL in tests".
-          NEXTEST_PROFILE: ${{ matrix.name == 'postgres' && 'postgres' || 'default' }}
+        if: matrix.name == 'wireframe-only'
         run: |
-          if [[ "${{ matrix.rstest_timeout }}" == "true" ]]; then
-            RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
-              --filter-expr 'not package(=validator)'
-          else
-            RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
-              --filter-expr 'not package(=validator)'
-          fi
+          RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
+            --filter-expr 'not package(=validator)'
 
   # One stable context for the ruleset to require. The matrix legs' check
   # names are truncated by GitHub and change with the matrix, so requiring them
@@ -292,7 +264,7 @@ jobs:
           NEXTEST_PROFILE: postgres
         with:
           with-default-features: false
-          features: postgres test-support
+          features: postgres test-support legacy-networking
           output-path: lcov-postgres.info
           format: lcov
           artefact-name-suffix: postgres
