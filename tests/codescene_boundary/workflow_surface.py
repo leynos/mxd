@@ -277,13 +277,7 @@ def _scalars(node: object) -> cabc.Iterator[str]:
 
 
 def _forwards_every_secret(job: dict[str, object]) -> bool:
-    """Whether a job hands every secret to the workflow it calls.
-
-    Local or not: a local callee is read in turn, but it still receives every
-    repository and organization secret, and a pull request should be handed
-    none it does not need. A called workflow has `GITHUB_TOKEN` without being
-    forwarded it.
-    """
+    """Whether a job forwards every secret to its called workflow."""
     return str(job.get("secrets", "")).strip() == "inherit"
 
 
