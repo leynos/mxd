@@ -1185,6 +1185,35 @@ Tolerated failure: `continue-on-error` on the SQLite coverage step, and
 the Whitaker step's flags dropped. Unit cases drive the same query with
 constructed copies of the workflow.
 
+### Authenticated binstall
+
+`cargo binstall` resolves a crate's release through `api.github.com`. An
+anonymous request is rate limited by the runner's address, and a 403 makes
+binstall wait 120 seconds and then build the crate from source, with only a
+`WARN` to say so. On one CI leg that turned a one-second
+`Install cargo-nextest` step into 348 seconds; the legs that already held the
+binary took a second, so the defect hides behind any warm cache and returns
+when it expires. Nothing fails, so only the step's duration shows it.
+
+Every step that runs `cargo binstall` therefore sets
+`GITHUB_TOKEN: ${{ github.token }}`: `Install cargo-nextest`,
+`Install cargo-audit` and `Install pg-embed-setup-unpriv` in `ci.yml`,
+`Install pg-embed-setup-unpriv` in `coverage-main.yml`, and
+`Install cargo-audit` in `audit.yml`. The `setup-rust` action installs
+cargo-binstall itself but never runs it, so the token belongs to each consumer
+step. The PostgreSQL warm-up sets it for the same reason; see "The binaries are
+downloaded before the tests".
+
+`tests/workflow_contracts/test_binstall_token.py` asserts that no step running
+`cargo binstall` lacks a `GITHUB_TOKEN` or `GH_TOKEN` of exactly the workflow
+token expression, in its own `env` or its job's or workflow's. A literal, an
+empty value, or a different variable name does not count. A second case asserts
+that the query still sees the five steps, so an empty result cannot pass for a
+clean one. Three mutations of the workflows each fail the named cases: the
+token removed from the nextest step, replaced with a literal in `audit.yml`,
+and a new anonymous step added to `coverage-main.yml`. Unit cases drive the
+query with constructed steps, including a multi-line `run` body.
+
 ### Adding a lane
 
 A new job fails the contracts until it is pinned: its coordinate must appear in
