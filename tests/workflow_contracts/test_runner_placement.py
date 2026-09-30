@@ -33,10 +33,11 @@ from ci_workflow_reader import repository_documents
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
-# Every job that declares its own steps, with the label it runs on. Nothing
-# here is paid for: the repository has not migrated any lane to a paid
-# provider, so a label outside this set is either a migration nobody pinned or
-# a typo GitHub would queue forever.
+# Every job that declares its own steps, with the label it runs on. A pair is
+# a conditional placement, guarded arm first: the hosted fallback a fork's pull
+# request takes, then the Ubicloud runner everything else selects. A label
+# outside this set is either a migration nobody pinned or a typo GitHub would
+# queue forever.
 PINNED_PLACEMENTS: typ.Final[cabc.Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("audit.yml", "audit"): ("ubuntu-latest",),
     ("ci.yml", "docs-tooling"): ("ubuntu-latest",),
@@ -44,7 +45,7 @@ PINNED_PLACEMENTS: typ.Final[cabc.Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("ci.yml", "build-test-result"): ("ubuntu-latest",),
     ("ci.yml", "validator-sqlite"): ("ubuntu-latest",),
     ("ci.yml", "coverage"): ("ubuntu-latest",),
-    ("coverage-main.yml", "coverage-upload"): ("ubuntu-latest",),
+    ("coverage-main.yml", "coverage-upload"): ("ubuntu-latest", "ubicloud-standard-2"),
     ("fuzz.yml", "fuzz"): ("ubuntu-latest",),
     ("loom-check.yml", "check"): ("ubuntu-latest",),
     ("loom.yml", "models"): ("ubuntu-latest",),
@@ -380,3 +381,30 @@ def test_a_job_declares_the_ceiling_it_is_pinned_to(
         f"{coordinate[0]}:{coordinate[1]} declares a ceiling that is not an "
         f"integer: {record.timeout_minutes!r}"
     )
+
+
+#: The guard that keeps a fork's pull request off an Ubicloud runner, which it
+#: cannot obtain.
+FORK_GUARD: typ.Final = "github.event.pull_request.head.repo.fork"
+
+
+def test_an_ubicloud_lane_falls_back_to_hosted_for_a_fork(
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> None:
+    """Every conditional placement is guarded by the fork test, hosted arm first.
+
+    Pinning the labels alone would accept the same pair under another guard, for
+    example an event name, which sends a fork's pull request to a runner it
+    cannot obtain.
+    """
+    for coordinate, labels in sorted(PINNED_PLACEMENTS.items()):
+        if len(labels) != 2:
+            continue
+        record = job_by_coordinate(*coordinate, documents)
+        assert record.placement.guard == FORK_GUARD, (
+            f"{coordinate[0]}:{coordinate[1]} is guarded by "
+            f"{record.placement.guard!r}, not the fork test"
+        )
+        assert labels[0] == "ubuntu-latest", (
+            f"{coordinate[0]}:{coordinate[1]} falls back to {labels[0]!r}"
+        )
