@@ -203,30 +203,58 @@ def test_a_masked_test_command_is_not_blocking(ci: Document) -> None:
     assert masked == ["build-test:wireframe-only"]
 
 
+def _leg(document: dict[str, typ.Any], name: str) -> dict[str, typ.Any]:
+    """The build-test matrix leg called `name`."""
+    legs = document["jobs"]["build-test"]["strategy"]["matrix"]["include"]
+    return next(leg for leg in legs if leg["name"] == name)
+
+
+def _lint_step(document: dict[str, typ.Any], index: int) -> dict[str, typ.Any]:
+    """The first (Clippy) or second (Whitaker) lint step of build-test."""
+    steps = document["jobs"]["build-test"]["steps"]
+    return [s for s in steps if s.get("name", "").startswith("Lint with")][index]
+
+
+def _narrow_sqlite(document: dict[str, typ.Any]) -> None:
+    """Build the sqlite leg without default features."""
+    _leg(document, "sqlite")["cargo_flags"] = "--no-default-features --features sqlite"
+
+
+def _narrow_postgres(document: dict[str, typ.Any]) -> None:
+    """Build the postgres leg without `legacy-networking`."""
+    leg = _leg(document, "postgres")
+    leg["cargo_flags"] = leg["cargo_flags"].replace(",legacy-networking", "")
+
+
+def _skip_clippy(document: dict[str, typ.Any]) -> None:
+    """Skip the Clippy step on the sqlite leg."""
+    _lint_step(document, 0)["if"] = "matrix.name != 'sqlite'"
+
+
+def _unflag_whitaker(document: dict[str, typ.Any]) -> None:
+    """Drop the feature flags from the Whitaker step."""
+    step = _lint_step(document, 1)
+    step["run"] = step["run"].replace(LINT_FLAGS, "")
+
+
+def _drop_sqlite_leg(document: dict[str, typ.Any]) -> None:
+    """Remove the sqlite leg from the matrix."""
+    legs = document["jobs"]["build-test"]["strategy"]["matrix"]["include"]
+    legs.remove(_leg(document, "sqlite"))
+
+
 @pytest.mark.parametrize(
-    "mutation",
-    ["flags", "clippy-if", "whitaker-flags", "no-leg", "postgres-flags"],
+    "mutate",
+    [
+        _narrow_sqlite,
+        _narrow_postgres,
+        _skip_clippy,
+        _unflag_whitaker,
+        _drop_sqlite_leg,
+    ],
 )
-def test_lint_problems_are_seen(ci: Document, mutation: str) -> None:
+def test_lint_problems_are_seen(
+    ci: Document, mutate: cabc.Callable[[dict[str, typ.Any]], None]
+) -> None:
     """Each way of hollowing out a lint-only leg is reported."""
-
-    def mutate(document: dict[str, typ.Any]) -> None:
-        job = document["jobs"]["build-test"]
-        legs = job["strategy"]["matrix"]["include"]
-        sqlite = next(leg for leg in legs if leg["name"] == "sqlite")
-        lints = [s for s in job["steps"] if s.get("name", "").startswith("Lint with")]
-        if mutation == "flags":
-            sqlite["cargo_flags"] = "--no-default-features --features sqlite"
-        elif mutation == "clippy-if":
-            lints[0]["if"] = "matrix.name != 'sqlite'"
-        elif mutation == "whitaker-flags":
-            lints[1]["run"] = lints[1]["run"].replace(LINT_FLAGS, "")
-        elif mutation == "postgres-flags":
-            postgres = next(leg for leg in legs if leg["name"] == "postgres")
-            postgres["cargo_flags"] = postgres["cargo_flags"].replace(
-                ",legacy-networking", ""
-            )
-        else:
-            legs.remove(sqlite)
-
     assert lint_problems(_mutated(ci, mutate))
