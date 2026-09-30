@@ -90,7 +90,12 @@ jobs:
       # of a test process, so a download failing mid-suite would fail every
       # later test in that process. Downloading first leaves no download inside
       # the suite.
+      # The binaries come from GitHub releases, and an anonymous request is
+      # rate limited by the runner's address: a 403 there fails the warm-up.
+      # An authenticated one is not.
       - name: Download the embedded PostgreSQL binaries
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: make warm-postgres
       - name: Generate coverage for Postgres
         uses: leynos/shared-actions/.github/actions/generate-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
@@ -99,7 +104,7 @@ jobs:
           NEXTEST_PROFILE: postgres
         with:
           with-default-features: false
-          features: postgres test-support
+          features: postgres test-support legacy-networking
           output-path: lcov-postgres.info
           format: lcov
           artefact-name-suffix: postgres-main
