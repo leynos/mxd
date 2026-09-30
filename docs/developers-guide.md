@@ -1089,6 +1089,57 @@ masks the command's status. The job must declare `permissions: {}`, because it
 reads only the matrix result. Seven mutations of `ci.yml` each fail the
 contract, and unit cases drive the same judgement with constructed jobs.
 
+### Each backend runs once per event
+
+SQLite and PostgreSQL are both first-class backends, and a deduplication must
+never drop one. The `build-test` sqlite leg used to run the same suite as the
+coverage job's SQLite step (`--features sqlite,test-support`, default features
+on), so every event paid for it twice. Its `Test` step is now skipped with
+`if: matrix.name != 'sqlite'`. The leg stays, because its Clippy and Whitaker
+passes are the only lint of the default feature set; the `wireframe-only` leg
+builds `--no-default-features` and lints something else. The coverage job's
+SQLite step is the surviving run, and it carries the coverage ratchet.
+
+`tests/workflow_contracts/test_backend_runs_once.py` applies a query,
+`ci_backend_runs.suite_runs`, that lists every suite `ci.yml` runs as a feature
+set, from the build-test matrix legs whose test step runs and from every
+`generate-coverage` step. It asserts that:
+
+- no feature set is run twice, so the default-feature SQLite suite runs once,
+  at `coverage`;
+- both PostgreSQL feature sets run, which the next paragraph explains;
+- no run sits in a step or job that declares `continue-on-error`, and no
+  run's `run` body swallows the command's status (`|| true`, `; exit 0`,
+  `set +e`), so a failing test fails the job that holds it, and through
+  `coverage` or `build-test-result` the pull request's required checks;
+- a run counts only when neither its step nor its job carries an `if`, so a
+  constant `if: false` cannot leave a run that never executes;
+- the sqlite leg builds `--features sqlite,test-support`, and both lint steps
+  are unconditional and lint `${{ matrix.cargo_flags }}`.
+
+A condition on the test step other than `matrix.name == 'x'` or
+`matrix.name != 'x'` fails the contract instead of being guessed at, so a
+cleverer condition cannot make a running leg look skipped.
+
+The `build-test` postgres leg is not a duplicate of coverage's Postgres step,
+so its `Test` step stays. The coverage step builds `postgres test-support`; the
+leg builds `postgres test-support legacy-networking`, and the
+`legacy-networking` tests (`tests/integration.rs`,
+`tests/runtime_selection_bdd.rs` and the `mxd` binary's `required-features`)
+compile only in the leg. Removing the leg's tests would leave them unbuilt
+under PostgreSQL. The contract pins both PostgreSQL feature sets for that
+reason. Adding `legacy-networking` to the coverage step would make the two
+identical, and the contract would then demand that one go.
+
+Nine mutations of `ci.yml` each fail the cases named for them. Too many runs:
+the guard deleted, and `legacy-networking` added to the coverage step. Too few:
+the leg's tests skipped on every leg, and default features switched on for the
+coverage Postgres step. Tolerated failure: `continue-on-error` on the SQLite
+coverage step, and `|| true` on the nextest command. Hollowed out without being
+removed: `if: false` on the SQLite coverage step, the sqlite leg's flags
+narrowed, and the Whitaker step's flags dropped. Unit cases drive the same
+query with constructed copies of the workflow.
+
 ### Adding a lane
 
 A new job fails the contracts until it is pinned: its coordinate must appear in
