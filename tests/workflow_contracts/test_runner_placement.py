@@ -248,6 +248,7 @@ def cross_built_targets(rows: cabc.Iterable[cabc.Mapping[str, object]]) -> list[
     [
         ("x86_64-unknown-linux-gnu", "ubuntu-latest"),
         ("x86_64-unknown-linux-gnu", "ubuntu-24.04"),
+        ("x86_64-unknown-linux-gnu", "ubuntu-22.04"),
         ("aarch64-unknown-linux-gnu", "ubuntu-24.04-arm"),
         ("aarch64-unknown-linux-gnu", "ubuntu-22.04-arm"),
     ],
@@ -279,7 +280,8 @@ def test_each_linux_target_builds_natively(
     """Every Linux target in the release matrix is built on a native runner."""
     job = documents["release.yml"]["jobs"]["build-linux"]  # type: ignore[index]
     include = job["strategy"]["matrix"]["include"]
-    assert len(include) == 2, "the release builds x86_64 and aarch64"
+    targets = sorted(row["target"] for row in include)
+    assert targets == ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"], targets
     assert cross_built_targets(include) == [], "a target would be cross-built"
 
 
