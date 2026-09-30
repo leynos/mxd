@@ -235,6 +235,17 @@ def cross_built_targets(rows: cabc.Iterable[cabc.Mapping[str, object]]) -> list[
     A cross build needs a privileged container that GitHub-hosted x86_64
     runners refuse, so every target must name a native label. Any free native
     label is accepted, so moving a target between them is not a failure.
+
+    Parameters
+    ----------
+    rows
+        Matrix rows, each with a `target` triple and a `runner` label.
+
+    Returns
+    -------
+    list[str]
+        The targets whose runner is not of their own architecture; empty when
+        every target is built natively.
     """
     return [
         str(row["target"])
@@ -257,7 +268,10 @@ def test_a_native_label_of_either_architecture_is_accepted(
     target: str, runner: str
 ) -> None:
     """The narrow direction: moving a target between native labels passes."""
-    assert cross_built_targets([{"target": target, "runner": runner}]) == []
+    found = cross_built_targets([{"target": target, "runner": runner}])
+    assert found == [], (
+        f"unexpected placement result for {target!r} on {runner!r}: {found}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -271,7 +285,10 @@ def test_a_native_label_of_either_architecture_is_accepted(
 )
 def test_a_cross_or_unlisted_label_is_refused(target: str, runner: str) -> None:
     """A target on another architecture's runner, or an unlisted one, is refused."""
-    assert cross_built_targets([{"target": target, "runner": runner}]) == [target]
+    found = cross_built_targets([{"target": target, "runner": runner}])
+    assert found == [target], (
+        f"unexpected placement result for {target!r} on {runner!r}: {found}"
+    )
 
 
 def test_each_linux_target_builds_natively(
