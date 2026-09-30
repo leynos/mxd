@@ -1464,7 +1464,7 @@ a fixture broken for an unrelated reason cannot satisfy the first. Wrapping the
 gate as `|| true`, narrowing its scope or replacing the builder invocation each
 fail it.
 
-The builder is pinned to the commit `v0.1.1` points at rather than to the tag.
+The builder is pinned to the commit `v0.1.3` points at rather than to the tag.
 A tag is a movable ref, and this target downloads and executes the code it
 names, so the same commit of this repository would otherwise be able to run
 different code.
