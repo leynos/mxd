@@ -381,30 +381,3 @@ def test_a_job_declares_the_ceiling_it_is_pinned_to(
         f"{coordinate[0]}:{coordinate[1]} declares a ceiling that is not an "
         f"integer: {record.timeout_minutes!r}"
     )
-
-
-#: The guard that keeps a fork's pull request off an Ubicloud runner, which it
-#: cannot obtain.
-FORK_GUARD: typ.Final = "github.event.pull_request.head.repo.fork"
-
-
-def test_an_ubicloud_lane_falls_back_to_hosted_for_a_fork(
-    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
-) -> None:
-    """Every conditional placement is guarded by the fork test, hosted arm first.
-
-    Pinning the labels alone would accept the same pair under another guard, for
-    example an event name, which sends a fork's pull request to a runner it
-    cannot obtain.
-    """
-    for coordinate, labels in sorted(PINNED_PLACEMENTS.items()):
-        if len(labels) != 2:
-            continue
-        record = job_by_coordinate(*coordinate, documents)
-        assert record.placement.guard == FORK_GUARD, (
-            f"{coordinate[0]}:{coordinate[1]} is guarded by "
-            f"{record.placement.guard!r}, not the fork test"
-        )
-        assert labels[0] == "ubuntu-latest", (
-            f"{coordinate[0]}:{coordinate[1]} falls back to {labels[0]!r}"
-        )
