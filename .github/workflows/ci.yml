@@ -85,7 +85,8 @@ jobs:
           - name: postgres
             cargo_flags: --no-default-features --features postgres,test-support,legacy-networking
             install_postgres_deps: true
-            install_sqlite_deps: false
+            # This leg also checks the SQLite compiler-floor lane.
+            install_sqlite_deps: true
           - name: sqlite
             cargo_flags: --features sqlite,test-support
             install_postgres_deps: false
@@ -111,6 +112,15 @@ jobs:
       # re-resolve it instead of failing.
       - name: Check the lockfile matches the manifest
         run: make check-locked
+      - name: Install configuration compiler floors
+        if: matrix.name == 'postgres'
+        run: rustup toolchain install 1.89.0 1.92.0 --profile minimal
+      - name: Validate configuration compiler floors
+        if: matrix.name == 'postgres'
+        run: make check-config-msrv
+      - name: Exercise isolated CLI format features
+        if: matrix.name == 'sqlite'
+        run: make test-cli-defs
       - name: Install cargo-nextest
         run: |
           if ! cargo nextest --version >/dev/null 2>&1; then

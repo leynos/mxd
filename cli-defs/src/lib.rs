@@ -5,20 +5,16 @@
 //! Extracting these types into a separate crate avoids brittle `#[path = ...]`
 //! includes and keeps build-time and runtime dependencies cleanly separated.
 
-// FIXME: File-wide suppressions are unavoidable here. Clap and OrthoConfig derive macros
-// inject generated code throughout the module, and there is no mechanism to narrow
-// the scope without restructuring the crate.
-#![expect(
-    non_snake_case,
-    reason = "Clap/OrthoConfig derive macros generate helper modules with uppercase names"
-)]
-#![expect(
-    missing_docs,
-    reason = "OrthoConfig and Clap derive macros generate items that cannot be documented"
-)]
+use std::{borrow::Cow, ffi::OsString};
 
 use clap::{Args, Parser, Subcommand};
-use ortho_config::OrthoConfig;
+use ortho_config::{
+    MergeLayer,
+    OrthoConfig,
+    OrthoResult,
+    declarative::LayerComposition,
+    sanitize_value,
+};
 use serde::{Deserialize, Serialize};
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -44,6 +40,8 @@ pub const DEFAULT_ARGON2_P_COST: u32 = 1;
 /// Arguments for the `create-user` administrative subcommand.
 #[derive(Parser, OrthoConfig, Deserialize, Serialize, Default, Debug, Clone)]
 #[ortho_config(prefix = "MXD_")]
+// Preserve the existing configuration namespace independently of package renames.
+#[command(name = "cli-defs")]
 pub struct CreateUserArgs {
     /// Username for the new account.
     pub username: Option<String>,
@@ -67,7 +65,7 @@ pub enum Commands {
 /// bind to a specific interface (for example `127.0.0.1`) and sit behind a
 /// reverse proxy.
 #[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
-#[ortho_config(prefix = "MXD_")]
+#[ortho_config(prefix = "MXD_", discovery(config_cli_visible = true))]
 pub struct AppConfig {
     /// Server bind address.
     #[ortho_config(default = "0.0.0.0:5500".to_owned())]
@@ -96,11 +94,47 @@ pub struct AppConfig {
 
 /// Top-level CLI entry point consumed by binaries.
 #[derive(Parser, Serialize)]
+#[command(name = "mxd", version)]
 pub struct Cli {
     /// CLI configuration overrides (merged with files and defaults at runtime).
     #[command(flatten)]
-    pub config: AppConfigCli,
+    config: __AppConfigCli,
     /// Optional subcommand.
     #[command(subcommand)]
     pub command: Option<Commands>,
+}
+
+impl Cli {
+    /// Resolve defaults, discovered files, environment, and parsed CLI overrides.
+    ///
+    /// Only the file selector is passed to the generated lower-layer loader.
+    /// The already-parsed flatten group supplies the final layer, preserving
+    /// explicit values equal to defaults without rescanning subcommand tokens.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use clap::Parser;
+    /// use cli_defs::Cli;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let cli = Cli::try_parse_from(["mxd", "--bind", "127.0.0.1:5500"])?;
+    /// let config = cli.resolve_config()?;
+    /// assert_eq!(config.bind, "127.0.0.1:5500");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns file discovery, environment decoding, or configuration merge errors.
+    pub fn resolve_config(&self) -> OrthoResult<AppConfig> {
+        let mut selector_args = vec![OsString::from("mxd")];
+        if let Some(path) = &self.config.config_path {
+            selector_args.push(OsString::from("--config-path"));
+            selector_args.push(path.as_os_str().to_owned());
+        }
+        let (mut layers, errors) = AppConfig::compose_layers_from_iter(selector_args).into_parts();
+        layers.push(MergeLayer::cli(Cow::Owned(sanitize_value(&self.config)?)));
+        LayerComposition::new(layers, errors).into_merge_result(AppConfig::merge_from_layers)
+    }
 }

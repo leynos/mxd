@@ -2,6 +2,7 @@
 name = "cli-defs"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.89.0"
 description = "Shared CLI type definitions for mxd build and runtime"
 
 [lints]
@@ -9,23 +10,19 @@ workspace = true
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" }
+ortho_config = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-figment = { version = "0.10", features = ["env"] }
-uncased = "0.9"
-xdg = "3"
-toml = { version = "0.9", optional = true }
-figment-json5 = { version = "0.1", optional = true }
-serde_yaml = { version = "0.9", optional = true }
 
 [dev-dependencies]
 argon2 = { version = "0.5", features = ["std"] }
-figment = { version = "0.10", features = ["env", "test", "toml"] }
-rstest = "0.26"
-toml = "0.9"
+rstest = { workspace = true }
+anyhow = "1"
+cap-std = { version = "4.0.0", features = ["fs_utf8"] }
+tempfile = "3.23.0"
+proptest = "1.4.0"
 
 [features]
 default = ["toml"]
-toml = ["figment/toml", "dep:toml"]
-json5 = ["figment-json5"]
-yaml = ["figment/yaml", "serde_yaml"]
+toml = ["ortho_config/toml"]
+json5 = ["ortho_config/json5"]
+yaml = ["ortho_config/yaml"]

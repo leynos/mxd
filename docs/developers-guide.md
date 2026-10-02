@@ -7,6 +7,9 @@ codebase, plus the PostgreSQL helper needed for integration coverage.
 ## Prerequisites
 
 - Rust toolchain pinned by `rust-toolchain.toml`.
+- Rust 1.89.0 is the minimum compiler for the standalone `cli-defs` package;
+  the complete workspace lockfile requires Rust 1.92.0. Use the pinned 1.93.0
+  nightly toolchain for the lint workflow.
 - `cargo` and `make` available on your `PATH`.
 - `cargo-audit` available for `make audit`; CI installs it with
   `cargo binstall --no-confirm cargo-audit`.
@@ -739,10 +742,29 @@ make markdownlint
 make nixie
 make check-fmt
 make check-locked
+make check-config-msrv
+make test-cli-defs
 make test-workflow-contracts
 make lint
 make test
 ```
+
+The `typecheck`, `lint` and `test` targets each cover the PostgreSQL, SQLite
+and wireframe-only feature lanes separately. Keep those lanes separate because
+the database backends are mutually exclusive; an `--all-features` build does
+not replace them.
+
+`make check-config-msrv` checks `cli-defs` with all format features on Rust
+1.89.0, then checks the PostgreSQL, SQLite and wireframe-only workspace lanes
+on Rust 1.92.0. `make test-cli-defs` exercises its default, no-default,
+individual-format and combined-format configurations. CI runs the compiler
+floor checks in its PostgreSQL lane and the isolated CLI feature checks in its
+SQLite lane.
+
+TOML remains the baseline provider. OrthoConfig 0.9.0's file parser references
+its TOML provider unconditionally, and the workspace dependency enables that
+provider explicitly. Consequently, `cli-defs --no-default-features` does not
+remove TOML support. JSON5 and YAML remain opt-in formats.
 
 ## Runner placement
 
@@ -1265,11 +1287,11 @@ bump across a boundary the manifest forbids arrives as a lockfile-only change.
 hand, as in pull request #554.
 
 Dependabot does not read `rust-version` either. serial_test 4 declares
-`rust-version = "1.93.1"`, newer than the pinned `nightly-2025-11-08`, so
-Cargo's MSRV-aware resolver resolves any bump to 4 back to 3.x. Dependabot
-proposed that lockfile-only bump twice (#566 and #575), and automerge landed
-the second while `make check-locked` failed, because `build-test` is not a
-required check. #576 restored the lockfile.
+`rust-version = "1.93.1"`, newer than the pinned 1.93.0 nightly, so Cargo's
+MSRV-aware resolver resolves any bump to 4 back to 3.x. Dependabot proposed
+that lockfile-only bump twice (#566 and #575), and automerge landed the second
+while `make check-locked` failed, because `build-test` is not a required check.
+Pull request #576 restored the lockfile.
 
 The Cargo entry therefore ignores `serial_test` at `>= 4`, with a comment
 naming the toolchain floor. `make test-dependabot-policy`, run by

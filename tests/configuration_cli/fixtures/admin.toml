@@ -1,0 +1,6 @@
+database = 'disposable.db'
+argon2_m_cost = 1024
+
+[cmds.cli-defs]
+username = 'format-user'
+password = 'format-password'

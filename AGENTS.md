@@ -124,33 +124,15 @@ This repository is written in Rust and uses Cargo for building and dependency
 management. Contributors should follow these best practices when working on the
 project:
 
-- Run `make check-fmt`, `make lint`, and `make test` before committing. These
-  targets wrap the following commands, so contributors understand the exact
-  behaviour and policy enforced:
-  - `make check-fmt` executes:
-
-    ```sh
-    cargo fmt --workspace -- --check
-    ```
-
-    validating formatting across the entire workspace without modifying files.
-  - `make lint` executes:
-
-    ```sh
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
-    ```
-
-    linting every target with all features enabled and denying all Clippy
-    warnings.
-  - `make test` executes:
-
-    ```sh
-    cargo test --workspace
-    ```
-
-    running the full workspace test suite. Use `make fmt`
-    (`cargo fmt --workspace`) to apply formatting fixes reported by the
-    formatter check.
+- The standalone `cli-defs` package has a Rust 1.89.0 compiler floor. The full
+  workspace's locked graph requires Rust 1.92.0. The repository-pinned 1.93.0
+  nightly toolchain is used for linting.
+- Run `make check-fmt`, `make typecheck`, `make lint`, and `make test` before
+  committing. The typecheck, lint and test targets exercise the PostgreSQL,
+  SQLite and wireframe-only feature lanes separately. These database backends
+  are mutually exclusive, so do not substitute an `--all-features` build.
+  `make check-fmt` checks Rust formatting and Markdown tables. Use `make fmt`
+  to apply the Rust and Markdown formatting fixes.
 - Clippy warnings MUST be disallowed.
 - Fix any warnings emitted during tests in the code itself rather than
   silencing them.
