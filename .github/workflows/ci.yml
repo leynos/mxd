@@ -14,7 +14,10 @@ concurrency:
 
 jobs:
   docs-tooling:
-    runs-on: ubuntu-latest
+    # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
+    # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
+    # Ubicloud coverage-upload writes the cache scope this reads.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 25
     permissions:
       contents: read
@@ -63,7 +66,10 @@ jobs:
         run: make nixie
 
   build-test:
-    runs-on: ubuntu-latest
+    # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
+    # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
+    # Ubicloud coverage-upload writes the cache scope this reads.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 45
     strategy:
       matrix:
@@ -156,7 +162,10 @@ jobs:
         run: test "${{ needs.build-test.result }}" = success
 
   validator-sqlite:
-    runs-on: ubuntu-latest
+    # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
+    # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
+    # Ubicloud coverage-upload writes the cache scope this reads.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 27
     env:
       CARGO_TERM_COLOR: always
@@ -191,7 +200,10 @@ jobs:
         run: make test-validator-sqlite
 
   coverage:
-    runs-on: ubuntu-latest
+    # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
+    # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
+    # Ubicloud coverage-upload writes the cache scope this reads.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
     timeout-minutes: 60
     env:
       CARGO_TERM_COLOR: always

@@ -746,9 +746,10 @@ make test
 
 ## Runner placement
 
-`coverage-main.yml`'s `coverage-upload`, main's only cache writer, runs on
-`ubicloud-standard-2`. `runs-on` selects it with the runner-selection
-expression:
+`coverage-main.yml`'s `coverage-upload`, main's only cache writer, and
+`ci.yml`'s `docs-tooling`, `build-test`, `validator-sqlite` and `coverage` run
+on `ubicloud-standard-2`; `build-test-result`, a trivial aggregate, stays
+hosted. `runs-on` selects it with the runner-selection expression:
 
 ```yaml
 runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}

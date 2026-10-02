@@ -40,11 +40,11 @@ if typ.TYPE_CHECKING:
 # queue forever.
 PINNED_PLACEMENTS: typ.Final[cabc.Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("audit.yml", "audit"): ("ubuntu-latest",),
-    ("ci.yml", "docs-tooling"): ("ubuntu-latest",),
-    ("ci.yml", "build-test"): ("ubuntu-latest",),
+    ("ci.yml", "docs-tooling"): ("ubuntu-latest", "ubicloud-standard-2"),
+    ("ci.yml", "build-test"): ("ubuntu-latest", "ubicloud-standard-2"),
     ("ci.yml", "build-test-result"): ("ubuntu-latest",),
-    ("ci.yml", "validator-sqlite"): ("ubuntu-latest",),
-    ("ci.yml", "coverage"): ("ubuntu-latest",),
+    ("ci.yml", "validator-sqlite"): ("ubuntu-latest", "ubicloud-standard-2"),
+    ("ci.yml", "coverage"): ("ubuntu-latest", "ubicloud-standard-2"),
     ("coverage-main.yml", "coverage-upload"): ("ubuntu-latest", "ubicloud-standard-2"),
     ("fuzz.yml", "fuzz"): ("ubuntu-latest",),
     ("loom-check.yml", "check"): ("ubuntu-latest",),
