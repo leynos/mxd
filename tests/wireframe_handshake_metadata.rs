@@ -343,23 +343,21 @@ fn then_no_metadata(world: &MetadataWorld) {
 
 #[scenario(
     path = "tests/features/wireframe_handshake_metadata.feature",
-    index = 0
+    name = "Stores metadata for valid Hotline handshakes"
 )]
 #[tokio::test(flavor = "current_thread")]
-async fn stores_metadata_for_valid_hotline_handshakes(world: MetadataWorld) { let _ = world; }
+async fn stores_metadata_for_valid_hotline_handshakes(_world: MetadataWorld) {}
 
 #[scenario(
     path = "tests/features/wireframe_handshake_metadata.feature",
-    index = 1
+    name = "Rejects invalid handshakes without persisting metadata"
 )]
 #[tokio::test(flavor = "current_thread")]
-async fn rejects_invalid_handshakes_without_persisting_metadata(world: MetadataWorld) {
-    let _ = world;
-}
+async fn rejects_invalid_handshakes_without_persisting_metadata(_world: MetadataWorld) {}
 
 #[scenario(
     path = "tests/features/wireframe_handshake_metadata.feature",
-    index = 2
+    name = "Metadata does not leak between connections"
 )]
 #[tokio::test(flavor = "current_thread")]
-async fn metadata_does_not_leak_between_connections(world: MetadataWorld) { let _ = world; }
+async fn metadata_does_not_leak_between_connections(_world: MetadataWorld) {}

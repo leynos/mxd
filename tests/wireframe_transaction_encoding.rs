@@ -10,7 +10,7 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
-use rstest_bdd_macros::{given, scenario, then, when};
+use rstest_bdd_macros::{given, then, when};
 use tokio::io::AsyncReadExt;
 
 fn hotline_config() -> impl bincode::config::Config {
@@ -358,82 +358,5 @@ fn then_fails(world: &EncodingWorld, message: String) {
     });
 }
 
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 0
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn encodes_a_single_frame_parameter_transaction(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 1
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn encodes_an_empty_parameter_transaction(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 2
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn encodes_a_fragmented_parameter_transaction(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 3
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn encodes_a_parameter_transaction_fragmented_into_3_frames(world: EncodingWorld) {
-    let _ = world;
-}
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 4
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn encodes_a_valid_transaction_via_tryfrom_and_matches_legacy_encoding(world: EncodingWorld) {
-    let _ = world;
-}
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 5
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn rejects_a_transaction_with_invalid_flags(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 6
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn rejects_a_transaction_with_an_oversized_payload(world: EncodingWorld) { let _ = world; }
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 7
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn rejects_a_transaction_with_an_invalid_parameter_payload(world: EncodingWorld) {
-    let _ = world;
-}
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 8
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn rejects_building_a_parameter_transaction_exceeding_the_limit(world: EncodingWorld) {
-    let _ = world;
-}
-
-#[scenario(
-    path = "tests/features/wireframe_transaction_encoding.feature",
-    index = 9
-)]
-#[tokio::test(flavor = "current_thread")]
-async fn rejects_encoding_when_the_header_size_does_not_match_the_payload(world: EncodingWorld) {
-    let _ = world;
-}
+#[path = "wireframe_transaction_encoding/scenarios.rs"]
+mod scenarios;

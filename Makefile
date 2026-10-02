@@ -39,7 +39,9 @@ MDLINT ?= markdownlint-cli2
 # Both modes need mdtablefix 0.6.0 or later; CI pins the version at the
 # install-mdtablefix step.
 MDTABLEFIX ?= mdtablefix
-MDTABLEFIX_SELECT = --git --include-untracked
+# Imported upstream references are immutable; see the migration provenance.
+UPSTREAM_BDD_GUIDES := docs/rstest-bdd-users-guide.md docs/rstest-bdd-v0-6-0-migration-guide.md
+MDTABLEFIX_SELECT = $(filter-out $(UPSTREAM_BDD_GUIDES),$(shell $(MDTABLEFIX) --list-files --git --include-untracked))
 MDTABLEFIX_RULES = --wrap --renumber --breaks --ellipsis --fences
 MDLINT_FALLBACK := $(HOME)/.bun/bin/markdownlint-cli2
 ifneq ($(wildcard $(MDLINT_FALLBACK)),)
