@@ -212,15 +212,29 @@ test reliability and throughput without changing test semantics.
 
 ## Behavioural testing strategy
 
-The behavioural suite uses `rstest-bdd` v0.5.0 in both the root crate and
+The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
 `crates/mxd-verification`.
 
 - Prefer `scenarios!` bindings to a specific `.feature` file rather than manual
-  repeated `#[scenario(index = ...)]` stubs.
+  repeated `#[scenario(index = ...)]` stubs, with
+  `harness = rstest_bdd_harness_tokio::TokioHarness`. The legacy
+  `runtime = "tokio-current-thread"` argument is deprecated in 0.6 and now
+  resolves to that harness.
 - Use `fixtures = [name: Type]` on `scenarios!` so shared world fixtures are
   injected consistently into step definitions.
-- Prefer async behavioural scenarios for async-sensitive suites:
-  `runtime = "tokio-current-thread"` with `async fn` step handlers where async
+- `TokioHarness` polls each `async fn` step once, so a step that yields
+  `Pending` (socket I/O, timers) fails with "async step yielded Pending inside
+  a harness-provided runtime". Suites with such steps (`create_user_bdd`,
+  `wireframe_handshake_metadata` and `wireframe_transaction_encoding`) bind
+  each scenario explicitly: `#[scenario(path = "...", index = N)]` over
+  `#[tokio::test(flavor = "current_thread")] async fn name(world: World) {}`,
+  which awaits every step in turn. Keep the order of `index` equal to the order
+  of the scenarios in the `.feature` file. This is a workaround for rstest-bdd
+  issue [#820](https://github.com/leynos/rstest-bdd/issues/820); a scenario
+  added to a `.feature` file is not run until its stub is added, because
+  `scenarios!` no longer discovers it. Return these suites to `scenarios!` when
+  #820 lands.
+- Prefer async behavioural scenarios for async-sensitive suites where async
   I/O is exercised and fixture setup does not rely on embedded PostgreSQL
   cluster bootstrapping.
 - For suites that must initialize embedded PostgreSQL fixtures, keep step
