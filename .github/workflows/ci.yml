@@ -124,7 +124,7 @@ jobs:
       - name: Lint with Clippy
         run: RUSTFLAGS="-D warnings" cargo clippy ${{ matrix.cargo_flags }} --workspace --all-targets -- -D warnings
       - name: Install Whitaker
-        uses: leynos/shared-actions/.github/actions/install-whitaker@6dea5677a84fec60ca51b07202570e3af12ffdb4
+        uses: leynos/shared-actions/.github/actions/install-whitaker@c4ed5ffaf0640b1907d5359a87fd1677034eec27
       - name: Lint with Whitaker
         run: RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
       # Only the wireframe-only leg runs tests here. The sqlite and postgres
