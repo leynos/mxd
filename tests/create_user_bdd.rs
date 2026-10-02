@@ -16,7 +16,7 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
-use rstest_bdd_macros::{given, scenarios, then, when};
+use rstest_bdd_macros::{given, scenario, then, when};
 use tempfile::TempDir;
 
 #[derive(Debug, Clone)]
@@ -203,8 +203,16 @@ fn then_failure(world: &CreateUserWorld, message: String) {
     world.assert_failure_contains(&message);
 }
 
-scenarios!(
-    "tests/features/create_user_command.feature",
-    runtime = "tokio-current-thread",
-    fixtures = [world: CreateUserWorld]
-);
+#[scenario(
+    path = "tests/features/create_user_command.feature",
+    name = "successful create-user invocation"
+)]
+#[tokio::test(flavor = "current_thread")]
+async fn successful_create_user_invocation(_world: CreateUserWorld) {}
+
+#[scenario(
+    path = "tests/features/create_user_command.feature",
+    name = "create-user rejects missing password"
+)]
+#[tokio::test(flavor = "current_thread")]
+async fn create_user_rejects_missing_password(_world: CreateUserWorld) {}

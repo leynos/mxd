@@ -21,6 +21,9 @@
     ".terraform/**",
     ".uv-cache/**",
     "memories/**",
-    "CRUSH.md"
+    "CRUSH.md",
+    // Byte-for-byte upstream copies, validated by provenance checksums.
+    "docs/rstest-bdd-users-guide.md",
+    "docs/rstest-bdd-v0-6-0-migration-guide.md"
   ]
 }

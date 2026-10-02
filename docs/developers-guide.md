@@ -212,15 +212,29 @@ test reliability and throughput without changing test semantics.
 
 ## Behavioural testing strategy
 
-The behavioural suite uses `rstest-bdd` v0.5.0 in both the root crate and
+The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
 `crates/mxd-verification`.
 
-- Prefer `scenarios!` bindings to a specific `.feature` file rather than manual
-  repeated `#[scenario(index = ...)]` stubs.
-- Use `fixtures = [name: Type]` on `scenarios!` so shared world fixtures are
-  injected consistently into step definitions.
-- Prefer async behavioural scenarios for async-sensitive suites:
-  `runtime = "tokio-current-thread"` with `async fn` step handlers where async
+- Keep ordinary synchronous scenarios on the default harness. Use
+  `scenarios!` bindings to a specific `.feature` file and
+  `fixtures = [name: Type]` for consistent shared-world injection.
+- For immediately ready async steps, select the canonical
+  `harness = rstest_bdd_harness_tokio::TokioHarness`. The obsolete
+  `runtime = "tokio-current-thread"` selector is no longer used.
+- `TokioHarness` polls each async step once. A step yielding `Pending` fails,
+  so `create_user_bdd`, `wireframe_handshake_metadata`, and
+  `wireframe_transaction_encoding` use named
+  `#[scenario(path = "…", name = "…")]` bindings under external
+  `#[tokio::test(flavor = "current_thread")]` async tests. These tests await
+  each step and permit socket I/O, timers, and scheduling without nesting
+  runtimes. This follows the published 0.6.0 API while upstream issue
+  [#820](https://github.com/leynos/rstest-bdd/issues/820) remains relevant.
+- `tests/bdd_binding_coverage.rs` compares feature scenario names with those
+  explicit bindings. Add a binding when adding a scenario; the coverage check
+  rejects omitted, duplicated, or stale names.
+- `tests/rstest_bdd_migration.rs` exercises aliased errors and returned values,
+  deliberate underscore fixture keys, and a genuinely suspending step.
+- Prefer async behavioural scenarios for async-sensitive suites where async
   I/O is exercised and fixture setup does not rely on embedded PostgreSQL
   cluster bootstrapping.
 - For suites that must initialize embedded PostgreSQL fixtures, keep step
