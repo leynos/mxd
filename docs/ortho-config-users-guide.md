@@ -1,5 +1,12 @@
 # OrthoConfig user's guide
 
+> **Historical background:** this bundled guide describes the OrthoConfig
+> v0.6-era API and examples. MXD's integration targets OrthoConfig v0.9.0;
+> use the
+> [tagged v0.9.0 documentation](https://github.com/leynos/ortho-config/tree/v0.9.0/docs)
+> and the [MXD users' guide](users-guide.md) for current behaviour. Do not use
+> the dependency versions or migration instructions below as current guidance.
+
 `OrthoConfig` is a Rust library that unifies command‑line arguments,
 environment variables and configuration files into a single, strongly typed
 configuration struct. It is inspired by tools such as `esbuild` and is designed

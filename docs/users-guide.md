@@ -135,6 +135,19 @@ When `--migration-timeout-secs` is unset, startup uses the built-in default
 migration timeout. A value of `0` is normalized back to that default rather
 than disabling the watchdog.
 
+Configuration values follow this precedence: built-in defaults, discovered
+configuration files, environment variables, then explicitly supplied global CLI
+options. TOML is the baseline file format. JSON5 and YAML are opt-in formats;
+YAML follows YAML 1.2 scalar rules, so `yes`, `no`, `on`, and `off` remain
+strings, `true` and `false` are booleans, and duplicate mapping keys are
+errors. A path selected with `--config-path` is required to load; failure to
+read or parse it is reported before runtime services start.
+
+The `MXD_CONFIG_PATH` environment selector participates in optional discovery:
+a later valid candidate can succeed after its failure. If no candidate succeeds
+and discovery records a malformed or unreadable file, loading fails. The
+`--config-path` selector requires the chosen file to load successfully.
+
 ## File metadata baseline
 
 Roadmap item 3.1.1 is an internal schema milestone rather than a new protocol
@@ -158,17 +171,28 @@ and `docs/file-sharing-design.md`.
 
 ## Creating users
 
-The `create-user` subcommand now runs entirely inside the library so that it is
-available to every binary. Supply both `--username` and `--password`; missing
-values produce the same `missing username`/`missing password` errors that the
-new `rstest-bdd` scenarios cover. Example:
+The `create-user` subcommand is available to both server binaries. Username and
+password are positional arguments. Global options go before the command; use
+`--` when a positional credential could otherwise be parsed as an option or
+command token. Missing effective credentials are reported before database work.
+Example:
 
 ```sh
-cargo run --bin mxd -- create-user --username alice --password secret
+cargo run --bin mxd -- --database mxd.db create-user -- alice 'example password'
 ```
 
-The command runs pending migrations before inserting the user. Errors bubble up
-unchanged, so the shell exit code remains reliable in automation scripts.
+The selected command configuration is loaded from the `[cmds.cli-defs]`
+namespace in conventional `.mxd.toml`, `.mxd.json5`, or `.mxd.yaml` files for
+enabled formats. Administrative discovery searches home, platform config
+directories, and the working directory and merges the focused section from each
+existing file. Server selectors `--config-path` and `MXD_CONFIG_PATH` are not
+forwarded to this separate subcommand discovery path. Its environment variables
+are `MXD_CMDS_CLI_DEFS_USERNAME` and `MXD_CMDS_CLI_DEFS_PASSWORD`. The
+precedence is configuration file, environment and then supplied positional
+values. The CLI password remains excluded from serialization and is restored
+explicitly after merging. The command runs pending migrations before inserting
+the user. Errors bubble up unchanged, so the shell exit code remains reliable
+in automation scripts.
 
 ## Testing against PostgreSQL
 

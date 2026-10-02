@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres test-cli-defs check-config-msrv
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -120,6 +120,21 @@ check-fmt: ## Verify formatting for Rust and Markdown sources
 
 check-locked: ## Refuse a lockfile the manifest does not admit
 	$(CARGO) metadata --locked --format-version 1 >/dev/null
+
+# Explicit format names avoid conflating these checks with backend all-features.
+test-cli-defs: ## Exercise the shared runtime/build CLI package in isolation
+	$(CARGO) test --locked -p cli-defs
+	$(CARGO) test --locked -p cli-defs --no-default-features
+	$(CARGO) test --locked -p cli-defs --no-default-features --features toml
+	$(CARGO) test --locked -p cli-defs --no-default-features --features json5
+	$(CARGO) test --locked -p cli-defs --no-default-features --features yaml
+	$(CARGO) test --locked -p cli-defs --no-default-features --features "toml json5 yaml"
+
+check-config-msrv: ## Validate configuration and build consumers at their compiler floors
+	$(CARGO) +1.89.0 check --locked -p cli-defs --all-targets --no-default-features --features "toml json5 yaml"
+	$(CARGO) +1.92.0 check --locked --all-targets $(TEST_POSTGRES_FEATURES)
+	$(CARGO) +1.92.0 check --locked --all-targets $(TEST_SQLITE_FEATURES)
+	$(CARGO) +1.92.0 check --locked --all-targets $(WIREFRAME_ONLY_FEATURES)
 
 test-workflow-contracts: ## Assert the CI workflows place and gate what they claim
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(WORKFLOW_CONTRACT_SRCS)
