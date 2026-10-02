@@ -249,7 +249,7 @@ cfg_if! {
         /// # Errors
         ///
         /// Returns any error produced by Diesel while running migrations.
-        /// Returns a wrapped [`MigrationTimeoutError`] when the watchdog cancels work
+        /// Returns a wrapped `MigrationTimeoutError` when the watchdog cancels work
         /// that exceeds `timeout_secs`.
         #[must_use = "handle the result"]
         pub async fn run_migrations(
@@ -295,7 +295,7 @@ cfg_if! {
         /// # Errors
         ///
         /// Returns any error produced by Diesel while running migrations.
-        /// Returns a wrapped [`MigrationTimeoutError`] when the watchdog cancels work
+        /// Returns a wrapped `MigrationTimeoutError` when the watchdog cancels work
         /// that exceeds `timeout_secs`.
         #[must_use = "handle the result"]
         pub async fn run_migrations(
@@ -329,7 +329,7 @@ cfg_if! {
 /// # Errors
 ///
 /// Returns any error produced by Diesel while running migrations. Returns a
-/// wrapped [`MigrationTimeoutError`] when the watchdog cancels work that
+/// wrapped `MigrationTimeoutError` when the watchdog cancels work that
 /// exceeds `timeout_secs`.
 #[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
@@ -351,7 +351,7 @@ pub async fn apply_migrations(
 /// # Errors
 ///
 /// Returns any error produced by Diesel while running migrations. Returns a
-/// wrapped [`MigrationTimeoutError`] when the watchdog cancels work that
+/// wrapped `MigrationTimeoutError` when the watchdog cancels work that
 /// exceeds `timeout_secs`.
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 #[must_use = "handle the result"]

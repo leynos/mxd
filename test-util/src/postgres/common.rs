@@ -90,7 +90,7 @@ impl DatabaseName {
     }
 }
 
-/// Error type for [`PostgresTestDb::new`].
+/// Error type for [`PostgresTestDb::new`](super::PostgresTestDb::new).
 ///
 /// There is no "unavailable" outcome: every `PostgreSQL` test runs against an
 /// embedded cluster, so a cluster that cannot be bootstrapped is a failure to
