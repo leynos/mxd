@@ -14,8 +14,15 @@ concurrency:
 
 jobs:
   docs-tooling:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
+    # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
+    # Ubicloud coverage-upload writes the cache scope this reads.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    # Ceiling: twice the slowest observed run, rounded up to 5 (5 min, run 36971925629 on
+    # this lane's first Ubicloud run). Provisional: the run restored the cargo registry
+    # cache but found no compiled-artefact cache, so it is close to a cold build, and
+    # it is resized from three green runs of this shape.
+    timeout-minutes: 15
     permissions:
       contents: read
     env:
@@ -63,8 +70,15 @@ jobs:
         run: make nixie
 
   build-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
+    # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
+    # Ubicloud coverage-upload writes the cache scope this reads.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    # Ceiling: twice the slowest observed run, rounded up to 5 (24 min, the wireframe-only leg, run 36971925629 on
+    # this lane's first Ubicloud run). Provisional: the run restored the cargo registry
+    # cache but found no compiled-artefact cache, so it is close to a cold build, and
+    # it is resized from three green runs of this shape.
+    timeout-minutes: 50
     strategy:
       matrix:
         include:
@@ -156,8 +170,15 @@ jobs:
         run: test "${{ needs.build-test.result }}" = success
 
   validator-sqlite:
-    runs-on: ubuntu-latest
-    timeout-minutes: 27
+    # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
+    # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
+    # Ubicloud coverage-upload writes the cache scope this reads.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    # Ceiling: twice the slowest observed run, rounded up to 5 (8 min, run 36971925629 on
+    # this lane's first Ubicloud run). Provisional: the run restored the cargo registry
+    # cache but found no compiled-artefact cache, so it is close to a cold build, and
+    # it is resized from three green runs of this shape.
+    timeout-minutes: 20
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
@@ -191,7 +212,14 @@ jobs:
         run: make test-validator-sqlite
 
   coverage:
-    runs-on: ubuntu-latest
+    # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
+    # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
+    # Ubicloud coverage-upload writes the cache scope this reads.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    # Ceiling: twice the slowest observed run, rounded up to 5 (28 min, run 36971925629 on
+    # this lane's first Ubicloud run). Provisional: the run restored the cargo registry
+    # cache but found no compiled-artefact cache, so it is close to a cold build, and
+    # it is resized from three green runs of this shape.
     timeout-minutes: 60
     env:
       CARGO_TERM_COLOR: always

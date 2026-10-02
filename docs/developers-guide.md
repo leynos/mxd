@@ -746,9 +746,10 @@ make test
 
 ## Runner placement
 
-`coverage-main.yml`'s `coverage-upload`, main's only cache writer, runs on
-`ubicloud-standard-2`. `runs-on` selects it with the runner-selection
-expression:
+`coverage-main.yml`'s `coverage-upload`, main's only cache writer, and
+`ci.yml`'s `docs-tooling`, `build-test`, `validator-sqlite` and `coverage` run
+on `ubicloud-standard-2`; `build-test-result`, a trivial aggregate, stays
+hosted. `runs-on` selects it with the runner-selection expression:
 
 ```yaml
 runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
@@ -766,6 +767,11 @@ every main push.
 An Ubicloud runner is a self-hosted just-in-time runner, so GitHub's six-hour
 cap for hosted jobs does not bound it; `coverage-upload` keeps its 65-minute
 ceiling, which the embedded-PostgreSQL leg needs, until Ubicloud runs size it.
+The `ci.yml` lanes' ceilings are provisional: twice the slowest leg of run
+36971925629, their first Ubicloud run (`docs-tooling` 15, `build-test` 50,
+`validator-sqlite` 20, `coverage` 60), rounded up to 5. That run restored the
+cargo registry cache but found no compiled-artefact cache, so it is close to a
+cold build, and the ceilings are resized from three green runs of the new shape.
 `tests/workflow_contracts/test_runner_placement.py` pins the labels of every
 lane in both directions and requires each conditional placement to be guarded
 by the fork test with the hosted arm first, so a pair under another guard fails.
