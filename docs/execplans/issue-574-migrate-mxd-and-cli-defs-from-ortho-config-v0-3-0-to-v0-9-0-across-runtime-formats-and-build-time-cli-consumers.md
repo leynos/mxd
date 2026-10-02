@@ -60,7 +60,8 @@ arbitrary time or file-count limit applies to the authorized migration.
   wire their conditional CI calls.
 - [ ] M1: run canonical code and documentation gates, commit, and clear
   `coderabbit review --agent` concerns. Deterministic gates are complete;
-  commit and review remain pending.
+  migration committed as b5d6886; one documentation review concern is being
+  addressed before completing M1.
 - [x] (2026-10-02) Complete isolated format/build-time/compiler evidence and
   current configuration documentation; include these checks in M1 review.
 - [ ] M2: record review dispositions and publication evidence; gate and commit
@@ -113,8 +114,9 @@ arbitrary time or file-count limit applies to the authorized migration.
 ## Outcomes & retrospective
 
 Implementation and isolated format/compiler/build-time validation are complete.
-All canonical deterministic gates pass. Migration commit, CodeRabbit review,
-and publication remain pending; hosted CI has not run for this branch.
+All canonical deterministic gates pass. Migration commit b5d6886 is complete.
+CodeRabbit completed with one minor documentation concern; its correction and
+follow-up review precede publication. Hosted CI has not run for this branch.
 
 ## Context and orientation
 
@@ -381,3 +383,12 @@ Revision note (2026-10-02): isolated/compiler/documentation evidence was
 completed before the first major review, strengthening M1's validation rather
 than postponing compatibility checks until M2. Review and publication are the
 remaining work.
+
+## Review dispositions
+
+CodeRabbit completed the M1 review of all 29 changed files, matching the
+`origin/main` diff despite reporting `main` in its metadata. Its sole finding
+requested third-person phrasing for the explicit file selector in the design
+guide. The correction preserves the required-file semantics; no runtime or test
+changes are needed. Receipt: `/tmp/mxd-574-review-m1.out`. Documentation gates
+and follow-up review must pass before M1 is marked complete.
