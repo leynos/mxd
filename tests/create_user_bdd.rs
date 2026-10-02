@@ -203,10 +203,16 @@ fn then_failure(world: &CreateUserWorld, message: String) {
     world.assert_failure_contains(&message);
 }
 
-#[scenario(path = "tests/features/create_user_command.feature", index = 0)]
+#[scenario(
+    path = "tests/features/create_user_command.feature",
+    name = "successful create-user invocation"
+)]
 #[tokio::test(flavor = "current_thread")]
-async fn successful_create_user_invocation(world: CreateUserWorld) { let _ = world; }
+async fn successful_create_user_invocation(_world: CreateUserWorld) {}
 
-#[scenario(path = "tests/features/create_user_command.feature", index = 1)]
+#[scenario(
+    path = "tests/features/create_user_command.feature",
+    name = "create-user rejects missing password"
+)]
 #[tokio::test(flavor = "current_thread")]
-async fn create_user_rejects_missing_password(world: CreateUserWorld) { let _ = world; }
+async fn create_user_rejects_missing_password(_world: CreateUserWorld) {}

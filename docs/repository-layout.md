@@ -95,8 +95,12 @@ Documentation is organized by purpose and audience.
 - `pg-embed-setup-unpriv-v0-5-0-migration-guide.md` — Migration guide for
   PostgreSQL helper v0.5.0.
 - `rstest-bdd-users-guide.md` — Behaviour-driven testing guide.
-- `rstest-bdd-v0-5-0-migration-guide.md` — Migration guide for rstest-bdd
-  v0.5.0.
+- `rstest-bdd-v0-5-0-migration-guide.md` — Historical migration guide for
+  rstest-bdd v0.5.0.
+- `rstest-bdd-v0-6-0-migration-guide.md` — Immutable upstream v0.6.0 guide.
+- `rstest-bdd-v0-6-0-provenance.md` — Import provenance and local migration
+  evidence.
+- `rstest-bdd-v0-6-0-link-map.json` — Upstream relative-link destinations.
 - `rust-testing-with-rstest-fixtures.md` — Testing patterns with rstest.
 - `rust-doctest-dry-guide.md` — Doctest patterns guide.
 - `whitaker-users-guide.md` — Whitaker component guide.

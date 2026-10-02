@@ -1,0 +1,71 @@
+{
+  "upstream_repository": "leynos/rstest-bdd",
+  "commit": "72fb22635670e456545ca368805ba4c1c9d7bd69",
+  "links": [
+    {
+      "document": "docs/rstest-bdd-users-guide.md",
+      "original_link": "v0-6-0-migration-guide.md#migrate-a-stateful-gpui-test",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/v0-6-0-migration-guide.md#migrate-a-stateful-gpui-test"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "adr-006-fallible-scenario-functions.md",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/adr-006-fallible-scenario-functions.md"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "adr-007-harness-context-injection.md",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/adr-007-harness-context-injection.md"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "adr-009-consistent-implicit-fixture-name-normalization.md",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/adr-009-consistent-implicit-fixture-name-normalization.md"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "adr-012-guard-based-stepcontext-borrowing.md",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/adr-012-guard-based-stepcontext-borrowing.md"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "developers-guide.md",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/developers-guide.md"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "rstest-bdd-design.md",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "rstest-bdd-design.md#2761-borrow-constraint-exposed-by-gpui-adoption",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md#2761-borrow-constraint-exposed-by-gpui-adoption"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "rstest-bdd-design.md#2762-interim-gpui-state-pattern",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md#2762-interim-gpui-state-pattern"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "rstest-bdd-design.md#2763-v060-beta2-quick-wins",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md#2763-v060-beta2-quick-wins"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "rstest-bdd-design.md#2765-v070-pre-100-redesign",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md#2765-v070-pre-100-redesign"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "users-guide.md#published-gpui-022-stateful-step-variants",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/users-guide.md#published-gpui-022-stateful-step-variants"
+    },
+    {
+      "document": "docs/rstest-bdd-v0-6-0-migration-guide.md",
+      "original_link": "users-guide.md#stateful-gpui-scenarios-with-durable-handles",
+      "upstream_link": "https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/users-guide.md#stateful-gpui-scenarios-with-durable-handles"
+    }
+  ]
+}
