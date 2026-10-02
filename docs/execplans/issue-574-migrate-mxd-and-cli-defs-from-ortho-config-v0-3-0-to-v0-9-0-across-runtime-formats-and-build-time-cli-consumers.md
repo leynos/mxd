@@ -1,6 +1,6 @@
 # Migrate MXD configuration to OrthoConfig v0.9.0
 
-Status: IN PROGRESS
+Status: IMPLEMENTED; final publication receipt under review
 
 ## Purpose / big picture
 
@@ -58,15 +58,14 @@ arbitrary time or file-count limit applies to the authorized migration.
   parsed-CLI resolver, and configuration regression coverage.
 - [x] (2026-10-02) Add `make test-cli-defs` and `make check-config-msrv`, and
   wire their conditional CI calls.
-- [ ] M1: run canonical code and documentation gates, commit, and clear
-  `coderabbit review --agent` concerns. Deterministic gates are complete;
-  migration committed as b5d6886; one documentation review concern is being
-  addressed before completing M1.
+- [x] (2026-10-02) M1: complete canonical gates, commit the migration, and
+  clear CodeRabbit concerns. Final review of all 29 files has zero findings.
 - [x] (2026-10-02) Complete isolated format/build-time/compiler evidence and
-  current configuration documentation; include these checks in M1 review.
-- [ ] M2: record review dispositions and publication evidence; gate and commit
-  any required follow-up changes, then clear CodeRabbit concerns.
-- [ ] Push and create a draft PR closing #574 with the Lody session reference.
+  current configuration documentation before the M1 review.
+- [x] (2026-10-02) Publish the exact reviewed commit and create draft PR #614
+  closing #574 with the Lody reference.
+- [ ] M2: gate, commit, and review this final publication receipt; publish the
+  reviewed documentation update.
 
 ## Surprises & discoveries
 
@@ -114,9 +113,10 @@ arbitrary time or file-count limit applies to the authorized migration.
 ## Outcomes & retrospective
 
 Implementation and isolated format/compiler/build-time validation are complete.
-All canonical deterministic gates pass. Migration commit b5d6886 is complete.
-CodeRabbit completed with one minor documentation concern; its correction and
-follow-up review precede publication. Hosted CI has not run for this branch.
+All canonical deterministic gates pass. The final M1 CodeRabbit review against
+b52f971 completed with zero findings at commit 8c28ff6. Draft PR #614 contains
+the complete migration. Hosted CI remains separate from this local evidence.
+The final documentation receipt is the remaining M2 checkpoint.
 
 ## Context and orientation
 
@@ -399,3 +399,18 @@ minor prose issues: the matching selector sentence in the users' guide and a
 neither/nor construction in this plan. Both are corrected without changing
 configuration behaviour. Receipt: `/tmp/mxd-574-review-m1-followup.out`. The
 follow-up documentation gates and review remain the publication condition.
+
+## Publication receipt
+
+The final M1 review completed with zero findings across all 29 changed files
+(`/tmp/mxd-574-review-m1-final.out`). The connected GitHub app published the
+exact commit 8c28ff6b3cea973588ee7bdc4f0512ec4d07e6ab, preserving all five
+local commits after Git's OAuth credential rejected the workflow update for
+missing workflow scope. No source or history rewrite was required.
+
+Draft [PR #614](https://github.com/leynos/mxd/pull/614) targets main at
+b52f971, includes `Closes #574`, and ends with the required Lody session
+reference. The remote branch and PR head match the reviewed local commit.
+Hosted CI status is reported separately in the PR rather than implied by the
+local gate receipt. M2 consists only of this living-plan closeout; its
+documentation gates and review must complete before its final push.
