@@ -767,6 +767,11 @@ every main push.
 An Ubicloud runner is a self-hosted just-in-time runner, so GitHub's six-hour
 cap for hosted jobs does not bound it; `coverage-upload` keeps its 65-minute
 ceiling, which the embedded-PostgreSQL leg needs, until Ubicloud runs size it.
+The `ci.yml` lanes' ceilings are provisional: twice the slowest leg of run
+36971925629, their first Ubicloud run (`docs-tooling` 15, `build-test` 50,
+`validator-sqlite` 20, `coverage` 60), rounded up to 5. That run restored the
+cargo registry cache but found no compiled-artefact cache, so it is close to a
+cold build, and the ceilings are resized from three green runs of the new shape.
 `tests/workflow_contracts/test_runner_placement.py` pins the labels of every
 lane in both directions and requires each conditional placement to be guarded
 by the fork test with the hosted arm first, so a pair under another guard fails.

@@ -114,10 +114,10 @@ def is_external_call(calls: str) -> bool:
 PINNED_CEILINGS: typ.Final[cabc.Mapping[tuple[str, str], int]] = {
     ("audit.yml", "audit"): 20,
     ("build-and-package.yml", "build"): 45,
-    ("ci.yml", "docs-tooling"): 25,
-    ("ci.yml", "build-test"): 45,
+    ("ci.yml", "docs-tooling"): 15,
+    ("ci.yml", "build-test"): 50,
     ("ci.yml", "build-test-result"): 5,
-    ("ci.yml", "validator-sqlite"): 27,
+    ("ci.yml", "validator-sqlite"): 20,
     ("ci.yml", "coverage"): 60,
     ("coverage-main.yml", "coverage-upload"): 65,
     ("fuzz.yml", "fuzz"): 360,
