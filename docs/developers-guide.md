@@ -744,6 +744,32 @@ make lint
 make test
 ```
 
+## Runner placement
+
+`coverage-main.yml`'s `coverage-upload`, main's only cache writer, runs on
+`ubicloud-standard-2`. `runs-on` selects it with the runner-selection
+expression:
+
+```yaml
+runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+```
+
+A pull request from a fork cannot obtain an Ubicloud runner, so it falls back to
+`ubuntu-latest`; a push and a dispatch have no pull request, so the fork value
+is null and they select Ubicloud. Ubicloud's cache proxy is scoped by ref, so a
+pull request's Ubicloud lane reads a warm main scope only when a main job on
+Ubicloud writes it: the writer moves first, and the `ci.yml` lanes follow. A
+fork's pull request restores a hosted cache that main no longer refreshes; fork
+pull requests are rare here, and a second hosted writer would pay double on
+every main push.
+
+An Ubicloud runner is a self-hosted just-in-time runner, so GitHub's six-hour
+cap for hosted jobs does not bound it; `coverage-upload` keeps its 65-minute
+ceiling, which the embedded-PostgreSQL leg needs, until Ubicloud runs size it.
+`tests/workflow_contracts/test_runner_placement.py` pins the labels of every
+lane in both directions and requires each conditional placement to be guarded
+by the fork test with the hosted arm first, so a pair under another guard fails.
+
 ## CodeScene coverage is owned by `main`
 
 `coverage-main.yml` runs on a push to `main` and uploads the merged lcov report

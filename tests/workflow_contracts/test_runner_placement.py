@@ -33,10 +33,11 @@ from ci_workflow_reader import repository_documents
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
-# Every job that declares its own steps, with the label it runs on. Nothing
-# here is paid for: the repository has not migrated any lane to a paid
-# provider, so a label outside this set is either a migration nobody pinned or
-# a typo GitHub would queue forever.
+# Every job that declares its own steps, with the label it runs on. A pair is
+# a conditional placement, guarded arm first: the hosted fallback a fork's pull
+# request takes, then the Ubicloud runner everything else selects. A label
+# outside this set is either a migration nobody pinned or a typo GitHub would
+# queue forever.
 PINNED_PLACEMENTS: typ.Final[cabc.Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("audit.yml", "audit"): ("ubuntu-latest",),
     ("ci.yml", "docs-tooling"): ("ubuntu-latest",),
@@ -44,7 +45,7 @@ PINNED_PLACEMENTS: typ.Final[cabc.Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("ci.yml", "build-test-result"): ("ubuntu-latest",),
     ("ci.yml", "validator-sqlite"): ("ubuntu-latest",),
     ("ci.yml", "coverage"): ("ubuntu-latest",),
-    ("coverage-main.yml", "coverage-upload"): ("ubuntu-latest",),
+    ("coverage-main.yml", "coverage-upload"): ("ubuntu-latest", "ubicloud-standard-2"),
     ("fuzz.yml", "fuzz"): ("ubuntu-latest",),
     ("loom-check.yml", "check"): ("ubuntu-latest",),
     ("loom.yml", "models"): ("ubuntu-latest",),
