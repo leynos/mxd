@@ -145,8 +145,8 @@ read or parse it is reported before runtime services start.
 
 The `MXD_CONFIG_PATH` environment selector participates in optional discovery:
 a later valid candidate can succeed after its failure. If no candidate succeeds
-and discovery records a malformed or unreadable file, loading fails. Use
-`--config-path` when a chosen file must load successfully.
+and discovery records a malformed or unreadable file, loading fails. The
+`--config-path` selector requires the chosen file to load successfully.
 
 ## File metadata baseline
 

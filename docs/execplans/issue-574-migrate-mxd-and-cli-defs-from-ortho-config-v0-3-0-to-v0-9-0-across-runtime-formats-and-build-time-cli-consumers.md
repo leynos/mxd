@@ -362,8 +362,9 @@ validation, Makefile validation, workflow contracts (172 tests), verification
 
 Pre-existing public rustdoc links were repaired in documentation-only commit
 2bea181. The pinned Markdown gate regenerated spelling configuration in
-separate commit 88f0649; that generated file was not hand-edited. Neither
-prerequisite changes runtime behaviour or refreshes unrelated dependencies.
+separate commit 88f0649; that generated file was not hand-edited. These
+prerequisite commits neither change runtime behaviour nor refresh unrelated
+dependencies.
 
 Actual before/after graph evidence is in `/tmp/mxd-574-before-features.out` and
 `/tmp/mxd-574-graph-{pg,sqlite,wireframe}-{base,formats}.out`. Every MXD-owned
@@ -392,3 +393,9 @@ requested third-person phrasing for the explicit file selector in the design
 guide. The correction preserves the required-file semantics; no runtime or test
 changes are needed. Receipt: `/tmp/mxd-574-review-m1.out`. Documentation gates
 and follow-up review must pass before M1 is marked complete.
+
+The explicit-base follow-up review completed against b52f971 and reported two
+minor prose issues: the matching selector sentence in the users' guide and a
+neither/nor construction in this plan. Both are corrected without changing
+configuration behaviour. Receipt: `/tmp/mxd-574-review-m1-followup.out`. The
+follow-up documentation gates and review remain the publication condition.
