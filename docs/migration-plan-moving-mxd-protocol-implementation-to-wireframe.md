@@ -156,8 +156,7 @@ the message type.
   logic:
 
 - Parse the request’s payload into high-level parameters. You can leverage
-  `mxd`’s parameter decoding helpers like `decode_params_map` and
-  field-specific extractors (e.g. `first_param_string`) to interpret the
+  `mxd`’s `decode_params_map` helper and `first_param_string` to interpret the
   payload [^20][^21].
 
 - Invoke the same processing routines `mxd` used. For example, use or port the

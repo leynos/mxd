@@ -196,10 +196,12 @@ The complete sequential validation passed:
   installed by the repository script with its published checksum verification.
 - `make audit`: passed with the existing warnings detailed below.
 
-Formatting uses CI's trusted mdtablefix 0.6.0 release binary, rather than
-allowing the host's 0.6.1 formatter to introduce unrelated table changes.
-Imported-document checksums remain unchanged after formatting and all gates.
-Every logged pipeline preserves the command's exit status. Logs reside at
+Initial formatting checks used CI's trusted mdtablefix 0.6.0 binary. The
+post-turn hook uses the host's 0.6.1 version and exposed three existing
+formatting differences in owned historical/design documents. A follow-up
+repairs their Markdown structure and wrapping so both versions accept the same
+text. The immutable guides remain excluded and checksum-verified. Every logged
+pipeline preserves the command's exit status. Logs reside at
 `/tmp/mxd-migration-<target>.out`; baseline evidence is at
 `/tmp/mxd-baseline-test.out`. Compiler identities, final metadata, and the
 three nextest inventories are stored under `/tmp/mxd-migration-*`.
