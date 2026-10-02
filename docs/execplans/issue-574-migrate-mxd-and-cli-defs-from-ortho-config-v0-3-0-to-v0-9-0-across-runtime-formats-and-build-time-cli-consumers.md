@@ -1,6 +1,6 @@
 # Migrate MXD configuration to OrthoConfig v0.9.0
 
-Status: IMPLEMENTED; final publication receipt under review
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -64,8 +64,9 @@ arbitrary time or file-count limit applies to the authorized migration.
   current configuration documentation before the M1 review.
 - [x] (2026-10-02) Publish the exact reviewed commit and create draft PR #614
   closing #574 with the Lody reference.
-- [ ] M2: gate, commit, and review this final publication receipt; publish the
-  reviewed documentation update.
+- [x] (2026-10-02) M2: gate and commit the final publication receipt as
+  83385b5; CodeRabbit reviewed that plan-only change with zero findings.
+  Publish its administrative completion stamp with the reviewed receipt.
 
 ## Surprises & discoveries
 
@@ -116,7 +117,8 @@ Implementation and isolated format/compiler/build-time validation are complete.
 All canonical deterministic gates pass. The final M1 CodeRabbit review against
 b52f971 completed with zero findings at commit 8c28ff6. Draft PR #614 contains
 the complete migration. Hosted CI remains separate from this local evidence.
-The final documentation receipt is the remaining M2 checkpoint.
+The final M2 documentation receipt also passed review with zero findings.
+Implementation, validation, review, and draft publication are complete.
 
 ## Context and orientation
 
@@ -412,5 +414,8 @@ Draft [PR #614](https://github.com/leynos/mxd/pull/614) targets main at
 b52f971, includes `Closes #574`, and ends with the required Lody session
 reference. The remote branch and PR head match the reviewed local commit.
 Hosted CI status is reported separately in the PR rather than implied by the
-local gate receipt. M2 consists only of this living-plan closeout; its
-documentation gates and review must complete before its final push.
+local gate receipt. M2 consists only of this living-plan closeout. Its
+documentation gates passed, and CodeRabbit completed the one-file review of
+83385b5 against 8c28ff6 with zero findings (`/tmp/mxd-574-review-m2.out`). This
+administrative completion stamp records those existing results; it adds no
+implementation or compatibility changes.
