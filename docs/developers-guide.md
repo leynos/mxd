@@ -776,13 +776,22 @@ cold build, and the ceilings are resized from three green runs of the new shape.
 Each of those four lanes ends with a `Record the lane's placement` step, under
 `always()` so a failing lane is recorded too. It writes the lane, the runner
 and its environment, the event, the fork flag, the status so far and whether
-the lane's cache restored (`cache-hit`) to the job summary.
+the lane's cache had an exact hit (`cache-hit`; a partial restore reports
+`false`) to the job summary.
 `tests/workflow_contracts/test_lane_placement_record.py` holds the step, its
-condition and its inputs to the file. Queue wait and duration are not knowable
-from inside a job; read them from the jobs API, as the placement pull requests
-did: queue wait is `started_at` less the later of `created_at` and the last
-completion among the jobs it needs, and duration is `completed_at` less
-`started_at`.
+condition, each input's exact expression, the cache step it reads and the
+rendered summary to the file. Queue wait and duration are not knowable from
+inside a job, so read them from the API, as the placement pull requests did:
+
+- The workflow-jobs API, `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs`,
+  gives each job's `started_at` and `completed_at`, so duration is
+  `completed_at` less `started_at`. Its response also carries a `created_at`
+  that the API's documented schema does not list, so the method below does not
+  rely on it where the run object will do.
+- The workflow-run API, `GET /repos/{owner}/{repo}/actions/runs/{run_id}`,
+  gives the run's `created_at`. Queue wait is the job's `started_at` less the
+  later of the run's `created_at` and the last `completed_at` among the jobs it
+  needs.
 
 `tests/workflow_contracts/test_runner_placement.py` pins the labels of every
 lane in both directions and requires each conditional placement to be guarded

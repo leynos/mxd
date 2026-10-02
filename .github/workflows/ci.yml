@@ -88,7 +88,7 @@ jobs:
             printf '### Lane placement\n\n'
             printf -- '- lane: %s\n- runner: %s (%s)\n' "${LANE}" "${RUNNER_LABEL}" "${RUNNER_ENVIRONMENT}"
             printf -- '- event: %s, fork: %s\n' "${EVENT}" "${FORK}"
-            printf -- '- cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
+            printf -- '- exact cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   build-test:
@@ -202,7 +202,7 @@ jobs:
             printf '### Lane placement\n\n'
             printf -- '- lane: %s (%s)\n- runner: %s (%s)\n' "${LANE}" "${MATRIX_LEG}" "${RUNNER_LABEL}" "${RUNNER_ENVIRONMENT}"
             printf -- '- event: %s, fork: %s\n' "${EVENT}" "${FORK}"
-            printf -- '- cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
+            printf -- '- exact cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   build-test-result:
@@ -278,7 +278,7 @@ jobs:
             printf '### Lane placement\n\n'
             printf -- '- lane: %s\n- runner: %s (%s)\n' "${LANE}" "${RUNNER_LABEL}" "${RUNNER_ENVIRONMENT}"
             printf -- '- event: %s, fork: %s\n' "${EVENT}" "${FORK}"
-            printf -- '- cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
+            printf -- '- exact cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   coverage:
@@ -394,5 +394,5 @@ jobs:
             printf '### Lane placement\n\n'
             printf -- '- lane: %s\n- runner: %s (%s)\n' "${LANE}" "${RUNNER_LABEL}" "${RUNNER_ENVIRONMENT}"
             printf -- '- event: %s, fork: %s\n' "${EVENT}" "${FORK}"
-            printf -- '- cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
+            printf -- '- exact cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
           } >> "${GITHUB_STEP_SUMMARY}"

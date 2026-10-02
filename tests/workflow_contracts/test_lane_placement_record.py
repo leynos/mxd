@@ -10,6 +10,10 @@ job; the jobs API supplies them.
 
 from __future__ import annotations
 
+import os
+import pathlib
+import subprocess
+import tempfile
 import typing as typ
 
 import pytest
@@ -23,16 +27,26 @@ RECORDED_LANES: typ.Final = (
     "coverage",
 )
 STEP_NAME: typ.Final = "Record the lane's placement"
-#: What the step must carry, as the values it reads from the run.
-REQUIRED_ENV: typ.Final = (
-    "LANE",
-    "RUNNER_ENVIRONMENT",
-    "RUNNER_LABEL",
-    "EVENT",
-    "FORK",
-    "JOB_STATUS",
-    "CACHE_HIT",
-)
+#: The exact expression each input must bind, for every lane. The cache input
+#: differs by lane: docs-tooling reports its Merman CLI cache, the others the
+#: Rust cache.
+COMMON_ENV: typ.Final = {
+    "LANE": "${{ github.job }}",
+    "RUNNER_ENVIRONMENT": "${{ runner.environment }}",
+    "RUNNER_LABEL": "${{ runner.name }}",
+    "EVENT": "${{ github.event_name }}",
+    "FORK": "${{ github.event.pull_request.head.repo.fork || false }}",
+    "JOB_STATUS": "${{ job.status }}",
+}
+CACHE_STEP: typ.Final = {
+    "docs-tooling": "cache-merman-cli",
+    "build-test": "rust-cache",
+    "validator-sqlite": "rust-cache",
+    "coverage": "rust-cache",
+}
+#: The one lane that is a matrix, and the input naming its leg.
+MATRIX_LANE: typ.Final = "build-test"
+MATRIX_LEG: typ.Final = "${{ matrix.name }}"
 
 
 def _last_step(lane: str) -> dict[str, object]:
@@ -72,10 +86,115 @@ def test_a_moved_lane_ends_by_recording_its_placement(lane: str) -> None:
     assert step.get("if") == "${{ always() }}", (
         f"{lane}: the record must run on failure too, found {step.get('if')!r}"
     )
-    environment = step.get("env")
-    assert isinstance(environment, dict), f"{lane}: the record reads no environment"
-    missing = [name for name in REQUIRED_ENV if name not in environment]
-    assert not missing, f"{lane}: the record omits {missing}"
     assert "GITHUB_STEP_SUMMARY" in str(step.get("run")), (
         f"{lane}: the record must write to the job summary"
     )
+
+
+def _expected_env(lane: str) -> dict[str, str]:
+    """Return the environment a lane's record must bind, expression by expression.
+
+    Parameters
+    ----------
+    lane
+        The job name.
+
+    Returns
+    -------
+    dict[str, str]
+        Input name to the exact expression it must hold.
+    """
+    expected = {
+        **COMMON_ENV,
+        "CACHE_HIT": f"${{{{ steps.{CACHE_STEP[lane]}.outputs.cache-hit }}}}",
+    }
+    if lane == MATRIX_LANE:
+        expected["MATRIX_LEG"] = MATRIX_LEG
+    return expected
+
+
+def _step_ids(lane: str) -> set[object]:
+    """Return the ids of a lane's steps, so a cache reference can be checked.
+
+    Parameters
+    ----------
+    lane
+        The job name.
+
+    Returns
+    -------
+    set[object]
+        Every step id the lane declares.
+    """
+    jobs = repository_documents()["ci.yml"]["jobs"]
+    return {step.get("id") for step in jobs[lane]["steps"]}
+
+
+@pytest.mark.parametrize("lane", RECORDED_LANES)
+def test_each_input_binds_its_exact_expression(lane: str) -> None:
+    """Bind each input to the expression it names, and no other.
+
+    A presence check accepts a wrong fork expression or a cache reference to a
+    step the lane does not have, which would write a confident, false summary.
+
+    Parameters
+    ----------
+    lane
+        The ``ci.yml`` job to read.
+    """
+    environment = _last_step(lane).get("env")
+    assert environment == _expected_env(lane), (
+        f"{lane}: the record binds {environment}, expected {_expected_env(lane)}"
+    )
+    assert CACHE_STEP[lane] in _step_ids(lane), (
+        f"{lane}: the cache input reads step {CACHE_STEP[lane]!r}, which it lacks"
+    )
+    script = str(_last_step(lane).get("run"))
+    unused = [
+        name
+        for name in _expected_env(lane)
+        if f"${{{name}" not in script and f"${name}" not in script
+    ]
+    assert not unused, f"{lane}: the record never reads {unused}"
+
+
+@pytest.mark.parametrize("lane", RECORDED_LANES)
+def test_the_record_renders_every_field_into_the_summary(lane: str) -> None:
+    """Run the step's script and read what it writes, not only what it names.
+
+    Parameters
+    ----------
+    lane
+        The ``ci.yml`` job to read.
+    """
+    script = str(_last_step(lane)["run"])
+    values = {
+        "LANE": lane,
+        "RUNNER_LABEL": "runner-7",
+        "RUNNER_ENVIRONMENT": "self-hosted",
+        "EVENT": "pull_request",
+        "FORK": "false",
+        "JOB_STATUS": "success",
+        "CACHE_HIT": "true",
+        "MATRIX_LEG": "sqlite",
+    }
+    with tempfile.TemporaryDirectory() as scratch:
+        summary = pathlib.Path(scratch) / "summary.md"
+        subprocess.run(  # noqa: S603 - fixed argument vector over repository text
+            ["bash", "-euo", "pipefail", "-c", script],
+            env={**os.environ, **values, "GITHUB_STEP_SUMMARY": str(summary)},
+            check=True,
+        )
+        rendered = summary.read_text(encoding="utf-8")
+    for fragment in (
+        f"lane: {lane}",
+        "runner-7 (self-hosted)",
+        "event: pull_request, fork: false",
+        "exact cache hit: true",
+        "status so far: success",
+    ):
+        assert fragment in rendered, (
+            f"{lane}: the summary lacks {fragment!r}:\n{rendered}"
+        )
+    if lane == MATRIX_LANE:
+        assert "(sqlite)" in rendered, f"{lane}: the summary omits its matrix leg"
