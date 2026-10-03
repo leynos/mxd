@@ -779,9 +779,12 @@ and its environment, the event, the fork flag, the status so far and whether
 the lane's cache had an exact hit (`cache-hit`; a partial restore reports
 `false`) to the job summary.
 `tests/workflow_contracts/test_lane_placement_record.py` holds the step, its
-condition, each input's exact expression, the cache step it reads and the
-rendered summary to the file. Queue wait and duration are not knowable from
-inside a job, so read them from the API, as the placement pull requests did:
+condition, each input's exact expression, the cache step it reads and that
+step's action (`actions/cache` for `docs-tooling`, `Swatinem/rust-cache` for
+the others), and runs the script for a success with a cache hit, a failure with
+a miss and a cancelled job whose cache step never ran (rendered `n/a`). Queue
+wait and duration are not knowable from inside a job, so read them from the
+API, as the placement pull requests did:
 
 - The workflow-jobs API, `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs`,
   gives each job's `started_at` and `completed_at`, so duration is

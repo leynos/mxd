@@ -10,6 +10,7 @@ job; the jobs API supplies them.
 
 from __future__ import annotations
 
+import collections.abc as cabc
 import os
 import pathlib
 import subprocess
@@ -45,41 +46,82 @@ CACHE_STEP: typ.Final = {
     "coverage": "rust-cache",
 }
 #: The one lane that is a matrix, and the input naming its leg.
+#: The action that owns each lane's cache step, so a reference to the cache id
+#: cannot quietly point at some other step that happens to carry the id.
+CACHE_ACTION: typ.Final = {
+    "docs-tooling": "actions/cache@",
+    "build-test": "Swatinem/rust-cache@",
+    "validator-sqlite": "Swatinem/rust-cache@",
+    "coverage": "Swatinem/rust-cache@",
+}
 MATRIX_LANE: typ.Final = "build-test"
 MATRIX_LEG: typ.Final = "${{ matrix.name }}"
 
 
-def _last_step(lane: str) -> dict[str, object]:
+@pytest.fixture(scope="module")
+def documents() -> cabc.Mapping[str, cabc.Mapping[str, object]]:
+    """Parse the repository's workflows once for every test in this module."""
+    return repository_documents()
+
+
+def _steps(
+    lane: str, documents: cabc.Mapping[str, cabc.Mapping[str, object]]
+) -> list[dict[str, object]]:
+    """Return a lane's steps from the real ``ci.yml``.
+
+    Parameters
+    ----------
+    lane
+        The job name.
+    documents
+        The parsed workflows, from the ``documents`` fixture.
+
+    Returns
+    -------
+    list[dict[str, object]]
+        The step mappings, in order.
+    """
+    jobs = documents["ci.yml"]["jobs"]
+    assert isinstance(jobs, dict), "ci.yml has no jobs mapping"
+    steps = jobs[lane]["steps"]
+    assert isinstance(steps, list), f"{lane} has no steps"
+    return steps
+
+
+def _last_step(
+    lane: str, documents: cabc.Mapping[str, cabc.Mapping[str, object]]
+) -> dict[str, object]:
     """Return a lane's last step from the real ``ci.yml``.
 
     Parameters
     ----------
     lane
         The job name.
+    documents
+        The parsed workflows, from the ``documents`` fixture.
 
     Returns
     -------
     dict[str, object]
         The step mapping.
     """
-    document = repository_documents()["ci.yml"]
-    jobs = document["jobs"]
-    assert isinstance(jobs, dict), "ci.yml has no jobs mapping"
-    steps = jobs[lane]["steps"]
-    assert isinstance(steps, list), f"{lane} has no steps"
-    return steps[-1]
+    return _steps(lane, documents)[-1]
 
 
 @pytest.mark.parametrize("lane", RECORDED_LANES)
-def test_a_moved_lane_ends_by_recording_its_placement(lane: str) -> None:
+def test_a_moved_lane_ends_by_recording_its_placement(
+    lane: str, documents: cabc.Mapping[str, cabc.Mapping[str, object]]
+) -> None:
     """End each lane with an ``always()`` step that writes the job summary.
 
     Parameters
     ----------
     lane
         The ``ci.yml`` job to read.
+    documents
+        The parsed workflows, from the ``documents`` fixture.
     """
-    step = _last_step(lane)
+    step = _last_step(lane, documents)
     assert step.get("name") == STEP_NAME, (
         f"{lane} must end with {STEP_NAME!r}, not {step.get('name')!r}"
     )
@@ -113,25 +155,10 @@ def _expected_env(lane: str) -> dict[str, str]:
     return expected
 
 
-def _step_ids(lane: str) -> set[object]:
-    """Return the ids of a lane's steps, so a cache reference can be checked.
-
-    Parameters
-    ----------
-    lane
-        The job name.
-
-    Returns
-    -------
-    set[object]
-        Every step id the lane declares.
-    """
-    jobs = repository_documents()["ci.yml"]["jobs"]
-    return {step.get("id") for step in jobs[lane]["steps"]}
-
-
 @pytest.mark.parametrize("lane", RECORDED_LANES)
-def test_each_input_binds_its_exact_expression(lane: str) -> None:
+def test_each_input_binds_its_exact_expression(
+    lane: str, documents: cabc.Mapping[str, cabc.Mapping[str, object]]
+) -> None:
     """Bind each input to the expression it names, and no other.
 
     A presence check accepts a wrong fork expression or a cache reference to a
@@ -141,15 +168,22 @@ def test_each_input_binds_its_exact_expression(lane: str) -> None:
     ----------
     lane
         The ``ci.yml`` job to read.
+    documents
+        The parsed workflows, from the ``documents`` fixture.
     """
-    environment = _last_step(lane).get("env")
+    environment = _last_step(lane, documents).get("env")
     assert environment == _expected_env(lane), (
         f"{lane}: the record binds {environment}, expected {_expected_env(lane)}"
     )
-    assert CACHE_STEP[lane] in _step_ids(lane), (
-        f"{lane}: the cache input reads step {CACHE_STEP[lane]!r}, which it lacks"
+    cache = [s for s in _steps(lane, documents) if s.get("id") == CACHE_STEP[lane]]
+    assert len(cache) == 1, (
+        f"{lane}: the cache input reads step {CACHE_STEP[lane]!r}, found {len(cache)}"
     )
-    script = str(_last_step(lane).get("run"))
+    assert str(cache[0].get("uses")).startswith(CACHE_ACTION[lane]), (
+        f"{lane}: step {CACHE_STEP[lane]!r} must be {CACHE_ACTION[lane]!r}, "
+        f"found {cache[0].get('uses')!r}"
+    )
+    script = str(_last_step(lane, documents).get("run"))
     unused = [
         name
         for name in _expected_env(lane)
@@ -158,24 +192,52 @@ def test_each_input_binds_its_exact_expression(lane: str) -> None:
     assert not unused, f"{lane}: the record never reads {unused}"
 
 
+#: Job status, cache output and the summary text each must render. An empty
+#: cache output is what a lane whose cache step did not run hands the script,
+#: and the ``n/a`` fallback exists for exactly that case.
+RENDER_CASES: typ.Final = (
+    pytest.param("success", "true", "true", id="hit"),
+    pytest.param("failure", "false", "false", id="failed-miss"),
+    pytest.param("cancelled", "", "n/a", id="cache-step-never-ran"),
+)
+
+
 @pytest.mark.parametrize("lane", RECORDED_LANES)
-def test_the_record_renders_every_field_into_the_summary(lane: str) -> None:
+@pytest.mark.parametrize(("status", "cache_hit", "cache_text"), RENDER_CASES)
+def test_the_record_renders_every_field_into_the_summary(  # noqa: PLR0913
+    lane: str,
+    status: str,
+    cache_hit: str,
+    cache_text: str,
+    documents: cabc.Mapping[str, cabc.Mapping[str, object]],
+) -> None:
     """Run the step's script and read what it writes, not only what it names.
+
+    A job that failed or missed its cache must say so, and a cache step that
+    never ran must read ``n/a`` rather than a blank.
 
     Parameters
     ----------
     lane
         The ``ci.yml`` job to read.
+    status
+        The job status the record is handed.
+    cache_hit
+        The cache step's output, possibly empty.
+    cache_text
+        What the summary must say for it.
+    documents
+        The parsed workflows, from the ``documents`` fixture.
     """
-    script = str(_last_step(lane)["run"])
+    script = str(_last_step(lane, documents)["run"])
     values = {
         "LANE": lane,
         "RUNNER_LABEL": "runner-7",
         "RUNNER_ENVIRONMENT": "self-hosted",
         "EVENT": "pull_request",
         "FORK": "false",
-        "JOB_STATUS": "success",
-        "CACHE_HIT": "true",
+        "JOB_STATUS": status,
+        "CACHE_HIT": cache_hit,
         "MATRIX_LEG": "sqlite",
     }
     with tempfile.TemporaryDirectory() as scratch:
@@ -190,8 +252,8 @@ def test_the_record_renders_every_field_into_the_summary(lane: str) -> None:
         f"lane: {lane}",
         "runner-7 (self-hosted)",
         "event: pull_request, fork: false",
-        "exact cache hit: true",
-        "status so far: success",
+        f"exact cache hit: {cache_text}\n",
+        f"status so far: {status}",
     ):
         assert fragment in rendered, (
             f"{lane}: the summary lacks {fragment!r}:\n{rendered}"
