@@ -1264,21 +1264,24 @@ bump across a boundary the manifest forbids arrives as a lockfile-only change.
 `make check-locked` refuses such a lockfile, and a manifest raise is made by
 hand, as in pull request #554.
 
-Dependabot does not read `rust-version` either. serial_test 4 declares
-`rust-version = "1.93.1"`, newer than the pinned `nightly-2025-11-08`, so
-Cargo's MSRV-aware resolver resolves any bump to 4 back to 3.x. Dependabot
-proposed that lockfile-only bump twice (#566 and #575), and automerge landed
-the second while `make check-locked` failed, because `build-test` is not a
-required check. #576 restored the lockfile.
+serial_test 4 shows the same boundary. The manifest requires serial_test 3, so
+a bump to 4 arrives as a lockfile-only change that `make check-locked` refuses.
+Dependabot proposed it twice, in pull requests 566 and 575, when the pinned
+toolchain was also older than serial_test 4's `rust-version = "1.93.1"` and
+Cargo's MSRV-aware resolver resolved the bump back to 3.x. Automerge landed the
+second while `make check-locked` failed, because `build-test` is not a required
+check, and pull request 576 restored the lockfile. The toolchain has since
+moved to `nightly-2026-03-26`, so the floor no longer applies, but the manifest
+still requires 3.
 
 The Cargo entry therefore ignores `serial_test` at `>= 4`, with a comment
-naming the toolchain floor. `make test-dependabot-policy`, run by
-`docs-tooling`, asserts:
+naming the manifest requirement. Raise the manifest to 4 by hand and drop the
+ignore together. `make test-dependabot-policy`, run by `docs-tooling`, asserts:
 
 - the exact ignore rule;
-- the toolchain pin the rule depends on, so moving the pin fails a case and the
-  ignore gets reconsidered instead of holding serial_test back after its reason
-  has gone;
+- the manifest requirement the rule depends on, so raising serial_test to 4
+  fails a case and the ignore is dropped instead of holding serial_test back
+  after its reason has gone;
 - that any Cargo `versioning-strategy` is one of the two values Dependabot
   accepts, so the invalid shape cannot return unnoticed;
 - that there is exactly one Cargo entry, not merely a first one, and that the

@@ -93,6 +93,21 @@ mod tests {
 
     use super::*;
 
+    /// Runs `body` inside a figment `Jail`, with an ordinary boxed error.
+    ///
+    /// `Jail::expect_with` fixes its closure's error type at `figment::Error`
+    /// (208 bytes), which trips `clippy::result_large_err` at every call site.
+    /// This helper is the one place that closure appears, so the lint stays on
+    /// for every other test in the module.
+    #[expect(
+        clippy::result_large_err,
+        reason = "figment::Jail::expect_with fixes its closure's error type at figment::Error, \
+                  which this helper must return"
+    )]
+    fn with_jail(body: impl FnOnce(&mut Jail) -> Result<(), Box<dyn std::error::Error>>) {
+        Jail::expect_with(|jail| body(jail).map_err(|err| figment::Error::from(err.to_string())));
+    }
+
     /// Verifies that our local constants match the upstream argon2 crate defaults.
     ///
     /// This guards against silent drift if argon2 changes its defaults in a
@@ -120,7 +135,7 @@ mod tests {
     /// are provided.
     #[rstest]
     fn argon2_defaults_applied_to_config() {
-        Jail::expect_with(|_j| {
+        with_jail(|_j| {
             let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
             assert_eq!(cfg.argon2_m_cost, DEFAULT_ARGON2_M_COST);
             assert_eq!(cfg.argon2_t_cost, DEFAULT_ARGON2_T_COST);
@@ -131,7 +146,7 @@ mod tests {
 
     #[rstest]
     fn env_config_loading() {
-        Jail::expect_with(|j| {
+        with_jail(|j| {
             j.set_env("MXD_BIND", "127.0.0.1:8000");
             j.set_env("MXD_DATABASE", "env.db");
             let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
@@ -143,7 +158,7 @@ mod tests {
 
     #[rstest]
     fn cli_overrides_env() {
-        Jail::expect_with(|j| {
+        with_jail(|j| {
             j.set_env("MXD_BIND", "127.0.0.1:8000");
             let cfg = AppConfig::load_from_iter(["mxd", "--bind", "0.0.0.0:9000"]).expect("load");
             assert_eq!(cfg.bind, "0.0.0.0:9000");
@@ -153,7 +168,7 @@ mod tests {
 
     #[rstest]
     fn migration_timeout_loads_from_env() {
-        Jail::expect_with(|j| {
+        with_jail(|j| {
             j.set_env("MXD_MIGRATION_TIMEOUT_SECS", "9");
             let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
             assert_eq!(cfg.migration_timeout_secs, Some(9));
@@ -163,7 +178,7 @@ mod tests {
 
     #[rstest]
     fn loads_from_dotfile() {
-        Jail::expect_with(|j| {
+        with_jail(|j| {
             j.create_file(".mxd.toml", "bind = \"1.2.3.4:1111\"")?;
             let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
             assert_eq!(cfg.bind, "1.2.3.4:1111".to_string());
@@ -173,7 +188,7 @@ mod tests {
 
     #[rstest]
     fn argon2_cli_overrides_all_params() {
-        Jail::expect_with(|_j| {
+        with_jail(|_j| {
             let cfg = AppConfig::load_from_iter([
                 "mxd",
                 "--argon2-m-cost",
@@ -193,7 +208,7 @@ mod tests {
 
     #[rstest]
     fn argon2_env_overrides() {
-        Jail::expect_with(|j| {
+        with_jail(|j| {
             j.set_env("MXD_ARGON2_M_COST", "2048");
             j.set_env("MXD_ARGON2_T_COST", "8");
             j.set_env("MXD_ARGON2_P_COST", "4");
@@ -207,7 +222,7 @@ mod tests {
 
     #[rstest]
     fn argon2_config_file_overrides() {
-        Jail::expect_with(|j| {
+        with_jail(|j| {
             j.create_file(
                 ".mxd.toml",
                 concat!(
@@ -226,7 +241,7 @@ mod tests {
 
     #[rstest]
     fn argon2_cli_overrides_env_and_file() {
-        Jail::expect_with(|j| {
+        with_jail(|j| {
             j.create_file(".mxd.toml", "argon2_m_cost = 4096\n")?;
             j.set_env("MXD_ARGON2_M_COST", "2048");
             let cfg = AppConfig::load_from_iter(["mxd", "--argon2-m-cost", "1024"]).expect("load");

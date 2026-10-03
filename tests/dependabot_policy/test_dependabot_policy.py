@@ -1,11 +1,12 @@
 """What the Dependabot configuration must hold, asserted against the file.
 
-serial_test 4 declares `rust-version = "1.93.1"`, newer than the pinned
-nightly, so Cargo resolves any bump to 4 back to 3.x. Dependabot does not read
-`rust-version`: it proposed that lockfile-only bump twice, and automerge
-landed the second while `make check-locked` refused the lockfile. The Cargo
-entry therefore ignores serial_test at `>= 4`, and this contract holds the
-rule and the toolchain pin it depends on.
+The manifest requires serial_test 3, and Dependabot's Cargo updater does not
+raise `Cargo.toml`, so a bump to 4 arrives as a lockfile-only change that
+`make check-locked` refuses. Dependabot proposed that bump twice (when the
+toolchain was also too old for serial_test 4, so Cargo resolved it back to
+3.x), and automerge landed the second while `make check-locked` refused the
+lockfile. The Cargo entry therefore ignores serial_test at `>= 4`, and this
+contract holds the rule and the manifest requirement it depends on.
 
 It also holds the one shape Dependabot rejects outright. For Cargo,
 `versioning-strategy` accepts only `lockfile-only` and `auto`; any other value
@@ -23,10 +24,12 @@ import yaml
 
 REPO_ROOT: typ.Final = Path(__file__).resolve().parents[2]
 CONFIGURATION: typ.Final = REPO_ROOT / ".github" / "dependabot.yml"
-TOOLCHAIN: typ.Final = REPO_ROOT / "rust-toolchain.toml"
-# serial_test 4 declares rust-version 1.93.1; this nightly is rustc
-# 1.93.0-nightly, so Cargo resolves any 4.x bump back to 3.x.
-TOOLCHAIN_BELOW_SERIAL_TEST_4: typ.Final = 'channel = "nightly-2025-11-08"'
+MANIFEST: typ.Final = REPO_ROOT / "Cargo.toml"
+# The requirement that keeps serial_test 4 out of the lockfile: a bump to 4
+# arrives lockfile-only until the manifest is raised by hand.
+SERIAL_TEST_MANIFEST_REQUIREMENT: typ.Final = (
+    'serial_test = { version = "3", features = ["file_locks"] }'
+)
 SERIAL_TEST_IGNORE: typ.Final = {"dependency-name": "serial_test", "versions": [">= 4"]}
 # The only values Dependabot accepts for a Cargo entry's versioning-strategy.
 # `increase-if-necessary`, valid for other ecosystems, fails the file's schema.
@@ -190,9 +193,9 @@ def test_a_cargo_versioning_strategy_is_one_dependabot_accepts(
 def test_the_cargo_entry_ignores_serial_test_4(
     configuration: dict[str, object],
 ) -> None:
-    """A serial_test 4 bump is never proposed while the toolchain predates it.
+    """A serial_test 4 bump is never proposed while the manifest requires 3.
 
-    Dependabot does not read `rust-version`, so it proposed the lockfile-only
+    Dependabot does not raise `Cargo.toml`, so it proposed the lockfile-only
     bump twice (#566, #575) and automerge landed a lockfile that
     `make check-locked` refuses.
     """
@@ -209,14 +212,15 @@ def test_the_cargo_entry_ignores_serial_test_4(
 
 
 def test_the_serial_test_ignore_still_has_its_reason() -> None:
-    """The ignore is tied to the toolchain that needs it.
+    """The ignore is tied to the manifest requirement that needs it.
 
-    When the pin moves, this fails so the ignore is reconsidered rather than
-    left holding serial_test back after the reason has gone.
+    When the manifest is raised to serial_test 4 this fails, so the ignore is
+    dropped instead of holding serial_test back after the reason has gone.
     """
-    assert TOOLCHAIN_BELOW_SERIAL_TEST_4 in read_text(TOOLCHAIN), (
-        "the toolchain pin moved: if it now reaches rustc 1.93.1, drop the "
-        "serial_test ignore from .github/dependabot.yml and this case"
+    assert SERIAL_TEST_MANIFEST_REQUIREMENT in read_text(MANIFEST), (
+        "the serial_test requirement moved: if the manifest now admits "
+        "serial_test 4, drop the serial_test ignore from .github/dependabot.yml "
+        "and this case"
     )
 
 
