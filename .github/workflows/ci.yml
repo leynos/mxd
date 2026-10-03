@@ -68,6 +68,28 @@ jobs:
         run: make test-dependabot-policy
       - name: Validate Mermaid diagrams
         run: make nixie
+      # One line per lane in the job summary, so a lane's placement and cache
+      # state are readable without opening the log. Queue wait and duration are
+      # not knowable from inside the job; the jobs API gives them (started_at
+      # against created_at, and completed_at), and the developers' guide
+      # ("Runner placement") says how to read them.
+      - name: Record the lane's placement
+        if: ${{ always() }}
+        env:
+          LANE: ${{ github.job }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          RUNNER_LABEL: ${{ runner.name }}
+          EVENT: ${{ github.event_name }}
+          FORK: ${{ github.event.pull_request.head.repo.fork || false }}
+          JOB_STATUS: ${{ job.status }}
+          CACHE_HIT: ${{ steps.cache-merman-cli.outputs.cache-hit }}
+        run: |
+          {
+            printf '### Lane placement\n\n'
+            printf -- '- lane: %s\n- runner: %s (%s)\n' "${LANE}" "${RUNNER_LABEL}" "${RUNNER_ENVIRONMENT}"
+            printf -- '- event: %s, fork: %s\n' "${EVENT}" "${FORK}"
+            printf -- '- exact cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   build-test:
     # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
@@ -105,6 +127,7 @@ jobs:
           install-postgres-deps: ${{ matrix.install_postgres_deps }}
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
       - name: Cache Cargo directories
+        id: rust-cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       # Before anything long runs: a lockfile the manifest does not admit is a
       # tree nothing here builds from, and every later step would silently
@@ -158,6 +181,30 @@ jobs:
   # directly is brittle. `always()` makes this job run when a leg fails; without
   # it the job would be skipped, and a skipped required check passes. Every
   # result other than success fails it, skipped and cancelled included.
+      # One line per lane in the job summary, so a lane's placement and cache
+      # state are readable without opening the log. Queue wait and duration are
+      # not knowable from inside the job; the jobs API gives them (started_at
+      # against created_at, and completed_at), and the developers' guide
+      # ("Runner placement") says how to read them.
+      - name: Record the lane's placement
+        if: ${{ always() }}
+        env:
+          LANE: ${{ github.job }}
+          MATRIX_LEG: ${{ matrix.name }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          RUNNER_LABEL: ${{ runner.name }}
+          EVENT: ${{ github.event_name }}
+          FORK: ${{ github.event.pull_request.head.repo.fork || false }}
+          JOB_STATUS: ${{ job.status }}
+          CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
+        run: |
+          {
+            printf '### Lane placement\n\n'
+            printf -- '- lane: %s (%s)\n- runner: %s (%s)\n' "${LANE}" "${MATRIX_LEG}" "${RUNNER_LABEL}" "${RUNNER_ENVIRONMENT}"
+            printf -- '- event: %s, fork: %s\n' "${EVENT}" "${FORK}"
+            printf -- '- exact cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   build-test-result:
     if: always()
     needs: build-test
@@ -193,6 +240,7 @@ jobs:
         with:
           install-sqlite-deps: true
       - name: Cache Cargo directories
+        id: rust-cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Add validator bin directory to PATH
         run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
@@ -210,6 +258,28 @@ jobs:
         run: make validator-sqlite-server
       - name: Run validator harness
         run: make test-validator-sqlite
+      # One line per lane in the job summary, so a lane's placement and cache
+      # state are readable without opening the log. Queue wait and duration are
+      # not knowable from inside the job; the jobs API gives them (started_at
+      # against created_at, and completed_at), and the developers' guide
+      # ("Runner placement") says how to read them.
+      - name: Record the lane's placement
+        if: ${{ always() }}
+        env:
+          LANE: ${{ github.job }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          RUNNER_LABEL: ${{ runner.name }}
+          EVENT: ${{ github.event_name }}
+          FORK: ${{ github.event.pull_request.head.repo.fork || false }}
+          JOB_STATUS: ${{ job.status }}
+          CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
+        run: |
+          {
+            printf '### Lane placement\n\n'
+            printf -- '- lane: %s\n- runner: %s (%s)\n' "${LANE}" "${RUNNER_LABEL}" "${RUNNER_ENVIRONMENT}"
+            printf -- '- event: %s, fork: %s\n' "${EVENT}" "${FORK}"
+            printf -- '- exact cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   coverage:
     # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
@@ -243,6 +313,7 @@ jobs:
           install-sqlite-deps: true
           install-postgres-deps: true
       - name: Cache Cargo directories
+        id: rust-cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Add validator bin directory to PATH
         run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
@@ -303,3 +374,25 @@ jobs:
           artefact-name-suffix: postgres
       - name: Merge coverage results
         run: bun x lcov-result-merger 'lcov-*.info' > lcov.info
+      # One line per lane in the job summary, so a lane's placement and cache
+      # state are readable without opening the log. Queue wait and duration are
+      # not knowable from inside the job; the jobs API gives them (started_at
+      # against created_at, and completed_at), and the developers' guide
+      # ("Runner placement") says how to read them.
+      - name: Record the lane's placement
+        if: ${{ always() }}
+        env:
+          LANE: ${{ github.job }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+          RUNNER_LABEL: ${{ runner.name }}
+          EVENT: ${{ github.event_name }}
+          FORK: ${{ github.event.pull_request.head.repo.fork || false }}
+          JOB_STATUS: ${{ job.status }}
+          CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
+        run: |
+          {
+            printf '### Lane placement\n\n'
+            printf -- '- lane: %s\n- runner: %s (%s)\n' "${LANE}" "${RUNNER_LABEL}" "${RUNNER_ENVIRONMENT}"
+            printf -- '- event: %s, fork: %s\n' "${EVENT}" "${FORK}"
+            printf -- '- exact cache hit: %s\n- status so far: %s\n' "${CACHE_HIT:-n/a}" "${JOB_STATUS}"
+          } >> "${GITHUB_STEP_SUMMARY}"
