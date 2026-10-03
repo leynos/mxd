@@ -1204,15 +1204,21 @@ cargo-binstall itself but never runs it, so the token belongs to each consumer
 step. The PostgreSQL warm-up sets it for the same reason; see "The binaries are
 downloaded before the tests".
 
-`tests/workflow_contracts/test_binstall_token.py` asserts that no step running
-`cargo binstall` lacks a `GITHUB_TOKEN` or `GH_TOKEN` of exactly the workflow
-token expression, in its own `env` or its job's or workflow's. A literal, an
-empty value, or a different variable name does not count. A second case asserts
-that the query still sees the five steps, so an empty result cannot pass for a
-clean one. Three mutations of the workflows each fail the named cases: the
-token removed from the nextest step, replaced with a literal in `audit.yml`,
-and a new anonymous step added to `coverage-main.yml`. Unit cases drive the
-query with constructed steps, including a multi-line `run` body.
+`tests/workflow_contracts/test_binstall_token.py` asserts three things. No step
+running `cargo binstall`, with or without a `+toolchain` between `cargo` and
+`binstall`, may receive anything but the exact workflow token expression as its
+`GITHUB_TOKEN` (or `GH_TOKEN`). The value judged is the effective one, with
+workflow, job and step `env` merged in that order, so a step that overrides a
+valid job token with an empty value or a literal is refused. Every job running
+`cargo binstall` holds `permissions` of exactly `contents: read`, in its own
+block or the workflow's, so the token binstall sends can read the repository
+and nothing more; `build-test` and `coverage` in `ci.yml` declare it for that
+reason. And the query still sees the five steps, so an empty result cannot pass
+for a clean one. Three workflow mutations each fail the named cases: the token
+removed from the nextest step, replaced with a literal in `audit.yml`, and a
+new anonymous step added to `coverage-main.yml`. Unit cases drive both queries
+with constructed steps, including a multi-line `run` body, a
+toolchain-qualified command and each override of a valid token.
 
 ### Adding a lane
 

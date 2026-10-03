@@ -70,6 +70,8 @@ jobs:
         run: make nixie
 
   build-test:
+    permissions:
+      contents: read
     # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
     # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
     # Ubicloud coverage-upload writes the cache scope this reads.
@@ -220,6 +222,8 @@ jobs:
         run: make test-validator-sqlite
 
   coverage:
+    permissions:
+      contents: read
     # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
     # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
     # Ubicloud coverage-upload writes the cache scope this reads.

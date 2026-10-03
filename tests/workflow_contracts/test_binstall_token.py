@@ -26,8 +26,9 @@ if typ.TYPE_CHECKING:
 
     type Document = cabc.Mapping[str, object]
 
-BINSTALL: typ.Final = re.compile(r"\bcargo\s+binstall\b")
-TOKEN_NAMES: typ.Final = ("GITHUB_TOKEN", "GH_TOKEN")
+# `cargo +1.95.0 binstall` is valid rustup proxy syntax, so an optional
+# `+toolchain` may sit between `cargo` and `binstall`.
+BINSTALL: typ.Final = re.compile(r"\bcargo(?:\s+\+\S+)?\s+binstall\b")
 TOKEN_EXPRESSION: typ.Final = "${{ github.token }}"
 
 
@@ -36,25 +37,42 @@ def _mapping(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
-def _has_token(*scopes: cabc.Mapping[str, object]) -> bool:
-    """Say whether any scope's `env` sets a token name to the workflow token."""
-    return any(
-        _mapping(scope.get("env")).get(name) == TOKEN_EXPRESSION
-        for scope in scopes
-        for name in TOKEN_NAMES
-    )
+def _effective_token(*scopes: cabc.Mapping[str, object]) -> object:
+    """Return the token value a step actually receives, or None.
+
+    GitHub applies the most specific `env`, so the scopes are merged from the
+    workflow down to the step and a later value replaces an earlier one, even
+    when it is empty or a literal. `GITHUB_TOKEN` wins over `GH_TOKEN`.
+    """
+    merged: dict[str, object] = {}
+    for scope in scopes:
+        merged.update(_mapping(scope.get("env")))
+    return merged.get("GITHUB_TOKEN", merged.get("GH_TOKEN"))
 
 
 def unauthenticated_binstalls(document: Document) -> list[str]:
-    """List the steps that run `cargo binstall` without the workflow token."""
+    """List the steps that run `cargo binstall` without the workflow token.
+
+    Parameters
+    ----------
+    document : Document
+        A parsed workflow.
+
+    Returns
+    -------
+    list[str]
+        One `job:step` coordinate per step that runs `cargo binstall`
+        (optionally toolchain-qualified) whose effective `GITHUB_TOKEN` or
+        `GH_TOKEN`, after workflow, job and step `env` are merged in that
+        order, is not exactly the workflow token expression.
+    """
     found: list[str] = []
     for job_id, job in _mapping(document.get("jobs")).items():
         steps = _mapping(job).get("steps")
         for step in steps if isinstance(steps, list) else []:
             step = _mapping(step)  # noqa: PLW2901 - narrowing a parsed value
-            if BINSTALL.search(str(step.get("run", ""))) and not _has_token(
-                _mapping(document), _mapping(job), step
-            ):
+            token = _effective_token(_mapping(document), _mapping(job), step)
+            if BINSTALL.search(str(step.get("run", ""))) and token != TOKEN_EXPRESSION:
                 found.append(f"{job_id}:{step.get('name')}")
     return found
 
@@ -66,6 +84,33 @@ def _binstall_steps(document: Document) -> list[str]:
         for job_id, job in _mapping(document.get("jobs")).items()
         for step in _mapping(job).get("steps") or []
         if BINSTALL.search(str(_mapping(step).get("run", "")))
+    ]
+
+
+def unrestricted_binstall_jobs(document: Document) -> list[str]:
+    """List the jobs running `cargo binstall` whose token is not read-only.
+
+    Parameters
+    ----------
+    document : Document
+        A parsed workflow.
+
+    Returns
+    -------
+    list[str]
+        The identifiers of jobs that run `cargo binstall` while neither the job
+        nor the workflow declares `permissions` of exactly `contents: read`.
+        A job's own block replaces the workflow's, as GitHub applies it.
+    """
+    read_only = {"contents": "read"}
+    return [
+        job_id
+        for job_id, job in _mapping(document.get("jobs")).items()
+        if any(
+            BINSTALL.search(str(_mapping(step).get("run", "")))
+            for step in _mapping(job).get("steps") or []
+        )
+        and _mapping(job).get("permissions", document.get("permissions")) != read_only
     ]
 
 
@@ -167,6 +212,50 @@ def _document(step: dict[str, object], **extra: object) -> dict[str, object]:
             id="job-token",
         ),
         pytest.param(
+            _document({"name": "a", "run": "cargo +1.95.0 binstall x"}),
+            ["j:a"],
+            id="toolchain-qualified",
+        ),
+        pytest.param(
+            _document(
+                {
+                    "name": "a",
+                    "run": "cargo +nightly binstall x",
+                    "env": {"GITHUB_TOKEN": TOKEN_EXPRESSION},
+                }
+            ),
+            [],
+            id="toolchain-qualified-with-token",
+        ),
+        pytest.param(
+            _document(
+                {"name": "a", "run": "cargo binstall x", "env": {"GITHUB_TOKEN": ""}},
+                env={"GITHUB_TOKEN": TOKEN_EXPRESSION},
+            ),
+            ["j:a"],
+            id="step-empty-overrides-job-token",
+        ),
+        pytest.param(
+            _document(
+                {"name": "a", "run": "cargo binstall x", "env": {"GITHUB_TOKEN": "x"}},
+                env={"GITHUB_TOKEN": TOKEN_EXPRESSION},
+            ),
+            ["j:a"],
+            id="step-literal-overrides-job-token",
+        ),
+        pytest.param(
+            _document(
+                {
+                    "name": "a",
+                    "run": "cargo binstall x",
+                    "env": {"GITHUB_TOKEN": TOKEN_EXPRESSION},
+                },
+                env={"GITHUB_TOKEN": "x"},
+            ),
+            [],
+            id="step-token-overrides-job-literal",
+        ),
+        pytest.param(
             _document({"name": "a", "run": "cargo install x"}), [], id="not-binstall"
         ),
     ],
@@ -176,5 +265,69 @@ def test_the_query_judges_constructed_steps(
 ) -> None:
     """Each shape of step is judged as a token holder or not."""
     assert unauthenticated_binstalls(document) == expected, (
+        f"wrong verdict for {document}"
+    )
+
+
+def test_every_binstall_job_holds_a_read_only_token(
+    documents: cabc.Mapping[str, Document],
+) -> None:
+    """The token sent to binstall can read the repository and nothing more."""
+    offenders = {
+        name: found
+        for name, document in documents.items()
+        if (found := unrestricted_binstall_jobs(document))
+    }
+    assert not offenders, f"binstall jobs without read-only permissions: {offenders}"
+
+
+@pytest.mark.parametrize(
+    ("document", "expected"),
+    [
+        pytest.param(
+            {"jobs": {"j": {"steps": [{"run": "cargo binstall x"}]}}},
+            ["j"],
+            id="unset",
+        ),
+        pytest.param(
+            {
+                "permissions": {"contents": "read"},
+                "jobs": {"j": {"steps": [{"run": "cargo binstall x"}]}},
+            },
+            [],
+            id="workflow-read-only",
+        ),
+        pytest.param(
+            {
+                "permissions": {"contents": "read"},
+                "jobs": {
+                    "j": {
+                        "permissions": {"contents": "write"},
+                        "steps": [{"run": "cargo binstall x"}],
+                    }
+                },
+            },
+            ["j"],
+            id="job-widens-workflow",
+        ),
+        pytest.param(
+            {
+                "jobs": {
+                    "j": {
+                        "permissions": {"contents": "read"},
+                        "steps": [{"run": "cargo +nightly binstall x"}],
+                    }
+                }
+            },
+            [],
+            id="job-read-only",
+        ),
+    ],
+)
+def test_the_permission_query_judges_constructed_jobs(
+    document: Document, expected: list[str]
+) -> None:
+    """Each placement of `permissions` is judged as GitHub applies it."""
+    assert unrestricted_binstall_jobs(document) == expected, (
         f"wrong verdict for {document}"
     )
