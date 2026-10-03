@@ -90,6 +90,8 @@ jobs:
           artefact-name-suffix: sqlite-main
           with-ratchet: 'true'
       - name: Install pg-embed-setup-unpriv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm pg-embed-setup-unpriv@0.5.2
       # pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest
       # of a test process, so a download failing mid-suite would fail every
