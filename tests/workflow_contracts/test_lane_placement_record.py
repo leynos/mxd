@@ -192,23 +192,29 @@ def test_each_input_binds_its_exact_expression(
     assert not unused, f"{lane}: the record never reads {unused}"
 
 
+class RenderCase(typ.NamedTuple):
+    """One job outcome the record is run against."""
+
+    status: str
+    cache_hit: str
+    cache_text: str
+
+
 #: Job status, cache output and the summary text each must render. An empty
 #: cache output is what a lane whose cache step did not run hands the script,
 #: and the ``n/a`` fallback exists for exactly that case.
 RENDER_CASES: typ.Final = (
-    pytest.param("success", "true", "true", id="hit"),
-    pytest.param("failure", "false", "false", id="failed-miss"),
-    pytest.param("cancelled", "", "n/a", id="cache-step-never-ran"),
+    pytest.param(RenderCase("success", "true", "true"), id="hit"),
+    pytest.param(RenderCase("failure", "false", "false"), id="failed-miss"),
+    pytest.param(RenderCase("cancelled", "", "n/a"), id="cache-step-never-ran"),
 )
 
 
 @pytest.mark.parametrize("lane", RECORDED_LANES)
-@pytest.mark.parametrize(("status", "cache_hit", "cache_text"), RENDER_CASES)
-def test_the_record_renders_every_field_into_the_summary(  # noqa: PLR0913
+@pytest.mark.parametrize("case", RENDER_CASES)
+def test_the_record_renders_every_field_into_the_summary(
     lane: str,
-    status: str,
-    cache_hit: str,
-    cache_text: str,
+    case: RenderCase,
     documents: cabc.Mapping[str, cabc.Mapping[str, object]],
 ) -> None:
     """Run the step's script and read what it writes, not only what it names.
@@ -220,15 +226,13 @@ def test_the_record_renders_every_field_into_the_summary(  # noqa: PLR0913
     ----------
     lane
         The ``ci.yml`` job to read.
-    status
-        The job status the record is handed.
-    cache_hit
-        The cache step's output, possibly empty.
-    cache_text
-        What the summary must say for it.
+    case
+        The job status and cache output the record is handed, and the cache
+        text the summary must show for them.
     documents
         The parsed workflows, from the ``documents`` fixture.
     """
+    status, cache_hit, cache_text = case
     script = str(_last_step(lane, documents)["run"])
     values = {
         "LANE": lane,
