@@ -18,7 +18,7 @@ use mxd::{
     },
 };
 use rstest::fixture;
-use rstest_bdd_macros::{given, scenarios, then, when};
+use rstest_bdd_macros::{given, scenario, then, when};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -33,7 +33,8 @@ const POLL_INTERVAL_MS: u64 = 10;
 /// Test world for handshake-metadata scenarios.
 ///
 /// Uses `RefCell` for non-shared fields; safe only under a single-threaded
-/// Tokio runtime (`tokio-current-thread`).
+/// Tokio runtime: each scenario is an `async fn` under
+/// `#[tokio::test(flavor = "current_thread")]`.
 struct MetadataWorld {
     addr: RefCell<Option<SocketAddr>>,
     shutdown: RefCell<Option<oneshot::Sender<()>>>,
@@ -340,8 +341,23 @@ fn then_no_metadata(world: &MetadataWorld) {
     assert!(!has_current_context());
 }
 
-scenarios!(
-    "tests/features/wireframe_handshake_metadata.feature",
-    runtime = "tokio-current-thread",
-    fixtures = [world: MetadataWorld]
-);
+#[scenario(
+    path = "tests/features/wireframe_handshake_metadata.feature",
+    name = "Stores metadata for valid Hotline handshakes"
+)]
+#[tokio::test(flavor = "current_thread")]
+async fn stores_metadata_for_valid_hotline_handshakes(_world: MetadataWorld) {}
+
+#[scenario(
+    path = "tests/features/wireframe_handshake_metadata.feature",
+    name = "Rejects invalid handshakes without persisting metadata"
+)]
+#[tokio::test(flavor = "current_thread")]
+async fn rejects_invalid_handshakes_without_persisting_metadata(_world: MetadataWorld) {}
+
+#[scenario(
+    path = "tests/features/wireframe_handshake_metadata.feature",
+    name = "Metadata does not leak between connections"
+)]
+#[tokio::test(flavor = "current_thread")]
+async fn metadata_does_not_leak_between_connections(_world: MetadataWorld) {}

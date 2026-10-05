@@ -186,22 +186,22 @@ If `get-project` is unavailable, replace it with `$(basename "$(pwd)")`.
 1. Update dependencies in `Cargo.toml` (dev-dependencies).
 2. Probe build/test on one BDD target:
 
-```sh
-cargo test --test create_user_bdd
-```
+   ```sh
+   cargo test --test create_user_bdd
+   ```
 
 3. Run formatting and lint gates:
 
-```sh
-make check-fmt | tee /tmp/check-fmt-$(get-project)-$(git branch --show).out
-make lint | tee /tmp/lint-$(get-project)-$(git branch --show).out
-```
+   ```sh
+   make check-fmt | tee /tmp/check-fmt-$(get-project)-$(git branch --show).out
+   make lint | tee /tmp/lint-$(get-project)-$(git branch --show).out
+   ```
 
 4. Run the full test suite:
 
-```sh
-make test | tee /tmp/test-$(get-project)-$(git branch --show).out
-```
+   ```sh
+   make test | tee /tmp/test-$(get-project)-$(git branch --show).out
+   ```
 <!-- markdownlint-enable MD029 -->
 
 ## Validation and acceptance

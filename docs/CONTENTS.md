@@ -48,7 +48,13 @@ Detailed guides for specific development concerns.
 - [`rstest-bdd-users-guide.md`](rstest-bdd-users-guide.md) — Behaviour-driven
   development with rstest-bdd.
 - [`rstest-bdd-v0-5-0-migration-guide.md`](rstest-bdd-v0-5-0-migration-guide.md)
-  — Migrating to rstest-bdd v0.5.0.
+  — Historical migration to rstest-bdd v0.5.0.
+- [`rstest-bdd-v0-6-0-migration-guide.md`](rstest-bdd-v0-6-0-migration-guide.md)
+  — Immutable upstream v0.6.0 migration guide.
+- [`rstest-bdd-v0-6-0-provenance.md`](rstest-bdd-v0-6-0-provenance.md)
+  — Verified import provenance and local migration evidence.
+- [`rstest-bdd-v0-6-0-link-map.json`](rstest-bdd-v0-6-0-link-map.json)
+  — Relative upstream links mapped to the immutable commit.
 - [`rust-testing-with-rstest-fixtures.md`](rust-testing-with-rstest-fixtures.md)
   — Testing patterns using rstest fixtures.
 - [`rust-doctest-dry-guide.md`](rust-doctest-dry-guide.md) — Patterns for

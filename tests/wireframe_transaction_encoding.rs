@@ -10,7 +10,7 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd::{assert_step_err, assert_step_ok};
-use rstest_bdd_macros::{given, scenarios, then, when};
+use rstest_bdd_macros::{given, then, when};
 use tokio::io::AsyncReadExt;
 
 fn hotline_config() -> impl bincode::config::Config {
@@ -358,8 +358,5 @@ fn then_fails(world: &EncodingWorld, message: String) {
     });
 }
 
-scenarios!(
-    "tests/features/wireframe_transaction_encoding.feature",
-    runtime = "tokio-current-thread",
-    fixtures = [world: EncodingWorld]
-);
+#[path = "wireframe_transaction_encoding/scenarios.rs"]
+mod scenarios;

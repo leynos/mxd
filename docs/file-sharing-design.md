@@ -646,17 +646,17 @@ interrupted. The steps:
      expects `'HTXF'` and
      some protocol bytes).
 
-- Then, read the “flattened file object” content. It begins with an **INFO
+   - Then, read the “flattened file object” content. It begins with an **INFO
     fork** describing the file metadata. The implementation parses out platform
     information, create and modify timestamps, name/comment metadata, and any
     ignorable flags such as compression. Reading continues until the end of the
     INFO fork (the format gives lengths, so the system knows where it ends).
 
-- Next comes the **DATA fork header** and then the file’s binary content. The
+   - Next comes the **DATA fork header** and then the file’s binary content. The
      header provides the data fork size (which should match the file size). The
      implementation uses that size for validation.
 
-- The implementation then streams the incoming data bytes to storage. For
+   - The implementation then streams the incoming data bytes to storage. For
      efficiency and memory safety, it does not buffer the entire file. Instead,
      it initiates a multipart upload to the object store. Using
      `ObjectStore::put_multipart` provides a `WriteMultipart` handle that
@@ -694,7 +694,7 @@ interrupted. The steps:
    remaining bytes. In this implementation, the server can re-open or continue
    the multipart upload:
 
-- If the object_store crate allows reusing the existing upload (some cloud
+   - If the object_store crate allows reusing the existing upload (some cloud
     APIs allow listing parts and continuing), the implementation uses the saved
     upload ID and continues writing new parts. If not easily possible, an
     alternative is to
@@ -704,7 +704,7 @@ interrupted. The steps:
     missing. The server then appends that to the existing object (not trivial in
     object store unless continuing multi-part) or it can be stored as a separate
     object and later merge – not ideal.
-- Ideally, the implementation relies on the multi-part continuation: e.g.,
+   - Ideally, the implementation relies on the multi-part continuation: e.g.,
      AWS S3 allows resumable multipart uploads if the upload ID and part
      numbers are already known. The implementation would have to keep track of
      the next byte/part needed. Given the use of `WriteMultipart`, the
@@ -718,11 +718,11 @@ interrupted. The steps:
      API to initiate a *MultipartUpload* with the same upload ID (if supported
      by crate) and skip to the last completed part. This is complex, so an
      easier design might be:
-- **Alternate Resume Design:** On interruption, *do not create the DB entry
+   - **Alternate Resume Design:** On interruption, *do not create the DB entry
      at all*. Instead, have the client re-upload the file (modern approach, or
      use a separate partial file mechanism). However, since Hotline clearly had
      resume, the implementation should support it.
-- For brevity, assume the implementation manages to continue the multipart.
+   - For brevity, assume the implementation manages to continue the multipart.
      The server’s reply to an UploadFile request could include field 203 (File
      resume data) if it knows some bytes are already present. If resume is at
      protocol-level, the client would include a flag in *File transfer options
@@ -840,7 +840,7 @@ and a move to a different folder via MoveFile. The implementation handles both:
        moved folder keep their keys (since keys were just IDs). So the
        implementation does not need to touch the object store for any file – a
        huge performance win (moves are instant regardless of data size).
-  - If the implementation had used **path-based keys**, moving a file would
+     - If the implementation had used **path-based keys**, moving a file would
       require renaming its object in storage (which usually means copy+delete).
       Similarly moving a folder would entail renaming every object under that
       folder's path – potentially thousands of operations and a lot of data
@@ -1011,7 +1011,7 @@ will follow the same general approach:
     “Folder item count” might count files; likely it includes files count) and
     total bytes = sum of sizes of those files.
 
-- The implementation then sends a reply on the control connection containing
+   - The implementation then sends a reply on the control connection containing
      those two numbers
      (and a reference number as usual for the forthcoming transfer).
 
