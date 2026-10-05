@@ -89,7 +89,7 @@ jobs:
       - id: bin_name
         name: Extract binary name from Cargo.toml
         uses: >-
-          leynos/shared-actions/.github/actions/export-cargo-metadata@82feb2b7aac45b7efff40c9c4bb632551b14521c
+          leynos/shared-actions/.github/actions/export-cargo-metadata@7d751eded578e48dacf43ab173d5820e6437c474
         with:
           manifest-path: ${{ steps.manifest_path.outputs.value }}
           fields: bin-name
