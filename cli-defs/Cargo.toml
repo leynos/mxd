@@ -21,7 +21,7 @@ serde_yaml = { version = "0.9", optional = true }
 [dev-dependencies]
 argon2 = { version = "0.5", features = ["std"] }
 figment = { version = "0.10", features = ["env", "test", "toml"] }
-rstest = "0.26"
+rstest = "0.27"
 toml = "0.9"
 
 [features]
