@@ -268,7 +268,7 @@ jobs:
       # on main, which every PR run can restore; baselines saved here
       # stay scoped to the PR branch.
       - name: Generate coverage for SQLite
-        uses: leynos/shared-actions/.github/actions/generate-coverage@c4ed5ffaf0640b1907d5359a87fd1677034eec27
+        uses: leynos/shared-actions/.github/actions/generate-coverage@7d751eded578e48dacf43ab173d5820e6437c474
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
@@ -291,7 +291,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: make warm-postgres
       - name: Generate coverage for Postgres
-        uses: leynos/shared-actions/.github/actions/generate-coverage@c4ed5ffaf0640b1907d5359a87fd1677034eec27
+        uses: leynos/shared-actions/.github/actions/generate-coverage@7d751eded578e48dacf43ab173d5820e6437c474
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
           NEXTEST_PROFILE: postgres
