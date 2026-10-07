@@ -83,7 +83,7 @@ jobs:
       - name: Package Linux artefacts
         if: inputs.platform == 'linux'
         uses: >-
-          leynos/shared-actions/.github/actions/linux-packages@c856f4c570e8d83d64318ee2768a4906d0d807f6
+          leynos/shared-actions/.github/actions/linux-packages@7d751eded578e48dacf43ab173d5820e6437c474
         with:
           project-dir: .
           package-name: ${{ inputs.bin-name }}
