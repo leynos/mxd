@@ -114,21 +114,32 @@ def _merged_env(*scopes: cabc.Mapping[str, object]) -> dict[str, str]:
     return merged
 
 
+def _jobs(document: Document) -> list[tuple[str, dict[str, typ.Any]]]:
+    """List a workflow's `(job_id, job)` pairs."""
+    jobs = document.get("jobs")
+    return list(jobs.items()) if isinstance(jobs, dict) else []
+
+
 def _binstall_steps(
     documents: cabc.Mapping[str, Document],
 ) -> list[tuple[str, str, dict[str, str], str]]:
     """Return `(coordinate, run, env, workflow)` for each binstall step."""
-    found = []
-    for name, document in documents.items():
-        for job_id, job in (document.get("jobs") or {}).items():
-            for step in job.get("steps") or []:
-                run = str(step.get("run", ""))
-                if BINSTALL.search(run):
-                    env = _merged_env(document, job, step)
-                    found.append(
-                        (f"{name}:{job_id}:{step.get('name')}", run, env, name)
-                    )
-    return found
+    candidates = [
+        (name, document, job_id, job, step)
+        for name, document in documents.items()
+        for job_id, job in _jobs(document)
+        for step in job.get("steps") or []
+    ]
+    return [
+        (
+            f"{name}:{job_id}:{step.get('name')}",
+            str(step["run"]),
+            _merged_env(document, job, step),
+            name,
+        )
+        for name, document, job_id, job, step in candidates
+        if BINSTALL.search(str(step.get("run", "")))
+    ]
 
 
 def _tokens_received(run: str, env: dict[str, str], tmp_path: Path) -> list[str]:
