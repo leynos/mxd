@@ -25,7 +25,7 @@ Once compiled, invoke AFL++ with a directory of seed files:
 
 ```bash
 mkdir -p fuzz/corpus findings
-cargo afl fuzz -i fuzz/corpus -o findings fuzz/target/debug/fuzz
+cargo afl fuzz -i fuzz/corpus -o findings target/debug/fuzz
 ```
 
 The harness panics on parsing errors so crashes will be detected. Refer to
@@ -41,13 +41,19 @@ The container provides a reproducible environment:
 # build the image
 docker build -t mxd-fuzz -f fuzz/Dockerfile .
 
-# run with mounted corpus and output directory
-mkdir -p fuzz/corpus artifacts
+# run with a mounted output directory; the image carries the seed corpus
+mkdir -p artifacts
 docker run --rm \
-  -v $(pwd)/fuzz/corpus:/corpus \
   -v $(pwd)/artifacts:/out \
   mxd-fuzz
 ```
+
+The image is built from a base pinned by digest, so a moving tag cannot change
+the lane unnoticed; bump the digest on purpose and confirm with a run of the
+workflow. The base provides cargo but neither `libsqlite3` nor the `cargo afl`
+subcommand, so the Dockerfile installs `libsqlite3-dev` and `cargo-afl` (at the
+version matching the `afl` crate) and builds the AFL runtime for the
+repository's pinned toolchain with `cargo afl config --build`.
 
 ## CI Integration
 

@@ -26,8 +26,11 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p artifacts
-          docker run --rm \
-            -v ${{ github.workspace }}/fuzz/corpus:/corpus \
+          # The image carries its own seed corpus. afl-fuzz runs until stopped,
+          # so interrupt it before the job timeout would cancel the upload.
+          timeout --signal=INT 5h docker run --rm \
+            -e AFL_SKIP_CPUFREQ=1 \
+            -e AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
             -v ${{ github.workspace }}/artifacts:/out \
             mxd-fuzz
 
