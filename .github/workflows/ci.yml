@@ -100,7 +100,7 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@c4ed5ffaf0640b1907d5359a87fd1677034eec27
+      - uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
         with:
           install-postgres-deps: ${{ matrix.install_postgres_deps }}
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
@@ -189,7 +189,7 @@ jobs:
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@c4ed5ffaf0640b1907d5359a87fd1677034eec27
+      - uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
         with:
           install-sqlite-deps: true
       - name: Cache Cargo directories
@@ -238,7 +238,7 @@ jobs:
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@c4ed5ffaf0640b1907d5359a87fd1677034eec27
+      - uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
