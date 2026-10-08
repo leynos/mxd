@@ -1,16 +1,26 @@
-"""Every step that runs `cargo binstall` sends the workflow token.
+"""Every step that runs `cargo binstall` sends the workflow token, read-only.
 
 binstall resolves a crate's release through `api.github.com`. An anonymous
 request is rate limited by the runner's address, and a 403 makes binstall wait
 two minutes and then build the crate from source, which took 348 s for
 cargo-nextest on one CI leg while the other legs, warm, took a second. The
 fallback is silent apart from a warning, so nothing fails: the job is merely
-slow. These contracts hold that no `cargo binstall` runs without a token.
+slow. Two contracts hold the line:
 
-The judgement is :func:`unauthenticated_binstalls`, a query over a parsed
-workflow. It reads the step's own `env` and its job's `env`, and treats a token
-that is not the workflow token expression as no token, so a literal or an empty
-value does not count.
+* No `cargo binstall` runs without the token. The judgement is
+  :func:`unauthenticated_binstalls`, a query over a parsed workflow. It merges
+  the workflow, job and step `env` in that order, so the most specific value
+  wins, and `GITHUB_TOKEN` wins over `GH_TOKEN`. A token that is not the exact
+  workflow token expression counts as no token, so a literal or an empty value
+  does not pass.
+* The token binstall sends can read the repository and nothing more.
+  :func:`unrestricted_binstall_jobs` reports each job that runs `cargo
+  binstall` without `permissions` of exactly `contents: read`, in its own block
+  (which replaces the workflow's) or the workflow's.
+
+The parsed workflows come from :func:`ci_workflow_reader.repository_documents`,
+the one function that reads this repository. The property and execution
+checks for the same query live in ``test_binstall_token_execution.py``.
 """
 
 from __future__ import annotations

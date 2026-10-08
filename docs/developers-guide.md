@@ -1220,6 +1220,18 @@ new anonymous step added to `coverage-main.yml`. Unit cases drive both queries
 with constructed steps, including a multi-line `run` body, a
 toolchain-qualified command and each override of a valid token.
 
+`tests/workflow_contracts/test_binstall_token_execution.py` covers what a table
+cannot. A Hypothesis property test generates the workflow, job and step `env`
+with `GITHUB_TOKEN` and `GH_TOKEN` each absent, the exact expression, empty or
+a literal, and holds the query to a separately written oracle: the most
+specific scope wins per variable, then `GITHUB_TOKEN` outranks `GH_TOKEN`. An
+execution test runs each of the five real `run` scripts under `bash` with the
+environment GitHub builds for the step (a sentinel replacing the token
+expression, no inherited token) and a `cargo` shim that records the token
+`cargo binstall` receives. It cannot show what cargo-binstall then does with
+the token, which needs the network; it does show the token reaches the process.
+Hypothesis is a test-only pin on the `test-workflow-contracts` target.
+
 ### Adding a lane
 
 A new job fails the contracts until it is pinned: its coordinate must appear in
