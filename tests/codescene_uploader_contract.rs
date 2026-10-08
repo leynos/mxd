@@ -35,7 +35,12 @@ use cap_std::{ambient_authority, fs_utf8::Dir};
 /// and its uploader directory is byte-identical, so the rejection and the
 /// manifest are the same code. Naming `a5765019` here would mean downgrading a
 /// pin that is already ahead of it.
-const APPROVED_PIN: &str = "82feb2b7aac45b7efff40c9c4bb632551b14521c";
+///
+/// Moved from `82feb2b7` to `7d751ede`: `cli-manifest.json` is the same blob at
+/// both, and the uploader still rejects a non-empty `installer-checksum`. The
+/// range adds the `mode` input and an `upload-artifact` pin, neither of which
+/// this repository's steps depend on.
+const APPROVED_PIN: &str = "7d751eded578e48dacf43ab173d5820e6437c474";
 
 /// The uploader reference, without its revision. The `@` separator is part of
 /// the marker so a differently owned action whose path merely starts with the
