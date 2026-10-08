@@ -1269,7 +1269,7 @@ a bump to 4 arrives as a lockfile-only change that `make check-locked` refuses.
 Dependabot proposed it twice, in pull requests 566 and 575, when the pinned
 toolchain was also older than serial_test 4's `rust-version = "1.93.1"` and
 Cargo's MSRV-aware resolver resolved the bump back to 3.x. Automerge landed the
-second while `make check-locked` failed, because `build-test` is not a required
+second while `make check-locked` failed because `build-test` is not a required
 check, and pull request 576 restored the lockfile. The toolchain has since
 moved to `nightly-2026-03-26`, so the floor no longer applies, but the manifest
 still requires 3.
