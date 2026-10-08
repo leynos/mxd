@@ -40,8 +40,9 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/work \
             -w /work \
+            --entrypoint bash \
             mxd-fuzz \
-            bash scripts/triage_crashes.sh artifacts/main/crashes "$FUZZ_HARNESS"
+            scripts/triage_crashes.sh artifacts/main/crashes "$FUZZ_HARNESS"
 
       - name: Upload crash corpus
         uses: actions/upload-artifact@v7
