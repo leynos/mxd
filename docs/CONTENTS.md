@@ -47,6 +47,8 @@ Detailed guides for specific development concerns.
 
 - [`rstest-bdd-users-guide.md`](rstest-bdd-users-guide.md) — Behaviour-driven
   development with rstest-bdd.
+- [`rstest-bdd-wireframe-server-harness-design.md`](rstest-bdd-wireframe-server-harness-design.md)
+  — Proposed in-process harness for mxd Wireframe server behavioural tests.
 - [`rstest-bdd-v0-5-0-migration-guide.md`](rstest-bdd-v0-5-0-migration-guide.md)
   — Migrating to rstest-bdd v0.5.0.
 - [`rust-testing-with-rstest-fixtures.md`](rust-testing-with-rstest-fixtures.md)
