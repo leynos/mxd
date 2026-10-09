@@ -74,16 +74,28 @@ jobs:
             mxd-fuzz \
             scripts/triage_crashes.sh artifacts/main/crashes "$FUZZ_HARNESS"
 
+      # AFL names its files `id:000000,...`, and the upload action refuses a
+      # colon in a path, so the artefacts travel as archives.
+      - name: Archive the artefacts
+        if: always()
+        run: |
+          tar -czf fuzz-output.tgz -C artifacts .
+          if [ -d artifacts/main/crashes/unique ]; then
+            tar -czf crashes.tgz -C artifacts/main/crashes unique
+          else
+            tar -czf crashes.tgz --files-from /dev/null
+          fi
+
       - name: Upload crash corpus
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: crashes
-          path: artifacts/main/crashes/unique
+          path: crashes.tgz
 
       - name: Upload full artefacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts
-          path: artifacts
+          path: fuzz-output.tgz

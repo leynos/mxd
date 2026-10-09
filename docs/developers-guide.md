@@ -1320,7 +1320,10 @@ end, so the parts below are each held by a test.
   and upload steps run after a failure. The image's entrypoint is `afl-fuzz`,
   so the triage step overrides it with `--entrypoint bash`, and
   `scripts/triage_crashes.sh` gives `afl-cmin` the `-C` flag because every
-  input in a crash directory crashes.
+  input in a crash directory crashes. A run with no crashes leaves nothing to
+  reduce, which the script reports and accepts. The output travels as `tar`
+  archives because AFL's file names hold colons, which the upload action
+  refuses.
 
 `tests/workflow_contracts/test_fuzz_lane.py` holds the workflow flags, the
 Dockerfile pin, dependencies, ordering and paths, and runs the triage script

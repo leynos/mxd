@@ -29,6 +29,13 @@ fi
 UNIQUE_DIR="$CRASH_DIR/unique"
 mkdir -p "$UNIQUE_DIR"
 
+# A run that finds nothing leaves only AFL's README in the directory, and
+# afl-cmin aborts on an empty input set. No crash is the good outcome.
+if [ -z "$(find "$CRASH_DIR" -maxdepth 1 -type f -name 'id:*' -print -quit)" ]; then
+    echo "No crashes to triage in $CRASH_DIR"
+    exit 0
+fi
+
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 

@@ -129,7 +129,12 @@ def test_the_uploads_run_after_a_failed_check(
     fuzz_steps: cabc.Mapping[str, dict[str, object]],
 ) -> None:
     """The artefacts matter most when the lane failed."""
-    for name in ("Triage crashes", "Upload crash corpus", "Upload full artefacts"):
+    for name in (
+        "Triage crashes",
+        "Archive the artefacts",
+        "Upload crash corpus",
+        "Upload full artefacts",
+    ):
         assert fuzz_steps[name].get("if") == "always()", name
 
 
@@ -289,6 +294,32 @@ def test_triage_keeps_crashing_inputs_and_minimizes_each(
     assert any(line.startswith("cmin -C ") for line in log), log
     assert sum(line.startswith("tmin ") for line in log) == 2, log
     assert sorted(p.name for p in (crash_dir / "unique").iterdir()) == ["id:0", "id:1"]
+
+
+def test_triage_of_a_run_with_no_crashes_succeeds_without_calling_afl(
+    tmp_path: Path, triage: typ.Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
+    """No crash is the good outcome; afl-cmin aborts on an empty input set."""
+    crash_dir = _crashes(tmp_path, names=("README.txt",))
+    result = triage(crash_dir)
+    assert result.returncode == 0, result.stderr
+    assert "No crashes" in result.stdout
+    assert not (tmp_path / "stub.log").exists()
+
+
+def test_the_artefacts_are_uploaded_as_archives_because_afl_names_hold_colons(
+    fuzz_steps: cabc.Mapping[str, dict[str, object]],
+) -> None:
+    """the upload action refuses a colon in a path, and AFL's files all have one."""
+    assert "tar -czf fuzz-output.tgz" in str(fuzz_steps["Archive the artefacts"]["run"])
+    paths = {
+        name: fuzz_steps[name]["with"]["path"]  # type: ignore[index]
+        for name in ("Upload crash corpus", "Upload full artefacts")
+    }
+    assert paths == {
+        "Upload crash corpus": "crashes.tgz",
+        "Upload full artefacts": "fuzz-output.tgz",
+    }
 
 
 def test_triage_refuses_a_missing_crash_directory(
