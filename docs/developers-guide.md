@@ -1347,9 +1347,11 @@ still requires 3.
 
 The Cargo entry therefore ignores `serial_test` at `>= 4`, with a comment
 naming the manifest requirement. Raise the manifest to 4 by hand and drop the
-ignore together. `make test-dependabot-policy`, run by `docs-tooling`, asserts:
+ignore together. It also ignores `bincode` at `>= 3`, because bincode 3.0.0 is a
+`compile_error!` stub that no bump to it can build.
+`make test-dependabot-policy`, run by `docs-tooling`, asserts:
 
-- the exact ignore rule;
+- the exact `serial_test` and `bincode` ignore rules;
 - the manifest requirement the rule depends on, so raising serial_test to 4
   fails a case and the ignore is dropped instead of holding serial_test back
   after its reason has gone;
@@ -1362,8 +1364,11 @@ ignore together. `make test-dependabot-policy`, run by `docs-tooling`, asserts:
   catch-all group limited to minor and patch updates, with no
   `exclude-patterns` and no `applies-to` other than `version-updates`, so each
   major arrives in its own pull request;
-- that the only other group is Cargo's `rstest-bdd` lockstep group
-  (`rstest-bdd*`, no `update-types`), listed first. `rstest-bdd` and
+- that the only other groups are the github-actions `shared-actions` group
+  (`leynos/shared-actions*`, no `update-types`) and Cargo's `rstest-bdd`
+  lockstep group (`rstest-bdd*`, no `update-types`), each listed first. A bump
+  of a shared-actions pin moves one commit SHA to another and has no semver
+  level, so the typed catch-all never takes it. `rstest-bdd` and
   `rstest-bdd-macros` release together, and Cargo counts a 0.x minor as a
   major, which the catch-all would leave ungrouped;
 - that the github-actions entry reaches every composite action under

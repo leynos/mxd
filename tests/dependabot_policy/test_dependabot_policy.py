@@ -31,6 +31,8 @@ SERIAL_TEST_MANIFEST_REQUIREMENT: typ.Final = (
     'serial_test = { version = "3", features = ["file_locks"] }'
 )
 SERIAL_TEST_IGNORE: typ.Final = {"dependency-name": "serial_test", "versions": [">= 4"]}
+# bincode 3.0.0 is a `compile_error!` stub, so a bump to it can never build.
+BINCODE_IGNORE: typ.Final = {"dependency-name": "bincode", "versions": [">= 3"]}
 # The only values Dependabot accepts for a Cargo entry's versioning-strategy.
 # `increase-if-necessary`, valid for other ecosystems, fails the file's schema.
 CARGO_STRATEGIES: typ.Final = frozenset({"lockfile-only", "auto"})
@@ -211,6 +213,22 @@ def test_the_cargo_entry_ignores_serial_test_4(
     )
 
 
+def test_the_cargo_entry_ignores_bincode_3(
+    configuration: dict[str, object],
+) -> None:
+    """A bincode 3 bump is never proposed while 3.0.0 is a `compile_error!` stub."""
+    ignored = _entry(configuration, "cargo").get("ignore")
+    assert isinstance(ignored, list), "the cargo entry must declare ignore rules"
+    matching = [
+        rule
+        for rule in ignored
+        if isinstance(rule, dict) and rule.get("dependency-name") == "bincode"
+    ]
+    assert matching == [BINCODE_IGNORE], (
+        f"expected exactly {BINCODE_IGNORE}, found {matching}"
+    )
+
+
 def test_the_serial_test_ignore_still_has_its_reason() -> None:
     """The ignore is tied to the manifest requirement that needs it.
 
@@ -232,7 +250,12 @@ ECOSYSTEMS: typ.Final = ("github-actions", "cargo")
 CATCH_ALL_UPDATE_TYPES: typ.Final = frozenset({"minor", "patch"})
 # rstest-bdd and rstest-bdd-macros release together; Cargo counts a 0.x minor
 # as a major, which the catch-all leaves ungrouped, so the pair would split.
-LOCKSTEP_GROUPS: typ.Final = {"cargo": {"rstest-bdd": ["rstest-bdd*"]}}
+# A bump of a leynos/shared-actions pin moves one commit SHA to another and has
+# no semver level, so the typed catch-all never takes it; its own group does.
+LOCKSTEP_GROUPS: typ.Final = {
+    "github-actions": {"shared-actions": ["leynos/shared-actions*"]},
+    "cargo": {"rstest-bdd": ["rstest-bdd*"]},
+}
 ACTION_MANIFESTS: typ.Final = frozenset({"action.yml", "action.yaml"})
 
 
