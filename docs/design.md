@@ -3371,16 +3371,14 @@ The fuzz process:
   These seeds help AFL to have starting points that reach deeper into parsing
   logic.
 
-- AFL++ then mutates these and feeds into `parse_transaction`. If
-  `parse_transaction` ever panics or returns an error (actually we deliberately
-  cause a panic on certain errors in the harness to treat them as crashes, see
-  `The harness panics on parsing errors so crashes will be detected` (
-  [21](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/docs/fuzzing.md#L28-L32))),
-  AFL will flag that input. We consider a parse error as a "crash" for fuzzing
-  purposes to try to exercise all error paths – essentially, we might want to
-  see if any input causes an *unexpected* error or panic (though
-  parse_transaction returns Result, we might only panic on truly inconsistent
-  state).
+- AFL++ then mutates these and feeds into `parse_transaction`. The harness
+  treats an `Err` as a normal outcome: a parser that rejects a malformed frame
+  is doing its job, and an earlier harness that panicked on every error made
+  AFL save nearly every mutation as a "crash" (the first end-to-end run saved
+  17 in two minutes, all of them rejected frames such as `SizeMismatch` and
+  `PayloadTooLarge`). Only a panic, an abort or an overflow inside the parser
+  is a crash, which is what the corpus of saved inputs should hold (see
+  [fuzzing.md](fuzzing.md)).
 
 - The fuzzing runs in CI as a nightly job for several
   hours(

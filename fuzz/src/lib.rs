@@ -40,6 +40,22 @@ pub fn run_case(data: &[u8]) -> Result<(), TransactionError> {
     parse_transaction(data).map(drop)
 }
 
+/// Handle one AFL test case, counting only a panic or abort as a crash.
+///
+/// A parser that rejects a malformed frame is working, so its error is a
+/// normal outcome. Treating it as a crash would make AFL save nearly every
+/// mutation and bury a real defect: a panic, an overflow or an abort inside
+/// the parser, which still propagates from here.
+pub fn handle_case(data: &[u8]) { handle_with(data, run_case); }
+
+/// Run `parse` on a case and accept either of its outcomes; a panic in `parse`
+/// is not caught.
+fn handle_with<E>(data: &[u8], parse: impl FnOnce(&[u8]) -> Result<(), E>) {
+    match parse(data) {
+        Ok(()) | Err(_) => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,6 +97,19 @@ mod tests {
         // Junk that the parser would reject if any of it were parsed, so a
         // skip is distinguishable from a truncate-and-parse.
         assert!(run_case(&vec![0xff; MAX_INPUT_LEN + 1]).is_ok());
+    }
+
+    #[test]
+    fn a_rejected_frame_is_not_a_crash() {
+        handle_case(&[0xff; 3]);
+        handle_case(&valid_frame());
+        handle_with(&[], |_| Err::<(), &str>("rejected"));
+    }
+
+    #[test]
+    #[should_panic(expected = "parser defect")]
+    fn a_panic_in_the_parser_is_still_a_crash() {
+        handle_with::<()>(&[], |_| panic!("parser defect"));
     }
 
     #[test]

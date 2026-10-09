@@ -28,8 +28,9 @@ mkdir -p fuzz/corpus findings
 cargo afl fuzz -i fuzz/corpus -o findings target/debug/fuzz
 ```
 
-The harness panics on parsing errors so crashes will be detected. Its case
-handling is tested without the AFL runtime by `make test-fuzz-harness`. Refer to
+The harness treats a rejected frame as a normal outcome, so only a panic, an
+abort or an overflow inside the parser is a crash. Its case handling is tested
+without the AFL runtime by `make test-fuzz-harness`. Refer to
 `file-sharing-design.md` for how file operations interact with the protocol.
 
 ### Docker

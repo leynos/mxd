@@ -1302,9 +1302,12 @@ end, so the parts below are each held by a test.
 - **Harness.** `fuzz/src/main.rs` is only `afl::fuzz!`, which links the AFL
   runtime. The case handling is `fuzz::run_case` in `fuzz/src/lib.rs`: an input
   over `MAX_INPUT_LEN` is skipped, not truncated, and a parse error is returned
-  as an error. `main.rs` turns that into a panic, the crash policy, so AFL
-  records it. `make test-fuzz-harness` tests it without the AFL runtime, and
-  runs in `make test` and ahead of the image build.
+  as an error. `fuzz::handle_case`, which `main.rs` calls, treats that error as
+  a normal outcome: a parser rejecting a malformed frame is working, and
+  counting it as a crash made AFL save nearly every mutation. Only a panic, an
+  abort or an overflow inside the parser is a crash. `make test-fuzz-harness`
+  tests it without the AFL runtime, and runs in `make test` and ahead of the
+  image build.
 - **Run and triage.** The run is interrupted with `timeout --signal=INT`, for
   the `FUZZ_DURATION` the job env names (five hours nightly, two minutes on a
   pull request), so the upload steps run before the job ceiling cancels them. A
