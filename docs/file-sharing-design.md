@@ -826,14 +826,14 @@ and a move to a different folder via MoveFile. The implementation handles both:
 
   3. **DB Update:** Update the FileNode’s `parent_id` to the new folder’s ID
      and/or update its `name` if it's also a rename. This is an atomic update in
-       the DB. The implementation must ensure no name collision in the destination
-       (the UNIQUE(parent_id,name) constraint provides protection – checking is still
-     recommended; if a violation is detected, the operation should fail). For
-     moving folders, all child FileNodes remain linked to
-     the same parent IDs (only the moved folder's own parent changes), so the
-       tree is effectively spliced out and moved. **Important:** If the
-       implementation stored any kind of full path or had object keys tied to path,
-       this is where complexity arises:
+     the DB. The implementation must ensure no name collision in the destination
+     (the UNIQUE(parent_id,name) constraint provides protection – checking is
+     still recommended; if a violation is detected, the operation should fail).
+     For moving folders, all child FileNodes remain linked to the same parent
+     IDs (only the moved folder's own parent changes), so the tree is
+     effectively spliced out and moved. **Important:** If the implementation
+     stored any kind of full path or had object keys tied to path, this is where
+     complexity arises:
 
      - If using **ID-based object_key** (the selected design), the
        implementation does *not* change object_key at all. The files inside a
@@ -841,30 +841,30 @@ and a move to a different folder via MoveFile. The implementation handles both:
        implementation does not need to touch the object store for any file – a
        huge performance win (moves are instant regardless of data size).
      - If the implementation had used **path-based keys**, moving a file would
-      require renaming its object in storage (which usually means copy+delete).
-      Similarly moving a folder would entail renaming every object under that
-      folder's path – potentially thousands of operations and a lot of data
-      movement. This is exactly why flat key mapping was chosen. In the design,
-      *no object store operation is needed for a metadata move*.
+       require renaming its object in storage (which usually means copy+delete).
+       Similarly moving a folder would entail renaming every object under that
+       folder's path – potentially thousands of operations and a lot of data
+       movement. This is exactly why flat key mapping was chosen. In the design,
+       *no object store operation is needed for a metadata move*.
 
   4. **Permissions:** If the item had specific ACL entries, the implementation
-     might consider
-     whether to transfer or update them if moving across different sections.
-     Typically, the ACL entries move along with the item (since they are tied to
-     the FileNode’s id). But if the destination folder has different
-       restrictions, an admin might manually adjust ACLs after. The implementation
-       does not automatically drop or change existing per-file ACLs on move. One exception:
-     if an alias is moved, nothing special; if a dropbox folder is moved out
-     from under a protected area, it remains a dropbox unless changed. This is
-     all left to admin policy; the system just moves the node.
+     might consider whether to transfer or update them if moving across
+     different sections. Typically, the ACL entries move along with the item
+     (since they are tied to the FileNode’s id). But if the destination folder
+     has different restrictions, an admin might manually adjust ACLs after. The
+     implementation does not automatically drop or change existing per-file ACLs
+     on move. One exception: if an alias is moved, nothing special; if a dropbox
+     folder is moved out from under a protected area, it remains a dropbox
+     unless changed. This is all left to admin policy; the system just moves the
+     node.
 
   5. **Object Store:** As noted, no direct action required if keys are
-       unchanged. If the implementation did need to rename keys (path-coupled keys
-       design), it would have to: for a single file, use
-       `object_store.copy(src, dst)` if
-     available (some object stores allow server-side copy) then delete the old;
-     for a folder, iterate through all descendant files and do the same, which
-     would be very slow and prone to failure mid-way. Avoided in this approach.
+     unchanged. If the implementation did need to rename keys (path-coupled keys
+     design), it would have to: for a single file, use `object_store.copy(src,
+     dst)` if available (some object stores allow server-side copy) then delete
+     the old; for a folder, iterate through all descendant files and do the
+     same, which would be very slow and prone to failure mid-way. Avoided in
+     this approach.
 
   6. **Result:** Notify success. The client will likely refresh the old and new
      locations in its UI.
