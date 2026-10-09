@@ -70,6 +70,8 @@ jobs:
         run: make nixie
 
   build-test:
+    permissions:
+      contents: read
     # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
     # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
     # Ubicloud coverage-upload writes the cache scope this reads.
@@ -112,16 +114,24 @@ jobs:
       - name: Check the lockfile matches the manifest
         run: make check-locked
       - name: Install cargo-nextest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if ! cargo nextest --version >/dev/null 2>&1; then
             cargo binstall --locked --no-confirm cargo-nextest
           fi
+      # Every `cargo binstall` step sets GITHUB_TOKEN: an anonymous GitHub API
+      # request is rate limited by runner address, and a 403 sends binstall to a
+      # multi-minute source build. See the developers' guide, "Authenticated
+      # binstall".
       # Dependency audits report advisories against the whole lockfile, so a
       # newly published advisory would fail every Dependabot PR regardless of
       # content and deadlock auto-merge. The scheduled audit workflow covers
       # Dependabot merges instead.
       - name: Install cargo-audit
         if: matrix.name == 'postgres' && github.actor != 'dependabot[bot]'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm cargo-audit
       - name: Audit dependencies
         if: matrix.name == 'postgres' && github.actor != 'dependabot[bot]'
@@ -212,6 +222,8 @@ jobs:
         run: make test-validator-sqlite
 
   coverage:
+    permissions:
+      contents: read
     # Ubicloud, to avoid the hosted queue. A pull request from a fork cannot
     # obtain an Ubicloud runner, so it falls back to the hosted pool. Main's
     # Ubicloud coverage-upload writes the cache scope this reads.
@@ -278,6 +290,8 @@ jobs:
           artefact-name-suffix: sqlite
           with-ratchet: 'true'
       - name: Install pg-embed-setup-unpriv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: cargo binstall --no-confirm pg-embed-setup-unpriv@0.5.2
       # pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest
       # of a test process, so a download failing mid-suite would fail every

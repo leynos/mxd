@@ -1185,6 +1185,53 @@ Tolerated failure: `continue-on-error` on the SQLite coverage step, and
 the Whitaker step's flags dropped. Unit cases drive the same query with
 constructed copies of the workflow.
 
+### Authenticated binstall
+
+`cargo binstall` resolves a crate's release through `api.github.com`. An
+anonymous request is rate limited by the runner's address, and a 403 makes
+binstall wait 120 seconds and then build the crate from source, with only a
+`WARN` to say so. On one CI leg that turned a one-second
+`Install cargo-nextest` step into 348 seconds; the legs that already held the
+binary took a second, so the defect hides behind any warm cache and returns
+when it expires. Nothing fails, so only the step's duration shows it.
+
+Every step that runs `cargo binstall` therefore sets
+`GITHUB_TOKEN: ${{ github.token }}`: `Install cargo-nextest`,
+`Install cargo-audit` and `Install pg-embed-setup-unpriv` in `ci.yml`,
+`Install pg-embed-setup-unpriv` in `coverage-main.yml`, and
+`Install cargo-audit` in `audit.yml`. The `setup-rust` action installs
+cargo-binstall itself but never runs it, so the token belongs to each consumer
+step. The PostgreSQL warm-up sets it for the same reason; see "The binaries are
+downloaded before the tests".
+
+`tests/workflow_contracts/test_binstall_token.py` asserts three things. No step
+running `cargo binstall`, with or without a `+toolchain` between `cargo` and
+`binstall`, may receive anything but the exact workflow token expression as its
+`GITHUB_TOKEN` (or `GH_TOKEN`). The value judged is the effective one, with
+workflow, job and step `env` merged in that order, so a step that overrides a
+valid job token with an empty value or a literal is refused. Every job running
+`cargo binstall` holds `permissions` of exactly `contents: read`, in its own
+block or the workflow's, so the token binstall sends can read the repository
+and nothing more; `build-test` and `coverage` in `ci.yml` declare it for that
+reason. And the query still sees the five steps, so an empty result cannot pass
+for a clean one. Three workflow mutations each fail the named cases: the token
+removed from the nextest step, replaced with a literal in `audit.yml`, and a
+new anonymous step added to `coverage-main.yml`. Unit cases drive both queries
+with constructed steps, including a multi-line `run` body, a
+toolchain-qualified command and each override of a valid token.
+
+`tests/workflow_contracts/test_binstall_token_execution.py` covers what a table
+cannot. A Hypothesis property test generates the workflow, job and step `env`
+with `GITHUB_TOKEN` and `GH_TOKEN` each absent, the exact expression, empty or
+a literal, and holds the query to a separately written oracle: the most
+specific scope wins per variable, then `GITHUB_TOKEN` outranks `GH_TOKEN`. An
+execution test runs each of the five real `run` scripts under `bash` with the
+environment GitHub builds for the step (a sentinel replacing the token
+expression, no inherited token) and a `cargo` shim that records the token
+`cargo binstall` receives. It cannot show what cargo-binstall then does with
+the token, which needs the network; it does show the token reaches the process.
+Hypothesis is a test-only pin on the `test-workflow-contracts` target.
+
 ### Adding a lane
 
 A new job fails the contracts until it is pinned: its coordinate must appear in

@@ -126,6 +126,7 @@ test-workflow-contracts: ## Assert the CI workflows place and gate what they cla
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(WORKFLOW_CONTRACT_SRCS)
 	@PYTHONPATH=tests/workflow_contracts $(UV_ENV) $(UV) run --no-project \
 		--python 3.14 --with pytest==9.0.2 --with pyyaml==$(PYYAML_VERSION) \
+		--with hypothesis==6.168.5 \
 		python -m pytest tests/workflow_contracts -c /dev/null --rootdir=. \
 		-p no:cacheprovider
 
