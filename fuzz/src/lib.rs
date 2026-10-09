@@ -51,6 +51,8 @@ pub fn handle_case(data: &[u8]) { handle_with(data, run_case); }
 /// Run `parse` on a case and accept either of its outcomes; a panic in `parse`
 /// is not caught.
 fn handle_with<E>(data: &[u8], parse: impl FnOnce(&[u8]) -> Result<(), E>) {
+    #[cfg(test)]
+    tests::HANDLED.with(|count| count.set(count.get() + 1));
     match parse(data) {
         Ok(()) | Err(_) => {}
     }
@@ -58,7 +60,15 @@ fn handle_with<E>(data: &[u8], parse: impl FnOnce(&[u8]) -> Result<(), E>) {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
+
+    thread_local! {
+        /// Cases that reached the shared handler on this thread, so that a test
+        /// can tell a `handle_case` that does nothing from one that handles.
+        pub(super) static HANDLED: Cell<usize> = const { Cell::new(0) };
+    }
 
     /// A well-formed, empty-payload transaction frame.
     fn valid_frame() -> Vec<u8> {
@@ -97,6 +107,25 @@ mod tests {
         // Junk that the parser would reject if any of it were parsed, so a
         // skip is distinguishable from a truncate-and-parse.
         assert!(run_case(&vec![0xff; MAX_INPUT_LEN + 1]).is_ok());
+    }
+
+    #[test]
+    fn handle_case_hands_the_case_to_the_handler() {
+        let before = HANDLED.with(Cell::get);
+        handle_case(&valid_frame());
+        handle_case(&[0xff; 3]);
+        assert_eq!(HANDLED.with(Cell::get), before + 2);
+    }
+
+    #[test]
+    fn the_handler_calls_the_parser_it_is_given_once() {
+        let calls = Cell::new(0);
+        handle_with(&[1, 2], |data| {
+            calls.set(calls.get() + 1);
+            assert_eq!(data, [1, 2]);
+            Ok::<(), ()>(())
+        });
+        assert_eq!(calls.get(), 1);
     }
 
     #[test]
