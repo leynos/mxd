@@ -38,10 +38,10 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    # serial_test 4 declares rust-version 1.93.1, newer than the pinned
-    # nightly-2025-11-08 (rustc 1.93.0-nightly). Cargo's MSRV-aware resolver
-    # resolves it back to 3.x, so a bump to 4 lands a lockfile nothing builds
-    # from (#566, #575). Drop this when the toolchain reaches 1.93.1.
+    # The manifest requires serial_test 3 and Dependabot's Cargo updater does
+    # not raise Cargo.toml, so a bump to 4 lands a lockfile the manifest does not
+    # admit and `make check-locked` refuses (#566, #575). Drop this when the
+    # manifest is raised to serial_test 4 by hand.
     ignore:
       - dependency-name: "serial_test"
         versions: [">= 4"]
