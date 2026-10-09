@@ -46,6 +46,7 @@ PINNED_GATES: typ.Final[tuple[tuple[str, str, str], ...]] = (
     ("ci.yml", "docs-tooling", "make spelling"),
     ("ci.yml", "docs-tooling", "make nixie"),
     ("ci.yml", "validator-sqlite", "make test-validator-sqlite"),
+    ("fuzz.yml", "fuzz", "make test-fuzz-harness"),
     ("loom.yml", "models", "make test-loom"),
     ("loom-check.yml", "check", "make check-loom"),
     ("loom-check.yml", "check", "make test-concurrency"),

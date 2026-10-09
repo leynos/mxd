@@ -1279,6 +1279,45 @@ A new job fails the contracts until it is pinned: its coordinate must appear in
 ceiling sized from three green runs. That refusal is the point. A lane nobody
 pinned is a lane nobody decided the placement or the bound of.
 
+## The AFL++ fuzz lane
+
+`.github/workflows/fuzz.yml` builds `fuzz/Dockerfile` and runs AFL++ against
+`parse_transaction` every night. See [fuzzing.md](fuzzing.md) for how to run
+it. The lane stayed red for months because no part of it had been run end to
+end, so the parts below are each held by a test.
+
+- **Base image.** Both stages start from the AFL++ image pinned by digest. A
+  moving tag let the lane drift unnoticed. Bump the digest on purpose, with a
+  run of the workflow.
+- **Build dependencies.** The image provides cargo but neither `libsqlite3`
+  (the corpus generator links the SQLite backend) nor the `cargo afl`
+  subcommand. The Dockerfile installs `libsqlite3-dev` and `cargo-afl`, whose
+  version must match the minor of the `afl` crate in `fuzz/Cargo.toml`.
+- **Runtime and paths.** `cargo afl config --build` builds the AFL runtime for
+  the toolchain this repository pins, and runs after the sources are copied in.
+  The `fuzz` crate is a workspace member, so its binary is `target/debug/fuzz`,
+  not `fuzz/target/debug/fuzz`. The image carries the seed corpus from
+  `make corpus` at `/corpus`; a host mount there would shadow it with an empty
+  directory.
+- **Harness.** `fuzz/src/main.rs` is only `afl::fuzz!`, which links the AFL
+  runtime. The case handling is `fuzz::run_case` in `fuzz/src/lib.rs`: an input
+  over `MAX_INPUT_LEN` is skipped, not truncated, and a parse error panics so
+  AFL records a crash. `make test-fuzz-harness` tests it without the AFL
+  runtime, and runs in `make test` and ahead of the image build.
+- **Run and triage.** The run is interrupted with `timeout --signal=INT` so the
+  upload steps run before the job ceiling cancels them. The image's entrypoint
+  is `afl-fuzz`, so the triage step overrides it with `--entrypoint bash`, and
+  `scripts/triage_crashes.sh` gives `afl-cmin` the `-C` flag because every
+  input in a crash directory crashes.
+
+`tests/workflow_contracts/test_fuzz_lane.py` holds the workflow flags, the
+Dockerfile pin, dependencies, ordering and paths, and runs the triage script
+against stub `afl-cmin` and `afl-tmin` tools for its success,
+missing-directory, non-executable-harness and tool-failure paths. It does not
+test AFL itself, and it does not compile the harness against the AFL runtime:
+the image build that opens every run of the workflow does that, and a failure
+there turns the lane red.
+
 ## Cancelling superseded pull-request runs
 
 Every push to a pull request starts a fresh run of each gate. The run already

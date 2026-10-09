@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -230,7 +230,7 @@ tlc: tlc-handshake ## Run all TLA+ model checks
 tlc-handshake: ## Run TLC on handshake spec
 	TLC_IMAGE=$(TLC_IMAGE) $(TLC_RUNNER) crates/mxd-verification/tla/MxdHandshake.tla
 
-test: test-postgres test-sqlite test-wireframe-only test-verification test-concurrency test-doc ## Run sqlite, postgres, wireframe-only, verification, concurrency-kernel, and doc suites
+test: test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness test-concurrency test-doc ## Run sqlite, postgres, wireframe-only, verification, fuzz-harness, concurrency-kernel, and doc suites
 
 # Note: RSTEST_TIMEOUT is intentionally omitted for postgres tests because
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
@@ -255,6 +255,9 @@ test-wireframe-only: ## Run tests with legacy networking disabled
 
 test-verification: ## Run verification crate tests
 	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p mxd-verification
+
+test-fuzz-harness: ## Run the AFL harness's case-handling tests, which need no AFL runtime
+	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p fuzz
 
 test-concurrency: ## Run the shared-state kernels' ordinary tests and doctests
 	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p mxd-concurrency
