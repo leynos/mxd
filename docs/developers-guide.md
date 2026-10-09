@@ -1310,11 +1310,14 @@ end, so the parts below are each held by a test.
   pull request), so the upload steps run before the job ceiling cancels them. A
   pull request that touches `fuzz/`, the triage script or the workflow runs the
   lane end to end for that short interval, which is the lane's integration test.
-  `Run AFL++` tolerates failure so the artefacts upload, so a following step
-  requires `execs_done` above zero in AFL's `fuzzer_stats`. The image's
-  entrypoint is `afl-fuzz`, so the triage step overrides it with
-  `--entrypoint bash`, and `scripts/triage_crashes.sh` gives `afl-cmin` the
-  `-C` flag because every input in a crash directory crashes.
+  `timeout` exits 124 after it interrupts AFL, which the run accepts as its
+  expected end, and a following step requires `execs_done` above zero in AFL's
+  `fuzzer_stats`. The run and the triage use the runner's user, because
+  root-owned output cannot be read by the check or the uploads, and the triage
+  and upload steps run after a failure. The image's entrypoint is `afl-fuzz`,
+  so the triage step overrides it with `--entrypoint bash`, and
+  `scripts/triage_crashes.sh` gives `afl-cmin` the `-C` flag because every
+  input in a crash directory crashes.
 
 `tests/workflow_contracts/test_fuzz_lane.py` holds the workflow flags, the
 Dockerfile pin, dependencies, ordering and paths, and runs the triage script

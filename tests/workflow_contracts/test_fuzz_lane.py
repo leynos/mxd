@@ -117,8 +117,8 @@ def test_a_pull_request_runs_the_lane_for_a_bounded_interval() -> None:
 def test_a_run_that_never_started_fails_the_lane(
     fuzz_steps: cabc.Mapping[str, dict[str, object]],
 ) -> None:
-    """Run AFL++ tolerates failure, so a separate step demands AFL's output."""
-    assert fuzz_steps["Run AFL++"].get("continue-on-error") is True
+    """A clean exit can still mean nothing ran, so a step demands AFL's output."""
+    assert "continue-on-error" not in fuzz_steps["Run AFL++"]
     check = fuzz_steps["Check AFL++ ran"]
     assert "execs_done" in str(check["run"]), check
     assert "artifacts/main/fuzzer_stats" in str(check["run"]), check
@@ -131,6 +131,21 @@ def test_the_uploads_run_after_a_failed_check(
     """The artefacts matter most when the lane failed."""
     for name in ("Triage crashes", "Upload crash corpus", "Upload full artefacts"):
         assert fuzz_steps[name].get("if") == "always()", name
+
+
+def test_the_run_and_the_triage_do_not_leave_root_owned_output(
+    fuzz_steps: cabc.Mapping[str, dict[str, object]],
+) -> None:
+    """Root-owned artefacts made the check, the triage and the uploads fail."""
+    for name in ("Run AFL++", "Triage crashes"):
+        assert '--user "$(id -u):$(id -g)"' in _run(fuzz_steps, name), name
+
+
+def test_the_run_treats_the_interrupt_as_its_expected_end(
+    fuzz_steps: cabc.Mapping[str, dict[str, object]],
+) -> None:
+    """`timeout` exits 124 after it interrupts AFL; any other status is a failure."""
+    assert _run(fuzz_steps, "Run AFL++").endswith("|| test $? -eq 124")
 
 
 def test_the_run_sets_the_afl_variables_a_hosted_runner_needs(

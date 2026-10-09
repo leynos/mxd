@@ -42,20 +42,23 @@ jobs:
         run: docker build -t mxd-fuzz -f fuzz/Dockerfile .
 
       - name: Run AFL++
-        continue-on-error: true
         run: |
           mkdir -p artifacts
           # The image carries its own seed corpus. afl-fuzz runs until stopped,
-          # so interrupt it before the job timeout would cancel the upload.
+          # so interrupt it before the job timeout would cancel the upload;
+          # `timeout` exits 124 when it had to, which is the expected end.
+          # The container runs as the runner's user, because root-owned output
+          # cannot be read by the check, the triage or the uploads.
           timeout --signal=INT "$FUZZ_DURATION" docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -e AFL_SKIP_CPUFREQ=1 \
             -e AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
             -v ${{ github.workspace }}/artifacts:/out \
-            mxd-fuzz
+            mxd-fuzz || test $? -eq 124
 
-      # Run AFL++ tolerates a failure so that the artefacts upload, which also
-      # means a run that never started would pass. AFL writes `fuzzer_stats`
-      # once it is running, and `execs_done` counts the cases it executed.
+      # A run that exits cleanly can still have executed nothing. AFL writes
+      # `fuzzer_stats` once it is running, and `execs_done` counts the cases it
+      # executed.
       - name: Check AFL++ ran
         run: |
           grep -E '^execs_done +: +[1-9]' artifacts/main/fuzzer_stats
@@ -64,6 +67,7 @@ jobs:
         if: always()
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/work \
             -w /work \
             --entrypoint bash \
