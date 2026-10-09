@@ -7,6 +7,8 @@
 /// Hand each AFL test case to the transaction parser, in AFL's persistent mode.
 fn main() {
     afl::fuzz!(|data: &[u8]| {
-        fuzz::run_case(data);
+        // Panic on parse errors so AFL can detect crashes.
+        #[expect(clippy::expect_used, reason = "AFL fuzz target: crash on parse errors")]
+        fuzz::run_case(data).expect("transaction parse error");
     });
 }

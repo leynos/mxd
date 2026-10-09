@@ -77,12 +77,60 @@ def _run(steps: cabc.Mapping[str, dict[str, object]], name: str) -> str:
     return re.sub(r"[ \t]+", " ", joined).strip()
 
 
-def test_the_run_stops_before_the_job_ceiling_with_an_interrupt(
+def _job() -> dict[str, typ.Any]:
+    """The fuzz job."""
+    return repository_documents()["fuzz.yml"]["jobs"]["fuzz"]  # type: ignore[index]
+
+
+def test_the_run_is_interrupted_for_the_duration_the_job_env_names(
     fuzz_steps: cabc.Mapping[str, dict[str, object]],
 ) -> None:
-    """AFL runs until stopped, so it is interrupted ahead of the job timeout."""
+    """AFL runs until stopped, so the run is interrupted ahead of the ceiling."""
     run = _run(fuzz_steps, "Run AFL++")
-    assert re.search(r"\btimeout --signal=INT \d+h docker run\b", run), run
+    assert re.search(r'\btimeout --signal=INT "\$FUZZ_DURATION" docker run\b', run), run
+
+
+def test_the_nightly_duration_is_shorter_than_the_job_ceiling() -> None:
+    """A duration past the ceiling would cancel the job before triage and upload."""
+    job = _job()
+    duration = str(job["env"]["FUZZ_DURATION"])
+    hours = re.search(r"\|\|\s*'(\d+)h'", duration)
+    assert hours, f"no hour duration for scheduled runs in: {duration}"
+    assert int(hours.group(1)) * 60 < int(job["timeout-minutes"]), duration
+
+
+def test_a_pull_request_runs_the_lane_for_a_bounded_interval() -> None:
+    """A pull request touching the lane runs it end to end, but briefly."""
+    document = repository_documents()["fuzz.yml"]
+    triggers = document.get("on", document.get(True))  # type: ignore[union-attr]
+    assert "pull_request" in triggers, triggers
+    paths = set(triggers["pull_request"]["paths"])
+    assert {
+        "fuzz/**",
+        "scripts/triage_crashes.sh",
+        ".github/workflows/fuzz.yml",
+    } <= paths
+    duration = str(_job()["env"]["FUZZ_DURATION"])
+    assert re.search(r"pull_request' && '\d+s'", duration), duration
+
+
+def test_a_run_that_never_started_fails_the_lane(
+    fuzz_steps: cabc.Mapping[str, dict[str, object]],
+) -> None:
+    """Run AFL++ tolerates failure, so a separate step demands AFL's output."""
+    assert fuzz_steps["Run AFL++"].get("continue-on-error") is True
+    check = fuzz_steps["Check AFL++ ran"]
+    assert "execs_done" in str(check["run"]), check
+    assert "artifacts/main/fuzzer_stats" in str(check["run"]), check
+    assert "if" not in check, check
+
+
+def test_the_uploads_run_after_a_failed_check(
+    fuzz_steps: cabc.Mapping[str, dict[str, object]],
+) -> None:
+    """The artefacts matter most when the lane failed."""
+    for name in ("Triage crashes", "Upload crash corpus", "Upload full artefacts"):
+        assert fuzz_steps[name].get("if") == "always()", name
 
 
 def test_the_run_sets_the_afl_variables_a_hosted_runner_needs(

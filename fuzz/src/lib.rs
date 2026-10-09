@@ -4,7 +4,7 @@
 //! logic lives here so that it can be tested without the AFL runtime, which
 //! only `cargo afl` links.
 
-use mxd::transaction::{HEADER_LEN, MAX_PAYLOAD_SIZE, parse_transaction};
+use mxd::transaction::{HEADER_LEN, MAX_PAYLOAD_SIZE, TransactionError, parse_transaction};
 
 /// The largest input, in bytes, that the harness parses: a header and a
 /// maximum-size payload.
@@ -29,15 +29,15 @@ pub const fn is_oversized(len: usize) -> bool { len > MAX_INPUT_LEN }
 /// the parser allocate without bound and a prefix of it is never mistaken for
 /// the case AFL saved.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics when the parser rejects the input, which is how AFL detects a crash.
-pub fn run_case(data: &[u8]) {
+/// Returns the parser's error when it rejects the input. The caller decides
+/// what that means: the AFL binary panics, which is how AFL detects a crash.
+pub fn run_case(data: &[u8]) -> Result<(), TransactionError> {
     if is_oversized(data.len()) {
-        return;
+        return Ok(());
     }
-    #[expect(clippy::unwrap_used, reason = "AFL fuzz target: crash on parse errors")]
-    parse_transaction(data).unwrap();
+    parse_transaction(data).map(drop)
 }
 
 #[cfg(test)]
@@ -72,16 +72,19 @@ mod tests {
     }
 
     #[test]
-    fn a_valid_frame_is_parsed_without_panicking() { run_case(&valid_frame()); }
+    fn a_valid_frame_is_parsed() {
+        assert!(run_case(&valid_frame()).is_ok());
+    }
 
     #[test]
     fn an_oversized_input_is_skipped_not_truncated() {
         // Junk that the parser would reject if any of it were parsed, so a
         // skip is distinguishable from a truncate-and-parse.
-        run_case(&vec![0xff; MAX_INPUT_LEN + 1]);
+        assert!(run_case(&vec![0xff; MAX_INPUT_LEN + 1]).is_ok());
     }
 
     #[test]
-    #[should_panic(expected = "called `Result::unwrap()` on an `Err` value")]
-    fn a_malformed_input_panics_so_afl_records_a_crash() { run_case(&[0xff; 3]); }
+    fn a_malformed_input_is_reported_as_an_error() {
+        assert!(run_case(&[0xff; 3]).is_err());
+    }
 }

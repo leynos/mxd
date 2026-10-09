@@ -1301,14 +1301,20 @@ end, so the parts below are each held by a test.
   directory.
 - **Harness.** `fuzz/src/main.rs` is only `afl::fuzz!`, which links the AFL
   runtime. The case handling is `fuzz::run_case` in `fuzz/src/lib.rs`: an input
-  over `MAX_INPUT_LEN` is skipped, not truncated, and a parse error panics so
-  AFL records a crash. `make test-fuzz-harness` tests it without the AFL
-  runtime, and runs in `make test` and ahead of the image build.
-- **Run and triage.** The run is interrupted with `timeout --signal=INT` so the
-  upload steps run before the job ceiling cancels them. The image's entrypoint
-  is `afl-fuzz`, so the triage step overrides it with `--entrypoint bash`, and
-  `scripts/triage_crashes.sh` gives `afl-cmin` the `-C` flag because every
-  input in a crash directory crashes.
+  over `MAX_INPUT_LEN` is skipped, not truncated, and a parse error is returned
+  as an error. `main.rs` turns that into a panic, the crash policy, so AFL
+  records it. `make test-fuzz-harness` tests it without the AFL runtime, and
+  runs in `make test` and ahead of the image build.
+- **Run and triage.** The run is interrupted with `timeout --signal=INT`, for
+  the `FUZZ_DURATION` the job env names (five hours nightly, two minutes on a
+  pull request), so the upload steps run before the job ceiling cancels them. A
+  pull request that touches `fuzz/`, the triage script or the workflow runs the
+  lane end to end for that short interval, which is the lane's integration test.
+  `Run AFL++` tolerates failure so the artefacts upload, so a following step
+  requires `execs_done` above zero in AFL's `fuzzer_stats`. The image's
+  entrypoint is `afl-fuzz`, so the triage step overrides it with
+  `--entrypoint bash`, and `scripts/triage_crashes.sh` gives `afl-cmin` the
+  `-C` flag because every input in a crash directory crashes.
 
 `tests/workflow_contracts/test_fuzz_lane.py` holds the workflow flags, the
 Dockerfile pin, dependencies, ordering and paths, and runs the triage script
@@ -1316,7 +1322,9 @@ against stub `afl-cmin` and `afl-tmin` tools for its success,
 missing-directory, non-executable-harness and tool-failure paths. It does not
 test AFL itself, and it does not compile the harness against the AFL runtime:
 the image build that opens every run of the workflow does that, and a failure
-there turns the lane red.
+there turns the lane red. The end-to-end check is the workflow itself on a pull
+request: image build, a two-minute run of the baked-in corpus, the `execs_done`
+check and the triage, so a change to the lane is exercised before it merges.
 
 ## Cancelling superseded pull-request runs
 

@@ -1,9 +1,24 @@
 name: AFL Fuzzing
 
+# A pull request that touches the lane runs it end to end for a short, bounded
+# interval: build the image, fuzz the baked-in corpus, check that AFL produced
+# output, triage. The nightly and dispatched runs fuzz for hours.
 on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - fuzz/**
+      - scripts/triage_crashes.sh
+      - .github/workflows/fuzz.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   fuzz:
@@ -12,6 +27,7 @@ jobs:
     env:
       FUZZ_HARNESS: /usr/local/bin/fuzz
       BUILD_PROFILE: debug
+      FUZZ_DURATION: ${{ github.event_name == 'pull_request' && '120s' || '5h' }}
 
     steps:
       - uses: actions/checkout@v7.0.1
@@ -31,11 +47,18 @@ jobs:
           mkdir -p artifacts
           # The image carries its own seed corpus. afl-fuzz runs until stopped,
           # so interrupt it before the job timeout would cancel the upload.
-          timeout --signal=INT 5h docker run --rm \
+          timeout --signal=INT "$FUZZ_DURATION" docker run --rm \
             -e AFL_SKIP_CPUFREQ=1 \
             -e AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
             -v ${{ github.workspace }}/artifacts:/out \
             mxd-fuzz
+
+      # Run AFL++ tolerates a failure so that the artefacts upload, which also
+      # means a run that never started would pass. AFL writes `fuzzer_stats`
+      # once it is running, and `execs_done` counts the cases it executed.
+      - name: Check AFL++ ran
+        run: |
+          grep -E '^execs_done +: +[1-9]' artifacts/main/fuzzer_stats
 
       - name: Triage crashes
         if: always()
@@ -48,12 +71,14 @@ jobs:
             scripts/triage_crashes.sh artifacts/main/crashes "$FUZZ_HARNESS"
 
       - name: Upload crash corpus
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: crashes
           path: artifacts/main/crashes/unique
 
       - name: Upload full artefacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts
