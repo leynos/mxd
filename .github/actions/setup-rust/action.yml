@@ -9,7 +9,7 @@ runs:
   using: composite
   steps:
     - name: Install rust
-      uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9
+      uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f
       with:
         override: true
         components: rustfmt, clippy, llvm-tools-preview
