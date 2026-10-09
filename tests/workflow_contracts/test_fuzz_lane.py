@@ -12,7 +12,7 @@ nothing re-proves.
   that the final image copies from.
 * The triage script is run against stub ``afl-cmin`` and ``afl-tmin`` tools, so
   its own logic is tested without AFL: ``-C`` is passed, each reduced crash is
-  minimised into ``unique``, and a missing directory, a non-executable harness
+  minimized into ``unique``, and a missing directory, a non-executable harness
   or a failing tool is refused.
 
 What AFL does with its arguments is AFL's behaviour and is out of scope.
@@ -127,8 +127,8 @@ def test_the_harness_path_the_workflow_triages_is_the_one_the_image_installs(
 
 def test_both_stages_are_pinned_to_the_same_digest(dockerfile: str) -> None:
     """A moving tag let the lane drift unnoticed; both stages must be pinned."""
-    froms = DIGEST_FROM.findall(dockerfile)
-    assert len(froms) == 2, f"expected two digest-pinned FROM lines: {froms}"
+    from_lines = DIGEST_FROM.findall(dockerfile)
+    assert len(from_lines) == 2, f"expected two digest-pinned FROM lines: {from_lines}"
     digests = set(re.findall(r"sha256:[0-9a-f]{64}", dockerfile))
     assert len(digests) == 1, f"stages pin different digests: {digests}"
 
@@ -215,7 +215,7 @@ def _crashes(tmp_path: Path, names: tuple[str, ...] = ("id:0", "id:1")) -> Path:
     return crash_dir
 
 
-def test_triage_keeps_crashing_inputs_and_minimises_each(
+def test_triage_keeps_crashing_inputs_and_minimizes_each(
     tmp_path: Path, triage: typ.Callable[..., subprocess.CompletedProcess[str]]
 ) -> None:
     """afl-cmin gets -C, and every reduced crash lands in `unique`."""
@@ -252,7 +252,7 @@ def test_triage_fails_when_an_afl_tool_fails(
     triage: typ.Callable[..., subprocess.CompletedProcess[str]],
     tool: str,
 ) -> None:
-    """A failing reducer or minimiser fails the step rather than passing it."""
+    """A failing reducer or minimizer fails the step rather than passing it."""
     result = triage(_crashes(tmp_path), fail=tool)
     assert result.returncode == 1
     assert f"afl-{tool} failed" in result.stderr
