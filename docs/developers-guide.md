@@ -1300,22 +1300,26 @@ end, so the parts below are each held by a test.
   `make corpus` at `/corpus`; a host mount there would shadow it with an empty
   directory.
 - **Harness.** `fuzz/src/main.rs` is only `afl::fuzz!`, which links the AFL
-  runtime. The case handling is `fuzz::run_case` in `fuzz/src/lib.rs`: an input
-  over `MAX_INPUT_LEN` is skipped, not truncated, and a parse error is returned
-  as an error. `fuzz::handle_case`, which `main.rs` calls, treats that error as
-  a normal outcome: a parser rejecting a malformed frame is working, and
-  counting it as a crash made AFL save nearly every mutation. Only a panic, an
-  abort or an overflow inside the parser is a crash. `make test-fuzz-harness`
-  tests it without the AFL runtime, and runs in `make test` and ahead of the
-  image build.
+  runtime, calling `fuzz::handle_case` from `fuzz/src/lib.rs`. That function
+  returns an `Outcome`: an input over `MAX_INPUT_LEN` is `Skipped`, not
+  truncated; a parser `Err` is `Rejected`, a normal outcome, because a parser
+  rejecting a malformed frame is working and counting it as a crash made AFL
+  save nearly every mutation; and `Accepted` is the rest. Only a panic, an
+  abort or an overflow inside the parser is a crash, and a panic propagates.
+  `make test-fuzz-harness` tests all of it without the AFL runtime, and runs in
+  `make test` and ahead of the image build.
 - **Run and triage.** The run is interrupted with `timeout --signal=INT`, for
   the `FUZZ_DURATION` the job env names (five hours nightly, two minutes on a
   pull request), so the upload steps run before the job ceiling cancels them. A
   pull request that touches `fuzz/`, the triage script or the workflow runs the
   lane end to end for that short interval, which is the lane's integration test.
   `timeout` exits 124 after it interrupts AFL, which the run accepts as its
-  expected end, and a following step requires `execs_done` above zero in AFL's
-  `fuzzer_stats`. The run and the triage use the runner's user, because
+  expected end, and a following step requires `execs_done` and `corpus_found`
+  above zero in AFL's `fuzzer_stats`: a harness that did nothing with its input
+  executes cases but never finds a new path, so this is the check that the
+  built harness reaches the parser. A saved crash fails the lane, after the
+  archive and uploads have run, because AFL reports a crash as output rather
+  than as a failed run. The run and the triage use the runner's user, because
   root-owned output cannot be read by the check or the uploads, and the triage
   and upload steps run after a failure. The image's entrypoint is `afl-fuzz`,
   so the triage step overrides it with `--entrypoint bash`, and

@@ -1,7 +1,8 @@
 //! AFL fuzz target for transaction parsing.
 //!
-//! Feeds each AFL test case to [`fuzz::handle_case`]. `afl::fuzz!` supplies the
-//! persistent-mode loop and links the AFL runtime that provides `__AFL_LOOP`;
+//! Feeds each AFL test case to [`fuzz::handle_case`]. Its outcome needs no
+//! action here: a rejected frame is not a crash, and a panic aborts the process. `afl::fuzz!`
+//! supplies the persistent-mode loop and links the AFL runtime that provides `__AFL_LOOP`;
 //! declaring that symbol by hand left it undefined at link time.
 
 /// Hand each AFL test case to the transaction parser, in AFL's persistent mode.

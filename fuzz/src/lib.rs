@@ -23,38 +23,45 @@ pub const MAX_INPUT_LEN: usize = HEADER_LEN + MAX_PAYLOAD_SIZE;
 #[must_use]
 pub const fn is_oversized(len: usize) -> bool { len > MAX_INPUT_LEN }
 
-/// Run one AFL test case through the transaction parser.
-///
-/// An oversized input is skipped, not truncated, so a mutated case cannot make
-/// the parser allocate without bound and a prefix of it is never mistaken for
-/// the case AFL saved.
+/// What the harness did with one AFL test case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    /// The input was over [`MAX_INPUT_LEN`] and was not parsed.
+    Skipped,
+    /// The parser accepted the input.
+    Accepted,
+    /// The parser rejected the input with an error, as it should a malformed
+    /// frame. This is not a crash.
+    Rejected,
+}
+
+/// Run one input through the transaction parser.
 ///
 /// # Errors
 ///
-/// Returns the parser's error when it rejects the input. The caller decides
-/// what that means: the AFL binary panics, which is how AFL detects a crash.
-pub fn run_case(data: &[u8]) -> Result<(), TransactionError> {
-    if is_oversized(data.len()) {
-        return Ok(());
-    }
-    parse_transaction(data).map(drop)
-}
+/// Returns the parser's error when it rejects the input. [`handle_case`] treats
+/// that as [`Outcome::Rejected`], an ordinary result, not a panic.
+pub fn run_case(data: &[u8]) -> Result<(), TransactionError> { parse_transaction(data).map(drop) }
 
 /// Handle one AFL test case, counting only a panic or abort as a crash.
 ///
-/// A parser that rejects a malformed frame is working, so its error is a
-/// normal outcome. Treating it as a crash would make AFL save nearly every
-/// mutation and bury a real defect: a panic, an overflow or an abort inside
-/// the parser, which still propagates from here.
-pub fn handle_case(data: &[u8]) { handle_with(data, run_case); }
+/// An oversized input is skipped, not truncated, so a mutated case cannot make
+/// the parser allocate without bound and a prefix of it is never mistaken for
+/// the case AFL saved. A parser that rejects a malformed frame is working, so
+/// its error is a normal outcome. Treating it as a crash would make AFL save
+/// nearly every mutation and bury a real defect: a panic, an overflow or an
+/// abort inside the parser, which still propagates from here.
+pub fn handle_case(data: &[u8]) -> Outcome { handle_with(data, run_case) }
 
-/// Run `parse` on a case and accept either of its outcomes; a panic in `parse`
-/// is not caught.
-fn handle_with<E>(data: &[u8], parse: impl FnOnce(&[u8]) -> Result<(), E>) {
-    #[cfg(test)]
-    tests::HANDLED.with(|count| count.set(count.get() + 1));
+/// Apply the policy of [`handle_case`] to any parser: skip an oversized input,
+/// map `Ok` and `Err` to an outcome, and let a panic in `parse` propagate.
+fn handle_with<E>(data: &[u8], parse: impl FnOnce(&[u8]) -> Result<(), E>) -> Outcome {
+    if is_oversized(data.len()) {
+        return Outcome::Skipped;
+    }
     match parse(data) {
-        Ok(()) | Err(_) => {}
+        Ok(()) => Outcome::Accepted,
+        Err(_) => Outcome::Rejected,
     }
 }
 
@@ -63,12 +70,6 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
-
-    thread_local! {
-        /// Cases that reached the shared handler on this thread, so that a test
-        /// can tell a `handle_case` that does nothing from one that handles.
-        pub(super) static HANDLED: Cell<usize> = const { Cell::new(0) };
-    }
 
     /// A well-formed, empty-payload transaction frame.
     fn valid_frame() -> Vec<u8> {
@@ -98,51 +99,63 @@ mod tests {
     }
 
     #[test]
-    fn a_valid_frame_is_parsed() {
+    fn a_valid_frame_is_accepted() {
         assert!(run_case(&valid_frame()).is_ok());
+        assert_eq!(handle_case(&valid_frame()), Outcome::Accepted);
+    }
+
+    #[test]
+    fn a_malformed_input_is_rejected_not_a_crash() {
+        assert!(run_case(&[0xff; 3]).is_err());
+        assert_eq!(handle_case(&[0xff; 3]), Outcome::Rejected);
     }
 
     #[test]
     fn an_oversized_input_is_skipped_not_truncated() {
-        // Junk that the parser would reject if any of it were parsed, so a
-        // skip is distinguishable from a truncate-and-parse.
-        assert!(run_case(&vec![0xff; MAX_INPUT_LEN + 1]).is_ok());
+        // Junk the parser would reject if any of it were parsed, so a skip is
+        // distinguishable from a truncate-and-parse.
+        assert_eq!(
+            handle_case(&vec![0xff; MAX_INPUT_LEN + 1]),
+            Outcome::Skipped
+        );
     }
 
     #[test]
-    fn handle_case_hands_the_case_to_the_handler() {
-        let before = HANDLED.with(Cell::get);
-        handle_case(&valid_frame());
-        handle_case(&[0xff; 3]);
-        assert_eq!(HANDLED.with(Cell::get), before + 2);
+    fn an_input_of_exactly_the_limit_is_parsed() {
+        assert_eq!(handle_case(&vec![0xff; MAX_INPUT_LEN]), Outcome::Rejected);
     }
 
     #[test]
-    fn the_handler_calls_the_parser_it_is_given_once() {
+    fn the_handler_gives_the_parser_the_case_once_and_skips_it_when_oversized() {
         let calls = Cell::new(0);
-        handle_with(&[1, 2], |data| {
+        let parse = |data: &[u8]| {
             calls.set(calls.get() + 1);
             assert_eq!(data, [1, 2]);
             Ok::<(), ()>(())
-        });
+        };
+        assert_eq!(handle_with(&[1, 2], parse), Outcome::Accepted);
         assert_eq!(calls.get(), 1);
+
+        let skipped = Cell::new(false);
+        let outcome = handle_with(&vec![0; MAX_INPUT_LEN + 1], |_| {
+            skipped.set(true);
+            Ok::<(), ()>(())
+        });
+        assert_eq!(outcome, Outcome::Skipped);
+        assert!(!skipped.get(), "an oversized input reached the parser");
     }
 
     #[test]
-    fn a_rejected_frame_is_not_a_crash() {
-        handle_case(&[0xff; 3]);
-        handle_case(&valid_frame());
-        handle_with(&[], |_| Err::<(), &str>("rejected"));
+    fn a_parser_error_is_an_outcome_not_a_crash() {
+        assert_eq!(
+            handle_with(&[], |_| Err::<(), &str>("rejected")),
+            Outcome::Rejected
+        );
     }
 
     #[test]
     #[should_panic(expected = "parser defect")]
     fn a_panic_in_the_parser_is_still_a_crash() {
         handle_with::<()>(&[], |_| panic!("parser defect"));
-    }
-
-    #[test]
-    fn a_malformed_input_is_reported_as_an_error() {
-        assert!(run_case(&[0xff; 3]).is_err());
     }
 }

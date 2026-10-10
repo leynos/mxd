@@ -56,12 +56,25 @@ jobs:
             -v ${{ github.workspace }}/artifacts:/out \
             mxd-fuzz || test $? -eq 124
 
-      # A run that exits cleanly can still have executed nothing. AFL writes
-      # `fuzzer_stats` once it is running, and `execs_done` counts the cases it
-      # executed.
+      # A run that exits cleanly can still have executed nothing, or have
+      # executed a harness that never reached the parser. AFL writes
+      # `fuzzer_stats` once it is running: `execs_done` counts the cases it
+      # executed, and `corpus_found` the inputs that took the parser down a new
+      # path, which a harness that did nothing with its input never finds.
       - name: Check AFL++ ran
         run: |
           grep -E '^execs_done +: +[1-9]' artifacts/main/fuzzer_stats
+          grep -E '^corpus_found +: +[1-9]' artifacts/main/fuzzer_stats
+
+      # A saved crash is a parser panic, abort or overflow, and AFL reports it
+      # as output, not as a failed run. The archive and uploads below run after
+      # this step fails, so the crash inputs are kept.
+      - name: Fail when AFL++ saved a crash
+        run: |
+          if [ -n "$(find artifacts/main/crashes -maxdepth 1 -type f -name 'id:*' -print -quit)" ]; then
+            echo "AFL++ saved a crash; see the crashes artefact" >&2
+            exit 1
+          fi
 
       - name: Triage crashes
         if: always()

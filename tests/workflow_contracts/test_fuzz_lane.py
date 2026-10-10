@@ -125,6 +125,30 @@ def test_a_run_that_never_started_fails_the_lane(
     assert "if" not in check, check
 
 
+def test_a_run_whose_harness_never_reached_the_parser_fails_the_lane(
+    fuzz_steps: cabc.Mapping[str, dict[str, object]],
+) -> None:
+    """A harness that does nothing executes cases but finds no new path."""
+    run = str(fuzz_steps["Check AFL++ ran"]["run"])
+    assert "corpus_found" in run, run
+
+
+def test_a_saved_crash_fails_the_lane_but_not_the_uploads(
+    fuzz_steps: cabc.Mapping[str, dict[str, object]],
+) -> None:
+    """AFL reports a crash as output, so a step must turn it into a failure."""
+    check = fuzz_steps["Fail when AFL++ saved a crash"]
+    run = str(check["run"])
+    assert "artifacts/main/crashes" in run and "'id:*'" in run, run
+    assert "exit 1" in run, run
+    assert "if" not in check, check
+    names = list(fuzz_steps)
+    assert names.index("Fail when AFL++ saved a crash") < names.index(
+        "Upload crash corpus"
+    ), names
+    assert fuzz_steps["Upload crash corpus"].get("if") == "always()"
+
+
 def test_the_uploads_run_after_a_failed_check(
     fuzz_steps: cabc.Mapping[str, dict[str, object]],
 ) -> None:
