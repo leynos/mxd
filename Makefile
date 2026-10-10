@@ -52,15 +52,11 @@ TOOL_PATH_PREFIX := $(shell printf '%s\n' "$(CARGO_BIN_DIR)" "$(WHITAKER_BIN_DIR
 NIXIE ?= nixie
 UV ?= uv
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
-# The commit v0.1.3 points at, not the tag. A tag is a movable ref: the same
-# commit of this repository would run different code if it moved, and this
-# target downloads and executes that code.
 RUFF_VERSION ?= 0.15.12
 PYYAML_VERSION ?= 6.0.3
-# This is v0.1.3.
-TYPOS_CONFIG_BUILDER_COMMIT ?= c8a4f95d7cf7f6a1b7517f2775d122d47d5721eb
+TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.3
 TYPOS_CONFIG_BUILDER = $(UV_ENV) $(UV) tool run --python 3.14 --from \
-	"git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_COMMIT)" \
+	"git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_VERSION)" \
 	typos-config-builder
 # The tree the gate reads. Overridden only by the gate's own test, which runs
 # this very target against a fixture holding a prohibited phrase.
