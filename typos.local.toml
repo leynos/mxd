@@ -28,6 +28,10 @@ ignore = [
   '#\[tokio::test\(flavor = "current_thread"\)\]',
   # Reusable-workflow inputs, outputs, paths and keys retain upstream names.
   '(?m)^\s*artifact-name:$',
+  # The fuzz lane archives AFL's output directory, whose name predates the gate.
+  '(?m)^\s*tar -czf fuzz-output\.tgz -C artifacts \.$',
+  # The name of AFL's output directory in the fuzz lane, fixed by fuzz.yml.
+  '(?m)^AFL_OUTPUT: typ\.Final = "artifacts"$',
   '(?m)^\s*artifact: linux-(?:amd64|arm64)$',
   '(?m)^\s*should-upload-workflow-artifacts:$',
   '(?m)^\s*should-upload-workflow-artifacts: \$\{\{ fromJSON\(needs\.metadata\.outputs\.should_upload_workflow_artifacts\) \}\}$',

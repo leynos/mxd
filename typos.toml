@@ -36,6 +36,7 @@ extend-exclude = [
 locale = "en-gb"
 extend-ignore-re = [
     "#\\[tokio::test\\(flavor = \"current_thread\"\\)\\]",
+    "(?m)^AFL_OUTPUT: typ\\.Final = \"artifacts\"$",
     "(?m)^\\s*-v \\$\\{\\{ github\\.workspace \\}\\}/artifacts:/out \\\\$",
     "(?m)^\\s*@unset FORCE_COLOR;",
     "(?m)^\\s*CARGO_TERM_COLOR: always$",
@@ -52,6 +53,7 @@ extend-ignore-re = [
     "(?m)^\\s*should-upload-workflow-artifacts:$",
     "(?m)^\\s*should_upload_workflow_artifacts: \\$\\{\\{ steps\\.release_modes\\.outputs\\.should-upload-workflow-artifacts \\}\\}$",
     "(?m)^\\s*should_upload_workflow_artifacts:$",
+    "(?m)^\\s*tar -czf fuzz-output\\.tgz -C artifacts \\.$",
     "(?m)^\\s*types: \\[opened, reopened, synchronize, labeled, ready_for_review\\]$",
     "(?m)^\\s*value: \\$\\{\\{ jobs\\.metadata\\.outputs\\.should_upload_workflow_artifacts \\}\\}$",
     "(?s)```.*?```",

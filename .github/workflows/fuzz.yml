@@ -1,9 +1,24 @@
 name: AFL Fuzzing
 
+# A pull request that touches the lane runs it end to end for a short, bounded
+# interval: build the image, fuzz the baked-in corpus, check that AFL produced
+# output, triage. The nightly and dispatched runs fuzz for hours.
 on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - fuzz/**
+      - scripts/triage_crashes.sh
+      - .github/workflows/fuzz.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   fuzz:
@@ -12,6 +27,7 @@ jobs:
     env:
       FUZZ_HARNESS: /usr/local/bin/fuzz
       BUILD_PROFILE: debug
+      FUZZ_DURATION: ${{ github.event_name == 'pull_request' && '120s' || '5h' }}
 
     steps:
       - uses: actions/checkout@v7.0.1
@@ -19,35 +35,94 @@ jobs:
       - name: Cache Cargo directories
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
+      - name: Test the harness's case handling
+        run: make test-fuzz-harness
+
       - name: Build fuzzing container
         run: docker build -t mxd-fuzz -f fuzz/Dockerfile .
 
       - name: Run AFL++
-        continue-on-error: true
         run: |
           mkdir -p artifacts
-          docker run --rm \
-            -v ${{ github.workspace }}/fuzz/corpus:/corpus \
+          # The image carries its own seed corpus. afl-fuzz runs until stopped,
+          # so interrupt it before the job timeout would cancel the upload;
+          # `timeout` exits 124 when it had to, which is the expected end.
+          # The container runs as the runner's user, because root-owned output
+          # cannot be read by the check, the triage or the uploads.
+          timeout --signal=INT "$FUZZ_DURATION" docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e AFL_SKIP_CPUFREQ=1 \
+            -e AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
             -v ${{ github.workspace }}/artifacts:/out \
-            mxd-fuzz
+            mxd-fuzz || test $? -eq 124
+
+      # A run that exits cleanly can still have executed nothing, or have
+      # executed a harness that never reached the parser. AFL writes
+      # `fuzzer_stats` once it is running: `execs_done` counts the cases it
+      # executed, and `corpus_found` the inputs that took the parser down a new
+      # path, which a harness that did nothing with its input never finds.
+      - name: Check AFL++ ran
+        run: |
+          grep -E '^execs_done +: +[1-9]' artifacts/main/fuzzer_stats
+          grep -E '^corpus_found +: +[1-9]' artifacts/main/fuzzer_stats
+
+      # AFL counts executions of a harness that does nothing, so the built
+      # harness also replays controlled inputs and must say what it did with
+      # each: accepted a seed, rejected a malformed frame, skipped an
+      # oversized input.
+      - name: Replay controlled inputs through the harness
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v ${{ github.workspace }}:/work \
+            -w /work \
+            --entrypoint bash \
+            mxd-fuzz \
+            scripts/replay_harness.sh "$FUZZ_HARNESS" /corpus
+
+      # A saved crash is a parser panic, abort or overflow, and AFL reports it
+      # as output, not as a failed run. The archive and uploads below run after
+      # this step fails, so the crash inputs are kept.
+      - name: Fail when AFL++ saved a crash
+        run: |
+          if [ -n "$(find artifacts/main/crashes -maxdepth 1 -type f -name 'id:*' -print -quit)" ]; then
+            echo "AFL++ saved a crash; see the crashes artefact" >&2
+            exit 1
+          fi
 
       - name: Triage crashes
         if: always()
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/work \
             -w /work \
+            --entrypoint bash \
             mxd-fuzz \
-            bash scripts/triage_crashes.sh artifacts/main/crashes "$FUZZ_HARNESS"
+            scripts/triage_crashes.sh artifacts/main/crashes "$FUZZ_HARNESS"
+
+      # AFL names its files `id:000000,...`, and the upload action refuses a
+      # colon in a path, so the artefacts travel as archives.
+      - name: Archive the artefacts
+        if: always()
+        run: |
+          tar -czf fuzz-output.tgz -C artifacts .
+          if [ -d artifacts/main/crashes/unique ]; then
+            tar -czf crashes.tgz -C artifacts/main/crashes unique
+          else
+            tar -czf crashes.tgz --files-from /dev/null
+          fi
 
       - name: Upload crash corpus
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: crashes
-          path: artifacts/main/crashes/unique
+          path: crashes.tgz
 
       - name: Upload full artefacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts
-          path: artifacts
+          path: fuzz-output.tgz
