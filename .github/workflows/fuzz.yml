@@ -66,6 +66,20 @@ jobs:
           grep -E '^execs_done +: +[1-9]' artifacts/main/fuzzer_stats
           grep -E '^corpus_found +: +[1-9]' artifacts/main/fuzzer_stats
 
+      # AFL counts executions of a harness that does nothing, so the built
+      # harness also replays controlled inputs and must say what it did with
+      # each: accepted a seed, rejected a malformed frame, skipped an
+      # oversized input.
+      - name: Replay controlled inputs through the harness
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v ${{ github.workspace }}:/work \
+            -w /work \
+            --entrypoint bash \
+            mxd-fuzz \
+            scripts/replay_harness.sh "$FUZZ_HARNESS" /corpus
+
       # A saved crash is a parser panic, abort or overflow, and AFL reports it
       # as output, not as a failed run. The archive and uploads below run after
       # this step fails, so the crash inputs are kept.

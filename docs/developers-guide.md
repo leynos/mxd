@@ -1317,21 +1317,29 @@ end, so the parts below are each held by a test.
   expected end, and a following step requires `execs_done` and `corpus_found`
   above zero in AFL's `fuzzer_stats`: a harness that did nothing with its input
   executes cases but never finds a new path, so this is the check that the
-  built harness reaches the parser. A saved crash fails the lane, after the
-  archive and uploads have run, because AFL reports a crash as output rather
-  than as a failed run. The run and the triage use the runner's user, because
-  root-owned output cannot be read by the check or the uploads, and the triage
-  and upload steps run after a failure. The image's entrypoint is `afl-fuzz`,
-  so the triage step overrides it with `--entrypoint bash`, and
+  built harness reaches the parser. A replay step then runs
+  `scripts/replay_harness.sh` against the built harness: with `MXD_FUZZ_TRACE`
+  set, `main.rs` prints the outcome of each case, and the script requires
+  `Accepted` for a baked-in seed, `Rejected` for a malformed frame and
+  `Skipped` for an oversized input, so a `main` that does nothing with its
+  input fails even though AFL counts its executions. A saved crash fails the
+  lane, after the archive and uploads have run, because AFL reports a crash as
+  output rather than as a failed run. The run and the triage use the runner's
+  user, because root-owned output cannot be read by the check or the uploads,
+  and the triage and upload steps run after a failure. The image's entrypoint is
+  `afl-fuzz`, so the triage step overrides it with `--entrypoint bash`, and
   `scripts/triage_crashes.sh` gives `afl-cmin` the `-C` flag because every
   input in a crash directory crashes. A run with no crashes leaves nothing to
   reduce, which the script reports and accepts. The output travels as `tar`
   archives because AFL's file names hold colons, which the upload action
   refuses.
 
-`tests/workflow_contracts/test_fuzz_lane.py` holds the workflow flags, the
-Dockerfile pin, dependencies, ordering and paths, and runs the triage script
-against stub `afl-cmin` and `afl-tmin` tools for its success,
+`tests/workflow_contracts/test_fuzz_lane_scripts.py` runs the lane's own shell
+logic against fixture directories (the checks, the crash gate, the archive step
+and the replay script, against stub harnesses), asserting both sides of each
+gate. `tests/workflow_contracts/test_fuzz_lane.py` holds the workflow flags,
+the Dockerfile pin, dependencies, ordering and paths, and runs the triage
+script against stub `afl-cmin` and `afl-tmin` tools for its success,
 missing-directory, non-executable-harness and tool-failure paths. It does not
 test AFL itself, and it does not compile the harness against the AFL runtime:
 the image build that opens every run of the workflow does that, and a failure

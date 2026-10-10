@@ -1,8 +1,8 @@
 //! Case handling for the AFL transaction-parser target.
 //!
-//! The binary in `main.rs` only hands AFL's test cases to [`run_case`]. The
-//! logic lives here so that it can be tested without the AFL runtime, which
-//! only `cargo afl` links.
+//! The binary in `main.rs` only hands AFL's test cases to [`handle_case`],
+//! which applies the policy and calls [`run_case`]. The logic lives here so
+//! that it can be tested without the AFL runtime, which only `cargo afl` links.
 
 use mxd::transaction::{HEADER_LEN, MAX_PAYLOAD_SIZE, TransactionError, parse_transaction};
 
@@ -67,6 +67,8 @@ fn handle_with<E>(data: &[u8], parse: impl FnOnce(&[u8]) -> Result<(), E>) -> Ou
 
 #[cfg(test)]
 mod tests {
+    //! Tests of the fuzz-case policy, run without the AFL runtime.
+
     use std::cell::Cell;
 
     use super::*;

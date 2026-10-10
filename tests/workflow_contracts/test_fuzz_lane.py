@@ -133,6 +133,19 @@ def test_a_run_whose_harness_never_reached_the_parser_fails_the_lane(
     assert "corpus_found" in run, run
 
 
+def test_the_built_harness_replays_controlled_inputs_before_the_crash_gate(
+    fuzz_steps: cabc.Mapping[str, dict[str, object]],
+) -> None:
+    """AFL counts a do-nothing harness's executions; the replay does not."""
+    run = _run(fuzz_steps, "Replay controlled inputs through the harness")
+    assert "--entrypoint bash" in run, run
+    assert 'scripts/replay_harness.sh "$FUZZ_HARNESS" /corpus' in run, run
+    names = list(fuzz_steps)
+    assert names.index("Check AFL++ ran") < names.index(
+        "Replay controlled inputs through the harness"
+    ), names
+
+
 def test_a_saved_crash_fails_the_lane_but_not_the_uploads(
     fuzz_steps: cabc.Mapping[str, dict[str, object]],
 ) -> None:
