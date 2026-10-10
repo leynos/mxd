@@ -1464,10 +1464,9 @@ a fixture broken for an unrelated reason cannot satisfy the first. Wrapping the
 gate as `|| true`, narrowing its scope or replacing the builder invocation each
 fail it.
 
-The builder is pinned to the commit `v0.1.1` points at rather than to the tag.
-A tag is a movable ref, and this target downloads and executes the code it
-names, so the same commit of this repository would otherwise be able to run
-different code.
+The builder is pinned to a release tag by `TYPOS_CONFIG_BUILDER_VERSION` in the
+`Makefile` (currently `v0.1.3`), as the Concordat baseline requires. Raise it
+together with the regenerated `typos.toml`, never on its own.
 
 ## Presence runtime
 
