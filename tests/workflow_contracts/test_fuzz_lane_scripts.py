@@ -22,6 +22,7 @@ import pytest
 from ci_workflow_reader import REPO_ROOT, repository_documents
 
 REPLAY: typ.Final = REPO_ROOT / "scripts" / "replay_harness.sh"
+AFL_OUTPUT: typ.Final = "artifacts"
 GOOD_STATS: typ.Final = "execs_done        : 4891\ncorpus_found      : 9\n"
 
 # A stand-in harness: the three outcomes the real one prints, chosen by input.
@@ -60,7 +61,7 @@ def _afl_output(
     root: Path, stats: str = GOOD_STATS, crashes: tuple[str, ...] = ()
 ) -> None:
     """Lay out AFL's output directory under `root/artifacts/main`."""
-    main = root / "artifacts" / "main"
+    main = root / AFL_OUTPUT / "main"
     (main / "crashes").mkdir(parents=True)
     (main / "fuzzer_stats").write_text(stats)
     (main / "crashes" / "README.txt").write_text("AFL readme")
@@ -96,7 +97,7 @@ def test_the_check_fails_a_run_that_did_nothing_useful(
 
 def test_the_check_fails_when_afl_wrote_no_stats(tmp_path: Path) -> None:
     """A run that never started leaves no stats file."""
-    (tmp_path / "artifacts").mkdir()
+    (tmp_path / AFL_OUTPUT).mkdir()
     assert _run_step("Check AFL++ ran", tmp_path).returncode != 0
 
 
@@ -119,7 +120,7 @@ def test_the_archive_step_packs_the_output_and_the_unique_crashes(
 ) -> None:
     """Colons in AFL's names travel inside the archives, not as upload paths."""
     _afl_output(tmp_path, crashes=("id:000000,sig:06",))
-    unique = tmp_path / "artifacts" / "main" / "crashes" / "unique"
+    unique = tmp_path / AFL_OUTPUT / "main" / "crashes" / "unique"
     unique.mkdir()
     (unique / "id:000000,sig:06").write_bytes(b"\xff")
     assert _run_step("Archive the artefacts", tmp_path).returncode == 0

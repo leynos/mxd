@@ -36,6 +36,7 @@ extend-exclude = [
 locale = "en-gb"
 extend-ignore-re = [
     "#\\[tokio::test\\(flavor = \"current_thread\"\\)\\]",
+    "(?m)^AFL_OUTPUT: typ\\.Final = \"artifacts\"$",
     "(?m)^\\s*-v \\$\\{\\{ github\\.workspace \\}\\}/artifacts:/out \\\\$",
     "(?m)^\\s*@unset FORCE_COLOR;",
     "(?m)^\\s*CARGO_TERM_COLOR: always$",
