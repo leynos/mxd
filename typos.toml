@@ -55,7 +55,7 @@ extend-ignore-re = [
     "(?m)^\\s*types: \\[opened, reopened, synchronize, labeled, ready_for_review\\]$",
     "(?m)^\\s*value: \\$\\{\\{ jobs\\.metadata\\.outputs\\.should_upload_workflow_artifacts \\}\\}$",
     "(?s)```.*?```",
-    "--[a-zA-Z0-9-]*color[a-zA-Z0-9*-]*",
+    "--[A-Za-z0-9_-]*color(?:ed|s|ing|ize[ds]?|izing)?(?:\\b|_)",
     "Azure\\s+Architecture\\s+Center\\s*\\|\\s*Microsoft\\s+Learn\\b",
     "DataFlavor",
     "FILP",
