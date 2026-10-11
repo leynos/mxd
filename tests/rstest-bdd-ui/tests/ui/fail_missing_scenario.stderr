@@ -1,0 +1,5 @@
+error: scenario named "missing scenario" not found; available titles: "named scenario"
+ --> tests/ui/fail_missing_scenario.rs:8:12
+  |
+8 |     name = "missing scenario",
+  |            ^^^^^^^^^^^^^^^^^^
