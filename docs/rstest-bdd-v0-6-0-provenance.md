@@ -63,21 +63,36 @@ PR, with no duplicate open migration PR. The local branch tracks
 
 ## Compiler policy
 
-The repository retains `nightly-2025-11-08`, with rustfmt, Clippy,
-llvm-tools-preview, and rust-analyzer components. The baseline and migrated
-identity is `rustc 1.93.0-nightly (843f8ce2e 2025-11-07)`, host
-`x86_64-unknown-linux-gnu`, LLVM 21.1.3. There is no advertised `rust-version`
-or separate stable MSRV policy. Cargo reports
-`1.93.0-nightly (636800288 2025-10-31)`; rustfmt reports 1.8.0-nightly and
-Clippy 0.1.93 at the rustc commit. These tools all pass the canonical migration
-gates.
+At the migration baseline commit, the repository pinned `nightly-2025-11-08`,
+with rustfmt, Clippy, llvm-tools-preview, and rust-analyzer components. The
+baseline and original migration candidate used
+`rustc 1.93.0-nightly (843f8ce2e 2025-11-07)`, host `x86_64-unknown-linux-gnu`,
+LLVM 21.1.3. There was no advertised `rust-version` or separate stable MSRV
+policy. Cargo reported `1.93.0-nightly (636800288 2025-10-31)`; rustfmt
+reported 1.8.0-nightly and Clippy 0.1.93 at the rustc commit.
 
-Locked baseline and final metadata declare Rust 1.92 for `postgresql_embedded`,
-`postgresql_commands`, and `postgresql_archive` 0.20.2 in the PostgreSQL test
-graph. New `cargo-platform` 0.3.3 declares Rust 1.91. Both exceed upstream's
-1.88 floor but remain supported by the existing nightly. No compiler pin or
-component change is needed; no separate stable floor is claimed to have been
-tested.
+The rebased PR base includes main commit
+[`f19f250`](https://github.com/leynos/mxd/commit/f19f250edf9f8375db406efa60edf305680fbcef),
+which moved the shared pin to `nightly-2026-03-26`. That base change followed
+the PostgreSQL test-stack update to `postgresql_embedded`,
+`postgresql_commands`, and `postgresql_archive` 0.20.4, whose declared floor is
+Rust 1.94. Locked metadata for the rebased graph contains 588 packages; its
+highest declared `rust_version` is 1.94.0 (`postgresql_archive` 0.20.4). All
+six rstest-bdd 0.6.0 packages declare Rust 1.88. The repository still has no
+root `rust-version` or separate stable MSRV policy.
+
+The current pinned identity is `rustc 1.96.0-nightly (80d0e4be6 2026-03-25)`,
+host `x86_64-unknown-linux-gnu`, LLVM 22.1.2; Cargo is
+`1.96.0-nightly (e84cb639e 2026-03-21)`, rustfmt is 1.9.0-nightly, and Clippy
+is 0.1.96 at the rustc commit. The required components are installed. This
+nightly change is inherited from the rebased main branch, not introduced by the
+rstest-bdd migration. No edition or Polonius policy changed.
+
+At the original migration candidate, the locked PostgreSQL dependencies
+`postgresql_embedded`, `postgresql_commands`, and `postgresql_archive` 0.20.2
+declared Rust 1.92, and `cargo-platform` 0.3.3 declared Rust 1.91. Those floors
+were supported by that candidate's pinned nightly. No separate stable floor is
+claimed to have been tested.
 
 The installed Whitaker driver independently selects `nightly-2026-05-28` for
 Dylint. Its validated identity is
@@ -221,6 +236,40 @@ baseline lockfile and are unchanged. No audit suppression is introduced. The
 audit scans the complete root workspace lockfile; its six skipped manifests
 have no independent adjacent lockfile.
 
+### Rebased candidate validation (2026-10-11)
+
+The current main base is `65eb8ca39214dbbc4ef4651c5b7ee6c8f2d23542`. All 17
+assigned local targets passed sequentially on the rebased candidate:
+`make check-fmt`, `make lint`, `make typecheck`, `make test`,
+`make -o spelling markdownlint`, `make nixie`, `make check-locked`,
+`make test-workflow-contracts`, `make test-spelling-gate`,
+`make test-codescene-boundary`, `make test-dependabot-policy`, `make audit`,
+`make check-loom`, `make test-loom`, `make test-loom-runner`,
+`make test-validator-sqlite`, and `make test-validator-postgres`. Gate logs and
+durations are recorded in
+`/tmp/gate-results-dca659dd-c303-4df0-b113-2d19de1540c9-adopt-rstest-bdd-v0-6-0.tsv`.
+
+The three root Nextest feature lanes passed 497, 502, and 500 tests, with no
+skips. Verification passed 69 tests with the existing Docker-required TLC
+scenario skipped; fuzz passed 8, concurrency passed 7, and concurrency doctests
+passed 7. SQLite doctests passed 5 with 4 existing ignored examples. The
+feature inventory remains 18 files and 83 declarations, versus 17 files and 82
+declarations at the rebased main base: the sole addition is
+`Yielding steps retain fixture overrides`. The migration's nine regression
+tests remain included. Validator SQLite and PostgreSQL gates both passed, as
+did all three Clippy and configured typecheck lanes.
+
+Cargo refreshed the lock metadata during lint/typecheck. The update selects
+`thiserror` 2.0.21 for the graph, including the rstest-bdd 0.6.0 runtime,
+macros, harness, patterns, and policy packages, and records dependencies for
+`hashbrown` 0.16.0. `make check-locked` and the full test and audit targets
+passed with that lockfile. The duplicate `rstest` 0.26.1 is only a dependency of
+`pg-embed-setup-unpriv` 0.5.2; the workspace's direct `rstest` remains 0.27.0.
+No duplicate rstest-bdd runtime or macro versions remain. The audit reported
+the same four allowed warnings listed above. The managed sccache service was
+unreachable during compilation, so the build-limits wrapper compiled directly;
+compiler admission remained available and no gate failed.
+
 ## Delivery boundaries
 
 The table formatter, Markdown linter, and local spelling policy exclude exactly
@@ -230,11 +279,13 @@ generated output is retained rather than hand-edited. Checksums remain
 unchanged. BDD remains a test dependency; domain and application adapters are
 unchanged.
 
-There is no remaining local migration blocker. TLC was not run separately
-because Docker is unavailable; its existing ignored integration test remains
-visible. The configured local gates passed; hosted CI remains separate evidence
-from these results. Delivery is a gated commit and replacement draft PR on the
-requested tracking branch. No release publication or merge is authorized.
+The original candidate had no local migration blocker. TLC was not run
+separately because Docker is unavailable; its existing ignored integration test
+remains visible. The rebased candidate's configured local gates passed; hosted
+CI and current-head review remain separate evidence. The requested tracking
+branch is `adopt-rstest-bdd-v0-6-0`. The user authorized a squash merge once
+the exact PR head reaches review and CI equilibrium; no release publication is
+authorized.
 
 [upstream]: https://github.com/leynos/rstest-bdd/tree/72fb22635670e456545ca368805ba4c1c9d7bd69
 [existing-pr]: https://github.com/leynos/mxd/pull/615
