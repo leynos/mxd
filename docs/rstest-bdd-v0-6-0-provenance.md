@@ -20,11 +20,42 @@ edits. Both guides were read before implementation.
 
 *Table 1: Byte-for-byte imports from the verified v0.6.0 commit.*
 
-Relative links are resolved by the adjacent
-[rstest-bdd-v0-6-0-link-map.json](rstest-bdd-v0-6-0-link-map.json), which maps
-original targets to that immutable upstream tree. Links to upstream `main` and
-`latest` remain part of the untouched text; they are not migration authority.
-For rstest-bdd package API references, select version `0.6.0` on docs.rs.
+The adjacent [machine-readable link map](rstest-bdd-v0-6-0-link-map.json)
+records all 13 relative targets in the imported guides. Markdown renderers do
+not apply JSON mappings, so the following links make each preserved relative
+target navigable without changing the upstream text. Every link points to the
+same verified commit.
+
+From `rstest-bdd-users-guide.md`:
+
+- `v0-6-0-migration-guide.md#migrate-a-stateful-gpui-test` points to the
+  [upstream migration guide][upstream-gpui-migration].
+
+From `rstest-bdd-v0-6-0-migration-guide.md`:
+
+- `adr-006-fallible-scenario-functions.md` points to
+  [ADR 006][upstream-adr-006].
+- `adr-007-harness-context-injection.md` points to [ADR 007][upstream-adr-007].
+- `adr-009-consistent-implicit-fixture-name-normalization.md` points to
+  [ADR 009][upstream-adr-009].
+- `adr-012-guard-based-stepcontext-borrowing.md` points to
+  [ADR 012][upstream-adr-012].
+- `developers-guide.md` points to the
+  [upstream developers' guide][upstream-developers].
+- `rstest-bdd-design.md` and its `#2761`, `#2762`, `#2763`, and `#2765`
+  anchors point to the [upstream design][upstream-design],
+  [borrow-constraint section][upstream-design-2761],
+  [interim GPUI section][upstream-design-2762],
+  [v0.6.0 beta section][upstream-design-2763], and
+  [v0.7.0 redesign section][upstream-design-2765], respectively.
+- `users-guide.md#published-gpui-022-stateful-step-variants` and
+  `users-guide.md#stateful-gpui-scenarios-with-durable-handles` point to the
+  [published GPUI variants][upstream-users-variants] and
+  [durable-handle guidance][upstream-users-handles], respectively.
+
+Links to upstream `main` and `latest` remain part of the untouched text; they
+are not migration authority. For rstest-bdd package API references, select
+version `0.6.0` on docs.rs.
 
 ## Baseline and repository inventory
 
@@ -289,3 +320,16 @@ authorized.
 
 [upstream]: https://github.com/leynos/rstest-bdd/tree/72fb22635670e456545ca368805ba4c1c9d7bd69
 [existing-pr]: https://github.com/leynos/mxd/pull/615
+[upstream-gpui-migration]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/v0-6-0-migration-guide.md#migrate-a-stateful-gpui-test
+[upstream-adr-006]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/adr-006-fallible-scenario-functions.md
+[upstream-adr-007]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/adr-007-harness-context-injection.md
+[upstream-adr-009]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/adr-009-consistent-implicit-fixture-name-normalization.md
+[upstream-adr-012]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/adr-012-guard-based-stepcontext-borrowing.md
+[upstream-developers]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/developers-guide.md
+[upstream-design]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md
+[upstream-design-2761]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md#2761-borrow-constraint-exposed-by-gpui-adoption
+[upstream-design-2762]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md#2762-interim-gpui-state-pattern
+[upstream-design-2763]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md#2763-v060-beta2-quick-wins
+[upstream-design-2765]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/rstest-bdd-design.md#2765-v070-pre-100-redesign
+[upstream-users-variants]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/users-guide.md#published-gpui-022-stateful-step-variants
+[upstream-users-handles]: https://github.com/leynos/rstest-bdd/blob/72fb22635670e456545ca368805ba4c1c9d7bd69/docs/users-guide.md#stateful-gpui-scenarios-with-durable-handles

@@ -52,9 +52,11 @@ Detailed guides for specific development concerns.
 - [`rstest-bdd-v0-6-0-migration-guide.md`](rstest-bdd-v0-6-0-migration-guide.md)
   — Immutable upstream v0.6.0 migration guide.
 - [`rstest-bdd-v0-6-0-provenance.md`](rstest-bdd-v0-6-0-provenance.md)
-  — Verified import provenance and local migration evidence.
+  — Verified import provenance, migration evidence, and clickable upstream
+  links for the imported guides' relative references.
 - [`rstest-bdd-v0-6-0-link-map.json`](rstest-bdd-v0-6-0-link-map.json)
-  — Relative upstream links mapped to the immutable commit.
+  — Machine-readable relative-link mapping; Markdown links are in the
+  provenance document.
 - [`rust-testing-with-rstest-fixtures.md`](rust-testing-with-rstest-fixtures.md)
   — Testing patterns using rstest fixtures.
 - [`rust-doctest-dry-guide.md`](rust-doctest-dry-guide.md) — Patterns for
