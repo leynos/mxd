@@ -569,7 +569,7 @@ dependencies = [
  "clap",
  "figment",
  "figment-json5",
- "ortho_config 0.3.0",
+ "ortho_config 0.9.0",
  "rstest 0.27.0",
  "serde",
  "serde_yaml",
@@ -1124,7 +1124,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2065,7 +2065,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20fd6de4ccfcc187e38bc21cfa543cb5a302cb86a8b114eb7f0bf0dc9f8ac00f"
 dependencies = [
  "io-lifetimes 3.0.1",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2403,7 +2403,7 @@ dependencies = [
  "futures-util",
  "kani",
  "mxd-concurrency",
- "ortho_config 0.3.0",
+ "ortho_config 0.9.0",
  "paste",
  "pg-embed-setup-unpriv",
  "proptest",
@@ -2604,23 +2604,6 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ortho_config"
-version = "0.3.0"
-source = "git+https://github.com/leynos/ortho-config?tag=v0.3.0#3e9c63387d101acab64d600c926a5a941767275b"
-dependencies = [
- "clap",
- "clap-dispatch",
- "directories",
- "figment",
- "ortho_config_macros 0.3.0",
- "serde",
- "thiserror 1.0.69",
- "toml 0.8.23",
- "uncased",
- "xdg",
-]
-
-[[package]]
-name = "ortho_config"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b8b9c66f5679fdb6653199c56aff45307cff6da9b0b65cf15cce1e7c18693a"
@@ -2645,13 +2628,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "ortho_config_macros"
-version = "0.3.0"
-source = "git+https://github.com/leynos/ortho-config?tag=v0.3.0#3e9c63387d101acab64d600c926a5a941767275b"
+name = "ortho_config"
+version = "0.9.0"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.9.1#d65704d851ac406cd126ca24793d786f58055ca1"
 dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
+ "camino",
+ "cap-std",
+ "clap",
+ "clap-dispatch",
+ "directories",
+ "dirs 5.0.1",
+ "dunce",
+ "figment",
+ "fluent-bundle",
+ "fluent-syntax",
+ "ortho_config_macros 0.9.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "toml 1.1.0+spec-1.1.0",
+ "tracing",
+ "uncased",
+ "unic-langid",
+ "xdg",
 ]
 
 [[package]]
@@ -2659,6 +2658,17 @@ name = "ortho_config_macros"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a617081116c2b82c642121f241737fab8d8b8456ae4cd5a001799e7402d9f120"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "ortho_config_macros"
+version = "0.9.0"
+source = "git+https://github.com/leynos/ortho-config?tag=v0.9.1#d65704d851ac406cd126ca24793d786f58055ca1"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -3708,7 +3718,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4402,10 +4412,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5378,7 +5388,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
