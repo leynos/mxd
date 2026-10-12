@@ -24,13 +24,17 @@ const MINIMUM_SQLITE_VERSION: (u32, u32, u32) = (3, 35, 0);
 /// segments, so the audit must prove the function runs and returns usable
 /// rows, not merely that the JSON1 scalar functions exist.
 #[cfg(feature = "sqlite")]
-const JSON_EACH_PROBE_SQL: &str =
-    "SELECT key, CAST(value AS TEXT) AS value FROM json_each('[\"a\",\"b\",\"c\"]') ORDER BY key";
+const JSON_EACH_PROBE_SQL: &str = concat!(
+    "SELECT key, CAST(value AS TEXT) AS value ",
+    "FROM json_each('[\"a\",\"b\",\"c\"]') ORDER BY key"
+);
 
 /// Probe that exercises recursive common table expression support.
 #[cfg(feature = "sqlite")]
-const RECURSIVE_CTE_PROBE_SQL: &str = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 \
-                                       FROM c WHERE x < 3) SELECT x FROM c ORDER BY x";
+const RECURSIVE_CTE_PROBE_SQL: &str = concat!(
+    "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 ",
+    "FROM c WHERE x < 3) SELECT x FROM c ORDER BY x"
+);
 
 /// Rows the JSON1 probe must produce, in order.
 #[cfg(feature = "sqlite")]

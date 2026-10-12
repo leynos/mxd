@@ -72,6 +72,12 @@ async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
         password: &hashed,
     };
     let mut conn = DbConnection::establish(&cfg.database).await?;
+    // Audit before migrating or writing, so an incompatible library fails
+    // before it can touch the database.
+    #[cfg(feature = "sqlite")]
+    crate::db::audit_sqlite_features(&mut conn)
+        .await
+        .context("SQLite capability audit failed")?;
     apply_migrations(&mut conn, &cfg.database, cfg.migration_timeout_secs).await?;
     create_user(&mut conn, &new_user)
         .await

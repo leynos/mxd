@@ -166,7 +166,9 @@ async fn setup_database(database: &str, migration_timeout_secs: Option<u64>) -> 
     {
         let mut conn = pool.get().await.context("failed to get db connection")?;
         #[cfg(feature = "sqlite")]
-        crate::db::audit_sqlite_features(&mut conn).await?;
+        crate::db::audit_sqlite_features(&mut conn)
+            .await
+            .context("SQLite capability audit failed")?;
         #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
         if is_postgres_url(database) {
             crate::db::audit_postgres_features(&mut conn).await?;
