@@ -115,13 +115,32 @@ Thresholds that trigger escalation when breached.
   that the documentation claims must rest on.
 - [x] (2026-10-13) Renamed the branch and set the Lody session title.
 - [x] (2026-10-13) Wrote this ExecPlan.
-- [ ] (EP-M1) Extend `audit_sqlite_features` with the version floor and the two
-  result-checked probes; add the `#[cfg(test)]` validator tests.
-- [ ] (EP-M2) Call the audit at the Wireframe and `create-user` entry points and
-  add the missing context to the legacy call site.
-- [ ] (EP-M3) Update `README.md`, `docs/developers-guide.md`,
-  `docs/users-guide.md`, and
-  `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`.
+- [x] (2026-10-13) EP-M1 Red: added the `#[cfg(test)]` validator tests with
+  stub validators. 13 rejecting cases failed, 4 accepting cases passed,
+  confirming the tests discriminate. Transcript at
+  `/tmp/test-audit-issue-63-red.out`.
+- [x] (2026-10-13) EP-M1 Green: implemented the three probes and the three
+  validators. 22 validator cases pass
+  (`/tmp/test-audit-issue-63-green.out`), and the real-connection
+  `test_audit_features` passes (`/tmp/test-audit-e2e-issue-63.out`), which
+  discharges V5 against the real library.
+- [x] (2026-10-13) EP-M1 committed as `00d023a`.
+- [x] (2026-10-13) EP-M2: wired the audit into the Wireframe `run` and
+  `create-user`'s `run_create_user`, and added the missing context to the
+  legacy call site. Obligation V6 discharged by inspection: audit at
+  `src/server/wireframe/mod.rs:145` precedes `.bind(bind_addr)` at line 166;
+  the audit at `src/server/admin.rs:78` precedes `apply_migrations` at line 81
+  and `create_user` at line 82; the legacy audit at `src/server/legacy/mod.rs:169`
+  precedes `apply_migrations` at line 176.
+- [x] (2026-10-13) EP-M3: updated `README.md`, `docs/developers-guide.md`,
+  `docs/users-guide.md`,
+  `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`, and the
+  now-inaccurate startup-audit sentence in `docs/design.md`. Committed as
+  `b4144a1`.
+- [ ] (EP-M2/M3 verification) `cargo check --features sqlite --all-targets`
+  was started but spent over ten minutes queued behind other agents' work in
+  the shared compile-admission pool. Left running; it must be allowed to
+  complete rather than restarted.
 - [ ] (EP-M4) Run all gates, push, and open the draft pull request.
 
 ## Surprises & discoveries
