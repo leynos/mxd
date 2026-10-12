@@ -1,0 +1,15 @@
+[package]
+name = "rstest-bdd-ui-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dev-dependencies]
+rstest = { workspace = true }
+rstest-bdd = { workspace = true }
+rstest-bdd-macros = { workspace = true }
+rstest-bdd-harness-tokio = { workspace = true }
+trybuild = "1.0.117"
+
+[lints]
+workspace = true

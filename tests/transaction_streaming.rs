@@ -177,6 +177,6 @@ fn then_streaming_fails(world: &StreamingWorld, message: String) {
 
 scenarios!(
     "tests/features/transaction_streaming.feature",
-    runtime = "tokio-current-thread",
+    harness = rstest_bdd_harness_tokio::TokioHarness,
     fixtures = [world: StreamingWorld]
 );

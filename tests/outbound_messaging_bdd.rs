@@ -149,6 +149,6 @@ fn panic_parse_transaction(err: &mxd::transaction::TransactionError) -> Transact
 
 scenarios!(
     "tests/features/outbound_messaging.feature",
-    runtime = "tokio-current-thread",
+    harness = rstest_bdd_harness_tokio::TokioHarness,
     fixtures = [world: OutboundWorld]
 );
