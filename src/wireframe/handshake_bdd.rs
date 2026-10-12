@@ -1,6 +1,10 @@
 //! BDD coverage for Wireframe handshake hooks.
+//!
+//! The world holds plain state and performs its network work through `async`
+//! methods, so each scenario runs on the test's own Tokio runtime and the
+//! steps read as ordinary sequential code.
 
-use std::{cell::RefCell, net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 use rstest::fixture;
 use rstest_bdd::assert_step_ok;
@@ -8,7 +12,6 @@ use rstest_bdd_macros::{given, scenario, then, when};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    runtime::Runtime,
     sync::oneshot,
     time::timeout,
 };
@@ -51,50 +54,41 @@ async fn read_handshake_reply(stream: &mut TcpStream) -> Result<[u8; REPLY_LEN],
     Ok(buf)
 }
 
+/// Shared state for the handshake scenarios.
+///
+/// The server runs as a spawned task on the scenario's own Tokio runtime, so
+/// the world only needs to remember where to reach it and how to stop it.
+#[derive(Default)]
 struct HandshakeWorld {
-    rt: Runtime,
-    addr: RefCell<Option<SocketAddr>>,
-    shutdown: RefCell<Option<oneshot::Sender<()>>>,
-    reply: RefCell<Option<Result<[u8; REPLY_LEN], String>>>,
+    addr: Option<SocketAddr>,
+    shutdown: Option<oneshot::Sender<()>>,
+    reply: Option<Result<[u8; REPLY_LEN], String>>,
 }
 
 impl HandshakeWorld {
-    fn new() -> Self {
-        let rt = match Runtime::new() {
-            Ok(rt) => rt,
-            Err(err) => panic!("runtime: {err}"),
-        };
-        Self {
-            rt,
-            addr: RefCell::new(None),
-            shutdown: RefCell::new(None),
-            reply: RefCell::new(None),
-        }
+    /// Start a handshake server with the short timeout the scenarios expect.
+    ///
+    /// The helper panics rather than returning an error if the socket cannot
+    /// be bound, matching the rest of the wireframe test scaffolding.
+    async fn start_server(&mut self) {
+        let (addr, shutdown) = super::tests::start_server(Duration::from_millis(100)).await;
+        self.addr = Some(addr);
+        self.shutdown = Some(shutdown);
     }
 
-    fn start_server(&self) {
-        let (addr, shutdown) = self
-            .rt
-            .block_on(async { super::tests::start_server(Duration::from_millis(100)) });
-        self.addr.borrow_mut().replace(addr);
-        self.shutdown.borrow_mut().replace(shutdown);
-    }
-
-    fn connect_and_maybe_send(&self, bytes: Option<Vec<u8>>) -> Result<(), String> {
-        let addr = self
-            .addr
-            .borrow()
-            .as_ref()
-            .copied()
-            .ok_or_else(|| "server not started".to_string())?;
-        let reply = self.rt.block_on(perform_handshake(addr, bytes));
-        self.reply.borrow_mut().replace(reply);
+    /// Run one handshake against the started server, if any.
+    ///
+    /// A handshake that fails is still a successful step: the failure is
+    /// recorded as the reply so the `Then` step can assert on its code.
+    async fn connect_and_maybe_send(&mut self, bytes: Option<Vec<u8>>) -> Result<(), String> {
+        let addr = self.addr.ok_or_else(|| "server not started".to_string())?;
+        self.reply = Some(perform_handshake(addr, bytes).await);
         Ok(())
     }
 
+    /// Decode the reply code from the bytes recorded by the handshake step.
     fn reply_code(&self) -> Result<u32, String> {
-        let reply = self.reply.borrow();
-        let Some(reply) = reply.as_ref() else {
+        let Some(reply) = self.reply.as_ref() else {
             return Err("missing reply".into());
         };
         reply
@@ -111,7 +105,7 @@ impl HandshakeWorld {
 
 impl Drop for HandshakeWorld {
     fn drop(&mut self) {
-        if let Some(tx) = self.shutdown.borrow_mut().take() {
+        if let Some(tx) = self.shutdown.take() {
             let _ = tx.send(());
         }
     }
@@ -123,19 +117,19 @@ impl Drop for HandshakeWorld {
 )]
 #[allow(unused_braces, reason = "rstest-bdd macro expansion produces braces")]
 #[fixture]
-fn world() -> HandshakeWorld { HandshakeWorld::new() }
+fn world() -> HandshakeWorld { HandshakeWorld::default() }
 
 #[given("a wireframe server handling handshakes")]
-fn given_server(world: &HandshakeWorld) { world.start_server(); }
+async fn given_server(world: &mut HandshakeWorld) { world.start_server().await; }
 
 #[when("I send a valid Hotline handshake")]
-fn when_valid(world: &HandshakeWorld) -> Result<(), String> {
+async fn when_valid(world: &mut HandshakeWorld) -> Result<(), String> {
     let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 0);
-    world.connect_and_maybe_send(Some(bytes.to_vec()))
+    world.connect_and_maybe_send(Some(bytes.to_vec())).await
 }
 
 #[when("I send a Hotline handshake with protocol \"{tag}\" and version {version}")]
-fn when_custom(world: &HandshakeWorld, tag: String, version: u16) -> Result<(), String> {
+async fn when_custom(world: &mut HandshakeWorld, tag: String, version: u16) -> Result<(), String> {
     let mut protocol = [0u8; 4];
     if tag.len() != protocol.len() {
         return Err(format!(
@@ -146,11 +140,13 @@ fn when_custom(world: &HandshakeWorld, tag: String, version: u16) -> Result<(), 
     }
     protocol.copy_from_slice(tag.as_bytes());
     let bytes = preamble_bytes(protocol, *b"CHAT", version, 0);
-    world.connect_and_maybe_send(Some(bytes.to_vec()))
+    world.connect_and_maybe_send(Some(bytes.to_vec())).await
 }
 
 #[when("I connect without sending a handshake")]
-fn when_idle(world: &HandshakeWorld) -> Result<(), String> { world.connect_and_maybe_send(None) }
+async fn when_idle(world: &mut HandshakeWorld) -> Result<(), String> {
+    world.connect_and_maybe_send(None).await
+}
 
 #[then("the handshake reply code is {code}")]
 fn then_code(world: &HandshakeWorld, code: u32) {
@@ -160,29 +156,17 @@ fn then_code(world: &HandshakeWorld, code: u32) {
 }
 
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 0)]
-fn replies_ok(world: HandshakeWorld) {
-    given_server(&world);
-    assert_step_ok!(when_valid(&world));
-    then_code(&world, 0);
-}
+#[tokio::test(flavor = "current_thread")]
+async fn replies_ok(_world: HandshakeWorld) {}
 
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 1)]
-fn invalid_protocol(world: HandshakeWorld) {
-    given_server(&world);
-    assert_step_ok!(when_custom(&world, "WRNG".into(), 1));
-    then_code(&world, 1);
-}
+#[tokio::test(flavor = "current_thread")]
+async fn invalid_protocol(_world: HandshakeWorld) {}
 
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 2)]
-fn unsupported_version(world: HandshakeWorld) {
-    given_server(&world);
-    assert_step_ok!(when_custom(&world, "TRTP".into(), 2));
-    then_code(&world, 2);
-}
+#[tokio::test(flavor = "current_thread")]
+async fn unsupported_version(_world: HandshakeWorld) {}
 
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 3)]
-fn handshake_timeout(world: HandshakeWorld) {
-    given_server(&world);
-    assert_step_ok!(when_idle(&world));
-    then_code(&world, 3);
-}
+#[tokio::test(flavor = "current_thread")]
+async fn handshake_timeout(_world: HandshakeWorld) {}
