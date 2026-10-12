@@ -100,12 +100,15 @@ handshake tests pass, by reading the world in the source without encountering
   record the focused test result, and warm the Clippy cache.
 - [x] (2026-10-13) Establish rstest-bdd 0.6.0 `&mut` fixture and async step
   posture from the pinned sources and imported guides.
-- [ ] (2026-10-13) Convert `HandshakeWorld` to plain state with async mutable
+- [x] (2026-10-13) Convert `HandshakeWorld` to plain state with async mutable
   network operations and remove the owned runtime.
-- [ ] (2026-10-13) Convert the steps and the four scenario bindings to the
+- [x] (2026-10-13) Convert the steps and the four scenario bindings to the
   async value-fixture pattern.
-- [ ] (2026-10-13) Validate with the focused suite, the repository gates, and a
-  CodeRabbit review; commit, push, and open a draft pull request.
+- [x] (2026-10-13) Commit EP-M1 and EP-M2 as `e28dfc7`, after the focused suite
+  reported eight passing tests and a negative control failed all four scenarios
+  with the observed reply codes.
+- [ ] (2026-10-13) Validate with the repository gates and a CodeRabbit review;
+  push and open a draft pull request.
 
 ## Surprises & discoveries
 
@@ -127,6 +130,23 @@ handshake tests pass, by reading the world in the source without encountering
 - The current `Drop` implementation already sends on a synchronous
   `oneshot::Sender`; the only runtime dependency was the surrounding in-scope
   `Runtime` field, not the send itself.
+- The documented `&mut` fixture ICE did **not** reproduce on the pinned
+  nightly `nightly-2026-03-26`. `&mut HandshakeWorld` step parameters compiled
+  and ran under `#[tokio::test(flavor = "current_thread")]` on the first
+  attempt, so no fallback or interior-mutability shim was needed. The ICE is
+  evidently tied to the expander that the crate's own opt-in
+  `mutable_world_macro` feature gates, not to ordinary `&mut` step parameters.
+- The issue's "pending rstest-bdd v0.2.0" premise is doubly stale: 0.6.0 is
+  already adopted, and it provides the async support the issue was waiting for.
+  Its `TokioHarness` does, however, poll each async step once, so socket-I/O
+  steps still need the repository's documented explicit async bindings —
+  exactly what `#[scenario]` without a harness attribute plus an external
+  `#[tokio::test]` produces.
+- `start_server` in the production `tests` module had to change signature from
+  `fn` to `async fn`. This is a test-only helper inside `#[cfg(test)]` and is
+  not a public API, so the interface tolerance was not breached. Making it
+  `async` rather than leaving it blocking is what keeps the world's runtime
+  honest: a blocking helper would need the runtime the world no longer owns.
 - `pr.txt` and `rustc-ice-2025-12-09T19_07_55-92865.txt` in the worktree root
   are tracked, unmodified repository files unrelated to this task, left
   untouched.
@@ -153,6 +173,22 @@ handshake tests pass, by reading the world in the source without encountering
   Rationale: it matches the repository's existing async scenario convention in
   `tests/wireframe_handshake_metadata.rs` and keeps the world `!Send`-safe and
   free of cross-thread fixture sharing.
+- Decision: make the production test helper `start_server` an `async fn`
+  instead of having the world block on it. Rationale: the world no longer owns
+  a runtime, so something must. Awaiting inside the step reuses the scenario's
+  own runtime, which is the same runtime the server task was spawned onto;
+  blocking in a helper would require reintroducing an owned runtime, undoing
+  the point of the change.
+- Decision: keep the explicit `#[scenario]`-plus-`#[tokio::test]` binding form
+  rather than moving to an rstest-bdd harness attribute. Rationale: it is the
+  repository's documented workaround for the 0.6.0 Tokio harness polling each
+  async step once, and these steps perform socket I/O. Using a harness would
+  fail with "async step yielded Pending".
+- Decision: do **not** add `handshake_bdd` to `tests/bdd_binding_coverage.rs`.
+  Rationale: that gate compares named bindings of *external* async test suites.
+  This suite lives inside `src/`, is not an external test target, and uses
+  index bindings, so adding it would break the coverage comparison rather than
+  strengthen it. The issue explicitly scopes this out.
 
 ## Outcomes & retrospective
 
@@ -327,6 +363,15 @@ Axioms:
   Evidence: the pre-existing `replies_timeout_for_idle_socket` unit test in
   `src/wireframe/handshake.rs` asserts the timeout reply code against a 100 ms
   duration.
+
+Negative control (discharged 2026-10-13): the asserted code in `then_code` was
+temporarily replaced by `code.wrapping_add(99)` and the four scenarios were
+re-run. All four failed, each reporting the reply code actually observed —
+`left: 0` for "Successful handshake replies OK", and `left: 3` for "Idle
+connection times out during handshake" — against the feature's own step text.
+This discharges both INV-1 and INV-4: the scenarios do observe real reply codes
+from the world, and the async conversion did not silently preserve a wrong
+value. The mutation was then reverted and the suite re-run green.
 
 No new invariant over generated inputs, orderings, or arithmetic is introduced:
 the change is a mechanical restructuring of test scaffolding, so property
