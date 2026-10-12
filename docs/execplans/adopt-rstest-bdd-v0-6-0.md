@@ -89,10 +89,25 @@ scope.
   gates passed. The first aggregate `make test` attempt failed during embedded
   PostgreSQL startup before later subtargets; the failed scenario passed alone
   with checkout-specific PostgreSQL directories.
-- [ ] (2026-10-12) Publish this timeout and validation update, then verify fresh
-  current-head hosted checks and remote parity.
-- [ ] Observe current-head CI, CodeScene, CodeRabbit review and all review
-  surfaces. Reconcile findings and the stale pre-merge UI warning.
+- [x] (2026-10-12) Reconcile CodeRabbit's prior compile-time/UI finding on the
+  current candidate; the bot confirmed the pass/fail fixtures and workspace
+  coverage wiring. The new current-head review then found that the package was
+  still absent from the ordinary `make test` target and the CI Test step, and
+  that the trybuild fixture crates and developer guide needed explicit
+  documentation.
+- [x] Add the UI package to the aggregate Make target and CI Test step, document
+  that route and timeout, and add module docs to both trybuild fixtures.
+- [x] Correct the two-digit source gutter in the trybuild snapshot and run the
+  candidate gates sequentially. The final run passed formatting, lint,
+  typecheck, spelling, Markdown, Mermaid, lockfile, and all tests. PostgreSQL
+  passed 497 tests, SQLite 502, SQLite-plus-TOML 500, UI contracts 1, and the
+  later suites passed; one existing test was skipped and four doctests were
+  ignored. The first two snapshot adjustments failed on exact indentation; the
+  final expected diagnostic matches rustc output.
+- [ ] Commit the validated repair, publish it, and verify remote parity and
+  fresh hosted checks.
+- [ ] Observe current-head CodeRabbit review and all review surfaces, reconcile
+  findings, and merge only after the accepted candidate reaches equilibrium.
 - [ ] When all merge conditions hold, squash-merge PR #616 guarded by its
   accepted full head SHA and verify the landed commit and post-merge jobs.
 
@@ -127,6 +142,29 @@ scope.
   Evidence: PR #616's current status and edited walkthrough comment. Impact:
   current review completion remains unproven until the review state is
   reconciled.
+- Observation: the completed CodeRabbit review on `b4eba6d` found the trybuild
+  package was not in `make test` or the CI Test step, and that its two fixture
+  modules and developer-facing package instructions lacked documentation.
+  Evidence: review `5485872832`, commit
+  `b4eba6d4450b29f632ed1ae86715d571371a5da9`. Impact: wire the package into
+  both ordinary test paths and document the 300-second package timeout before
+  the next candidate gate run.
+- Observation: the first gate run after that repair found the trybuild
+  diagnostic snapshot differed only in rustc's indentation for a two-digit
+  source line; the first snapshot adjustment left one extra space before the
+  `11 |` gutter on the next run. The PostgreSQL and SQLite suites passed in
+  both runs. Evidence: the first captured candidate log is
+  `/tmp/test-dca659dd-c303-4df0-b113-2d19de1540c9-adopt-rstest-bdd-v0-6-0.out`;
+  the second is
+  `/tmp/test-dca659dd-c303-4df0-b113-2d19de1540c9-adopt-rstest-bdd-v0-6-0-2.out`.
+  Impact: match the exact compiler diagnostic and validate the resulting
+  candidate through a fresh sequential gate pass.
+- Observation: after removing the extra leading space before `11 |`, all
+  sequential gates passed, including the trybuild compile-fail contract.
+  Evidence: final test log
+  `/tmp/test-dca659dd-c303-4df0-b113-2d19de1540c9-adopt-rstest-bdd-v0-6-0-3.out`.
+  Impact: the workspace test target and CI lane now exercise the documented UI
+  contracts on the validated candidate.
 
 ## Decision log
 

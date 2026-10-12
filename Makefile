@@ -232,7 +232,7 @@ tlc: tlc-handshake ## Run all TLA+ model checks
 tlc-handshake: ## Run TLC on handshake spec
 	TLC_IMAGE=$(TLC_IMAGE) $(TLC_RUNNER) crates/mxd-verification/tla/MxdHandshake.tla
 
-test: test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness test-concurrency test-doc ## Run sqlite, postgres, wireframe-only, verification, fuzz-harness, concurrency-kernel, and doc suites
+test: test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-verification test-fuzz-harness test-concurrency test-doc ## Run database, wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency-kernel, and doc suites
 
 # Note: RSTEST_TIMEOUT is intentionally omitted for postgres tests because
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
@@ -254,6 +254,9 @@ test-sqlite: ## Run tests with the sqlite backend
 
 test-wireframe-only: ## Run tests with legacy networking disabled
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(WIREFRAME_ONLY_FEATURES)
+
+test-rstest-bdd-ui: ## Run compile-time rstest-bdd scenario tests
+	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p rstest-bdd-ui-tests
 
 test-verification: ## Run verification crate tests
 	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p mxd-verification

@@ -250,6 +250,18 @@ The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
 - If a scenario needs a fallible return signature, use explicit
   `Result<(), E>` or `StepResult<(), E>` in the scenario function signature.
 
+### Compile-time scenario contracts
+
+The non-published `tests/rstest-bdd-ui` workspace package uses `trybuild` to
+check named `TokioHarness` selection and the diagnostic for an unknown scenario
+title. Run it directly with `make test-rstest-bdd-ui`; the aggregate
+`make test` target and the CI test lane include this package.
+
+The trybuild test compiles separate fixture crates and can take longer than an
+ordinary unit test on a cold build. `.config/nextest.toml` gives only
+`rstest-bdd-ui-tests` a 300-second slow timeout; keep the pass and compile-fail
+assertions enabled.
+
 ## Validator toggles for pending flows
 
 The `validator` crate now ships placeholder validators for wireframe flows that

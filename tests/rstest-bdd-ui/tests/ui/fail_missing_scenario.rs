@@ -1,3 +1,6 @@
+//! Compile-fail fixture for the trybuild suite in `tests/ui.rs`.
+//! It checks that an unknown title is rejected against `feature.feature`.
+
 use rstest_bdd_macros::{given, scenario};
 
 #[given("a migration UI step")]

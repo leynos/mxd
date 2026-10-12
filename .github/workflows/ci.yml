@@ -185,6 +185,9 @@ jobs:
         run: |
           RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
             --filter-expr 'not package(=validator)'
+      - name: Test rstest-bdd UI contracts
+        if: matrix.name == 'wireframe-only'
+        run: make test-rstest-bdd-ui
 
   # One stable context for the ruleset to require. The matrix legs' check
   # names are truncated by GitHub and change with the matrix, so requiring them
