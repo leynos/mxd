@@ -117,8 +117,10 @@ handshake tests pass, by reading the world in the source without encountering
 - [x] (2026-10-13) Fix the denied lint by making the test-only `start_server`
   helper synchronous again, committing as `8297264`, and re-running the focused
   suite green.
-- [ ] (2026-10-13) Re-run the full gate set and obtain a clean CodeRabbit
-  review before moving on.
+- [x] (2026-10-13) Re-queue a hosted CodeRabbit review via `comenq` against the
+  corrected head `788e0ff` (queue ID `116404a5`, ETA ~50 minutes).
+- [ ] (2026-10-13) Complete the full gate re-run and the hosted review, then
+  write the retrospective and mark the plan complete.
 
 ## Surprises & discoveries
 
@@ -218,6 +220,14 @@ handshake tests pass, by reading the world in the source without encountering
   This suite lives inside `src/`, is not an external test target, and uses
   index bindings, so adding it would break the coverage comparison rather than
   strengthen it. The issue explicitly scopes this out.
+- Decision: request the hosted CodeRabbit review through the managed `comenq`
+  queue while keeping the branch a draft. Rationale: CodeRabbit skips automatic
+  review of draft pull requests (confirmed by the
+  `skip review by coderabbit.ai` marker on comment 6134566280), and the queue
+  is the project's authorized route for a full review. The local
+  `coderabbit review --agent` pass covers the same candidate immediately, so
+  the queued request is a second, independent inspection rather than a blocking
+  wait.
 
 ## Outcomes & retrospective
 
@@ -422,6 +432,13 @@ only the denied `unused_async` lint exposed it. Behavioural tests establish
 that the code does the right thing, not that each signature is honest about
 what it does. Recording this keeps the plan from treating a green suite as
 sufficient evidence for the shape of the change as well as its behaviour.
+
+Independent inspection (2026-10-13): the local `coderabbit review --agent` pass
+over the committed diff against `origin/main` (`df48e51`) inspected all three
+changed files and reported zero findings. This is a second, independent
+inspector over the same candidate, complementing rather than repeating the
+behavioural suite. A hosted review covering the same head was queued
+separately; its result is reported when it lands.
 
 ## Idempotence and recovery
 
