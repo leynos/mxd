@@ -19,8 +19,9 @@ blocking, and borrow panics — to follow a test that is, in substance, three
 network calls.
 
 After this change, the world is an ordinary struct with plain `Option` fields,
-its network operations are `async fn`s that take `&mut self`, and each scenario
-runs under `#[tokio::test(flavor = "current_thread")]`. A reader sees `.await`
+the one operation that waits on the network is an `async fn` taking
+`&mut self`, and each scenario runs under
+`#[tokio::test(flavor = "current_thread")]`. A reader sees `.await` exactly
 where work is asynchronous, `?` where it can fail, and no runtime handle at
 all. Nothing about the observable protocol behaviour changes: the four
 scenarios still assert handshake reply codes 0, 1, 2, and 3.
@@ -107,8 +108,17 @@ handshake tests pass, by reading the world in the source without encountering
 - [x] (2026-10-13) Commit EP-M1 and EP-M2 as `e28dfc7`, after the focused suite
   reported eight passing tests and a negative control failed all four scenarios
   with the observed reply codes.
-- [ ] (2026-10-13) Validate with the repository gates and a CodeRabbit review;
-  push and open a draft pull request.
+- [x] (2026-10-13) Push the branch over SSH and open draft pull request #654
+  with `Closes #235` in the body and a `## References` section.
+- [x] (2026-10-13) First gate run: `make check-fmt`, `make markdownlint`,
+  `make nixie`, and the focused suite passed; `make lint` failed on a real
+  `clippy::unused_async` defect and `make test` was cut short by an
+  environmental package-cache timeout.
+- [x] (2026-10-13) Fix the denied lint by making the test-only `start_server`
+  helper synchronous again, committing as `8297264`, and re-running the focused
+  suite green.
+- [ ] (2026-10-13) Re-run the full gate set and obtain a clean CodeRabbit
+  review before moving on.
 
 ## Surprises & discoveries
 
@@ -142,14 +152,31 @@ handshake tests pass, by reading the world in the source without encountering
   steps still need the repository's documented explicit async bindings —
   exactly what `#[scenario]` without a harness attribute plus an external
   `#[tokio::test]` produces.
-- `start_server` in the production `tests` module had to change signature from
-  `fn` to `async fn`. This is a test-only helper inside `#[cfg(test)]` and is
-  not a public API, so the interface tolerance was not breached. Making it
-  `async` rather than leaving it blocking is what keeps the world's runtime
-  honest: a blocking helper would need the runtime the world no longer owns.
+- `start_server` in the production `tests` module was initially converted to an
+  `async fn` so the world could await it. The first gate run then rejected that
+  with `clippy::unused_async`, which this workspace denies. The lint is
+  correct: spawning the server task is synchronous and the only `await` in the
+  body sits inside the nested async block handed to `run_with_shutdown`. The
+  helper is now a plain `fn`, and the async boundary sits exactly where socket
+  I/O happens. This is a test-only helper inside `#[cfg(test)]`, not a public
+  API, so the interface tolerance was never in play.
+- The lint gate, not the test suite, is what caught the over-eager `async`. The
+  focused tests passed both before and after, so only a denied-lint check could
+  distinguish the two versions. That is a reminder that a green test run says
+  nothing about whether a signature is *honest*.
 - `pr.txt` and `rustc-ice-2025-12-09T19_07_55-92865.txt` in the worktree root
   are tracked, unmodified repository files unrelated to this task, left
   untouched.
+- rust-analyzer reports "Ambiguous step definition" diagnostics for the
+  `#[scenario]` bindings, but these are false positives. Only one `#[given]` in
+  the repository matches that step text, and `make lint` compiles the same code
+  through `clippy --all-targets` with `compile-time-validation` enabled without
+  reporting any ambiguity. The observed rust-analyzer process runs toolchain
+  `nightly-2026-01-30` while the project pins `nightly-2026-03-26`, and the
+  diagnostics are tagged `[macro-error]`, so they originate in the editor's own
+  macro-expansion layer against a mismatched toolchain. It also flags three of
+  the four structurally identical bindings and not the fourth, which no real
+  duplicate definition would do. rustc is the arbiter; it sees no conflict.
 
 ## Decision log
 
@@ -173,12 +200,14 @@ handshake tests pass, by reading the world in the source without encountering
   Rationale: it matches the repository's existing async scenario convention in
   `tests/wireframe_handshake_metadata.rs` and keeps the world `!Send`-safe and
   free of cross-thread fixture sharing.
-- Decision: make the production test helper `start_server` an `async fn`
-  instead of having the world block on it. Rationale: the world no longer owns
-  a runtime, so something must. Awaiting inside the step reuses the scenario's
-  own runtime, which is the same runtime the server task was spawned onto;
-  blocking in a helper would require reintroducing an owned runtime, undoing
-  the point of the change.
+- Decision: leave the production test helper `start_server` synchronous.
+  Rationale: it spawns the server task and returns; the awaiting happens later,
+  when the step reads the reply on the scenario's own runtime. An earlier
+  attempt made the helper `async` to match the issue's proposal, but that added
+  no awaiting work and was rejected by the denied `unused_async` lint. Neither
+  blocking on a runtime nor reintroducing an owned runtime is needed:
+  `tokio::spawn` requires a runtime in scope but does not need the caller to
+  await anything.
 - Decision: keep the explicit `#[scenario]`-plus-`#[tokio::test]` binding form
   rather than moving to an rstest-bdd harness attribute. Rationale: it is the
   repository's documented workaround for the 0.6.0 Tokio harness polling each
@@ -201,7 +230,9 @@ fixture caveats materialized.
 - Upstream requirement: GitHub issue [#235][issue-235], "Simplify BDD
   HandshakeWorld implementation in handshake tests", including the refactoring
   bullets for plain `Option` fields, async `&mut self` operations, `.await` in
-  place of `block_on`, a synchronous `Drop`, and an async test runtime.
+  place of `block_on`, a synchronous `Drop`, and an async test runtime. The
+  bullet treating `start_server` as an async candidate is superseded: it awaits
+  nothing that the caller needs, so it stays synchronous.
 - Prior art: pull request [#234][pr-234] and its review comment
   [#discussion_r2576844667][pr-234-comment], which introduced the world.
 - Repository standard: `AGENTS.md` — "Code is for humans", new functionality
@@ -243,14 +274,18 @@ Stable identifier: EP-M1. Satisfies ISSUE-235-01.
 
 End state: `HandshakeWorld` holds `Option<SocketAddr>`,
 `Option<oneshot::Sender<()>>`, and `Option<Result<[u8; REPLY_LEN], String>>`,
-derives `Default`, and exposes `async fn start_server(&mut self)` and
-`async fn connect_and_maybe_send(&mut self, bytes: Option<Vec<u8>>)`. The
-`RefCell` and `Runtime` imports are gone, no `block_on` call remains, and
-`Drop` still signals shutdown when a sender is present. The step functions and
-scenario bindings still use the old synchronous shape at this point, so the
-milestone's compile evidence comes from the following milestone; the two are
-committed together because the world and its only callers form one atomic
-interface change.
+derives `Default`, and exposes `fn start_server(&mut self)`,
+`async fn connect_and_maybe_send(&mut self, bytes: Option<Vec<u8>>)`, and
+`fn reply_code(&self)`. The `RefCell` and `Runtime` imports are gone, no
+`block_on` call remains, and `Drop` still signals shutdown when a sender is
+present. The step functions and scenario bindings still use the old synchronous
+shape at this point, so the milestone's compile evidence comes from the
+following milestone; the two are committed together because the world and its
+only callers form one atomic interface change.
+
+Only `connect_and_maybe_send` is async, because only it waits on socket I/O.
+`start_server` spawns a task and returns; marking it `async` earned a denied
+`unused_async` lint in the first gate run and the async marker was removed.
 
 Acceptance evidence: no `RefCell`, `block_on`, or `Runtime` token appears in
 `src/wireframe/handshake_bdd.rs`.
@@ -260,11 +295,13 @@ Acceptance evidence: no `RefCell`, `block_on`, or `Runtime` token appears in
 Stable identifier: EP-M2. Satisfies ISSUE-235-02.
 
 End state: `#[fixture] fn world()` returns `HandshakeWorld::default()`; the
-Given step and the three `When` steps are `async fn`s taking
-`&mut HandshakeWorld`; the `Then` step is a synchronous `fn` taking
-`&HandshakeWorld`; the four scenarios are `async fn`s with empty bodies
-annotated `#[tokio::test(flavor = "current_thread")]`, keeping
+three `When` steps are `async fn`s taking `&mut HandshakeWorld`; the Given step
+and the `Then` step are synchronous `fn`s, taking `&mut HandshakeWorld` and
+`&HandshakeWorld` respectively; the four scenarios are `async fn`s with empty
+bodies annotated `#[tokio::test(flavor = "current_thread")]`, keeping
 `path = "tests/features/wireframe_handshake_hooks.feature"` and `index = 0..3`.
+Mixing a synchronous `&mut` step with asynchronous ones compiles and runs
+without complaint from the `compile-time-validation` feature.
 
 Acceptance evidence: the focused suite reports eight passing tests, including
 all four `bdd` scenarios.
@@ -345,9 +382,8 @@ Invariants introduced or preserved:
 Lemma: the step wrapper's borrow of the world does not outlive a step's
 `.await`. Method: steps request exactly one fixture and the scenario body is
 empty, so no nested borrow is expressible; the compile is the discharge.
-Non-vacuity: the same shapes that would violate this are the documented
-`E0499`/`E0502` cases in the migration guide, which this file avoids by
-construction.
+Non-vacuity: the same shapes that would violate this are the documented `E0499`/
+`E0502` cases in the migration guide, which this file avoids by construction.
 
 Axioms:
 
@@ -379,6 +415,13 @@ tests, model checking, and proofs add no rigour here and are not planned. The
 strongest available evidence is the behavioural suite, which this plan
 strengthens rather than weakens by keeping every assertion and its error
 messaging intact.
+
+The first gate run supplies a useful bound on what that suite can discharge.
+All eight tests passed while `start_server` carried a needless `async` marker;
+only the denied `unused_async` lint exposed it. Behavioural tests establish
+that the code does the right thing, not that each signature is honest about
+what it does. Recording this keeps the plan from treating a green suite as
+sufficient evidence for the shape of the change as well as its behaviour.
 
 ## Idempotence and recovery
 
@@ -420,7 +463,7 @@ struct HandshakeWorld {
 }
 
 impl HandshakeWorld {
-    async fn start_server(&mut self);
+    fn start_server(&mut self);
     async fn connect_and_maybe_send(&mut self, bytes: Option<Vec<u8>>)
         -> Result<(), String>;
     fn reply_code(&self) -> Result<u32, String>;
