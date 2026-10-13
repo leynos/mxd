@@ -774,19 +774,21 @@ make test-wireframe-only
 make test-postgres
 ```
 
-Remote operations, always through the clean-environment wrappers:
+Remote operations, always through the clean-environment wrappers. The branch
+name is defined once and reused, so the refspecs stay within the code-block
+width limit:
 
 ```sh
-/tmp/mxd-git-clean.sh push git@github.com:leynos/mxd.git \
-  HEAD:refs/heads/issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes
+BR=issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes
+
+/tmp/mxd-git-clean.sh push git@github.com:leynos/mxd.git "HEAD:refs/heads/$BR"
 
 /tmp/mxd-git-clean.sh fetch git@github.com:leynos/mxd.git \
-  "+refs/heads/issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes:refs/remotes/origin/issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes"
+  "+refs/heads/$BR:refs/remotes/origin/$BR"
 
-/tmp/mxd-git-clean.sh branch --set-upstream-to=origin/issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes
+/tmp/mxd-git-clean.sh branch --set-upstream-to="origin/$BR"
 
-/tmp/mxd-git-clean.sh ls-remote git@github.com:leynos/mxd.git \
-  refs/heads/issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes
+/tmp/mxd-git-clean.sh ls-remote git@github.com:leynos/mxd.git "refs/heads/$BR"
 ```
 
 The leading `+` on the fetch refspec is deliberate: it keeps the refresh
@@ -798,11 +800,13 @@ system `sqlite3` 3.46.1 during reconnaissance:
 ```plaintext
 $ sqlite3 :memory: "SELECT sqlite_version() AS version;"
 3.46.1
-$ sqlite3 :memory: "SELECT key, CAST(value AS TEXT) AS value FROM json_each('[\"a\",\"b\",\"c\"]') ORDER BY key;"
+$ sqlite3 :memory: "SELECT key, CAST(value AS TEXT) AS value \
+    FROM json_each('[\"a\",\"b\",\"c\"]') ORDER BY key;"
 0|a
 1|b
 2|c
-$ sqlite3 :memory: "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 3) SELECT x FROM c ORDER BY x;"
+$ sqlite3 :memory: "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL \
+    SELECT x+1 FROM c WHERE x < 3) SELECT x FROM c ORDER BY x;"
 1
 2
 3
