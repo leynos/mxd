@@ -273,10 +273,21 @@ mod sqlite_tests {
     use rstest::rstest;
 
     use super::{
+        DieselError,
         ensure_supported_sqlite_version,
         validate_json_each_rows,
         validate_recursive_cte_rows,
     };
+
+    /// Assert that a validator rejected its input with an error naming
+    /// `capability`, so a failure message always says which check broke.
+    fn assert_rejected_naming(result: Result<(), DieselError>, capability: &str) {
+        let error = result.expect_err("unexpected probe rows must be rejected");
+        assert!(
+            error.to_string().contains(capability),
+            "error must name the capability {capability}: {error}"
+        );
+    }
 
     #[rstest]
     #[case("3.35.0")]
@@ -326,13 +337,9 @@ mod sqlite_tests {
     #[case(&[])]
     fn json_each_rejects_unexpected_rows(#[case] pairs: &[(i32, &str)]) {
         let rows = json_each_rows(pairs);
-        let error =
-            validate_json_each_rows(&rows).expect_err("unexpected probe rows must be rejected");
-        assert!(
-            error
-                .to_string()
-                .contains("SQLite JSON1 json_each probe failed"),
-            "error must name the capability: {error}"
+        assert_rejected_naming(
+            validate_json_each_rows(&rows),
+            "SQLite JSON1 json_each probe failed",
         );
     }
 
@@ -349,13 +356,9 @@ mod sqlite_tests {
     #[case(&[3, 2, 1])]
     #[case(&[1, 2, 3, 4])]
     fn recursive_cte_rejects_unexpected_rows(#[case] rows: &[i32]) {
-        let error =
-            validate_recursive_cte_rows(rows).expect_err("unexpected probe rows must be rejected");
-        assert!(
-            error
-                .to_string()
-                .contains("SQLite recursive CTE probe failed"),
-            "error must name the capability: {error}"
+        assert_rejected_naming(
+            validate_recursive_cte_rows(rows),
+            "SQLite recursive CTE probe failed",
         );
     }
 }
