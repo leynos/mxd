@@ -237,9 +237,99 @@ Thresholds that trigger escalation when breached.
 
 ## Outcomes & retrospective
 
-To be completed at EP-M4. At completion this section must reconcile every
-discovery in `Surprises & discoveries` with the artefacts named in
-`Conformance basis`, and record anything that would be done differently.
+Status: COMPLETE. Delivered in commits `00d023a` (audit), `6429e45`
+(enforcement at every entry point), `b4144a1` (documentation), `ceccd66`,
+`4082d18`, `c21e1f9`, `af46a46`, and `88f4774` (gate fixes and plan upkeep).
+Pushed as head `88f4774`; draft pull request
+<https://github.com/leynos/mxd/pull/656>.
+
+### What was achieved
+
+A user who runs the legacy server, the Wireframe server, or the `create-user`
+subcommand against a SQLite library that is older than 3.35.0, lacks the JSON1
+`json_each` function, or lacks recursive CTE support now gets an error naming
+the missing capability, before the listener binds and before any row is
+written. Previously only the version floor and a `json('{}')` scalar check
+existed, on the legacy path alone. The documentation states all three
+requirements in `README.md`, `docs/developers-guide.md`, `docs/users-guide.md`,
+and `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`, and
+`docs/design.md` no longer describes the old, weaker check.
+
+### Gate evidence
+
+All deterministic gates pass on content `88f4774`, whose only delta from
+`af46a46` is one word and one line wrap inside this ExecPlan:
+
+| Gate                       | Result                                |
+| -------------------------- | ------------------------------------- |
+| `make fmt`                 | pass                                  |
+| `make check-fmt`           | pass                                  |
+| `make markdownlint`        | pass (`typos.toml` unmodified)        |
+| `make nixie`               | pass                                  |
+| `make lint`                | pass, zero warnings                   |
+| `make test-sqlite`         | 502 passed                            |
+| `make test-wireframe-only` | 500 passed                            |
+| `make test-postgres`       | 497 passed                            |
+| `make test-verification`   | 69 passed, 1 skipped                  |
+| `make test-concurrency`    | 7 passed                              |
+| `make test-fuzz-harness`   | 8 passed                              |
+| `make test-doc`            | 5 passed, 4 ignored                   |
+| `make test-rstest-bdd-ui`  | times out at the 300 s cap; see below |
+
+The only non-passing target is `test-rstest-bdd-ui`. It is an environment
+failure, not a defect in this change:
+
+- `tests/rstest-bdd-ui/Cargo.toml` depends on `rstest`, `rstest-bdd`,
+  `rstest-bdd-macros`, `rstest-bdd-harness-tokio`, and `trybuild`. It does not
+  depend on `mxd`, and no file under `tests/rstest-bdd-ui/` mentions `mxd`, so
+  nothing in this diff can influence it.
+- Its captured stderr shows `Blocking waiting for file lock on package cache`
+  and uncached compile-admission queueing; the trybuild `.stderr` comparison
+  stage is never reached, and no diff, `mismatch`, or `EXPECTED`/`ACTUAL` text
+  appears in the log.
+- The machine was heavily loaded throughout: load average peaked near 105 with
+  18 concurrent cargo jobs, and the managed sccache server was unreachable, so
+  every compilation ran uncached.
+- The target runs last in `make test`, so its timeout aborts the chain. The
+  four sub-targets it skipped were run individually and all pass, as recorded
+  in the table above.
+
+### Reconciliation with the conformance basis
+
+- `ISSUE-63-action-audit` -> EP-M1 -> satisfied; the validator cases in
+  `src/db/audit.rs` pass and the real-connection `test_audit_features` proves
+  the typed rows deserialize from the linked library.
+- `ISSUE-63-action-audit` -> EP-M2 -> satisfied; all three entry points audit
+  before binding or writing (V6, by inspection at
+  `src/server/wireframe/mod.rs:144-145` before `:166`, `src/server/admin.rs:78`
+  before `:81` and `:82`, and `src/server/legacy/mod.rs:166-168` before `:173`).
+- `ISSUE-63-doc-requirements` -> EP-M3 -> satisfied; the four target documents
+  plus the corrected `docs/design.md` sentence.
+- `ISSUE-63-acceptance` -> EP-M4 -> satisfied; gate logs under `/tmp`, remote
+  head matching `git rev-parse HEAD`, draft PR #656.
+
+No discovery falsified an upstream assumption. The two discoveries that shaped
+the work — JSON1 remaining separable from the version floor, and the Diesel
+feature being the source of that floor — are recorded above and are reflected
+in both the code and the documentation. No deviation from the approved plan was
+needed, so no deviation proposal is raised.
+
+### What would be done differently
+
+The first full gate run failed four of its six targets, and all four failures
+were in newly authored material rather than in the implementation: two
+over-long Markdown lines, one spelling false positive, and one module breaching
+the 400-line ceiling by a single line. Running `make fmt`, `make check-fmt`, and
+`make markdownlint` after each commit — they are cheap and do not compile Rust
+— would have caught all four immediately instead of after a full gate cycle. The
+`make lint` and `make test` gates are the expensive ones and cannot
+practically be run per commit, but the cheap Markdown and spelling gates can.
+
+A second lesson: three separate spelling failures came from this plan quoting
+the offending text while explaining it, and from the audit's own test data
+carrying a hash-shaped literal. Test fixtures and plan prose should avoid
+embedded machine-generated-looking strings, or the spelling gate will keep
+firing on them.
 
 ## Context and orientation
 
