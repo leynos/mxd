@@ -167,6 +167,18 @@ Thresholds that trigger escalation when breached.
   confirm it still returns the expected rows.
 - [x] (2026-10-13) CodeRabbit round four: no findings. The review reports zero
   issues across all ten files in the diff.
+- [x] (2026-10-13) CodeScene's pull-request check failed on the branch with an
+  advisory code-health rule: Code Duplication in `src/db/audit.rs`, 10.00 →
+  9.39. Reproduced locally with `cs review src/db/audit.rs`, which named the
+  two duplicated test bodies. Fixed in `b94f9f5` by extracting
+  `assert_rejected_naming`; `cs review` now reports 10.0.
+- [x] (2026-10-13) Full gate run on `b94f9f5`, after the CodeScene fix:
+  `make fmt`, `make check-fmt`, `make markdownlint`, `make nixie`, and
+  `make lint` all pass. The `make test` chain aborts in its first sub-target,
+  `test-postgres`, on an embedded PostgreSQL startup error that cannot be
+  attributed to this change: the postgres test binary contains the failing test
+  191 times and the new `sqlite_tests` module zero times. Each of the eight
+  sub-targets passes when run individually. Counts are in the revision note.
 
 ## Surprises & discoveries
 
@@ -263,6 +275,15 @@ Thresholds that trigger escalation when breached.
   before editing. The project sets neither variable, and `ldd target/debug/mxd`
   reports `libsqlite3.so.0`, so dynamic linking of the system library remains
   the documented default. Date/Author: 2026-10-13, agent.
+- Decision: extract `assert_rejected_naming` to share the rejection assertion
+  between the two probe-row test functions. Rationale: CodeScene's advisory
+  code-health rule dropped `src/db/audit.rs` from 10.00 to 9.39 on Code
+  Duplication, and the duplication it named was real — two test bodies
+  differing only in which validator they called and which capability string
+  they expected. The rule is not required by the branch ruleset, so ignoring it
+  was defensible, but the duplication was in this change's own new code and the
+  fix is a smaller and clearer test module, not a concession. Verified with
+  `cs review`, which now reports 10.0. Date/Author: 2026-10-13, agent.
 
 ## Outcomes & retrospective
 
@@ -979,3 +1000,24 @@ than live state, and `Outcomes & retrospective` no longer hard-coding a head
 hash that the next push would invalidate. Round three found three code-block
 lines over the 120-column limit, fixed in `f72952f`. Round four returned no
 findings, with all ten files in the diff reviewed and none flagged.
+
+2026-10-13: CodeScene's pull-request check had been failing on the branch since
+`5ec1709` with an advisory code-health rule rather than a defect report: Code
+Duplication in `src/db/audit.rs`, scored 10.00 → 9.39. The rule is not required
+by the branch ruleset, but it named this change's own two rejection tests, so
+it was reproduced locally with `cs review src/db/audit.rs` and fixed in
+`b94f9f5` by extracting `assert_rejected_naming`; `cs review` now reports 10.0
+for that file. The full gate run on that commit was green except for
+`make test`, which aborted inside its first sub-target, `test-postgres`, with an
+`embedded PostgreSQL initialization failed` error, the cluster failing to
+connect to its admin database. That failure is not attributable to this change
+and the evidence is structural rather than circumstantial: the failing test
+lives in the postgres-gated lane, while everything this branch adds to
+`src/db/audit.rs` sits behind `#[cfg(feature = "sqlite")]`, and the compiled
+postgres test binary contains 191 references to the failing test but no
+reference at all to the new `sqlite_tests` module. The traceback points at
+cluster startup during a period of heavy machine load. All eight `make test`
+sub-targets were then run individually and each passed: `test-postgres` 497,
+`test-sqlite` 524, `test-wireframe-only` 522, `test-rstest-bdd-ui` 1,
+`test-verification` 69 with 1 skipped, `test-fuzz-harness` 8,
+`test-concurrency` 7, and `test-doc` 5 with 4 ignored.
