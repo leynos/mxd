@@ -221,8 +221,8 @@ Thresholds that trigger escalation when breached.
   lines, so no split was needed.
 - Decision: drop the version-string test case carrying a 64-character build
   hash and use a plain `3.46.1 2024-08-13 09:16:08` case instead. Rationale:
-  `make markdownlint` flagged the hash as a misspelling (`ba` should be `be`,
-  `by`), and adding a `typos.local.toml` exception for a hash that the audit
+  `make markdownlint` flagged a two-letter fragment of the hash as a
+  misspelling, and adding a `typos.local.toml` exception for a hash that the
   will never see would be a worse trade. `sqlite_version()` returns only
   `major.minor.patch`; the build hash comes from `sqlite_source_id()`, so the
   case was unrealistic as well as noisy. The trailing-text case is still
