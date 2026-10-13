@@ -157,9 +157,16 @@ Thresholds that trigger escalation when breached.
   overstated how SQLite is selected and linked — `pkg-config` was presented as
   definitive, and the static-link mode was unmentioned. Fixed in `5e28e54`.
 - [x] (2026-10-13) CodeRabbit round two: two findings against this ExecPlan's
-      own
-  bookkeeping — a status contradiction and stale commit references. Both fixed,
-  and the docs-scoped gates (`check-fmt`, `markdownlint`, `nixie`) re-run green.
+  own bookkeeping — a status contradiction and stale commit references. Both
+  fixed in `8fe7a08`, and the docs-scoped gates (`check-fmt`, `markdownlint`,
+  `nixie`) re-run green.
+- [x] (2026-10-13) CodeRabbit round three: one finding, valid. Three lines in
+  fenced code blocks exceeded the 120-column code-block limit. Fixed in
+  `f72952f` by defining the branch name once and splitting the `sqlite3`
+  commands across shell continuation lines; the wrapped SQL was re-run to
+  confirm it still returns the expected rows.
+- [x] (2026-10-13) CodeRabbit round four: no findings. The review reports zero
+  issues across all ten files in the diff.
 
 ## Surprises & discoveries
 
@@ -962,11 +969,13 @@ new material, all fixed in `ceccd66`; the ExecPlan was resynchronized in
 `4082d18`. EP-M4 pushed the branch and opened draft PR #656.
 
 2026-10-13: closing gate report recorded in `Outcomes & retrospective`, which
-completes the plan; status raised to COMPLETE and EP-M4 ticked. Two CodeRabbit
+completes the plan; status raised to COMPLETE and EP-M4 ticked. Four CodeRabbit
 rounds followed. Round one found the documentation overstated how SQLite is
 selected and linked, fixed in `5e28e54`. Round two found this ExecPlan's own
 bookkeeping inconsistent — a status contradiction and commit references that
-had gone stale as the head advanced. Both are fixed here: status is consistent,
-the `Pull request` and `Push record` sections are labelled historical snapshots
-rather than live state, and `Outcomes & retrospective` no longer hard-codes a
-head hash that the next push would invalidate.
+had gone stale as the head advanced; both are fixed here, with the
+`Pull request` and `Push record` sections labelled historical snapshots rather
+than live state, and `Outcomes & retrospective` no longer hard-coding a head
+hash that the next push would invalidate. Round three found three code-block
+lines over the 120-column limit, fixed in `f72952f`. Round four returned no
+findings, with all ten files in the diff reviewed and none flagged.
