@@ -12,18 +12,18 @@ Status: IN PROGRESS
 mxd stores its users and file hierarchy in SQLite. Two SQLite capabilities are
 load-bearing: the JSON1 extension (the `json_each` table-valued function, used
 to split slash-delimited paths into segments) and recursive common table
-expressions (CTEs, used to walk the file-node hierarchy). A SQLite library built
-without `json_each`, or older than 3.35.0, would let the daemon start and then
-fail at the first path lookup — a runtime failure in front of users rather than
-a startup failure in front of an operator.
+expressions (CTEs, used to walk the file-node hierarchy). A SQLite library
+built without `json_each`, or older than 3.35.0, would let the daemon start and
+then fail at the first path lookup — a runtime failure in front of users rather
+than a startup failure in front of an operator.
 
 After this change an operator who starts any of the three entry points (the
 legacy server, the Wireframe server, and the `create-user` administrative
-command) against an incompatible SQLite library sees the process refuse to start
-and exit with an error naming the missing capability, before the listening
-socket is bound and before any row is written. The error text names the
-capability and the version floor, so the operator knows which package to fix.
-`README.md` and the onboarding guides state the requirement in terms the
+command) against an incompatible SQLite library sees the process refuse to
+start and exit with an error naming the missing capability, before the
+listening socket is bound and before any row is written. The error text names
+the capability and the version floor, so the operator knows which package to
+fix. `README.md` and the onboarding guides state the requirement in terms the
 operator can check from a shell.
 
 The observable demonstration is: run
@@ -108,8 +108,8 @@ Thresholds that trigger escalation when breached.
 ## Progress
 
 - [x] (2026-10-13) Reconnaissance: read `src/db/audit.rs`, the three entry
-  points, the typed raw-SQL pattern in `src/db/files.rs`, the four documentation
-  targets, `Cargo.toml` features, and `clippy.toml`.
+  points, the typed raw-SQL pattern in `src/db/files.rs`, the four
+  documentation targets, `Cargo.toml` features, and `clippy.toml`.
 - [x] (2026-10-13) Confirmed with the `sqlite3` CLI that the intended probe
   queries return the expected shapes, and confirmed the JSON1 provenance facts
   that the documentation claims must rest on.
@@ -120,18 +120,18 @@ Thresholds that trigger escalation when breached.
   confirming the tests discriminate. Transcript at
   `/tmp/test-audit-issue-63-red.out`.
 - [x] (2026-10-13) EP-M1 Green: implemented the three probes and the three
-  validators. 22 validator cases pass
-  (`/tmp/test-audit-issue-63-green.out`), and the real-connection
-  `test_audit_features` passes (`/tmp/test-audit-e2e-issue-63.out`), which
-  discharges V5 against the real library.
+  validators. 22 validator cases pass (`/tmp/test-audit-issue-63-green.out`),
+  and the real-connection `test_audit_features` passes
+  (`/tmp/test-audit-e2e-issue-63.out`), which discharges V5 against the real
+  library.
 - [x] (2026-10-13) EP-M1 committed as `00d023a`.
 - [x] (2026-10-13) EP-M2: wired the audit into the Wireframe `run` and
   `create-user`'s `run_create_user`, and added the missing context to the
   legacy call site. Obligation V6 discharged by inspection: audit at
   `src/server/wireframe/mod.rs:145` precedes `.bind(bind_addr)` at line 166;
   the audit at `src/server/admin.rs:78` precedes `apply_migrations` at line 81
-  and `create_user` at line 82; the legacy audit at `src/server/legacy/mod.rs:169`
-  precedes `apply_migrations` at line 176.
+  and `create_user` at line 82; the legacy audit at
+  `src/server/legacy/mod.rs:169` precedes `apply_migrations` at line 176.
 - [x] (2026-10-13) EP-M3: updated `README.md`, `docs/developers-guide.md`,
   `docs/users-guide.md`,
   `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`, and the
@@ -147,9 +147,9 @@ Thresholds that trigger escalation when breached.
 
 - Observation: the remote branch
   `origin/issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes`
-  does not yet exist; `git ls-remote` returns nothing. Evidence: `git ls-remote
-  git@github.com:leynos/mxd.git 'refs/heads/issue-63*'` printed no rows. Impact:
-  there is no upstream to track until the first push, so
+  does not yet exist; `git ls-remote` returns nothing. Evidence:
+  `git ls-remote git@github.com:leynos/mxd.git 'refs/heads/issue-63*'` printed
+  no rows. Impact: there is no upstream to track until the first push, so
   `git branch --set-upstream-to` must happen after the push rather than before.
   The branch is renamed locally now so the eventual push uses the required name.
 - Observation: the ambient shell rewrites GitHub SSH URLs to HTTPS through
@@ -162,12 +162,13 @@ Thresholds that trigger escalation when breached.
   written to `/tmp/mxd-git-clean.sh` and `/tmp/mxd-gh-clean.sh`; both were
   verified to authenticate as `leynos`.
 - Observation: `json_each` returns `text` for the `value` column when iterating
-  a JSON array of strings, and `integer` for `key`. Evidence: `sqlite3 :memory:
-  "SELECT key, typeof(value) FROM json_each('[\"a\",\"b\",\"c\"]')"` printed
-  `0|text`, `1|text`, `2|text`, and `typeof(key)` printed `integer`. Impact: the
-  typed row struct can use `i32` for `key` and `String` for `value` directly;
-  the `CAST(value AS TEXT)` in the query is belt-and-braces rather than
-  load-bearing, but it makes the intent explicit and costs nothing.
+  a JSON array of strings, and `integer` for `key`. Evidence:
+  `sqlite3 :memory:
+  "SELECT key, typeof(value) FROM json_each('[\"a\",\"b\",\"c\"]')"`
+  printed `0|text`, `1|text`, `2|text`, and `typeof(key)` printed `integer`.
+  Impact: the typed row struct can use `i32` for `key` and `String` for `value`
+  directly; the `CAST(value AS TEXT)` in the query is belt-and-braces rather
+  than load-bearing, but it makes the intent explicit and costs nothing.
 - Observation: JSON1 is not unconditionally present in a 3.35.0 library. JSON
   became a default-on part of the SQLite core in 3.38.0 and can be removed with
   the `SQLITE_OMIT_JSON` compile-time option, while before 3.38 it required the
@@ -194,9 +195,9 @@ Thresholds that trigger escalation when breached.
 - Decision: follow the existing PostgreSQL audit's error style —
   `DieselError::QueryBuilderError(Box<io::Error>)` carrying a formatted message
   — rather than introducing a new error enum. Rationale: consistency with the
-  adjacent audit, and the signature is fixed at `QueryResult<()>`, so a new enum
-  would have to be flattened back into `DieselError` anyway.
-  Date/Author: 2026-10-13, agent.
+  adjacent audit, and the signature is fixed at `QueryResult<()>`, so a new
+  enum would have to be flattened back into `DieselError` anyway. Date/Author:
+  2026-10-13, agent.
 - Decision: do not add an executor trait to abstract the three probe queries.
   Rationale: an explicit instruction in the task, and the probes have different
   row shapes and different failure semantics; a trait would add indirection
@@ -204,8 +205,8 @@ Thresholds that trigger escalation when breached.
 - Decision: place the `#[cfg(test)]` module inline in `src/db/audit.rs`
   provided it keeps the file under 400 lines; otherwise split it to
   `src/db/audit/tests.rs`. Rationale: keeps related code colocated as
-  `AGENTS.md` prefers, while respecting the hard 400-line limit.
-  Date/Author: 2026-10-13, agent.
+  `AGENTS.md` prefers, while respecting the hard 400-line limit. Date/Author:
+  2026-10-13, agent.
 
 ## Outcomes & retrospective
 
@@ -243,9 +244,9 @@ The relevant pieces, by path:
   `setup_database` already calls `audit_sqlite_features`, then conditionally
   `audit_postgres_features`, then `apply_migrations`, all under one pool
   checkout, before the caller binds.
-- `src/server/wireframe/mod.rs` — the Wireframe runtime. `WireframeBootstrap::run`
-  establishes the pool, then binds, then announces readiness. There is no
-  database audit on this path today.
+- `src/server/wireframe/mod.rs` — the Wireframe runtime.
+  `WireframeBootstrap::run` establishes the pool, then binds, then announces
+  readiness. There is no database audit on this path today.
 - `src/server/admin.rs` — shared administrative commands. `run_create_user`
   establishes a connection, applies migrations, then inserts the user. There is
   no audit on this path today.
@@ -310,29 +311,28 @@ proportionate; parameterized and example-based tests are.
 
 Obligation V1 (invariant): *the audit accepts exactly those SQLite libraries
 that report a version at or above 3.35.0 and answer both probes as expected.*
-Method: parameterized `rstest` cases over version strings plus
-example-based tests over probe rows. Rationale: the input space is a small
-finite partition (above floor, at floor, below floor, unparsable, empty) with
-distinct semantics per class, which is exactly the shape a table test covers
-and a property test would not improve on. Domain: version strings drawn from the
-five classes; probe rows that match and that mismatch. Artefact: the
-`#[cfg(test)]` module in `src/db/audit.rs`. Evidence: `cargo test` per the
-commands below; before implementation the tests fail to compile because the
-validators do not exist, and after implementation they pass. Discharge
-condition: all cases pass and each rejection case asserts the error message
-names the capability. Non-vacuity: the cases include both accepting and
-rejecting examples in every class, so a validator stubbed to always return `Ok`
-fails the rejecting cases and a validator stubbed to always reject fails the
-accepting cases. This is the seeded-fault control; it is exercised explicitly
-during the red stage.
+Method: parameterized `rstest` cases over version strings plus example-based
+tests over probe rows. Rationale: the input space is a small finite partition
+(above floor, at floor, below floor, unparsable, empty) with distinct semantics
+per class, which is exactly the shape a table test covers and a property test
+would not improve on. Domain: version strings drawn from the five classes;
+probe rows that match and that mismatch. Artefact: the `#[cfg(test)]` module in
+`src/db/audit.rs`. Evidence: `cargo test` per the commands below; before
+implementation the tests fail to compile because the validators do not exist,
+and after implementation they pass. Discharge condition: all cases pass and
+each rejection case asserts the error message names the capability.
+Non-vacuity: the cases include both accepting and rejecting examples in every
+class, so a validator stubbed to always return `Ok` fails the rejecting cases
+and a validator stubbed to always reject fails the accepting cases. This is the
+seeded-fault control; it is exercised explicitly during the red stage.
 
 Obligation V2 (lemma): *a version string of the form `major.minor.patch` with
 optional trailing text parses to the correct triple, and any string that does
 not have that prefix is rejected rather than defaulting to a supported
 version.* Method: parameterized cases. Rationale: a silent default here would
 convert "unknown library" into "assumed good", which is the failure mode that
-matters. Domain: `"3.35.0"`, `"3.45.1"`, `"3.34.1"`, `""`, `"abc"`. Artefact: as
-V1. Evidence: the `""` and `"abc"` cases must produce a message containing
+matters. Domain: `"3.35.0"`, `"3.45.1"`, `"3.34.1"`, `""`, `"abc"`. Artefact:
+as V1. Evidence: the `""` and `"abc"` cases must produce a message containing
 `unable to parse sqlite version`. Non-vacuity: `"3.45.1"` and `"3.35.0"` are
 satisfying witnesses of the accepting branch; `"3.34.1"` is a witness of the
 below-floor branch; `""` and `"abc"` witness the unparsable branch.
@@ -344,18 +344,18 @@ tests over constructed row vectors. Rationale: the real library in CI always
 answers correctly, so only constructed rows can exercise rejection. Domain:
 matching rows `[(0,"a"),(1,"b"),(2,"c")]`; truncated `[(0,"a")]`; wrong key
 `[(1,"a"),...]`; wrong value. Artefact: as V1. Evidence: rejection cases must
-produce a message containing `SQLite JSON1 json_each probe failed`. Non-vacuity:
-the matching vector is the satisfying witness for acceptance; the four
-mismatching vectors each fail a different predicate, so a validator that checks
-only the row count is caught by the wrong-key and wrong-value cases.
+produce a message containing `SQLite JSON1 json_each probe failed`.
+Non-vacuity: the matching vector is the satisfying witness for acceptance; the
+four mismatching vectors each fail a different predicate, so a validator that
+checks only the row count is caught by the wrong-key and wrong-value cases.
 
 Obligation V4 (lemma): *a recursive-CTE result other than `[1, 2, 3]` is
 rejected with a message naming the recursive-CTE capability.* Method:
-example-based tests. Rationale: as V3. Domain: `[1,2,3]` and `[1]`. Artefact: as
-V1. Evidence: the `[1]` case must produce a message containing
+example-based tests. Rationale: as V3. Domain: `[1,2,3]` and `[1]`. Artefact:
+as V1. Evidence: the `[1]` case must produce a message containing
 `SQLite recursive CTE probe failed`. Non-vacuity: `[1,2,3]` witnesses
-acceptance, `[1]` witnesses rejection, and a validator that ignores its argument
-fails one of the two.
+acceptance, `[1]` witnesses rejection, and a validator that ignores its
+argument fails one of the two.
 
 Obligation V5 (end-to-end, success path only): *the extended audit succeeds
 against a real, migrated, in-memory SQLite database.* Method: the existing
@@ -368,8 +368,8 @@ Domain: the `migrated_conn` fixture. Artefact:
 attributes were wrong, so it is a genuine control on the unit tests being
 self-consistent.
 
-Obligation V6 (ordering): *the audit runs before the socket binds and before any
-row is written.* Method: source inspection rather than a test. Rationale: a
+Obligation V6 (ordering): *the audit runs before the socket binds and before
+any row is written.* Method: source inspection rather than a test. Rationale: a
 subprocess test would require a broken SQLite library, which no CI runner has;
 the property is structural. Noted as a residual gap: this obligation is
 discharged by review, not by an automated check, and the ExecPlan records that
@@ -415,9 +415,9 @@ fn validate_recursive_cte_rows(rows: &[i32]) -> Result<(), DieselError>;
 Write the parameterized cases named in `Verification plan` against those
 signatures before implementing the bodies. Run the focused test and record the
 failure. The failure will be a compile error (`cannot find function`), which is
-the honest red for a new internal API; then temporarily implement each validator
-as `Ok(...)` and re-run to confirm the rejecting cases fail. Record both
-transcripts. Restore the stubs before stage C.
+the honest red for a new internal API; then temporarily implement each
+validator as `Ok(...)` and re-run to confirm the rejecting cases fail. Record
+both transcripts. Restore the stubs before stage C.
 
 Stage C: green implementation for EP-M1, then EP-M2. Implement the validators
 and rewrite `audit_sqlite_features` to run three checks in order:
@@ -428,27 +428,39 @@ and rewrite `audit_sqlite_features` to run three checks in order:
    `.get_result(conn).await?`. Parse with a private helper that accepts a
    leading `major.minor.patch` and ignores any trailing text, then compare
    against `(3, 35, 0)`.
-2. JSON1. `SELECT key, CAST(value AS TEXT) AS value FROM
-   json_each('["a","b","c"]') ORDER BY key` into a local
-   `#[derive(QueryableByName)]` struct with `#[diesel(sql_type = Integer)] key:
-   i32` and `#[diesel(sql_type = Text)] value: String`, read with
-   `.load(conn).await`. Validate that the rows are exactly
-   `(0,"a"), (1,"b"), (2,"c")` in order.
-3. Recursive CTE. `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c
-   WHERE x < 3) SELECT x FROM c ORDER BY x` into a local
-   `#[derive(QueryableByName)]` struct with `#[diesel(sql_type = Integer)] x:
-   i32`, read with `.load(conn).await`. Validate that the rows are exactly
-   `[1, 2, 3]`.
+2. JSON1. Load a local `#[derive(QueryableByName)]` struct with
+   `#[diesel(sql_type = Integer)] key: i32` and
+   `#[diesel(sql_type = Text)] value: String`, read with
+   `.load(conn).await`:
+
+   ```sql
+   SELECT key, CAST(value AS TEXT) AS value
+   FROM json_each('["a","b","c"]') ORDER BY key
+   ```
+
+   Validate that the rows are exactly `(0,"a"), (1,"b"), (2,"c")` in order.
+3. Recursive CTE. Load a local `#[derive(QueryableByName)]` struct with
+   `#[diesel(sql_type = Integer)] x: i32`, read with `.load(conn).await`:
+
+   ```sql
+   WITH RECURSIVE c(x) AS (
+       SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 3
+   )
+   SELECT x FROM c ORDER BY x
+   ```
+
+   Validate that the rows are exactly `[1, 2, 3]`.
 
 Every query failure and every row mismatch becomes
 `DieselError::QueryBuilderError(Box::new(std::io::Error::other(...)))`. The
 version messages are `unable to parse sqlite version: {raw}` and
 `sqlite version {raw} is not supported (require >= 3.35.0)`. The probe messages
-are `SQLite JSON1 json_each probe failed: {err}` and `SQLite recursive CTE probe
-failed: {err}`, where `{err}` is either the underlying query error or a
-description of the rows found. Do not use `.execute()` for the probes; the whole
-point is to read and check their results. Correct the doc comment so it says the
-function returns an error (not that it "dies") and lists all three checks.
+are `SQLite JSON1 json_each probe failed: {err}` and
+`SQLite recursive CTE probe failed: {err}`, where `{err}` is either the
+underlying query error or a description of the rows found. Do not use
+`.execute()` for the probes; the whole point is to read and check their
+results. Correct the doc comment so it says the function returns an error (not
+that it "dies") and lists all three checks.
 
 Then, in `src/server/wireframe/mod.rs`, insert after the
 `let pool = establish_pool(&config.database).await.context(...)?;` statement:
@@ -476,8 +488,8 @@ crate::db::audit_sqlite_features(&mut conn)
     .context("SQLite capability audit failed")?;
 ```
 
-In `src/server/legacy/mod.rs`, add `.context("SQLite capability audit
-failed")` to the existing call. Keep the audit-then-migrations-then-bind order.
+In `src/server/legacy/mod.rs`, add `.context("SQLite capability audit failed")`
+to the existing call. Keep the audit-then-migrations-then-bind order.
 
 Stage D: documentation and validation for EP-M3 and EP-M4. Four files:
 
@@ -489,10 +501,10 @@ Stage D: documentation and validation for EP-M3 and EP-M4. Four files:
 - `docs/developers-guide.md`: in the prerequisites section, state that source
   builds link the system SQLite library and therefore need its development
   files, such as `libsqlite3-dev` on Debian-derived systems. Show
-  `pkg-config --modversion sqlite3` as the way to check the version that will be
-  linked. Warn that the version reported by the `sqlite3` command-line tool does
-  not prove what the linked library provides. Identify the startup audit as the
-  authoritative check.
+  `pkg-config --modversion sqlite3` as the way to check the version that will
+  be linked. Warn that the version reported by the `sqlite3` command-line tool
+  does not prove what the linked library provides. Identify the startup audit
+  as the authoritative check.
 - `docs/users-guide.md`: state the runtime requirement for system-linked
   binaries.
 - `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`: explain that the
@@ -553,8 +565,8 @@ EP-M2 — the audit enforced on every entry point.
 EP-M3 — documentation matches the code.
 
 - Outcome: the four documents state the requirement, the way to check it, and
-  the audit's coverage, in en-GB-oxendict spelling, without claiming bundling or
-  describing release packaging.
+  the audit's coverage, in en-GB-oxendict spelling, without claiming bundling
+  or describing release packaging.
 - Requirements and gaps: ISSUE-63-doc-requirements.
 - Acceptance evidence: `make markdownlint` and `make nixie` pass; the four files
   contain the required statements.
@@ -600,9 +612,9 @@ Focused test loop during development:
 RSTEST_TIMEOUT=225 cargo test --features sqlite audit 2>&1 | tee /tmp/test-audit-issue-63.out
 ```
 
-Commit gate, delegated to the `scrutineer` subagent so its bulk output stays out
-of the planning context. The gates are sequential by repository policy; never
-run two of them at once:
+Commit gate, delegated to the `scrutineer` subagent so its bulk output stays
+out of the planning context. The gates are sequential by repository policy;
+never run two of them at once:
 
 ```sh
 make fmt
@@ -636,8 +648,8 @@ Remote operations, always through the clean-environment wrappers:
   refs/heads/issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes
 ```
 
-The leading `+` on the fetch refspec is deliberate: it keeps the refresh working
-after a rebase or an amended force-push.
+The leading `+` on the fetch refspec is deliberate: it keeps the refresh
+working after a rebase or an amended force-push.
 
 Expected transcript for the version probe, matching what was observed with the
 system `sqlite3` 3.46.1 during reconnaissance:
@@ -681,8 +693,8 @@ Red-Green-Refactor evidence to record in `Artefacts and notes`:
 - Green: implement the validators and the three probes, re-run the focused
   test, expect all cases to pass.
 - Refactor: with the tests green, extract probe helpers if
-  `audit_sqlite_features` breaches the cognitive-complexity ceiling, then re-run
-  the focused test and `make lint`.
+  `audit_sqlite_features` breaches the cognitive-complexity ceiling, then
+  re-run the focused test and `make lint`.
 
 Quality criteria: tests pass on all three feature configurations; every
 validator obligation V1 through V5 is discharged; V6 is discharged by recorded
@@ -691,8 +703,8 @@ scan is required for this change.
 
 ## Idempotence and recovery
 
-Every step in this plan is re-runnable. `make fmt` rewrites files in place and is
-safe to repeat. The tests are deterministic and use in-memory databases, so
+Every step in this plan is re-runnable. `make fmt` rewrites files in place and
+is safe to repeat. The tests are deterministic and use in-memory databases, so
 re-running them creates no state. The push is not idempotent against a
 force-push, but a plain re-push after an amended commit is safe on a branch no
 one else has based work on; if that stops being true, escalate rather than
@@ -704,8 +716,9 @@ immediately. Each gate writes to `/tmp` with a name of the form
 
 ## Artefacts and notes
 
-To be filled in during implementation: the red transcript (compile failure, then
-the stubbed-validator failures), the green transcript, and the gate log paths.
+To be filled in during implementation: the red transcript (compile failure,
+then the stubbed-validator failures), the green transcript, and the gate log
+paths.
 
 ## Interfaces and dependencies
 

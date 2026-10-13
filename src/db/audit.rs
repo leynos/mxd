@@ -281,10 +281,8 @@ mod sqlite_tests {
     #[rstest]
     #[case("3.35.0")]
     #[case("3.45.1")]
-    #[case(
-        "3.46.1 2024-08-13 09:16:08 \
-         c9c2ab54ba1f5f46360f1b4f35d849cd3f080e6fc2b6c60e91b16c63f69aalt1"
-    )]
+    // `sqlite_version()` may append a build date; parsing must ignore it.
+    #[case("3.46.1 2024-08-13 09:16:08")]
     fn version_accepts_supported(#[case] raw: &str) {
         let parsed = ensure_supported_sqlite_version(raw).expect("version must be accepted");
         assert!(parsed >= (3, 35, 0), "{raw} must meet the floor");

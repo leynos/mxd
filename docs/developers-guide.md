@@ -33,10 +33,10 @@ expressions.[^1]
 
 The `sqlite3` command-line tool may be a different build from the library the
 binary links, so its reported version does not prove what the daemon will get.
-The authoritative check is the startup audit, which runs the version, `json_each`
-and recursive-CTE probes against the linked library on the legacy server, the
-Wireframe server, and the `create-user` subcommand before any request is served
-or any row is written.
+The authoritative check is the startup audit, which runs the version,
+`json_each` and recursive-CTE probes against the linked library on the legacy
+server, the Wireframe server, and the `create-user` subcommand before any
+request is served or any row is written.
 
 [^1]: JSON became part of the SQLite core and on by default in 3.38.0,
     and can be removed at compile time with `SQLITE_OMIT_JSON`. Before 3.38.0 it
