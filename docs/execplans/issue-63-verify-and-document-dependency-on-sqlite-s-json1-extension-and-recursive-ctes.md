@@ -140,9 +140,9 @@ Thresholds that trigger escalation when breached.
 - [x] (2026-10-13) EP-M2/M3 verification: the standalone
   `cargo check --features sqlite --all-targets` was abandoned because it sat
   queued in the shared compile-admission pool for over ten minutes; the same
-  coverage is delivered by the `make lint` and `make test` gates, which
-  compile every target with all features. Not restarted, so as not to lengthen
-  the shared queue.
+  coverage is delivered by the `make lint` and `make test` gates, which compile
+  every target with all features. Not restarted, so as not to lengthen the
+  shared queue.
 - [x] (2026-10-13) First full gate run (commit `6429e45`): `nixie` passed;
   `fmt`, `check-fmt`, `markdownlint`, and `lint` failed. All four failures were
   in this change's own new material: two MD013 over-long lines holding inline
@@ -229,11 +229,11 @@ Thresholds that trigger escalation when breached.
   covered. Date/Author: 2026-10-13, agent.
 - Decision: shorten the `setup_database` doc comment rather than extract an
   `audit_backend` helper to fit the legacy module back under the 400-line
-  ceiling. Rationale: the helper form measured 412 lines, because a helper
-  must carry its own doc comment and a `let _ = (conn, database);` to satisfy
-  the mutually exclusive `sqlite` and `postgres` cfg combinations; shortening
-  a doc comment left the module at 398 lines and changed no behaviour.
-  Date/Author: 2026-10-13, agent.
+  ceiling. Rationale: the helper form measured 412 lines, because a helper must
+  carry its own doc comment and a `let _ = (conn, database);` to satisfy the
+  mutually exclusive `sqlite` and `postgres` cfg combinations; shortening a doc
+  comment left the module at 398 lines and changed no behaviour. Date/Author:
+  2026-10-13, agent.
 
 ## Outcomes & retrospective
 
@@ -457,8 +457,7 @@ and rewrite `audit_sqlite_features` to run three checks in order:
    against `(3, 35, 0)`.
 2. JSON1. Load a local `#[derive(QueryableByName)]` struct with
    `#[diesel(sql_type = Integer)] key: i32` and
-   `#[diesel(sql_type = Text)] value: String`, read with
-   `.load(conn).await`:
+   `#[diesel(sql_type = Text)] value: String`, read with `.load(conn).await`:
 
    ```sql
    SELECT key, CAST(value AS TEXT) AS value
@@ -743,9 +742,64 @@ immediately. Each gate writes to `/tmp` with a name of the form
 
 ## Artefacts and notes
 
-To be filled in during implementation: the red transcript (compile failure,
-then the stubbed-validator failures), the green transcript, and the gate log
-paths.
+### Test transcripts
+
+- Red (stubbed validators, 13 rejecting cases failing and 4 accepting passing):
+  `/tmp/test-audit-issue-63-red.out`
+- Green (all 22 validator cases passing):
+  `/tmp/test-audit-issue-63-green.out`
+- Real-connection `test_audit_features` (discharges V5):
+  `/tmp/test-audit-e2e-issue-63.out`
+
+### Gate logs
+
+The first full run was made against `6429e45`; its four failures were fixed in
+`ceccd66`. Logs are named `/tmp/<gate>-<project>-<branch>.out`, where the
+project slug expands to
+`9ebd1336-1cfe-4db7-953a-f5dd4c5acdcc-issue-63-verify-and-document-dependency-on-sqlite-s-json1-extension-and-recursive-ctes`:
+
+| Gate                | Exit | Notes                         |
+| ------------------- | ---- | ----------------------------- |
+| `make nixie`        | 0    | Passed at `6429e45`.          |
+| `make fmt`          | 2    | Fixed in `ceccd66`.           |
+| `make check-fmt`    | 2    | Fixed in `ceccd66`.           |
+| `make markdownlint` | 2    | Fixed in `ceccd66`.           |
+| `make lint`         | 2    | Fixed in `ceccd66`.           |
+| `make test`         | 2    | See below; not a code defect. |
+
+The `make test` target chains eight sub-targets. The three nextest suites all
+passed — 497 tests under the `postgres` profile, then 524 and 522 under the
+`default` profile. The run then failed in `test-rstest-bdd-ui`, a trybuild
+compile-contract test, which timed out at 300 s. Its captured stderr contains
+only `Blocking waiting for file lock on package cache`, so the timeout was
+caused by another agent holding Cargo's package-cache lock, not by an assertion
+or `.stderr` mismatch in this change. At the time the machine's load average
+was about 105 with 18 concurrent cargo jobs. The target is unaffected by this
+change: it compiles `tests/rstest-bdd-ui`, and nothing in this diff touches
+that crate.
+
+### Pull request
+
+Draft PR: <https://github.com/leynos/mxd/pull/656>, base `main` at `df48e51`,
+head `4082d18`. Verified after creation: `isDraft` is true, the title carries
+`(#63)`, the body carries `Closes #63`, a `## References` section holding the
+Lody session URL, and the Claude Code attribution line.
+
+### Push record
+
+Pushed to `git@github.com:leynos/mxd.git` via `GIT_SSH_COMMAND=/usr/bin/ssh`,
+because the worktree's `origin` is an HTTPS URL and the ambient environment
+rewrites SSH URLs to HTTPS. The tracking ref was then refreshed explicitly:
+
+```sh
+git fetch git@github.com:leynos/mxd.git \
+  "+refs/heads/BRANCH:refs/remotes/origin/BRANCH"
+git branch --set-upstream-to=origin/BRANCH BRANCH
+```
+
+Confirmed afterwards that `git rev-parse HEAD`,
+`git ls-remote git@github.com:leynos/mxd.git refs/heads/BRANCH`, and the
+upstream all name `4082d18a6ac3bcb3b81fc530465535a6ed218aa3`.
 
 ## Interfaces and dependencies
 
@@ -775,3 +829,9 @@ all already present.
 change. Records the discovered remote-branch absence, the credential-routing
 workaround, the verified `json_each` column types, and the JSON1-version
 provenance that the documentation claims will rest on.
+
+2026-10-13: EP-M1 through EP-M3 implemented and committed (`00d023a`, `b4144a1`,
+`6429e45`). The first full gate run exposed four failures in this change's own
+new material, all fixed in `ceccd66`; the ExecPlan was resynchronized in
+`4082d18`. EP-M4 pushed the branch and opened draft PR #656.
+`Outcomes & retrospective` remains open pending the closing gate report.
