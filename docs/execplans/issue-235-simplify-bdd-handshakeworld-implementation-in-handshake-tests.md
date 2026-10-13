@@ -124,8 +124,15 @@ handshake tests pass, by reading the world in the source without encountering
   passed. `test-rstest-bdd-ui` remains an environmental timeout.
 - [x] (2026-10-13) Resolve both hosted-review findings, correcting the INV-1
   error-branch claim and removing first-person wording.
-- [ ] (2026-10-13) Reply to the review threads, re-verify, and write the
-  retrospective.
+- [x] (2026-10-13) Reply to the review threads, re-verify, and write the
+  retrospective. CodeRabbit confirmed both fixes and resolved both threads.
+- [x] (2026-10-13) Dispose of the remaining warning-level pre-merge row,
+  "Testing (Compile-Time / Ui)", by adding a trybuild compile-pass fixture for
+  the mutable-world async step pattern the refactor introduced, registered in
+  `tests/rstest-bdd-ui/tests/ui.rs` with `tokio` added to that package's
+  `dev-dependencies`.
+- [x] (2026-10-13) Re-run the focused `test-rstest-bdd-ui` gate green
+  (1 passed, 191.7 s) with the new fixture, and re-run `make check-fmt`.
 
 ## Surprises & discoveries
 
@@ -246,6 +253,25 @@ handshake tests pass, by reading the world in the source without encountering
   `coderabbit review --agent` pass covers the same candidate immediately, so
   the queued request is a second, independent inspection rather than a blocking
   wait.
+- Decision: satisfy the "Testing (Compile-Time / Ui)" pre-merge warning with a
+  trybuild compile-pass fixture rather than dismissing the row. Rationale:
+  warning rows still need an explicit disposition, and the row's request is
+  well founded — the refactor changes how the `rstest-bdd` macros are invoked
+  (`&mut` world fixture, synchronous `Given`, async `When` that borrows the
+  world mutably, synchronous `Then`), and the issue itself named a
+  mutable-world macro ICE as the principal risk. A compile-pass fixture turns
+  that risk into a regression guard that fails loudly if a future `rstest-bdd`
+  upgrade reintroduces it, at the cost of one small fixture file. The
+  alternative dispositions were worse: the pattern is already covered for
+  behaviour inside `src/`, but only a compile-time test can detect a macro
+  expansion regression before runtime.
+- Decision: add `tokio` to `tests/rstest-bdd-ui` as a direct caret dev
+  dependency (`tokio = "1"`) rather than a new `[workspace.dependencies]`
+  entry. Rationale: the workspace table does not carry `tokio`; the root
+  package declares it separately. Adding a workspace entry would restructure
+  dependency ownership for a single test-only consumer, whereas a caret
+  requirement mirrors the root package's existing `version = "1"` pin and the
+  resolved `Cargo.lock` entry is unchanged beyond the new edge.
 
 ## Outcomes & retrospective
 
@@ -297,8 +323,9 @@ identify the environmental cause and re-run when the host allowed, not to raise
 the shared timeout.
 
 Deliverables: branch
-`issue-235-simplify-bdd-handshakeworld-implementation-in-handshake-tests`
-pushed at head `6fe8702`, and draft pull request
+`issue-235-simplify-bdd-handshakeworld-implementation-in-handshake-tests`,
+whose head carries the refactor, the ExecPlan, the two review fixes, and the
+compile-time contract fixture; and draft pull request
 [#654](https://github.com/leynos/mxd/pull/654), which states `Closes #235`.
 
 ## Conformance basis
@@ -466,9 +493,25 @@ Invariants introduced or preserved:
 
 Lemma: the step wrapper's borrow of the world does not outlive a step's
 `.await`. Method: steps request exactly one fixture and the scenario body is
-empty, so no nested borrow is expressible; the compile is the discharge.
-Non-vacuity: the same shapes that would violate this are the documented `E0499`/
-`E0502` cases in the migration guide, which this file avoids by construction.
+empty, so no nested borrow is expressible; the compile is the discharge, and it
+is discharged twice over — once by `src/wireframe/handshake_bdd.rs` compiling
+as part of the workspace, and once independently by the trybuild compile-pass
+fixture `tests/rstest-bdd-ui/tests/ui/pass_mutable_world_async_steps.rs`, which
+reproduces the same macro invocation shape (borrowed world fixture, synchronous
+`Given`, async `When` taking `&mut World`, synchronous `Then`, named async
+scenario) in a crate that does not depend on `mxd`. Non-vacuity: the same
+shapes that would violate this are the documented `E0499`/`E0502` cases in the
+migration guide; that fixture is a live witness that the permitted shape
+compiles, and `trybuild` fails its harness on any unexpected compile error, so
+the row cannot pass by silently skipping.
+
+The second fixture also guards a second obligation: that the `rstest-bdd` macro
+expansion for this pattern does not regress into the compiler ICE the issue
+named as the principal risk. Method: a compile-pass fixture under
+`-D warnings`, run by `make test-rstest-bdd-ui`. Non-vacuity: an ICE or any
+other compile failure aborts the fixture, and the `fail_missing_scenario.rs`
+fixture in the same harness demonstrates that the harness genuinely inspects
+diagnostics rather than reporting success unconditionally.
 
 Axioms:
 
@@ -493,6 +536,22 @@ connection times out during handshake" — against the feature's own step text.
 This discharges both INV-1 and INV-4: the scenarios do observe real reply codes
 from the world, and the async conversion did not silently preserve a wrong
 value. The mutation was then reverted and the suite re-run green.
+
+Second negative control (discharged 2026-10-13): the compile-pass fixture's
+`Then` step was temporarily mutated so its assertion compared `Option<u32>`
+against `Some("broken")`. The harness then failed, exit 2, reporting:
+
+```plaintext
+error[E0308]: mismatched types
+  = note: expected enum `Option<u32>`,
+          found enum `Option<&str>`
+```
+
+This establishes that the harness genuinely compiles and inspects the new
+fixture rather than reporting success vacuously, so the borrow lemma and the
+macro-expansion obligation it discharges rest on real evidence. The mutation
+was reverted, the tree confirmed clean against `HEAD`, and the fixture left
+byte-identical to its committed form.
 
 No new invariant over generated inputs, orderings, or arithmetic is introduced:
 the change is a mechanical restructuring of test scaffolding, so property
@@ -555,6 +614,22 @@ test wireframe::handshake::bdd::handshake_timeout ... ok
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 368 filtered out
 ```
 
+Compile-time contract run (2026-10-13, after adding the mutable-world fixture),
+captured at `/tmp/test-rstest-bdd-ui-issue-235-mutable-world.out`:
+
+```plaintext
+Starting 1 test across 1 binary
+PASS [ 191.706s] (1/1) rstest-bdd-ui-tests::ui
+     scenario_selection_and_harness_compile_contracts_are_stable
+     Summary [ 191.706s] 1 test run: 1 passed, 0 skipped
+```
+
+The new fixture,
+`tests/rstest-bdd-ui/tests/ui/pass_mutable_world_async_steps.rs`, with its
+`mutable_world.feature`, is registered in the same harness as the two existing
+fixtures and exercises the refactor's macro-invocation shape in a crate that
+does not depend on `mxd`.
+
 ## Interfaces and dependencies
 
 After the change, `src/wireframe/handshake_bdd.rs` declares:
@@ -576,8 +651,12 @@ impl HandshakeWorld {
 impl Drop for HandshakeWorld { fn drop(&mut self); }
 ```
 
-No dependency changes. rstest-bdd 0.6.0, rstest 0.27.0, and Tokio 1 already
-provide every facility used.
+The production crate's dependency set is unchanged. rstest-bdd 0.6.0, rstest
+0.27.0, and Tokio 1 already provide every facility used. One test-only
+dependency edge was added: `tests/rstest-bdd-ui/Cargo.toml` gains `tokio = "1"`
+under `[dev-dependencies]` so the new compile-pass fixture can name
+`#[tokio::test(flavor = "current_thread")]`. The resolved `Cargo.lock` diff is
+a single added edge on the `rstest-bdd-ui-tests` package.
 
 ## Revision note
 
@@ -590,6 +669,13 @@ on `start_server`, so the async boundary moved to sit at the socket I/O and
 every affected description was corrected. Gate results, the CodeRabbit review
 outcome, and the `test-rstest-bdd-ui` timeout diagnosis were added, and the
 plan was marked complete.
+
+Third revision, 2026-10-13: the remaining warning-level pre-merge row, "Testing
+(Compile-Time / Ui)", was discharged rather than dismissed, by adding
+`tests/rstest-bdd-ui/tests/ui/pass_mutable_world_async_steps.rs` and its
+feature file. The Verification plan's borrow lemma and the ICE-risk obligation
+now cite that fixture as an independent discharge, and the Interfaces section
+records the one test-only dependency edge it required.
 
 [issue-235]: https://github.com/leynos/mxd/issues/235
 [pr-234]: https://github.com/leynos/mxd/pull/234
