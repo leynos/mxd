@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Constraints`, `Tolerances`, `Risks`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`
 current.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -171,6 +171,19 @@ handshake tests pass, by reading the world in the source without encountering
   focused tests passed both before and after, so only a denied-lint check could
   distinguish the two versions. That is a reminder that a green test run says
   nothing about whether a signature is *honest*.
+- `test-rstest-bdd-ui` timed out at its 300-second cap three times during the
+  gate runs and then passed in 297.4 seconds once the host quieted. It is a
+  `trybuild` compile-contract suite: it compiles fixture crates inside the test
+  body, and the host was running a saturated build queue (capacity 4, all held,
+  ~90 crates waiting, load average above 30 on 6 cores) with the managed
+  sccache unreachable, so every crate compiled uncached. The suite's package
+  manifest depends only on `rstest`, `rstest-bdd`, `rstest-bdd-macros`,
+  `rstest-bdd-harness-tokio`, and `trybuild` — not on `mxd` — so it compiles
+  none of this change's code and cannot be affected by it. The passing run
+  finished 2.6 seconds inside the cap, which is the clearest statement of how
+  marginal the threshold is under load. No configuration change was made:
+  raising a shared timeout to mask transient host contention is out of scope
+  for this refactor.
 - `pr.txt` and `rustc-ice-2025-12-09T19_07_55-92865.txt` in the worktree root
   are tracked, unmodified repository files unrelated to this task, left
   untouched.
@@ -236,9 +249,57 @@ handshake tests pass, by reading the world in the source without encountering
 
 ## Outcomes & retrospective
 
-Not yet complete. To be written after the gates and review pass, recording the
-final test inventory, the gate results, and whether the documented `&mut`
-fixture caveats materialized.
+Complete, 2026-10-13.
+
+The refactor shipped the shape the issue asked for: `HandshakeWorld` holds plain
+`Option` fields, no `RefCell`, no owned `Runtime`, and no `block_on` anywhere.
+`src/wireframe/handshake_bdd.rs` went from 188 to 174 lines while gaining
+Rustdoc on the world and its methods. Observable protocol behaviour is
+unchanged; the four scenarios still assert reply codes 0, 1, 2, and 3 against
+the same feature file.
+
+The final test inventory is eight focused tests, all passing: four BDD
+scenarios under `wireframe::handshake::bdd` (`replies_ok`, `invalid_protocol`,
+`unsupported_version`, `handshake_timeout`) and four unit tests in
+`wireframe::handshake::tests` (`replies_success`, `replies_handshake_errors`
+for both cases, and `replies_timeout_for_idle_socket`). Every repository gate
+is green on the shipped head: `check-fmt`, `lint` (six phases, zero warnings),
+`markdownlint`, `nixie`, `test-verification` (69 passed), `test-fuzz-harness`
+(8 passed), `test-concurrency` (7 passed plus doctests), `test-doc` (5 passed,
+4 ignored), and the three database and wireframe backends (497, 502, and 500
+passed).
+
+The documented `&mut` fixture ICE did not materialize, so the planned fallback
+was never needed and no interior-mutability shim survives in the code.
+
+Three lessons are worth carrying forward.
+
+The first is that the behavioural suite could not see the one real defect this
+work introduced. All eight tests passed while `start_server` carried a needless
+`async` marker, and only the denied `unused_async` lint exposed it. Passing
+tests show that code behaves correctly, not that its signatures are honest
+about what they do.
+
+The second is that a verification plan can overclaim, and reviewing prose
+matters as much as reviewing code. INV-1 asserted that the idle-connection
+scenario stores an *error* reply and so exercises the error branch. It does
+not: the server's 100 ms preamble timeout beats the client's one-second read
+budget, so reply code 3 is read successfully and all four scenarios store the
+`Ok` variant. CodeRabbit caught the overclaim. The inference had felt sound
+because the scenario is *named* a timeout, which is exactly the kind of
+plausible-but-wrong reasoning that writing the invariant down invited.
+
+The third is that shared-host contention is not a code signal. The
+`test-rstest-bdd-ui` suite timed out at its 300-second cap three times and then
+passed in 297.4 seconds once the queue drained. Its package does not depend on
+`mxd` at all, so it compiles none of this change. The right response was to
+identify the environmental cause and re-run when the host allowed, not to raise
+the shared timeout.
+
+Deliverables: branch
+`issue-235-simplify-bdd-handshakeworld-implementation-in-handshake-tests`
+pushed at head `6fe8702`, and draft pull request
+[#654](https://github.com/leynos/mxd/pull/654), which states `Closes #235`.
 
 ## Conformance basis
 
@@ -523,6 +584,12 @@ provide every facility used.
 Initial draft, 2026-10-13: created alongside the implementation so the issue's
 stale line citation, the already-satisfied 0.6.0 dependency, and the `&mut`
 fixture ICE risk are all recorded before edits begin.
+
+Second revision, 2026-10-13: the first gate run rejected an over-eager `async`
+on `start_server`, so the async boundary moved to sit at the socket I/O and
+every affected description was corrected. Gate results, the CodeRabbit review
+outcome, and the `test-rstest-bdd-ui` timeout diagnosis were added, and the
+plan was marked complete.
 
 [issue-235]: https://github.com/leynos/mxd/issues/235
 [pr-234]: https://github.com/leynos/mxd/pull/234
