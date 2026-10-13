@@ -223,7 +223,7 @@ Thresholds that trigger escalation when breached.
   hash and use a plain `3.46.1 2024-08-13 09:16:08` case instead. Rationale:
   `make markdownlint` flagged a two-letter fragment of the hash as a
   misspelling, and adding a `typos.local.toml` exception for a hash that the
-  will never see would be a worse trade. `sqlite_version()` returns only
+  audit will never see would be a worse trade. `sqlite_version()` returns only
   `major.minor.patch`; the build hash comes from `sqlite_source_id()`, so the
   case was unrealistic as well as noisy. The trailing-text case is still
   covered. Date/Author: 2026-10-13, agent.
