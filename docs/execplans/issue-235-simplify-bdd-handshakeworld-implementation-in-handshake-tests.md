@@ -119,8 +119,13 @@ handshake tests pass, by reading the world in the source without encountering
   suite green.
 - [x] (2026-10-13) Re-queue a hosted CodeRabbit review via `comenq` against the
   corrected head `788e0ff` (queue ID `116404a5`, ETA ~50 minutes).
-- [ ] (2026-10-13) Complete the full gate re-run and the hosted review, then
-  write the retrospective and mark the plan complete.
+- [x] (2026-10-13) Complete the gate re-run: `make lint` now passes clean on
+  the corrected head, and every sub-suite that the previous abort skipped
+  passed. `test-rstest-bdd-ui` remains an environmental timeout.
+- [x] (2026-10-13) Resolve both hosted-review findings, correcting the INV-1
+  error-branch claim and removing first-person wording.
+- [ ] (2026-10-13) Reply to the review threads, re-verify, and write the
+  retrospective.
 
 ## Surprises & discoveries
 
@@ -373,19 +378,28 @@ Invariants introduced or preserved:
 
 - INV-1: the world's reply state is a single value that the `Then` step reads
   without panicking. Method: the four scenarios assert exact reply codes, so a
-  missing or misdecoded reply fails the scenario. Non-vacuity: the
-  idle-connection scenario deliberately stores an *error* reply, proving the
-  error branch is exercised and distinguished from the success branch.
-- INV-2: a successful step stores a reply whether the handshake succeeded or
-  failed. Method: scenario 0 exercises the success path (code 0) and scenarios
-  1-3 exercise failure paths (codes 1, 2, 3). Non-vacuity: the two paths store
-  different `Result` variants, so an inverted store fails at least one scenario.
+  missing or misdecoded reply fails the scenario. Non-vacuity: the four
+  scenarios assert four distinct codes (0, 1, 2, 3), so a constant or
+  misdecoded reply fails at least three of them.
+- INV-2: the handshake step stores a reply for every scenario, whether the
+  server answered with success or with an error code. Method: scenario 0
+  exercises the success path (code 0) and scenarios 1-3 exercise error codes
+  (1, 2, 3). Non-vacuity: the stored codes differ across scenarios, so an
+  inverted store fails at least one scenario.
+
+  Residual gap, stated plainly: all four scenarios store the `Ok` variant. The
+  idle-connection scenario does not store an `Err`; the server's 100 ms
+  preamble timeout fires first and its reply code 3 is read successfully within
+  the client's one-second budget. The `Err` variant is therefore reachable only
+  when connect, write, or read fails outright, and no scenario exercises it.
+  Its handling is covered by `reply_code`'s "missing reply" guard, which the
+  scenarios reach only if the handshake step never stores anything.
 - INV-3: dropping the world signals the server to shut down without awaiting
   it. Method: the scenario runtimes are current-thread, so a dropped world
   before the runtime drains would surface as a hung or leaked server; the suite
   completing in roughly the same wall-clock as the baseline is the evidence.
-  This is an axiom about the runtime, not a library guarantee we can prove; the
-  observable check is that the suite still terminates promptly.
+  This is an axiom about the runtime, not a library guarantee available for
+  proof; the observable check is that the suite still terminates promptly.
 - INV-4: the async conversion does not change the asserted protocol semantics.
   Method: exact reply-code equality against the unchanged feature file.
 
@@ -400,7 +414,7 @@ Axioms:
 - rstest-bdd 0.6.0 awaits async step bodies under an async scenario and
   borrows fixtures mutably for `&mut` parameters. Evidence: its published
   `tests/async_step_functions.rs`, which exercises exactly this shape, plus the
-  focused run of our own scenarios.
+  focused run of the handshake scenarios.
 - Tokio's `current_thread` runtime drives tasks spawned with `tokio::spawn`
   while the test body is awaiting. Evidence: the pre-existing
   `tests/wireframe_handshake_metadata.rs` and the incumbent BDD tests rely on
@@ -425,6 +439,18 @@ tests, model checking, and proofs add no rigour here and are not planned. The
 strongest available evidence is the behavioural suite, which this plan
 strengthens rather than weakens by keeping every assertion and its error
 messaging intact.
+
+Hosted review (2026-10-13, head `8bf07ec`): CodeRabbit requested changes with
+two findings, both on this plan's prose rather than on the code. The first was
+correct and substantive: INV-1 had claimed the idle-connection scenario stores
+an *error* reply and so proves the error branch is exercised. Tracing
+`reply_code` through `perform_handshake` shows all four scenarios store the
+`Ok` variant — the server's 100 ms preamble timeout fires before the client's
+one-second budget expires, so the client reads reply code 3 successfully. The
+claim was wrong and is now replaced by an explicit statement of the residual
+gap. The second finding, first-person wording at two sites, was a style-guide
+violation and was fixed with impersonal phrasing. Neither finding touched
+`src/`.
 
 The first gate run supplies a useful bound on what that suite can discharge.
 All eight tests passed while `start_server` carried a needless `async` marker;
