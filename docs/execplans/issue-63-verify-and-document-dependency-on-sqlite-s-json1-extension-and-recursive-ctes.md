@@ -179,6 +179,11 @@ Thresholds that trigger escalation when breached.
   attributed to this change: the postgres test binary contains the failing test
   191 times and the new `sqlite_tests` module zero times. Each of the eight
   sub-targets passes when run individually. Counts are in the revision note.
+- [x] (2026-10-13) CodeScene passes on the pull request, confirming on CI the
+  local `cs review` result. This was the only red check the branch carried.
+- [x] (2026-10-13) CodeRabbit round five: no findings. This was the first round
+  to see the refactored test module, and it reports zero issues across all ten
+  files in the diff.
 
 ## Surprises & discoveries
 
@@ -1021,3 +1026,9 @@ sub-targets were then run individually and each passed: `test-postgres` 497,
 `test-sqlite` 524, `test-wireframe-only` 522, `test-rstest-bdd-ui` 1,
 `test-verification` 69 with 1 skipped, `test-fuzz-harness` 8,
 `test-concurrency` 7, and `test-doc` 5 with 4 ignored.
+
+2026-10-13: the CodeScene check on the pull request now passes, which confirms
+on CI what the local `cs review` predicted, and closes the only red check the
+branch had carried. A fifth CodeRabbit round ran over `b94f9f5`, the first
+review round to see the refactored test module; it returned no findings across
+all ten files in the diff, so the CodeScene fix introduced nothing new.
