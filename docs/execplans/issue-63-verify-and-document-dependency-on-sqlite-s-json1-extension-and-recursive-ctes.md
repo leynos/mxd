@@ -315,42 +315,54 @@ and `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`, and
 
 ### Gate evidence
 
-All deterministic gates pass on content `88f4774`, whose only delta from
-`af46a46` is one word and one line wrap inside this ExecPlan:
+The final gate run was made on `b94f9f5`, the last commit to change Rust code.
+Since then every commit has touched Markdown only, and the docs-scoped gates
+were re-run green on each.
 
-| Gate                       | Result                                |
-| -------------------------- | ------------------------------------- |
-| `make fmt`                 | pass                                  |
-| `make check-fmt`           | pass                                  |
-| `make markdownlint`        | pass (`typos.toml` unmodified)        |
-| `make nixie`               | pass                                  |
-| `make lint`                | pass, zero warnings                   |
-| `make test-sqlite`         | 502 passed                            |
-| `make test-wireframe-only` | 500 passed                            |
-| `make test-postgres`       | 497 passed                            |
-| `make test-verification`   | 69 passed, 1 skipped                  |
-| `make test-concurrency`    | 7 passed                              |
-| `make test-fuzz-harness`   | 8 passed                              |
-| `make test-doc`            | 5 passed, 4 ignored                   |
-| `make test-rstest-bdd-ui`  | times out at the 300 s cap; see below |
+| Gate                       | Result                         |
+| -------------------------- | ------------------------------ |
+| `make fmt`                 | pass                           |
+| `make check-fmt`           | pass                           |
+| `make markdownlint`        | pass (`typos.toml` unmodified) |
+| `make nixie`               | pass                           |
+| `make lint`                | pass, zero warnings            |
+| `make test-postgres`       | 497 passed                     |
+| `make test-sqlite`         | 524 passed                     |
+| `make test-wireframe-only` | 522 passed                     |
+| `make test-rstest-bdd-ui`  | 1 passed                       |
+| `make test-verification`   | 69 passed, 1 skipped           |
+| `make test-fuzz-harness`   | 8 passed                       |
+| `make test-concurrency`    | 7 passed, 7 doctests           |
+| `make test-doc`            | 5 passed, 4 ignored            |
 
-The only non-passing target is `test-rstest-bdd-ui`. It is an environment
-failure, not a defect in this change:
+The `make test` chain itself aborts, which the individual runs above work
+around rather than explain away. It stops in its first sub-target,
+`test-postgres`, on an embedded PostgreSQL startup error: the cluster fails to
+connect to its admin database during a period of heavy machine load. That abort
+cannot be attributed to this change, and the argument is structural rather than
+circumstantial:
 
-- `tests/rstest-bdd-ui/Cargo.toml` depends on `rstest`, `rstest-bdd`,
-  `rstest-bdd-macros`, `rstest-bdd-harness-tokio`, and `trybuild`. It does not
-  depend on `mxd`, and no file under `tests/rstest-bdd-ui/` mentions `mxd`, so
-  nothing in this diff can influence it.
-- Its captured stderr shows `Blocking waiting for file lock on package cache`
-  and uncached compile-admission queueing; the trybuild `.stderr` comparison
-  stage is never reached, and no diff, `mismatch`, or `EXPECTED`/`ACTUAL` text
-  appears in the log.
-- The machine was heavily loaded throughout: load average peaked near 105 with
-  18 concurrent cargo jobs, and the managed sccache server was unreachable, so
-  every compilation ran uncached.
-- The target runs last in `make test`, so its timeout aborts the chain. The
-  four sub-targets it skipped were run individually and all pass, as recorded
-  in the table above.
+- The failing test is postgres-gated, while everything this branch adds to
+  `src/db/audit.rs` sits behind `#[cfg(feature = "sqlite")]`, so the two cannot
+  appear in the same compilation.
+- The compiled postgres test binary, `target/debug/deps/mxd-121da3fba04b18a3`,
+  contains 191 references to the failing test and no reference at all to
+  `sqlite_tests` or `assert_rejected_naming`.
+- The same test passes 497/497 when `test-postgres` is run on its own.
+
+An earlier gate run on a different commit did see `test-rstest-bdd-ui` time out
+at its 300 s cap. That was a cold trybuild cache rather than a fault: on the
+final run, with the cache warm, the target passes in 4.99 s. The earlier stderr
+showed `Blocking waiting for file lock on package cache` and never reached the
+trybuild `.stderr` comparison stage, and `tests/rstest-bdd-ui/Cargo.toml` does
+not depend on `mxd`, so nothing in this diff could have influenced it either
+way.
+
+Continuous integration agrees on the pushed head: the `CI` and
+`Release Dry Run` workflows both completed successfully, and the three required
+branch checks — `coverage`, `validator-sqlite`, and `build-test-result` — all
+pass. CodeScene's pull-request check also passes, having failed on every commit
+from `5ec1709` until the duplication fix in `b94f9f5`.
 
 ### Reconciliation with the conformance basis
 
@@ -930,6 +942,11 @@ was about 105 with 18 concurrent cargo jobs. The target is unaffected by this
 change: it compiles `tests/rstest-bdd-ui`, and nothing in this diff touches
 that crate.
 
+Superseded: on the final run the same target passes in 4.99 s. The paragraph
+above is kept as the record of that first run rather than as live state; the
+cold trybuild cache explains the timeout, and warming it removed the failure.
+The final numbers are in [`Outcomes & retrospective`](#outcomes--retrospective).
+
 ### Pull request
 
 Historical snapshot, recorded when the pull request was first opened and before
@@ -1032,3 +1049,13 @@ on CI what the local `cs review` predicted, and closes the only red check the
 branch had carried. A fifth CodeRabbit round ran over `b94f9f5`, the first
 review round to see the refactored test module; it returned no findings across
 all ten files in the diff, so the CodeScene fix introduced nothing new.
+
+2026-10-13: continuous integration on the pushed head completed green. Both
+workflows (`CI` and `Release Dry Run`) finished successfully and all three
+required branch checks (`coverage`, `validator-sqlite`, `build-test-result`)
+pass. `test-rstest-bdd-ui` was re-run and passes in 4.99 s on a warm trybuild
+cache, which supersedes the earlier timeout recorded in this plan: the timeout
+was a cold cache, not a defect. `Outcomes & retrospective` has been updated to
+carry the final run's numbers rather than the superseded ones, and the section
+that described the timeout has been reduced to the one sentence that remains
+true.
