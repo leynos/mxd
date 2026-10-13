@@ -239,7 +239,8 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
         ($feature:literal, $name:ident, $backend_ty:ty, $conn_ty:ty, $quote:expr) => {
             #[cfg(feature = $feature)]
             mod $name {
-                #![doc = concat!("Recursive CTE path builder tests for `", $feature, "`.")]
+                //! Tests that the recursive CTE path builders behave correctly
+                //! for this backend.
                 use super::*;
 
                 #[test]
