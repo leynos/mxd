@@ -9,6 +9,7 @@ rstest = { workspace = true }
 rstest-bdd = { workspace = true }
 rstest-bdd-macros = { workspace = true }
 rstest-bdd-harness-tokio = { workspace = true }
+tokio = "1"
 trybuild = "1.0.117"
 
 [lints]
