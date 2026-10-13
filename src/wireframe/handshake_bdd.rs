@@ -69,9 +69,11 @@ impl HandshakeWorld {
     /// Start a handshake server with the short timeout the scenarios expect.
     ///
     /// The helper panics rather than returning an error if the socket cannot
-    /// be bound, matching the rest of the wireframe test scaffolding.
-    async fn start_server(&mut self) {
-        let (addr, shutdown) = super::tests::start_server(Duration::from_millis(100)).await;
+    /// be bound, matching the rest of the wireframe test scaffolding. Spawning
+    /// the server is synchronous, so only connecting and reading need to wait
+    /// on I/O.
+    fn start_server(&mut self) {
+        let (addr, shutdown) = super::tests::start_server(Duration::from_millis(100));
         self.addr = Some(addr);
         self.shutdown = Some(shutdown);
     }
@@ -120,7 +122,7 @@ impl Drop for HandshakeWorld {
 fn world() -> HandshakeWorld { HandshakeWorld::default() }
 
 #[given("a wireframe server handling handshakes")]
-async fn given_server(world: &mut HandshakeWorld) { world.start_server().await; }
+fn given_server(world: &mut HandshakeWorld) { world.start_server(); }
 
 #[when("I send a valid Hotline handshake")]
 async fn when_valid(world: &mut HandshakeWorld) -> Result<(), String> {

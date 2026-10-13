@@ -158,12 +158,10 @@ mod tests {
 
     /// Start a handshake server on the caller's runtime.
     ///
-    /// Awaiting rather than blocking keeps callers on the same runtime they
-    /// spawned the server onto, so the server task is driven while the caller
-    /// awaits a reply.
-    pub(super) async fn start_server(
-        timeout: Duration,
-    ) -> (std::net::SocketAddr, oneshot::Sender<()>) {
+    /// The server runs as a spawned task rather than being driven to
+    /// completion here, so callers stay on the runtime they called from and
+    /// the task keeps serving while they await a reply.
+    pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
         let server = WireframeServer::new(|| {
             let handshake = take_current_context()
                 .map(|context| context.into_parts().0)
@@ -197,7 +195,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn replies_success() {
-        let (addr, shutdown) = start_server(HANDSHAKE_TIMEOUT).await;
+        let (addr, shutdown) = start_server(HANDSHAKE_TIMEOUT);
         let mut stream = TcpStream::connect(addr).await.expect("connect");
         let bytes = preamble_bytes(*PROTOCOL_ID, *b"CHAT", VERSION, 7);
         stream.write_all(&bytes).await.expect("write handshake");
@@ -220,7 +218,7 @@ mod tests {
     #[case(*PROTOCOL_ID, HANDSHAKE_ERR_UNSUPPORTED_VERSION)]
     #[tokio::test]
     async fn replies_handshake_errors(#[case] protocol: [u8; 4], #[case] expected: u32) {
-        let (addr, shutdown) = start_server(HANDSHAKE_TIMEOUT).await;
+        let (addr, shutdown) = start_server(HANDSHAKE_TIMEOUT);
         let mut stream = TcpStream::connect(addr).await.expect("connect");
         let version = if expected == HANDSHAKE_ERR_UNSUPPORTED_VERSION {
             VERSION + 1
@@ -245,7 +243,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn replies_timeout_for_idle_socket() {
-        let (addr, shutdown) = start_server(Duration::from_millis(100)).await;
+        let (addr, shutdown) = start_server(Duration::from_millis(100));
         let mut stream = TcpStream::connect(addr).await.expect("connect");
 
         let reply = timeout(Duration::from_secs(1), recv_reply(&mut stream))
