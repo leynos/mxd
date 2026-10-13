@@ -192,11 +192,15 @@ Thresholds that trigger escalation when breached.
 
 - Decision: enforce the 3.35.0 floor in Rust rather than relying on the
   `returning_clauses_for_sqlite_3_35` Cargo feature to fail the build.
-  Rationale: the Cargo feature is a compile-time declaration of intent. It does
-  not stop a binary compiled against an older `libsqlite3.so` from being run on
-  a machine that has one; `libsqlite3-sys` links the system library
-  dynamically. A runtime check is the only thing that covers the deployed case.
-  Date/Author: 2026-10-13, agent.
+  Rationale: the Cargo feature is a compile-time declaration of intent, and the
+  library it is validated against at build time need not be the library the
+  binary runs against. The default build links the system shared library
+  dynamically, so a binary compiled against a suitable library can still be
+  deployed onto a machine whose `libsqlite3.so` is older; a build with
+  `SQLITE3_STATIC=1` links statically and moves the question to whichever
+  archive was linked. Either way the version of the library actually linked to
+  the running process is the thing that matters, and only a runtime check
+  observes it. Date/Author: 2026-10-13, agent.
 - Decision: test the failure paths by extracting pure validators and testing
   those, rather than by trying to obtain a broken SQLite library in CI.
   Rationale: no CI runner has a JSON1-less SQLite, and the source order already
@@ -234,6 +238,17 @@ Thresholds that trigger escalation when breached.
   mutually exclusive `sqlite` and `postgres` cfg combinations; shortening a doc
   comment left the module at 398 lines and changed no behaviour. Date/Author:
   2026-10-13, agent.
+- Decision: treat `pkg-config --modversion sqlite3` as a candidate library
+  check rather than a definitive one, and state that `SQLITE3_STATIC=1` removes
+  the host shared-library requirement. Rationale: CodeRabbit review of
+  `5ec1709` showed the documentation over-claimed. `libsqlite3-sys` reads
+  `SQLITE3_LIB_DIR` and `SQLITE3_STATIC`, so `pkg-config` does not determine
+  the linked library, and a statically linked build does not need a shared
+  library on the runtime host. Verified against the vendored build script
+  (`find_link_mode()` honours the `_STATIC` variable) and the crate README
+  before editing. The project sets neither variable, and `ldd target/debug/mxd`
+  reports `libsqlite3.so.0`, so dynamic linking of the system library remains
+  the documented default. Date/Author: 2026-10-13, agent.
 
 ## Outcomes & retrospective
 

@@ -7,18 +7,22 @@ administrative subcommands. The command-line interface (CLI) definitions live in
 
 ## SQLite runtime requirements
 
-The SQLite build links the system SQLite library rather than bundling its own.
-On a machine that runs the binary, that shared library must be 3.35.0 or later
-and must provide the `JSON1` extension's `json_each` function and support for
-recursive common table expressions. The server uses `json_each` to split
-slash-delimited paths and recursive CTEs to walk the file-node hierarchy.
+The SQLite library that the binary links must be 3.35.0 or later and must
+provide the `JSON1` extension's `json_each` function and support for recursive
+common table expressions. The server uses `json_each` to split slash-delimited
+paths and recursive CTEs to walk the file-node hierarchy.
 
-Both server runtimes and the `create-user` subcommand audit the linked library
-at start-up. If a capability is missing, the command exits with an error naming
-it, before binding its listening socket and before writing any data. The
-`sqlite3` command-line tool is a separate build, so its version says nothing
-about the library the daemon links; the start-up audit is the authoritative
-check.
+The default SQLite build links the system shared library rather than bundling
+its own, so a machine that runs such a build needs a shared library that meets
+these requirements. A build that links SQLite statically instead carries the
+library inside the binary and needs no SQLite shared library on the host.
+
+Both server runtimes and the `create-user` subcommand audit the library they
+are linked to at start-up. If a capability is missing, the command exits with
+an error naming it, before binding its listening socket and before writing any
+data. The `sqlite3` command-line tool is a separate build, so its version says
+nothing about the library the daemon links; the start-up audit is the
+authoritative check.
 
 ## Launching the legacy server
 

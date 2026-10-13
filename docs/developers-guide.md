@@ -19,24 +19,29 @@ Building the default `sqlite` feature therefore needs the system development
 files, such as `libsqlite3-dev` on Debian-derived systems or `sqlite-devel` on
 RPM-derived ones.
 
-Check the version that will actually be linked, rather than the version of the
-`sqlite3` command-line tool:
-
-```sh
-pkg-config --modversion sqlite3
-```
-
 The linked library must be 3.35.0 or later, because the `sqlite` Cargo feature
 enables Diesel's `returning_clauses_for_sqlite_3_35`. It must also provide the
 `JSON1` extension's `json_each` function and support recursive common table
 expressions.[^1]
 
-The `sqlite3` command-line tool may be a different build from the library the
-binary links, so its reported version does not prove what the daemon will get.
-The authoritative check is the startup audit, which runs the version,
-`json_each` and recursive-CTE probes against the linked library on the legacy
-server, the Wireframe server, and the `create-user` subcommand before any
-request is served or any row is written.
+To inspect the library that `pkg-config` would supply, run:
+
+```sh
+pkg-config --modversion sqlite3
+```
+
+Treat that as a check of the `pkg-config` candidate only. It is not a
+definitive check of the linked library. `libsqlite3-sys` selects the library
+from other sources when they are configured, so a build that sets
+`SQLITE3_LIB_DIR` can link a different one, and a build that sets
+`SQLITE3_STATIC=1` links SQLite statically instead of dynamically. The
+`sqlite3` command-line tool is a separate build again, so its version says
+nothing about the library the binary links.
+
+The definitive check is the startup audit, which runs the version, `json_each`
+and recursive-CTE probes against whichever library the running binary is
+actually linked to, on the legacy server, the Wireframe server, and the
+`create-user` subcommand, before any request is served or any row is written.
 
 [^1]: JSON became part of the SQLite core and on by default in 3.38.0,
     and can be removed at compile time with `SQLITE_OMIT_JSON`. Before 3.38.0 it
