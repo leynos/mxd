@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan` must
 be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -151,8 +151,15 @@ Thresholds that trigger escalation when breached.
   `src/server/legacy/mod.rs`. Fixed in `ceccd66`.
 - [x] (2026-10-13) Second full gate run on `ceccd66`: all gates pass. See
   `Outcomes & retrospective` for the evidence.
-- [ ] (EP-M4) Push the branch, open the draft pull request, and run the
-  CodeRabbit review.
+- [x] (2026-10-13) EP-M4: pushed the branch, opened draft pull request #656,
+  and ran the CodeRabbit review.
+- [x] (2026-10-13) CodeRabbit round one: two findings, both valid. The docs
+  overstated how SQLite is selected and linked — `pkg-config` was presented as
+  definitive, and the static-link mode was unmentioned. Fixed in `5e28e54`.
+- [x] (2026-10-13) CodeRabbit round two: two findings against this ExecPlan's
+      own
+  bookkeeping — a status contradiction and stale commit references. Both fixed,
+  and the docs-scoped gates (`check-fmt`, `markdownlint`, `nixie`) re-run green.
 
 ## Surprises & discoveries
 
@@ -254,9 +261,12 @@ Thresholds that trigger escalation when breached.
 
 Status: COMPLETE. Delivered in commits `00d023a` (audit), `6429e45`
 (enforcement at every entry point), `b4144a1` (documentation), `ceccd66`,
-`4082d18`, `c21e1f9`, `af46a46`, and `88f4774` (gate fixes and plan upkeep).
-Pushed as head `88f4774`; draft pull request
-<https://github.com/leynos/mxd/pull/656>.
+`4082d18`, `c21e1f9`, `af46a46`, and `88f4774` (gate fixes and plan upkeep),
+followed by the CodeRabbit review fixes and the ExecPlan bookkeeping they
+prompted. The branch head is its current tip; the pull request and push record
+sections below are deliberately labelled as historical snapshots taken at
+`4082d18`, so that neither they nor a hard-coded hash here can drift out of
+date. Draft pull request <https://github.com/leynos/mxd/pull/656>.
 
 ### What was achieved
 
@@ -885,12 +895,19 @@ that crate.
 
 ### Pull request
 
+Historical snapshot, recorded when the pull request was first opened and before
+the review fixes landed. The live head is the one named in
+[`Outcomes & retrospective`](#outcomes--retrospective).
+
 Draft PR: <https://github.com/leynos/mxd/pull/656>, base `main` at `df48e51`,
 head `4082d18`. Verified after creation: `isDraft` is true, the title carries
 `(#63)`, the body carries `Closes #63`, a `## References` section holding the
 Lody session URL, and the Claude Code attribution line.
 
 ### Push record
+
+Historical snapshot of the first push and its verification. Every later push
+followed the same procedure and advanced the head.
 
 Pushed to `git@github.com:leynos/mxd.git` via `GIT_SSH_COMMAND=/usr/bin/ssh`,
 because the worktree's `origin` is an HTTPS URL and the ambient environment
@@ -904,7 +921,7 @@ git branch --set-upstream-to=origin/BRANCH BRANCH
 
 Confirmed afterwards that `git rev-parse HEAD`,
 `git ls-remote git@github.com:leynos/mxd.git refs/heads/BRANCH`, and the
-upstream all name `4082d18a6ac3bcb3b81fc530465535a6ed218aa3`.
+upstream all named `4082d18a6ac3bcb3b81fc530465535a6ed218aa3` at that point.
 
 ## Interfaces and dependencies
 
@@ -939,4 +956,13 @@ provenance that the documentation claims will rest on.
 `6429e45`). The first full gate run exposed four failures in this change's own
 new material, all fixed in `ceccd66`; the ExecPlan was resynchronized in
 `4082d18`. EP-M4 pushed the branch and opened draft PR #656.
-`Outcomes & retrospective` remains open pending the closing gate report.
+
+2026-10-13: closing gate report recorded in `Outcomes & retrospective`, which
+completes the plan; status raised to COMPLETE and EP-M4 ticked. Two CodeRabbit
+rounds followed. Round one found the documentation overstated how SQLite is
+selected and linked, fixed in `5e28e54`. Round two found this ExecPlan's own
+bookkeeping inconsistent — a status contradiction and commit references that
+had gone stale as the head advanced. Both are fixed here: status is consistent,
+the `Pull request` and `Push record` sections are labelled historical snapshots
+rather than live state, and `Outcomes & retrospective` no longer hard-codes a
+head hash that the next push would invalidate.
