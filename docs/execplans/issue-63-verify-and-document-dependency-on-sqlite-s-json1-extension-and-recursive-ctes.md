@@ -137,11 +137,22 @@ Thresholds that trigger escalation when breached.
   `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`, and the
   now-inaccurate startup-audit sentence in `docs/design.md`. Committed as
   `b4144a1`.
-- [ ] (EP-M2/M3 verification) `cargo check --features sqlite --all-targets`
-  was started but spent over ten minutes queued behind other agents' work in
-  the shared compile-admission pool. Left running; it must be allowed to
-  complete rather than restarted.
-- [ ] (EP-M4) Run all gates, push, and open the draft pull request.
+- [x] (2026-10-13) EP-M2/M3 verification: the standalone
+  `cargo check --features sqlite --all-targets` was abandoned because it sat
+  queued in the shared compile-admission pool for over ten minutes; the same
+  coverage is delivered by the `make lint` and `make test` gates, which
+  compile every target with all features. Not restarted, so as not to lengthen
+  the shared queue.
+- [x] (2026-10-13) First full gate run (commit `6429e45`): `nixie` passed;
+  `fmt`, `check-fmt`, `markdownlint`, and `lint` failed. All four failures were
+  in this change's own new material: two MD013 over-long lines holding inline
+  SQL in this ExecPlan, one typos false positive against a hash-shaped test
+  string in `src/db/audit.rs`, and the `module_max_lines` 400-line ceiling on
+  `src/server/legacy/mod.rs`. Fixed in `ceccd66`.
+- [x] (2026-10-13) Second full gate run on `ceccd66`: all gates pass. See
+  `Outcomes & retrospective` for the evidence.
+- [ ] (EP-M4) Push the branch, open the draft pull request, and run the
+  CodeRabbit review.
 
 ## Surprises & discoveries
 
@@ -206,7 +217,23 @@ Thresholds that trigger escalation when breached.
   provided it keeps the file under 400 lines; otherwise split it to
   `src/db/audit/tests.rs`. Rationale: keeps related code colocated as
   `AGENTS.md` prefers, while respecting the hard 400-line limit. Date/Author:
-  2026-10-13, agent.
+  2026-10-13, agent. Outcome: the inline module leaves `src/db/audit.rs` at 361
+  lines, so no split was needed.
+- Decision: drop the version-string test case carrying a 64-character build
+  hash and use a plain `3.46.1 2024-08-13 09:16:08` case instead. Rationale:
+  `make markdownlint` flagged the hash as a misspelling (`ba` should be `be`,
+  `by`), and adding a `typos.local.toml` exception for a hash that the audit
+  will never see would be a worse trade. `sqlite_version()` returns only
+  `major.minor.patch`; the build hash comes from `sqlite_source_id()`, so the
+  case was unrealistic as well as noisy. The trailing-text case is still
+  covered. Date/Author: 2026-10-13, agent.
+- Decision: shorten the `setup_database` doc comment rather than extract an
+  `audit_backend` helper to fit the legacy module back under the 400-line
+  ceiling. Rationale: the helper form measured 412 lines, because a helper
+  must carry its own doc comment and a `let _ = (conn, database);` to satisfy
+  the mutually exclusive `sqlite` and `postgres` cfg combinations; shortening
+  a doc comment left the module at 398 lines and changed no behaviour.
+  Date/Author: 2026-10-13, agent.
 
 ## Outcomes & retrospective
 
