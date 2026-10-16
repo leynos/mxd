@@ -156,6 +156,11 @@ mod tests {
         },
     };
 
+    /// Start a handshake server on the caller's runtime.
+    ///
+    /// The server runs as a spawned task rather than being driven to
+    /// completion here, so callers stay on the runtime they called from and
+    /// the task keeps serving while they await a reply.
     pub(super) fn start_server(timeout: Duration) -> (std::net::SocketAddr, oneshot::Sender<()>) {
         let server = WireframeServer::new(|| {
             let handshake = take_current_context()
