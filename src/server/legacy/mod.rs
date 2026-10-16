@@ -151,22 +151,21 @@ async fn create_pool(database: &str) -> Result<DbPool, PoolError> {
 
 /// Sets up the database connection pool and runs migrations.
 ///
-/// Establishes a connection pool for the specified database, audits database-specific features,
-/// and applies any pending migrations. Returns the initialized connection pool on success.
+/// Establishes a pool for `database`, audits the backend's features, then
+/// applies any pending migrations. `database` is the connection string or file
+/// path.
 ///
-/// # Arguments
-///
-/// * `database` - The database connection string or file path.
-///
-/// # Returns
-///
-/// A result containing the initialized database connection pool, or an error if setup fails.
+/// # Errors
+/// Returns an error if the pool cannot be built, the audit fails, or a
+/// migration is rejected.
 async fn setup_database(database: &str, migration_timeout_secs: Option<u64>) -> Result<DbPool> {
     let pool: DbPool = create_pool(database).await?;
     {
         let mut conn = pool.get().await.context("failed to get db connection")?;
         #[cfg(feature = "sqlite")]
-        crate::db::audit_sqlite_features(&mut conn).await?;
+        crate::db::audit_sqlite_features(&mut conn)
+            .await
+            .context("SQLite capability audit failed")?;
         #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
         if is_postgres_url(database) {
             crate::db::audit_postgres_features(&mut conn).await?;

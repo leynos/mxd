@@ -12,6 +12,44 @@ codebase, plus the PostgreSQL helper needed for integration coverage.
   `cargo binstall --no-confirm cargo-audit`.
 - Optional: `pg-embed-setup-unpriv` for PostgreSQL-backed tests.
 
+### SQLite prerequisites
+
+Source builds do not bundle SQLite; `libsqlite3-sys` links the system library.
+Building the default `sqlite` feature therefore needs the system development
+files, such as `libsqlite3-dev` on Debian-derived systems or `sqlite-devel` on
+RPM-derived ones.
+
+The linked library must be 3.35.0 or later, because the `sqlite` Cargo feature
+enables Diesel's `returning_clauses_for_sqlite_3_35`. It must also provide the
+`JSON1` extension's `json_each` function and support recursive common table
+expressions.[^1]
+
+To inspect the library that `pkg-config` would supply, run:
+
+```sh
+pkg-config --modversion sqlite3
+```
+
+Treat that as a check of the `pkg-config` candidate only. It is not a
+definitive check of the linked library. `libsqlite3-sys` selects the library
+from other sources when they are configured, so a build that sets
+`SQLITE3_LIB_DIR` can link a different one, and a build that sets
+`SQLITE3_STATIC=1` links SQLite statically instead of dynamically. The
+`sqlite3` command-line tool is a separate build again, so its version says
+nothing about the library the binary links.
+
+The definitive check is the startup audit, which runs the version, `json_each`
+and recursive-CTE probes against whichever library the running binary is
+actually linked to, on the legacy server, the Wireframe server, and the
+`create-user` subcommand, before any request is served or any row is written.
+
+[^1]: JSON became part of the SQLite core and on by default in 3.38.0,
+    and can be removed at compile time with `SQLITE_OMIT_JSON`. Before 3.38.0 it
+    required the separate `SQLITE_ENABLE_JSON1` build option. A 3.35.0 library
+    can therefore pass the version check while still lacking `json_each`, which
+    is why the audit probes for the function rather than trusting the version
+    alone.
+
 ### Build-tool resolution
 
 The `Makefile` applies a conditional fallback for each build tool it invokes.
