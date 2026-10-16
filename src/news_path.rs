@@ -121,7 +121,6 @@ where
 mod tests {
     //! Tests for this module.
     use diesel::debug_query;
-    use paste::paste;
     use rstest::{fixture, rstest};
 
     use super::*;
@@ -230,25 +229,32 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
         type Backend = diesel::pg::Pg;
     }
 
+    // Emit a module of backend-specific tests for the recursive CTE builders.
+    //
+    // Each backend gets its own module, so the two tests keep fixed names and
+    // the backend under test appears in the module path instead of in the
+    // function name. That avoids identifier concatenation entirely, which is
+    // what the previously used `paste` crate provided.
     macro_rules! backend_tests {
         ($feature:literal, $name:ident, $backend_ty:ty, $conn_ty:ty, $quote:expr) => {
-            paste! {
-                #[cfg(feature = $feature)]
+            #[cfg(feature = $feature)]
+            mod $name {
+                //! Tests that the recursive CTE path builders behave correctly
+                //! for this backend.
+                use super::*;
+
                 #[test]
-                fn [<build_path_cte_uses_recursive_builder_ $name>]() {
+                fn build_path_cte_uses_recursive_builder() {
                     use $backend_ty as Backend;
 
-                    let query = build_path_cte::<$conn_ty, _, _>(
-                        sql_query(STEP_SQL),
-                        sql_query(BODY_SQL),
-                    );
+                    let query =
+                        build_path_cte::<$conn_ty, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
                     let sql = debug_query::<Backend, _>(&query).to_string();
                     assert_eq!(normalize_sql(&sql), expected_recursive_sql($quote));
                 }
 
-                #[cfg(feature = $feature)]
                 #[test]
-                fn [<build_path_cte_with_conn_matches_builder_ $name>]() {
+                fn build_path_cte_with_conn_matches_builder() {
                     use $backend_ty as Backend;
 
                     let mut conn = <$conn_ty>::default();
@@ -257,10 +263,8 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
                         sql_query(STEP_SQL),
                         sql_query(BODY_SQL),
                     );
-                    let direct = build_path_cte::<$conn_ty, _, _>(
-                        sql_query(STEP_SQL),
-                        sql_query(BODY_SQL),
-                    );
+                    let direct =
+                        build_path_cte::<$conn_ty, _, _>(sql_query(STEP_SQL), sql_query(BODY_SQL));
                     let inferred_sql = debug_query::<Backend, _>(&inferred).to_string();
                     let direct_sql = debug_query::<Backend, _>(&direct).to_string();
                     assert_eq!(normalize_sql(&inferred_sql), normalize_sql(&direct_sql));
