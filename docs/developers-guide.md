@@ -866,13 +866,13 @@ nothing on a public repository, and Dependabot opens many pull requests. The
 expression tests the pull request's author, not `github.actor`, because the
 actor is whoever triggered the run, so a person pushing to a Dependabot branch
 would flip the runner. A push and a dispatch have no pull request, so both
-values are null and the expression selects Ubicloud; a Dependabot pull request
-therefore builds cold on the hosted pool. Ubicloud's cache proxy is scoped by
-ref, so a pull request's Ubicloud lane reads a warm main scope only when a main
-job on Ubicloud writes it: the writer moves first, and the `ci.yml` lanes
-follow. A fork's pull request restores a hosted cache that main no longer
-refreshes; fork pull requests are rare here, and a second hosted writer would
-pay double on every main push.
+values are empty strings (falsy) and the expression selects Ubicloud; a
+Dependabot pull request therefore builds cold on the hosted pool. Ubicloud's
+cache proxy is scoped by ref, so a pull request's Ubicloud lane reads a warm
+main scope only when a main job on Ubicloud writes it: the writer moves first,
+and the `ci.yml` lanes follow. A fork's pull request restores a hosted cache
+that main no longer refreshes; fork pull requests are rare here, and a second
+hosted writer would pay double on every main push.
 
 An Ubicloud runner is a self-hosted just-in-time runner, so GitHub's six-hour
 cap for hosted jobs does not bound it; `coverage-upload` keeps its 65-minute
