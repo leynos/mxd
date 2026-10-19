@@ -854,12 +854,20 @@ on `ubicloud-standard-2`; `build-test-result`, a trivial aggregate, stays
 hosted. `runs-on` selects it with the runner-selection expression:
 
 ```yaml
-runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+runs-on: >-
+  ${{ (github.event.pull_request.head.repo.fork
+  || github.event.pull_request.user.login == 'dependabot[bot]')
+  && 'ubuntu-latest' || 'ubicloud-standard-2' }}
 ```
 
 A pull request from a fork cannot obtain an Ubicloud runner, so it falls back to
-`ubuntu-latest`; a push and a dispatch have no pull request, so the fork value
-is null and they select Ubicloud. Ubicloud's cache proxy is scoped by ref, so a
+`ubuntu-latest`. So does a pull request Dependabot opened: hosted minutes cost
+nothing on a public repository, and Dependabot opens many pull requests. The
+expression tests the pull request's author, not `github.actor`, because the
+actor is whoever triggered the run, so a person pushing to a Dependabot branch
+would flip the runner. A push and a dispatch have no pull request, so both
+values are null and they select Ubicloud; a Dependabot pull request therefore
+builds cold on the hosted pool. Ubicloud's cache proxy is scoped by ref, so a
 pull request's Ubicloud lane reads a warm main scope only when a main job on
 Ubicloud writes it: the writer moves first, and the `ci.yml` lanes follow. A
 fork's pull request restores a hosted cache that main no longer refreshes; fork
@@ -900,7 +908,8 @@ API, as the placement pull requests did:
 
 `tests/workflow_contracts/test_runner_placement.py` pins the labels of every
 lane in both directions and requires each conditional placement to be guarded
-by the fork test with the hosted arm first, so a pair under another guard fails.
+by the fork test or the Dependabot author test, with the hosted arm first, so a
+pair under another guard (or `github.actor`) fails.
 
 ## CodeScene coverage is owned by `main`
 
