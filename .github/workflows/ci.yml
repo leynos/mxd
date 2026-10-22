@@ -316,6 +316,12 @@ jobs:
       # cluster directory left by one test process authenticates in the next.
       # Not a secret: the cluster listens on localhost inside this job.
       PG_PASSWORD: mxd-embedded-test
+      # Pin the zone the embedded clusters initialise with and the directory
+      # the server resolves it from: Postgres rejects `TimeZone = "UTC"` with
+      # "invalid value for parameter" when it cannot find the zone file
+      # (issue #665).
+      TZ: UTC
+      TZDIR: /usr/share/zoneinfo
       HX_BIN_DIR: ${{ github.workspace }}/.bin
       HX_WORK_ROOT: ${{ github.workspace }}/.cache/hx
       HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client
@@ -378,6 +384,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: make warm-postgres
+      - name: Show the zone file the embedded Postgres resolves
+        run: ls -l "${TZDIR:-/usr/share/zoneinfo}/UTC"
       - name: Generate coverage for Postgres
         uses: leynos/shared-actions/.github/actions/generate-coverage@7d751eded578e48dacf43ab173d5820e6437c474
         env:
