@@ -316,7 +316,7 @@ jobs:
       # cluster directory left by one test process authenticates in the next.
       # Not a secret: the cluster listens on localhost inside this job.
       PG_PASSWORD: mxd-embedded-test
-      # Pin the zone the embedded clusters initialise with and the directory
+      # Pin the zone the embedded clusters initialize with and the directory
       # the server resolves it from: Postgres rejects `TimeZone = "UTC"` with
       # "invalid value for parameter" when it cannot find the zone file
       # (issue #665).
