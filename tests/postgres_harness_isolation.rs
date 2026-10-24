@@ -111,7 +111,7 @@ fn cluster_accepts_the_utc_time_zone() -> Result<()> {
     )?;
     anyhow::ensure!(zone == "UTC", "the cluster resolved UTC as {zone}");
 
-    // The localised alias must resolve too. It is a separate hard link in the
+    // The `Etc/UTC` alias must resolve too. It is a separate hard link in the
     // bundles that ship their own time-zone data, so a partially extracted
     // tree can accept UTC while failing Etc/UTC.
     sql_query("SET TimeZone = 'Etc/UTC'").execute(&mut connection)?;

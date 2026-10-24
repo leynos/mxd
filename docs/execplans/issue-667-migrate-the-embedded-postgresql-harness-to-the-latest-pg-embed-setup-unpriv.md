@@ -43,8 +43,8 @@ Success is observable when:
 ## Tolerances (exception triggers)
 
 - Blocker: stop if the `TimeZone` failure cannot be mitigated without a
-  `postgresql_archive` `0.22.0` upgrade, which needs Rust 1.94 and a release
-  of `pg-embed-setup-unpriv` that does not exist yet.
+  `postgresql_archive` `0.22.0` upgrade, which needs Rust 1.94 and a release of
+  `pg-embed-setup-unpriv` that does not exist yet.
 - Dependency: stop if the migration needs a crate beyond the version bumps this
   plan names.
 - Validation: stop if the same gate fails twice without new diagnostics.
@@ -83,9 +83,10 @@ Success is observable when:
   and silently skips hard links, so `share/timezone/UTC` never exists.
   PostgreSQL then rejects `SET TIME ZONE 'UTC'`, which is what diesel's
   `PgConnection::establish` sends. Evidence: a hard-link-skipped extraction of
-  the `18.6.1` tarball reproduces `ERROR: invalid value for parameter
-  "TimeZone": "UTC"` exactly, while the intact tree accepts it. Impact: the
-  target release cannot be judged by its version number alone.
+  the `18.6.1` tarball reproduces
+  `ERROR: invalid value for parameter "TimeZone": "UTC"` exactly, while the
+  intact tree accepts it. Impact: the target release cannot be judged by its
+  version number alone.
 
 - Observation: the fix is unreachable from any published
   `pg-embed-setup-unpriv`. `postgresql_archive` `0.22.0` (21 October) added
@@ -125,9 +126,9 @@ Success is observable when:
 - Observation: a second, distinct failure appeared once in the parallel leg:
   one wireframe routing case failed at 8.3 s with
   `postgresql_embedded::start() failed` and no `pg_ctl` detail. It has not
-  recurred in four consecutive full parallel runs (34.9 s, 39.8 s, 37.0 s,
-  37.3 s, all 499/499). Cause not established. The harness now renders the
-  whole error-cause chain, because `BootstrapError` displays only its outermost
+  recurred in four consecutive full parallel runs (34.9 s, 39.8 s, 37.0 s, 37.3
+  s, all 499/499). Cause not established. The harness now renders the whole
+  error-cause chain, because `BootstrapError` displays only its outermost
   context and the `pg_ctl` diagnostic was being discarded; the next occurrence
   will name the real cause rather than only the operation. Resource exhaustion
   is ruled out: 125 GB RAM with 80 GB available, `ulimit -n` 524288, 32000
@@ -138,18 +139,18 @@ Success is observable when:
   root, and it is upstream, not mxd's. `claim_slot` in
   `src/bootstrap/prepare/cluster_slot.rs` sweeps dead slots before taking the
   `ClaimGuard` that orders claims, and `lock_new_slot` creates a slot's lock
-  file and only then `flock`s it. A concurrent process can list the just-created
-  lock in that window, take it first in `take_dead_lock`, and sweep the slot as
-  dead; the owner's `try_lock` then returns `WouldBlock` and the start fails
-  with `slot lock <path> is already held`. Evidence: the first parallel run
-  failed once at 6.5 s with exactly that message; the lock file named in the
-  error did not exist afterwards while twelve sibling slot locks did, which is
-  what a sweep leaves behind. Upstream `main` still sweeps before taking the
-  guard, and no upstream issue reports it. The crate classifies this failure as
-  bootstrap kind `Other`, so its own three-attempt shared-cluster retry does not
-  catch it. Impact: `test-util` retries a lost slot race eight times with a
-  short growing backoff, in both the sync and async start paths. A retry claims
-  a new slot name, so it does not repeat the same race.
+  file and only then `flock`s it. A concurrent process can list the
+  just-created lock in that window, take it first in `take_dead_lock`, and
+  sweep the slot as dead; the owner's `try_lock` then returns `WouldBlock` and
+  the start fails with `slot lock <path> is already held`. Evidence: the first
+  parallel run failed once at 6.5 s with exactly that message; the lock file
+  named in the error did not exist afterwards while twelve sibling slot locks
+  did, which is what a sweep leaves behind. Upstream `main` still sweeps before
+  taking the guard, and no upstream issue reports it. The crate classifies this
+  failure as bootstrap kind `Other`, so its own three-attempt shared-cluster
+  retry does not catch it. Impact: `test-util` retries a lost slot race eight
+  times with a short growing backoff, in both the sync and async start paths. A
+  retry claims a new slot name, so it does not repeat the same race.
 
 ## Decision Log
 
@@ -195,14 +196,15 @@ Success is observable when:
 - [x] (2026-10-24) `7cd4d20`: added `tests/postgres_harness_isolation.rs` and
   extended both workflow contracts. All 260 contracts pass.
 - [x] (2026-10-24) Measured the parallel leg: 499/499 passed at default
-  parallelism, 0 timeouts, 34.873 s of test time against 288.3 s serial, an 8.3x
-  reduction. Slowest test 8.820 s (`wireframe_memory_budgets::…`); no
+  parallelism, 0 timeouts, 34.873 s of test time against 288.3 s serial, an
+  8.3x reduction. Slowest test 8.820 s (`wireframe_memory_budgets::…`); no
   PostgreSQL test is in the slowest five, and the 15.774 s cold-start outlier
   from the serial baseline is gone because per-cluster starts overlap.
 - [ ] Confirm the intermittent `start()` failure does not recur across repeated
   parallel runs.
 - [x] (2026-10-24) Rewrote the developers' guide, users' guide and the
-  harness users' guide, and added `pg-embed-setup-unpriv-v0-6-0-migration-guide.md`.
+  harness users' guide, and added
+  `pg-embed-setup-unpriv-v0-6-0-migration-guide.md`.
 - [ ] Run the gates, open the pull request, and clear review.
 
 ## Outcomes & Retrospective
@@ -335,11 +337,11 @@ not just the exit status.
 
 ## Idempotence and recovery
 
-Every change is source-level and re-runnable. The pin is an environment
-default in version-controlled files, so a re-run reproduces it exactly. If a
-gate fails, fix the reported cause and re-run that gate alone. Keep commits
-small so a partial rollback stays surgical, and revert the pin separately from
-the migration if the pin turns out to be wrong.
+Every change is source-level and re-runnable. The pin is an environment default
+in version-controlled files, so a re-run reproduces it exactly. If a gate
+fails, fix the reported cause and re-run that gate alone. Keep commits small so
+a partial rollback stays surgical, and revert the pin separately from the
+migration if the pin turns out to be wrong.
 
 ## Artefacts and notes
 
@@ -349,13 +351,13 @@ Baseline, serial `0.5.2` under `PG_VERSION_REQ='=18.6.0'`, 2026-10-24:
 - Summary wall time in nextest: 288.3 s. Process wall time: 300 s.
 - Slowest five:
 
-  | Seconds | Test                                                              |
-  | ------- | ----------------------------------------------------------------- |
-  | 15.774  | `db::schema_alignment_tests::postgres_tests::postgres_category_names_are_bundle_scoped` |
+  | Seconds | Test                                                                                             |
+  | ------- | ------------------------------------------------------------------------------------------------ |
+  | 15.774  | `db::schema_alignment_tests::postgres_tests::postgres_category_names_are_bundle_scoped`          |
   | 7.101   | `wireframe_memory_budgets::stalled_fragmented_request_is_disconnected_when_continuation_resumes` |
-  | 6.799   | `session_privileges_bdd::session_privileges_authenticated_b`       |
-  | 5.916   | `wireframe_compat_guardrails_bdd::wireframe_compat`                |
-  | 5.054   | `session_privileges_bdd::session_privileges_authenticated_b` (case) |
+  | 6.799   | `session_privileges_bdd::session_privileges_authenticated_b`                                     |
+  | 5.916   | `wireframe_compat_guardrails_bdd::wireframe_compat`                                              |
+  | 5.054   | `session_privileges_bdd::session_privileges_authenticated_b` (case)                              |
 
   Only the first is a PostgreSQL test. It is a cold cluster start; the warm
   starts in the same run take about 2 s.

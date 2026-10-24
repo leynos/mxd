@@ -105,21 +105,22 @@ again. The pin must be exact:
 PG_VERSION_REQ ?= =18.6.0
 ```
 
-The Makefile passes it to both PostgreSQL targets, and each CI job that runs the
-PostgreSQL tests sets it next to `PG_PASSWORD`. `cluster_accepts_the_utc_time_zone`
-in `tests/postgres_harness_isolation.rs` fails if a bundle with incomplete
-time-zone data is selected. Remove the pin once a `pg-embed-setup-unpriv`
-release can select `postgresql_archive` 0.22.0 or newer.
+The Makefile passes it to both PostgreSQL targets, and each CI job that runs
+the PostgreSQL tests sets it next to `PG_PASSWORD`.
+`cluster_accepts_the_utc_time_zone` in `tests/postgres_harness_isolation.rs`
+fails if a bundle with incomplete time-zone data is selected. Remove the pin
+once a `pg-embed-setup-unpriv` release can select `postgresql_archive` 0.22.0
+or newer.
 
 ## API changes at a glance
 
-| 0.5.x | 0.6.x | mxd impact |
-| ----- | ----- | ---------- |
-| One shared data directory per run | One data directory per cluster | Removed the serialization |
-| Password generated per process | Password stored with the cluster | Fixed `PG_PASSWORD` still set |
-| `PG_RUNTIME_DIR`, `PG_DATA_DIR` | Plus `PG_EMBED_ROOT`, `PG_MAX_CONNECTIONS` | None; existing variables still work |
-| `bootstrap`/`test_support` module paths | Unchanged for what mxd uses | None |
-| `async-api`, `diesel-support` features | Same names | `async-api` kept, `diesel-support` not needed |
+| 0.5.x                                   | 0.6.x                                      | mxd impact                                    |
+| --------------------------------------- | ------------------------------------------ | --------------------------------------------- |
+| One shared data directory per run       | One data directory per cluster             | Removed the serialization                     |
+| Password generated per process          | Password stored with the cluster           | Fixed `PG_PASSWORD` still set                 |
+| `PG_RUNTIME_DIR`, `PG_DATA_DIR`         | Plus `PG_EMBED_ROOT`, `PG_MAX_CONNECTIONS` | None; existing variables still work           |
+| `bootstrap`/`test_support` module paths | Unchanged for what mxd uses                | None                                          |
+| `async-api`, `diesel-support` features  | Same names                                 | `async-api` kept, `diesel-support` not needed |
 
 ## Suggested migration validation
 
@@ -127,12 +128,14 @@ release can select `postgresql_archive` 0.22.0 or newer.
 
    - Run `make warm-postgres` with `PG_BINARY_CACHE_DIR` set, and confirm the
      cache is populated for `18.6.0`.
-   - Run `cargo nextest run --features "postgres test-support" -E 'test(cluster_accepts_the_utc_time_zone)'`
+   - Run
+     `cargo nextest run --features "postgres test-support" -E 'test(cluster_accepts_the_utc_time_zone)'`
      and confirm both `UTC` and `Etc/UTC` resolve.
 
 2. Isolation
 
-   - Run `cargo nextest run --features "postgres test-support" -E 'test(concurrent_test_databases_are_isolated)'`.
+   - Run
+     `cargo nextest run --features "postgres test-support" -E 'test(concurrent_test_databases_are_isolated)'`.
 
 3. Parallel leg
 

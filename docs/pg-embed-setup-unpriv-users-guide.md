@@ -192,10 +192,10 @@ pg-embed-setup-unpriv = { version = "0.6.3", features = ["async-api"] }
 ```
 
 mxd holds the crate in `test-util` rather than in the root crate, behind
-`test-util`'s `postgres` feature, so a SQLite-only build never compiles it.
-Add `diesel-support` only if code depends on the crate's diesel helpers; mxd
-does not, because the harness returns connection URLs as strings and mxd opens
-its own connections.
+`test-util`'s `postgres` feature, so a SQLite-only build never compiles it. Add
+`diesel-support` only if code depends on the crate's diesel helpers; mxd does
+not, because the harness returns connection URLs as strings and mxd opens its
+own connections.
 
 Then use `start_async()` and `stop_async()` in async tests:
 
