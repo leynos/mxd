@@ -135,8 +135,7 @@ Success is observable when:
   semaphore arrays, 62 GB free on `/dev/shm`, and no orphaned servers or data
   directories after any run.
 
-- Observation: `0.6.3` has a race when many clusters bootstrap at once in one
-  root, and it is upstream, not mxd's. `claim_slot` in
+- Observation: `0.6.3` has a race when many clusters bootstrap at once in one  root, and it is upstream, not mxd's. `claim_slot` in
   `src/bootstrap/prepare/cluster_slot.rs` sweeps dead slots before taking the
   `ClaimGuard` that orders claims, and `lock_new_slot` creates a slot's lock
   file and only then `flock`s it. A concurrent process can list the
@@ -151,6 +150,20 @@ Success is observable when:
   retry does not catch it. Impact: `test-util` retries a lost slot race eight
   times with a short growing backoff, in both the sync and async start paths. A
   retry claims a new slot name, so it does not repeat the same race.
+
+- Observation: the `rstest-bdd-ui` leg timed out twice at its existing 300 s
+  budget, then passed once its trybuild fixtures were warm. This is host
+  compile-admission starvation, not a defect in the diff. The leg and its
+  `package(rstest-bdd-ui-tests)` timeout override are untouched by this branch,
+  and trybuild compiles its fixture crates inside the test process, so it
+  inherits `RUSTC_WRAPPER=build-limits-rustc` and queues behind every other
+  agent's builds. At the time 239 requests were queued behind 4 slots held by
+  other repositories, and the fixture build advanced only 22 crates per 300 s
+  attempt. Evidence: under plain `cargo test`, which has no nextest
+  slow-timeout, the same test passed in 989.01 s with both fixtures correct;
+  the next `make test-rstest-bdd-ui` then passed in 157.067 s. Impact: none in
+  code. Record the mechanism so the same timeout is not misread as a
+  regression, and do not raise the 300 s budget for it.
 
 ## Decision Log
 
@@ -199,13 +212,22 @@ Success is observable when:
   parallelism, 0 timeouts, 34.873 s of test time against 288.3 s serial, an
   8.3x reduction. Slowest test 8.820 s (`wireframe_memory_budgets::…`); no
   PostgreSQL test is in the slowest five, and the 15.774 s cold-start outlier
-  from the serial baseline is gone because per-cluster starts overlap.
-- [ ] Confirm the intermittent `start()` failure does not recur across repeated
-  parallel runs.
+  from the serial baseline is gone because per-cluster starts overlap. The
+  standalone `make test-postgres` gate reproduced it in 34.313 s.
+- [x] (2026-10-24) Confirmed the intermittent `start()` failure did not recur
+  across seven consecutive green parallel runs. Cause still not established;
+  the cause-chain diagnostics are in place for the next occurrence.
 - [x] (2026-10-24) Rewrote the developers' guide, users' guide and the
   harness users' guide, and added
   `pg-embed-setup-unpriv-v0-6-0-migration-guide.md`.
-- [ ] Run the gates, open the pull request, and clear review.
+- [x] (2026-10-24) All local gates green at `4176f80`: `make check-fmt`,
+  `make lint` (three Clippy passes, 0 errors), `make typecheck` (three passes),
+  `make test` (postgres 499/499 in 37.271 s, sqlite 502/502, wireframe-only
+  500/500, rstest-bdd UI passed in 157.067 s, verification 69/69, fuzz-harness
+  8/8, concurrency 7/7 plus doctests, doc), `make test-postgres` (499/499 in
+  34.313 s, 0 timeouts), `make markdownlint` (0 issues), `make nixie`,
+  `make spelling`, `make test-workflow-contracts` (260 passed).
+- [ ] Open the pull request, clear review, and merge.
 
 ## Outcomes & Retrospective
 
