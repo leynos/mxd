@@ -316,6 +316,17 @@ jobs:
       # cluster directory left by one test process authenticates in the next.
       # Not a secret: the cluster listens on localhost inside this job.
       PG_PASSWORD: mxd-embedded-test
+      # Pin the PostgreSQL bundle, not just the harness. The October theseus
+      # rebuilds express the time-zone aliases as tar hard links, and the
+      # postgresql_archive behind pg-embed-setup-unpriv 0.6.3 skips hard links,
+      # so share/timezone/UTC is missing and every diesel connection fails with
+      # `invalid value for parameter "TimeZone": "UTC"`. Nothing newer than
+      # 0.6.3 can select the fixed extractor yet. The August 18.6.0 asset was
+      # built with --with-system-tzdata and is still the original upload. The
+      # pin must be exact: the variable is a semver requirement and the highest
+      # match wins, so a range would select 18.6.1 again. Remove it once a
+      # pg-embed-setup-unpriv release can select postgresql_archive 0.22.0.
+      PG_VERSION_REQ: "=18.6.0"
       HX_BIN_DIR: ${{ github.workspace }}/.bin
       HX_WORK_ROOT: ${{ github.workspace }}/.cache/hx
       HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client
@@ -366,7 +377,7 @@ jobs:
       - name: Install pg-embed-setup-unpriv
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall --no-confirm pg-embed-setup-unpriv@0.5.2
+        run: cargo binstall --no-confirm pg-embed-setup-unpriv@0.6.3
       # pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest
       # of a test process, so a download failing mid-suite would fail every
       # later test in that process. Downloading first leaves no download inside
