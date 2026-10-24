@@ -1,11 +1,12 @@
 //! Embedded `PostgreSQL` cluster lifecycle helpers for integration tests.
 
-use std::error::Error as StdError;
+use std::{error::Error as StdError, time::Duration};
 
 use eyre::eyre;
 use pg_embedded_setup_unpriv::{
     BootstrapResult as PgBootstrapResult,
     ClusterGuard,
+    ClusterHandle,
     TestCluster,
     test_support::shared_cluster_handle,
 };
@@ -17,6 +18,73 @@ use super::common::{
     generate_db_name,
     migration_template_name,
 };
+
+/// How many times a cluster start is attempted when it loses a slot race.
+///
+/// `pg-embed-setup-unpriv` 0.6.3 sweeps dead cluster slots before taking the
+/// guard that orders slot claims, and it creates a slot's lock file before
+/// locking it. Two processes bootstrapping at once can therefore have the
+/// second process's just-created lock locked by the first process's sweep,
+/// which then removes the slot as dead. The loser sees
+/// `slot lock ... is already held` and gives up, even though a fresh attempt
+/// would claim a new, differently named slot.
+const SLOT_CONTENTION_ATTEMPTS: u32 = 8;
+
+/// The pause before retrying a lost slot race, doubling each attempt.
+const SLOT_CONTENTION_BACKOFF: Duration = Duration::from_millis(25);
+
+/// Renders an error together with every cause beneath it.
+///
+/// `pg_embed_setup_unpriv::BootstrapError` displays only its outermost
+/// context, and that crate wraps the underlying `postgresql_embedded` failure
+/// as a source rather than folding it into the message. Formatting with
+/// `Display` alone therefore reports `postgresql_embedded::start() failed` and
+/// discards the `pg_ctl` diagnostics that say why the server would not start.
+fn describe_error_chain(error: &dyn StdError) -> String {
+    let mut message = error.to_string();
+    let mut cause = error.source();
+    while let Some(source) = cause {
+        message.push_str(": ");
+        message.push_str(&source.to_string());
+        cause = source.source();
+    }
+    message
+}
+
+/// Whether a failure is the lost slot race described on
+/// [`SLOT_CONTENTION_ATTEMPTS`].
+///
+/// Matched on the message because the crate reports this failure as a plain
+/// bootstrap error of kind `Other`: it has no variant of its own, so there is
+/// nothing typed to inspect.
+fn is_slot_contention(error: &impl StdError) -> bool {
+    let message = describe_error_chain(error);
+    message.contains("slot lock") && message.contains("is already held")
+}
+
+/// Starts a cluster of this database's own, retrying a lost slot race.
+///
+/// Each attempt is a whole bootstrap, because losing the race leaves nothing
+/// usable behind: the sweeper has removed the slot the attempt had claimed.
+fn start_cluster_retrying_slot_contention() -> Result<(ClusterHandle, ClusterGuard), EmbeddedPgError>
+{
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match TestCluster::new_split() {
+            Ok(split) => return Ok(split),
+            Err(error) if attempt < SLOT_CONTENTION_ATTEMPTS && is_slot_contention(&error) => {
+                std::thread::sleep(SLOT_CONTENTION_BACKOFF * attempt);
+            }
+            Err(error) => {
+                return Err(EmbeddedPgError::BootstrapFailed(format!(
+                    "bootstrapping embedded PostgreSQL: {}",
+                    describe_error_chain(&error)
+                )));
+            }
+        }
+    }
+}
 
 pub(crate) struct EmbeddedPg {
     pub(crate) url: DatabaseUrl,
@@ -124,9 +192,7 @@ fn start_fresh_cluster<F>(setup: F) -> Result<EmbeddedPg, EmbeddedPgError>
 where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
 {
-    let (handle, guard) = TestCluster::new_split().map_err(|e| {
-        EmbeddedPgError::BootstrapFailed(format!("bootstrapping embedded PostgreSQL: {e}"))
-    })?;
+    let (handle, guard) = start_cluster_retrying_slot_contention()?;
     let connection = handle.connection();
     let admin_url = parse_url(&connection.database_url("postgres"))?;
     let db_name =
@@ -142,6 +208,30 @@ where
         admin_url,
         _guard: Some(guard),
     })
+}
+
+/// Async twin of [`start_cluster_retrying_slot_contention`].
+///
+/// The caller is already on a runtime, so the backoff yields rather than
+/// blocking a worker thread.
+async fn start_cluster_async_retrying_slot_contention()
+-> Result<(ClusterHandle, ClusterGuard), EmbeddedPgError> {
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match TestCluster::start_async_split().await {
+            Ok(split) => return Ok(split),
+            Err(error) if attempt < SLOT_CONTENTION_ATTEMPTS && is_slot_contention(&error) => {
+                tokio::time::sleep(SLOT_CONTENTION_BACKOFF * attempt).await;
+            }
+            Err(error) => {
+                return Err(EmbeddedPgError::BootstrapFailed(format!(
+                    "bootstrapping embedded PostgreSQL: {}",
+                    describe_error_chain(&error)
+                )));
+            }
+        }
+    }
 }
 
 /// Parse a URL the cluster produced, as an initialization failure if invalid.
@@ -171,9 +261,7 @@ pub(crate) async fn start_embedded_postgres_async<F>(
 where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>> + Send + 'static,
 {
-    let (handle, guard) = TestCluster::start_async_split().await.map_err(|e| {
-        EmbeddedPgError::BootstrapFailed(format!("bootstrapping embedded PostgreSQL: {e}"))
-    })?;
+    let (handle, guard) = start_cluster_async_retrying_slot_contention().await?;
     let admin_url = DatabaseUrl::parse(&handle.connection().database_url("postgres"))
         .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
     let (url, db_name) = tokio::task::spawn_blocking(move || {

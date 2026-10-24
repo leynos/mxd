@@ -2,14 +2,13 @@
 //! embedded `PostgreSQL` harness.
 //!
 //! Both cases guard properties that the serial nextest profile used to provide
-//! by accident, or that a change of PostgreSQL bundle could quietly break:
+//! by accident, or that a change of `PostgreSQL` bundle could quietly break:
 //!
-//! - two test databases alive at once must be separate databases, because the
-//!   parallel profile runs many fixtures concurrently; and
-//! - the cluster must resolve `UTC`, because diesel's `PgConnection::establish`
-//!   sends `SET TIME ZONE 'UTC'` before it returns a connection, so a bundle
-//!   with incomplete time-zone data fails every database test at the first
-//!   connection rather than in an assertion.
+//! - two test databases alive at once must be separate databases, because the parallel profile runs
+//!   many fixtures concurrently; and
+//! - the cluster must resolve `UTC`, because diesel's `PgConnection::establish` sends `SET TIME
+//!   ZONE 'UTC'` before it returns a connection, so a bundle with incomplete time-zone data fails
+//!   every database test at the first connection rather than in an assertion.
 
 #[cfg(feature = "postgres")]
 use anyhow::{Context, Result};
@@ -94,7 +93,7 @@ fn concurrent_test_databases_are_isolated() -> Result<()> {
 
 /// The cluster must accept an explicit `UTC` time zone.
 ///
-/// This is the regression test for a PostgreSQL bundle whose time-zone aliases
+/// This is the regression test for a `PostgreSQL` bundle whose time-zone aliases
 /// were not extracted: the zone data is missing, so `SET TimeZone` fails, and
 /// diesel's connect handshake fails with it before any test assertion runs.
 #[cfg(feature = "postgres")]
@@ -103,15 +102,23 @@ fn cluster_accepts_the_utc_time_zone() -> Result<()> {
     let db = PostgresTestDb::new()?;
     let mut connection = PgConnection::establish(db.url.as_ref())?;
 
+    // `SHOW` names its column after the variable, so alias it rather than
+    // expecting the `AS value` the helper's other queries use.
     sql_query("SET TimeZone = 'UTC'").execute(&mut connection)?;
-    let zone = query_text(&mut connection, "SHOW TimeZone")?;
+    let zone = query_text(
+        &mut connection,
+        "SELECT current_setting('TimeZone') AS value",
+    )?;
     anyhow::ensure!(zone == "UTC", "the cluster resolved UTC as {zone}");
 
     // The localised alias must resolve too. It is a separate hard link in the
     // bundles that ship their own time-zone data, so a partially extracted
     // tree can accept UTC while failing Etc/UTC.
     sql_query("SET TimeZone = 'Etc/UTC'").execute(&mut connection)?;
-    let etc_zone = query_text(&mut connection, "SHOW TimeZone")?;
+    let etc_zone = query_text(
+        &mut connection,
+        "SELECT current_setting('TimeZone') AS value",
+    )?;
     anyhow::ensure!(
         etc_zone == "Etc/UTC" || etc_zone == "UTC",
         "the cluster resolved Etc/UTC as {etc_zone}"

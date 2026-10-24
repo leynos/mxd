@@ -5,9 +5,8 @@
 //!   table; non-deleted principals remain.
 //!
 //! Utilities and execution model:
-//! - Runs against an embedded `PostgreSQL` cluster. Each test database is
-//!   created in a cluster of its own, so these tests run concurrently with
-//!   the rest of the PostgreSQL leg.
+//! - Runs against an embedded `PostgreSQL` cluster. Each test database is created in a cluster of
+//!   its own, so these tests run concurrently with the rest of the `PostgreSQL` leg.
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
