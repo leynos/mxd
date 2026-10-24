@@ -176,7 +176,7 @@ Integration tests and developer machines can exercise the postgres backend by
 installing the helper from crates.io and running it before `make test`:
 
 ```sh
-cargo install --locked pg-embed-setup-unpriv
+cargo install --locked pg-embed-setup-unpriv@0.6.3
 pg_embedded_setup_unpriv
 ```
 
@@ -189,6 +189,14 @@ values, allowing the helper to be re-run once and then switching between
 `cargo run --bin mxd` and `cargo run --bin mxd-wireframe-server` without
 additional setup. Refer to `docs/pg-embed-setup-unpriv-users-guide.md` for
 cluster path customization and privilege troubleshooting details.
+
+`make test-postgres` pins the PostgreSQL bundle to `18.6.0` through
+`PG_VERSION_REQ`. Later theseus rebuilds ship their time-zone data as tar hard
+links, which the extractor behind this harness version skips, so the cluster
+cannot resolve `UTC` and every diesel connection fails with
+`invalid value for parameter "TimeZone": "UTC"`. Set `PG_VERSION_REQ` to try
+another bundle; the pin is removed once a harness release can use an extractor
+that handles hard links.
 
 ## Behaviour coverage
 

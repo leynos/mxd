@@ -75,6 +75,8 @@ Detailed guides for specific development concerns.
   — PostgreSQL test helper guide.
 - [`pg-embed-setup-unpriv-v0-5-0-migration-guide.md`](pg-embed-setup-unpriv-v0-5-0-migration-guide.md)
   — Migration guide for PostgreSQL helper v0.5.0.
+- [`pg-embed-setup-unpriv-v0-6-0-migration-guide.md`](pg-embed-setup-unpriv-v0-6-0-migration-guide.md)
+  — Migration guide for PostgreSQL helper v0.6.0.
 
 ### Configuration and utilities
 

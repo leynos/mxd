@@ -122,6 +122,35 @@ Success is observable when:
   because the bundle is resolved per run. Impact: the earlier baseline was not
   a valid before-measurement; the pinned baseline replaces it.
 
+- Observation: a second, distinct failure appeared once in the parallel leg:
+  one wireframe routing case failed at 8.3 s with
+  `postgresql_embedded::start() failed` and no `pg_ctl` detail. It has not
+  recurred in four consecutive full parallel runs (34.9 s, 39.8 s, 37.0 s,
+  37.3 s, all 499/499). Cause not established. The harness now renders the
+  whole error-cause chain, because `BootstrapError` displays only its outermost
+  context and the `pg_ctl` diagnostic was being discarded; the next occurrence
+  will name the real cause rather than only the operation. Resource exhaustion
+  is ruled out: 125 GB RAM with 80 GB available, `ulimit -n` 524288, 32000
+  semaphore arrays, 62 GB free on `/dev/shm`, and no orphaned servers or data
+  directories after any run.
+
+- Observation: `0.6.3` has a race when many clusters bootstrap at once in one
+  root, and it is upstream, not mxd's. `claim_slot` in
+  `src/bootstrap/prepare/cluster_slot.rs` sweeps dead slots before taking the
+  `ClaimGuard` that orders claims, and `lock_new_slot` creates a slot's lock
+  file and only then `flock`s it. A concurrent process can list the just-created
+  lock in that window, take it first in `take_dead_lock`, and sweep the slot as
+  dead; the owner's `try_lock` then returns `WouldBlock` and the start fails
+  with `slot lock <path> is already held`. Evidence: the first parallel run
+  failed once at 6.5 s with exactly that message; the lock file named in the
+  error did not exist afterwards while twelve sibling slot locks did, which is
+  what a sweep leaves behind. Upstream `main` still sweeps before taking the
+  guard, and no upstream issue reports it. The crate classifies this failure as
+  bootstrap kind `Other`, so its own three-attempt shared-cluster retry does not
+  catch it. Impact: `test-util` retries a lost slot race eight times with a
+  short growing backoff, in both the sync and async start paths. A retry claims
+  a new slot name, so it does not repeat the same race.
+
 ## Decision Log
 
 - Decision: target `0.6.3`, not `0.7.0`. Rationale: crates.io reports `0.6.3`
@@ -152,10 +181,28 @@ Success is observable when:
   passed, 0 timeouts, 288.3 s of test time, 300 s wall.
 - [x] (2026-10-24) Posted the confirmed cause to mxd #665 and cross-referenced
   upstream #358, including the exact-pin correction.
-- [ ] Get lead agreement on the pin.
-- [ ] Bump both manifests and port the helper.
-- [ ] Remove the serial profile and the file-serial markers; measure.
-- [ ] Update the documentation and the workflow contracts.
+- [x] (2026-10-24) Posted the design and the pin to mxd #667 for agreement
+  before changing code.
+- [x] (2026-10-24) Bumped both manifests. `bd03fb0`: root dev-dependency on the
+  harness removed (no imports), `test-util` set to `0.6.3` with `async-api`.
+  The harness ported with no source changes. The lock commit for the rustls
+  advisories is folded in, because it clears `cargo audit`.
+- [x] (2026-10-24) `eda3f3c`: pinned `PG_VERSION_REQ=18.6.0` in the Makefile and
+  both workflows. Without it 0.6.3 selects 18.6.1 and every connection fails.
+- [x] (2026-10-24) `e0881ad`: deleted the `pg-embed` test group and its `all()`
+  override, and all 22 `file_serial` attributes. The wireframe in-process
+  `serial_test::serial` stays.
+- [x] (2026-10-24) `7cd4d20`: added `tests/postgres_harness_isolation.rs` and
+  extended both workflow contracts. All 260 contracts pass.
+- [x] (2026-10-24) Measured the parallel leg: 499/499 passed at default
+  parallelism, 0 timeouts, 34.873 s of test time against 288.3 s serial, an 8.3x
+  reduction. Slowest test 8.820 s (`wireframe_memory_budgets::…`); no
+  PostgreSQL test is in the slowest five, and the 15.774 s cold-start outlier
+  from the serial baseline is gone because per-cluster starts overlap.
+- [ ] Confirm the intermittent `start()` failure does not recur across repeated
+  parallel runs.
+- [x] (2026-10-24) Rewrote the developers' guide, users' guide and the
+  harness users' guide, and added `pg-embed-setup-unpriv-v0-6-0-migration-guide.md`.
 - [ ] Run the gates, open the pull request, and clear review.
 
 ## Outcomes & Retrospective

@@ -103,42 +103,64 @@ installed under its resolved directory, and user-local tools under
 ## Embedded PostgreSQL in tests
 
 Every PostgreSQL test, locally and in CI, runs against an embedded cluster
-started by `pg-embed-setup-unpriv` 0.5.2. There is no external database option:
+started by `pg-embed-setup-unpriv` 0.6.3. There is no external database option:
 the `POSTGRES_TEST_URL` override and the CI `postgres:15` service container
 that fed it are gone, and a cluster that fails to start fails the test rather
 than skipping it. `make test-postgres` needs no database running.
 
-### The postgres leg runs serially
+### The postgres leg runs in parallel
 
-Each test process starts its own cluster, and every cluster in a run uses the
-same data directory, `/var/tmp/pg-embed-<uid>/data` unless `PG_DATA_DIR` says
-otherwise. pg-embed-setup-unpriv coordinates cluster start-up within one
-process but not across the processes nextest runs, and the guard that drops a
-cluster deletes that directory. Two tests starting clusters at once therefore
-collide. The `postgres` profile in `.config/nextest.toml` puts every test in a
-single-slot group, and `make test-postgres` and each CI step running the
-PostgreSQL tests select it through `NEXTEST_PROFILE=postgres`. The profile also
-allows a cold cluster start 300 seconds; one took 156 seconds on a quiet host.
-A local run of the whole leg spends about fourteen minutes in its tests. With
-the service container and parallel tests, CI's postgres test step took under
-three minutes.
+pg-embed-setup-unpriv 0.6 gives each cluster its own data directory on the
+install root, so two test processes starting clusters at once no longer
+collide. The `pg-embed` single-slot test group that 0.5.x needed is gone, the
+`all()` override that applied it is gone, and so are the 22
+`#[serial_test::file_serial(postgres_embedded_setup)]` attributes. The leg runs
+at the default parallelism; `tests/postgres_harness_isolation.rs` holds two
+fixtures alive at once and asserts their databases are separate.
 
-Serial is not enough on its own. pg-embed-setup-unpriv 0.5.2 generates a
-superuser password per process, and a test using the shared template cluster
-leaves state that the next process, holding a different password, cannot
-authenticate against: the first test after it failed with "failed to connect to
-admin database" on every local run until the password was fixed.
-`make test-postgres` and each CI job running the PostgreSQL tests therefore set
-`PG_PASSWORD` to a fixed throwaway value. It is not a secret; the clusters
+The `postgres` profile in `.config/nextest.toml` remains, because a cold
+cluster start is slower than the default 60 second slow timeout: one took 156
+seconds on a quiet host. It allows 300 seconds per test and 60 minutes for the
+run, and `make test-postgres` and each CI step running the PostgreSQL tests
+select it through `NEXTEST_PROFILE=postgres`.
+
+A fixed superuser password is still required, though for a different reason
+than in 0.5.x. 0.6 stores the password with the cluster and reuses it, so a
+process can only join a cluster another process created if both agree on the
+password; it does not generate one per process and then refuse its own cluster.
+`make test-postgres` and each CI job running the PostgreSQL tests set
+`PG_PASSWORD` to a fixed throwaway value. It is not a secret: the clusters
 listen on localhost and live only as long as the run.
 
-The serial group is an interim measure for pg-embed-setup-unpriv 0.5.2. Revisit
-it when mxd moves to the 0.6.0 release, and drop it if that release keeps
-concurrent clusters apart.
+### The bundle is pinned exactly
 
-Because the default directory is per user rather than per checkout, a second
-checkout running PostgreSQL tests at the same time collides with the first.
-Give each concurrent run its own directories:
+The harness version alone does not choose a working PostgreSQL bundle. The
+October theseus rebuilds (18.6.1 and later) are built `--with-icu` without
+`--with-system-tzdata`, so they ship their own `share/timezone` and express the
+time-zone aliases as tar hard links. The `postgresql_archive` behind 0.6.3
+extracts directories, files and symlinks but skips hard links, so
+`share/timezone/UTC` never lands. PostgreSQL then rejects
+`SET TIME ZONE 'UTC'`, which diesel's `PgConnection::establish` sends during
+connect, and every database test fails at its first connection with
+`invalid value for parameter "TimeZone": "UTC"`.
+
+`PG_VERSION_REQ` therefore pins `=18.6.0`, the August asset built
+`--with-system-tzdata` and still the original upload. The pin must be exact:
+the variable is parsed verbatim as a semver requirement and release selection
+takes the highest match, so a caret requirement would select 18.6.1 again. The
+Makefile defaults it and passes it to both `test-postgres` and `warm-postgres`,
+so the cache the warm-up fills is the one the tests read, and each CI job sets
+it next to `PG_PASSWORD`.
+
+`cluster_accepts_the_utc_time_zone` in `tests/postgres_harness_isolation.rs` is
+the regression test. Remove the pin once a `pg-embed-setup-unpriv` release can
+select `postgresql_archive` 0.22.0 or newer, which extracts hard links.
+
+### Two checkouts at once
+
+A second checkout running PostgreSQL tests at the same time still collides with
+the first, because the default install root is per user rather than per
+checkout. Give each concurrent run its own directories:
 
 ```sh
 PG_RUNTIME_DIR=/var/tmp/mxd-pg-b/install PG_DATA_DIR=/var/tmp/mxd-pg-b/data \
@@ -150,12 +172,17 @@ PG_RUNTIME_DIR=/var/tmp/mxd-pg-b/install PG_DATA_DIR=/var/tmp/mxd-pg-b/data \
 pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest of a test
 process, so a download failing inside the suite would fail every later test in
 that process. CI installs the `pg_embedded_setup_unpriv` binary at the crate's
-version and runs `make warm-postgres` first. That target runs setup with
-throwaway install and data directories under `.pg-embedded/warm`, which fills
-the binary cache named by `PG_BINARY_CACHE_DIR`. It then fails if the cache is
-still empty, because the tool skips caching silently when it cannot take the
-cache lock. Each job sets `PG_BINARY_CACHE_DIR` once, so the warm-up and the
-tests read one cache.
+version (`cargo binstall pg-embed-setup-unpriv@0.6.3`) and runs
+`make warm-postgres` first. That target runs setup with throwaway install and
+data directories under `.pg-embedded/warm`, pinned to the same bundle as the
+tests, which fills the binary cache named by `PG_BINARY_CACHE_DIR`. It then
+fails if the cache is still empty, because the tool skips caching silently when
+it cannot take the cache lock. Each job sets `PG_BINARY_CACHE_DIR` once, so the
+warm-up and the tests read one cache.
+
+There is no binary-cache restore across CI runs, by design. Every job warms the
+cache from scratch, which keeps the warm-up's cost visible and its failure
+attributable to that run rather than to a stale cache entry.
 
 The warm-up step sets `GITHUB_TOKEN: ${{ github.token }}`. postgresql_embedded
 lists the PostgreSQL releases through the GitHub API, which rate limits
@@ -169,30 +196,33 @@ it with a literal, fails the named case.
 `tests/workflow_contracts/test_embedded_postgres.py` asserts that no job
 declares a service container, that no workflow mentions `POSTGRES_TEST_URL`,
 and that no Rust source reads it. For each job that runs the PostgreSQL tests,
-it asserts that the job pins `PG_PASSWORD`, that the step sets the `postgres`
-profile, and that `make warm-postgres` runs once earlier in the same job. It
-also asserts that the profile's group has one slot and applies to every test.
-Seven mutations each fail exactly the case named for them: a service container,
-the URL in a step's `env`, the URL read in `test-util`, the profile dropped,
-the warm-up removed, the password dropped, and the group widened to two slots.
-The jobs it covers are the two coverage jobs, `coverage` in `ci.yml` and
-`coverage-upload` in `coverage-main.yml`; the `build-test` postgres leg no
-longer runs the PostgreSQL tests.
+it asserts that the job pins `PG_PASSWORD` and `PG_VERSION_REQ`, that the step
+sets the `postgres` profile, and that `make warm-postgres` runs once earlier in
+the same job. It asserts that the profile declares no `pg-embed` group and no
+`all()` override, and keeps its 300 second and 60 minute budgets. It also
+asserts that both workflows install the helper version `Cargo.lock` holds, so
+the warm-up cannot fill a cache the tests will not read. The jobs it covers are
+the two coverage jobs, `coverage` in `ci.yml` and `coverage-upload` in
+`coverage-main.yml`; the `build-test` postgres leg no longer runs the
+PostgreSQL tests.
 
 `tests/workflow_contracts/test_postgres_make_targets.py` holds the local twins
 of those steps. It reads the `test-postgres` recipe from `make --dry-run` and
-asserts the `postgres` profile and the default and overridden `PG_PASSWORD`. It
-runs `make warm-postgres` against a stand-in `pg_embedded_setup_unpriv` under a
-fake home and asserts the throwaway directories, success when the cache fills,
-and failure when it stays empty or `PG_BINARY_CACHE_DIR` is unset. Five
-Makefile mutations each fail the cases named for them: the profile dropped, the
-default password changed, the emptiness guard deleted, the data directory
-moved, and the password made a literal.
+asserts the `postgres` profile, the default and overridden `PG_PASSWORD`, and
+the exact bundle pin and its override. It asserts that `warm-postgres` passes
+the same pin. It runs `make warm-postgres` against a stand-in
+`pg_embedded_setup_unpriv` under a fake home and asserts the throwaway
+directories, success when the cache fills, and failure when it stays empty or
+`PG_BINARY_CACHE_DIR` is unset.
 
-## PostgreSQL migration strategy (v0.5.0)
+## PostgreSQL migration strategy (v0.6.0)
 
-The migration target for this branch adopts v0.5.0 lifecycle APIs to improve
-test reliability and throughput without changing test semantics.
+The migration to pg-embed-setup-unpriv 0.6.3 changed no harness source: the
+handle/guard split, `test_support::shared_cluster_handle()`, the template
+helpers and the `async-api` signatures mxd uses are compatible. What the
+release changes is the isolation model, and that is what this branch acts on.
+The full narrative and the verification steps are in
+[`pg-embed-setup-unpriv-v0-6-0-migration-guide.md`](pg-embed-setup-unpriv-v0-6-0-migration-guide.md).
 
 - Run every PostgreSQL test against an embedded cluster. The
   `POSTGRES_TEST_URL` route to an external server, the CI service container
