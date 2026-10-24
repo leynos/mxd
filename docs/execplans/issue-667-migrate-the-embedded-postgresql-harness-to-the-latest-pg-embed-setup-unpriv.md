@@ -148,8 +148,11 @@ Success is observable when:
   that no published harness release can reach the fix.
 - [x] (2026-10-24) Confirmed the August `18.6.0` bundle is intact, unreplaced
   and accepts `SET TIME ZONE 'UTC'`.
-- [x] (2026-10-24) Recorded the serial `0.5.2` baseline under the pin.
-- [ ] Post the confirmed cause to mxd #665 and get lead agreement on the pin.
+- [x] (2026-10-24) Recorded the serial `0.5.2` baseline under the pin: 497/497
+  passed, 0 timeouts, 288.3 s of test time, 300 s wall.
+- [x] (2026-10-24) Posted the confirmed cause to mxd #665 and cross-referenced
+  upstream #358, including the exact-pin correction.
+- [ ] Get lead agreement on the pin.
 - [ ] Bump both manifests and port the helper.
 - [ ] Remove the serial profile and the file-serial markers; measure.
 - [ ] Update the documentation and the workflow contracts.
@@ -295,9 +298,26 @@ the migration if the pin turns out to be wrong.
 
 Baseline, serial `0.5.2` under `PG_VERSION_REQ='=18.6.0'`, 2026-10-24:
 
-- Wall time, slowest five and timeout count: recorded in Progress when the run
-  completes. The first attempt, unpinned, was not a valid baseline: it failed
-  at test 31 of 497 with `failed to connect to admin database: db error`.
+- 497 tests run, 497 passed, 0 skipped, 0 failed, 0 timeouts.
+- Summary wall time in nextest: 288.3 s. Process wall time: 300 s.
+- Slowest five:
+
+  | Seconds | Test                                                              |
+  | ------- | ----------------------------------------------------------------- |
+  | 15.774  | `db::schema_alignment_tests::postgres_tests::postgres_category_names_are_bundle_scoped` |
+  | 7.101   | `wireframe_memory_budgets::stalled_fragmented_request_is_disconnected_when_continuation_resumes` |
+  | 6.799   | `session_privileges_bdd::session_privileges_authenticated_b`       |
+  | 5.916   | `wireframe_compat_guardrails_bdd::wireframe_compat`                |
+  | 5.054   | `session_privileges_bdd::session_privileges_authenticated_b` (case) |
+
+  Only the first is a PostgreSQL test. It is a cold cluster start; the warm
+  starts in the same run take about 2 s.
+
+The first attempt, unpinned, was not a valid baseline: it failed at test 31 of
+497 with `failed to connect to admin database: db error`, which is the same
+bundle defect surfacing through diesel. Pinning `PG_VERSION_REQ='=18.6.0'`
+removed it, which is also the evidence that the pin, not the harness version,
+clears the lane.
 
 CI reference figures from the last green run on 13 October (run 38354647170):
 
