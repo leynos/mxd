@@ -62,6 +62,23 @@ fn is_slot_contention(error: &impl StdError) -> bool {
     message.contains("slot lock") && message.contains("is already held")
 }
 
+/// Decides what a failed cluster start means.
+///
+/// `Ok` carries how long to wait before the next attempt, so a lost slot race
+/// costs another bootstrap. `Err` carries the failure to report, either
+/// because the attempt budget is spent or because the failure is something
+/// other than the lost slot race.
+fn slot_contention_retry(attempt: u32, error: &impl StdError) -> Result<Duration, EmbeddedPgError> {
+    if attempt < SLOT_CONTENTION_ATTEMPTS && is_slot_contention(error) {
+        Ok(SLOT_CONTENTION_BACKOFF * attempt)
+    } else {
+        Err(EmbeddedPgError::BootstrapFailed(format!(
+            "bootstrapping embedded PostgreSQL: {}",
+            describe_error_chain(error)
+        )))
+    }
+}
+
 /// Starts a cluster of this database's own, retrying a lost slot race.
 ///
 /// Each attempt is a whole bootstrap, because losing the race leaves nothing
@@ -73,14 +90,9 @@ fn start_cluster_retrying_slot_contention() -> Result<(ClusterHandle, ClusterGua
         attempt += 1;
         match TestCluster::new_split() {
             Ok(split) => return Ok(split),
-            Err(error) if attempt < SLOT_CONTENTION_ATTEMPTS && is_slot_contention(&error) => {
-                std::thread::sleep(SLOT_CONTENTION_BACKOFF * attempt);
-            }
             Err(error) => {
-                return Err(EmbeddedPgError::BootstrapFailed(format!(
-                    "bootstrapping embedded PostgreSQL: {}",
-                    describe_error_chain(&error)
-                )));
+                let backoff = slot_contention_retry(attempt, &error)?;
+                std::thread::sleep(backoff);
             }
         }
     }
@@ -221,14 +233,9 @@ async fn start_cluster_async_retrying_slot_contention()
         attempt += 1;
         match TestCluster::start_async_split().await {
             Ok(split) => return Ok(split),
-            Err(error) if attempt < SLOT_CONTENTION_ATTEMPTS && is_slot_contention(&error) => {
-                tokio::time::sleep(SLOT_CONTENTION_BACKOFF * attempt).await;
-            }
             Err(error) => {
-                return Err(EmbeddedPgError::BootstrapFailed(format!(
-                    "bootstrapping embedded PostgreSQL: {}",
-                    describe_error_chain(&error)
-                )));
+                let backoff = slot_contention_retry(attempt, &error)?;
+                tokio::time::sleep(backoff).await;
             }
         }
     }
