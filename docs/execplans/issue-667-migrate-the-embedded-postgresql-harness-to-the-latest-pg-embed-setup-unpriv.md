@@ -135,7 +135,8 @@ Success is observable when:
   semaphore arrays, 62 GB free on `/dev/shm`, and no orphaned servers or data
   directories after any run.
 
-- Observation: `0.6.3` has a race when many clusters bootstrap at once in one  root, and it is upstream, not mxd's. `claim_slot` in
+- Observation: `0.6.3` has a race when many clusters bootstrap at once in one
+  root, and it is upstream, not mxd's. `claim_slot` in
   `src/bootstrap/prepare/cluster_slot.rs` sweeps dead slots before taking the
   `ClaimGuard` that orders claims, and `lock_new_slot` creates a slot's lock
   file and only then `flock`s it. A concurrent process can list the
