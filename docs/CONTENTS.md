@@ -81,7 +81,17 @@ Detailed guides for specific development concerns.
 ### Configuration and utilities
 
 - [`ortho-config-users-guide.md`](ortho-config-users-guide.md) — Configuration
-  system using ortho-config.
+  guide for OrthoConfig v0.10.0.
+- [`ortho-config-v0-10-0-migration-guide.md`](ortho-config-v0-10-0-migration-guide.md)
+  — OrthoConfig v0.10.0 migration guide.
+- [`ortho-config-v0-9-0-migration-guide.md`](ortho-config-v0-9-0-migration-guide.md)
+  — Historical OrthoConfig v0.9.0 migration guide.
+- [`ortho-config-v0-7-0-migration-guide.md`](ortho-config-v0-7-0-migration-guide.md)
+  — Historical OrthoConfig v0.7.0 migration guide.
+- [`ortho-config-v0-6-0-migration-guide.md`](ortho-config-v0-6-0-migration-guide.md)
+  — Historical OrthoConfig v0.6.0 migration guide.
+- [`ortho-config-v0-10-0-provenance.md`](ortho-config-v0-10-0-provenance.md)
+  — Upstream source, checksums, and link mappings for the imported guides.
 - [`whitaker-users-guide.md`](whitaker-users-guide.md) — Whitaker component
   guide.
 - [`wireframe-users-guide.md`](wireframe-users-guide.md) — Wireframe library
@@ -97,6 +107,8 @@ Documents for project planning and tracking progress.
   measurable tasks.
 - [`migration-plan-moving-mxd-protocol-implementation-to-wireframe.md`](migration-plan-moving-mxd-protocol-implementation-to-wireframe.md)
   — Detailed plan for migrating protocol handling to Wireframe.
+- [`execplans/issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.md`](execplans/issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.md)
+  — Evidence and validation plan for the OrthoConfig v0.10.0 migration.
 - [`execplans/`](execplans/) — Execution plans for individual roadmap tasks.
 
 ## Architectural decisions

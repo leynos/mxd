@@ -90,7 +90,17 @@ Documentation is organized by purpose and audience.
 
 ### User guides
 
-- `ortho-config-users-guide.md` — Configuration system guide.
+- `ortho-config-users-guide.md` — OrthoConfig v0.10.0 configuration guide.
+- `ortho-config-v0-10-0-migration-guide.md` — OrthoConfig v0.10.0 migration
+  guide.
+- `ortho-config-v0-9-0-migration-guide.md` — Historical OrthoConfig v0.9.0
+  migration guide.
+- `ortho-config-v0-7-0-migration-guide.md` — Historical OrthoConfig v0.7.0
+  migration guide.
+- `ortho-config-v0-6-0-migration-guide.md` — Historical OrthoConfig v0.6.0
+  migration guide.
+- `ortho-config-v0-10-0-provenance.md` — Upstream source, checksums, and link
+  mappings for the imported OrthoConfig documentation.
 - `pg-embed-setup-unpriv-users-guide.md` — PostgreSQL test helper guide.
 - `pg-embed-setup-unpriv-v0-5-0-migration-guide.md` — Migration guide for
   PostgreSQL helper v0.5.0.
@@ -124,6 +134,8 @@ Documentation is organized by purpose and audience.
 
 Detailed execution plans for roadmap tasks:
 
+- `issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.md` — Migration
+  evidence and validation plan.
 - `wireframe-v0-3-0-migration.md`
 - `1-2-4-model-handshake-readiness.md`
 - `1-3-4-kani-harnesses-for-transaction-framing-invariants.md`
