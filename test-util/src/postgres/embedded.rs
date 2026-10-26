@@ -1,8 +1,9 @@
 //! Embedded `PostgreSQL` cluster lifecycle helpers for integration tests.
 
-use std::{error::Error as StdError, time::Duration};
+use std::{error::Error as StdError, future::Future, time::Duration};
 
 use eyre::eyre;
+use futures_util::FutureExt;
 use pg_embedded_setup_unpriv::{
     BootstrapResult as PgBootstrapResult,
     ClusterGuard,
@@ -30,7 +31,7 @@ use super::common::{
 /// would claim a new, differently named slot.
 const SLOT_CONTENTION_ATTEMPTS: u32 = 8;
 
-/// The pause before retrying a lost slot race, doubling each attempt.
+/// The increment in the pause before retrying a lost slot race.
 const SLOT_CONTENTION_BACKOFF: Duration = Duration::from_millis(25);
 
 /// Renders an error together with every cause beneath it.
@@ -79,20 +80,42 @@ fn slot_contention_retry(attempt: u32, error: &impl StdError) -> Result<Duration
     }
 }
 
-/// Starts a cluster of this database's own, retrying a lost slot race.
-///
-/// Each attempt is a whole bootstrap, because losing the race leaves nothing
-/// usable behind: the sweeper has removed the slot the attempt had claimed.
-fn start_cluster_retrying_slot_contention() -> Result<(ClusterHandle, ClusterGuard), EmbeddedPgError>
+/// Retry a whole bootstrap after a lost slot race, using the caller's wait.
+async fn retry_slot_contention<T, E, Start, StartFuture, Wait, WaitFuture>(
+    mut start: Start,
+    mut wait: Wait,
+) -> Result<T, EmbeddedPgError>
+where
+    E: StdError,
+    Start: FnMut() -> StartFuture,
+    StartFuture: Future<Output = Result<T, E>>,
+    Wait: FnMut(Duration) -> WaitFuture,
+    WaitFuture: Future<Output = ()>,
 {
     let mut attempt = 0;
     loop {
         attempt += 1;
-        match TestCluster::new_split() {
-            Ok(split) => return Ok(split),
-            Err(error) => std::thread::sleep(slot_contention_retry(attempt, &error)?),
+        match start().await {
+            Ok(value) => return Ok(value),
+            Err(error) => wait(slot_contention_retry(attempt, &error)?).await,
         }
     }
+}
+
+/// Start a cluster synchronously without constructing a nested runtime.
+///
+/// Both callbacks complete synchronously, so the retry future cannot suspend.
+fn start_cluster_retrying_slot_contention() -> Result<(ClusterHandle, ClusterGuard), EmbeddedPgError>
+{
+    retry_slot_contention(
+        || std::future::ready(TestCluster::new_split()),
+        |delay| {
+            std::thread::sleep(delay);
+            std::future::ready(())
+        },
+    )
+    .now_or_never()
+    .ok_or_else(|| EmbeddedPgError::BootstrapFailed("synchronous retry suspended".to_owned()))?
 }
 
 pub(crate) struct EmbeddedPg {
@@ -219,20 +242,10 @@ where
     })
 }
 
-/// Async twin of [`start_cluster_retrying_slot_contention`].
-///
-/// The caller is already on a runtime, so the backoff yields rather than
-/// blocking a worker thread.
+/// Start a cluster on the caller's runtime, yielding during retry backoff.
 async fn start_cluster_async_retrying_slot_contention()
 -> Result<(ClusterHandle, ClusterGuard), EmbeddedPgError> {
-    let mut attempt = 0;
-    loop {
-        attempt += 1;
-        match TestCluster::start_async_split().await {
-            Ok(split) => return Ok(split),
-            Err(error) => tokio::time::sleep(slot_contention_retry(attempt, &error)?).await,
-        }
-    }
+    retry_slot_contention(TestCluster::start_async_split, tokio::time::sleep).await
 }
 
 /// Parse a URL the cluster produced, as an initialization failure if invalid.
@@ -284,4 +297,76 @@ where
         admin_url,
         _guard: Some(guard),
     })
+}
+
+#[cfg(test)]
+mod retry_tests {
+    //! Exercise retry decisions independently of cluster startup.
+
+    use std::{
+        cell::{Cell, RefCell},
+        future::ready,
+        io,
+        time::Duration,
+    };
+
+    use futures_util::FutureExt;
+    use rstest::rstest;
+
+    use super::{SLOT_CONTENTION_ATTEMPTS, retry_slot_contention};
+
+    #[rstest]
+    #[case(2, true, 3, vec![25, 50])]
+    #[case(SLOT_CONTENTION_ATTEMPTS, false, SLOT_CONTENTION_ATTEMPTS, vec![25, 50, 75, 100, 125, 150, 175])]
+    fn retries_slot_contention_with_bounded_backoff(
+        #[case] failures: u32,
+        #[case] succeeds: bool,
+        #[case] expected_attempts: u32,
+        #[case] expected_delays_ms: Vec<u64>,
+    ) {
+        let attempts = Cell::new(0);
+        let delays = RefCell::new(Vec::new());
+        let result = retry_slot_contention(
+            || {
+                attempts.set(attempts.get() + 1);
+                ready(if attempts.get() <= failures {
+                    Err(io::Error::other("slot lock /test is already held"))
+                } else {
+                    Ok(())
+                })
+            },
+            |delay: Duration| {
+                delays.borrow_mut().push(delay);
+                ready(())
+            },
+        )
+        .now_or_never()
+        .expect("ready callbacks never suspend");
+
+        assert_eq!(result.is_ok(), succeeds);
+        assert_eq!(attempts.get(), expected_attempts);
+        assert_eq!(
+            *delays.borrow(),
+            expected_delays_ms
+                .into_iter()
+                .map(Duration::from_millis)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn unrelated_failure_does_not_retry() {
+        let attempts = Cell::new(0);
+        let result = retry_slot_contention(
+            || {
+                attempts.set(attempts.get() + 1);
+                ready(Err::<(), _>(io::Error::other("server startup failed")))
+            },
+            |_| async { panic!("unexpected retry") },
+        )
+        .await;
+
+        assert_eq!(attempts.get(), 1);
+        assert!(result.is_err());
+    }
 }
