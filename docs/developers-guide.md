@@ -564,9 +564,9 @@ The shared helper surface is intentionally split between writers and readers:
 
 SQLite tests run against a fresh in-memory database per test or fixture.
 PostgreSQL tests run through `with_postgres_test_db`, which creates an isolated
-database in an embedded PostgreSQL cluster. PostgreSQL tests use
-`serial_test::file_serial(postgres_embedded_setup)` locks so the embedded
-cluster setup and teardown are not raced by concurrent tests.
+database in an embedded PostgreSQL cluster. The 0.6 harness gives each cluster
+its own data directory, so PostgreSQL tests can start clusters concurrently
+without file-based serialization.
 
 Run only the SQLite schema-alignment tests with:
 

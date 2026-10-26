@@ -16,7 +16,7 @@ tool and integrate it into automated test flows.
 - Outbound network access to crates.io and the PostgreSQL binary archive.
 - System timezone database (package usually named `tzdata`). This matters when
   the selected bundle does not carry its own `share/timezone`: a bundle built
-  without `--with-system-tzdata` relies on the host's, and one built with it
+  with `--with-system-tzdata` relies on the host's, and one built without it
   ships its own. A bundle whose own time-zone data was extracted incompletely
   makes `SET TIME ZONE` fail; see the v0.6.0 migration guide for the defect mxd
   pins around.

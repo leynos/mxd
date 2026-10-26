@@ -9,7 +9,6 @@ use pg_embedded_setup_unpriv::{
     ClusterGuard,
     ClusterHandle,
     TestCluster,
-    test_support::shared_cluster_handle,
 };
 
 use super::common::{
@@ -41,7 +40,7 @@ const SLOT_CONTENTION_BACKOFF: Duration = Duration::from_millis(25);
 /// as a source rather than folding it into the message. Formatting with
 /// `Display` alone therefore reports `postgresql_embedded::start() failed` and
 /// discards the `pg_ctl` diagnostics that say why the server would not start.
-fn describe_error_chain(error: &dyn StdError) -> String {
+pub(super) fn describe_error_chain(error: &dyn StdError) -> String {
     let mut message = error.to_string();
     let mut cause = error.source();
     while let Some(source) = cause {
@@ -58,7 +57,7 @@ fn describe_error_chain(error: &dyn StdError) -> String {
 /// Matched on the message because the crate reports this failure as a plain
 /// bootstrap error of kind `Other`: it has no variant of its own, so there is
 /// nothing typed to inspect.
-fn is_slot_contention(error: &impl StdError) -> bool {
+pub(super) fn is_slot_contention(error: &impl StdError) -> bool {
     let message = describe_error_chain(error);
     message.contains("slot lock") && message.contains("is already held")
 }
@@ -81,7 +80,7 @@ fn slot_contention_retry(attempt: u32, error: &impl StdError) -> Result<Duration
 }
 
 /// Retry a whole bootstrap after a lost slot race, using the caller's wait.
-async fn retry_slot_contention<T, E, Start, StartFuture, Wait, WaitFuture>(
+pub(super) async fn retry_slot_contention<T, E, Start, StartFuture, Wait, WaitFuture>(
     mut start: Start,
     mut wait: Wait,
 ) -> Result<T, EmbeddedPgError>
@@ -105,8 +104,8 @@ where
 /// Start a cluster synchronously without constructing a nested runtime.
 ///
 /// Both callbacks complete synchronously, so the retry future cannot suspend.
-fn start_cluster_retrying_slot_contention() -> Result<(ClusterHandle, ClusterGuard), EmbeddedPgError>
-{
+pub(super) fn start_cluster_retrying_slot_contention()
+-> Result<(ClusterHandle, ClusterGuard), EmbeddedPgError> {
     retry_slot_contention(
         || std::future::ready(TestCluster::new_split()),
         |delay| {
@@ -188,9 +187,7 @@ fn start_from_template<F>(setup: F) -> Result<EmbeddedPg, EmbeddedPgError>
 where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>>,
 {
-    let handle = shared_cluster_handle().map_err(|e| {
-        EmbeddedPgError::BootstrapFailed(format!("bootstrapping shared embedded PostgreSQL: {e}"))
-    })?;
+    let handle = super::shared::shared_cluster_handle()?;
     let connection = handle.connection();
     let admin_url = parse_url(&connection.database_url("postgres"))?;
     let db_name =

@@ -128,14 +128,27 @@ or newer.
 
    - Run `make warm-postgres` with `PG_BINARY_CACHE_DIR` set, and confirm the
      cache is populated for `18.6.0`.
-   - Run
-     `cargo nextest run --features "postgres test-support" -E 'test(cluster_accepts_the_utc_time_zone)'`
-     and confirm both `UTC` and `Etc/UTC` resolve.
+   - Run the PostgreSQL-only test with the same feature set and profile as
+     `make test-postgres`, and confirm both `UTC` and `Etc/UTC` resolve:
+
+     ```sh
+     PG_VERSION_REQ='=18.6.0' NEXTEST_PROFILE=postgres \
+       cargo nextest run --no-default-features \
+       --features "postgres test-support legacy-networking" \
+       -E 'test(cluster_accepts_the_utc_time_zone)'
+     ```
 
 2. Isolation
 
-   - Run
-     `cargo nextest run --features "postgres test-support" -E 'test(concurrent_test_databases_are_isolated)'`.
+   - Run the isolation test with the same bundle, feature set, and profile as
+     `make test-postgres`:
+
+     ```sh
+     PG_VERSION_REQ='=18.6.0' NEXTEST_PROFILE=postgres \
+       cargo nextest run --no-default-features \
+       --features "postgres test-support legacy-networking" \
+       -E 'test(concurrent_test_databases_are_isolated)'
+     ```
 
 3. Parallel leg
 
