@@ -90,10 +90,7 @@ fn start_cluster_retrying_slot_contention() -> Result<(ClusterHandle, ClusterGua
         attempt += 1;
         match TestCluster::new_split() {
             Ok(split) => return Ok(split),
-            Err(error) => {
-                let backoff = slot_contention_retry(attempt, &error)?;
-                std::thread::sleep(backoff);
-            }
+            Err(error) => std::thread::sleep(slot_contention_retry(attempt, &error)?),
         }
     }
 }
@@ -233,10 +230,7 @@ async fn start_cluster_async_retrying_slot_contention()
         attempt += 1;
         match TestCluster::start_async_split().await {
             Ok(split) => return Ok(split),
-            Err(error) => {
-                let backoff = slot_contention_retry(attempt, &error)?;
-                tokio::time::sleep(backoff).await;
-            }
+            Err(error) => tokio::time::sleep(slot_contention_retry(attempt, &error)?).await,
         }
     }
 }
