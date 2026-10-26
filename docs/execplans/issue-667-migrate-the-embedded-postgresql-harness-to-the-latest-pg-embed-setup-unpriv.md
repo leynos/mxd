@@ -152,6 +152,21 @@ Success is observable when:
   times with a short growing backoff, in both the sync and async start paths. A
   retry claims a new slot name, so it does not repeat the same race.
 
+- Observation: the upstream shared-cluster initializer caches its first
+  failure, and its retry classifier does not recognize the slot-contention
+  error. The template path therefore needs a fallback when the shared
+  initializer reports that specific error. `shared.rs` leaves the upstream
+  initializer in place for normal starts and uses a separate `OnceLock` for
+  fallback initialization. Fresh bootstrap attempts run inside that lock before
+  a fallback result is cached. The fallback retains the worker guard, registers
+  the shutdown hook, and only then forgets the combined guard, in keeping with
+  the upstream lifetime pattern. Unrelated primary failures stay terminal and
+  retain their full cause chain. Evidence: injected-contention tests cover
+  fallback success and reuse, cached terminal fallback failure, and unrelated
+  primary failure diagnostics; a real-cluster test exercises template creation
+  and database cloning. The tests do not reproduce the production race schedule
+  or verify cleanup at process exit.
+
 - Observation: the `rstest-bdd-ui` leg timed out twice at its existing 300 s
   budget, then passed once its trybuild fixtures were warm. This is host
   compile-admission starvation, not a defect in the diff. The leg and its
@@ -184,6 +199,12 @@ Success is observable when:
   interface, CI calls the Makefile targets, and a Rust-side override would
   change the harness helper's semantics for callers who never asked for one.
   Date/Author: 2026-10-24.
+
+- Decision: preserve the upstream shared-cluster initializer and cache a
+  separate fallback only for slot contention. Rationale: the upstream
+  initializer caches failures before mxd can retry them; the fallback retries
+  fresh starts before caching its own result while retaining shared lifetime
+  and shutdown handling. Date/Author: 2026-10-27.
 
 ## Progress
 
@@ -228,7 +249,24 @@ Success is observable when:
   8/8, concurrency 7/7 plus doctests, doc), `make test-postgres` (499/499 in
   34.313 s, 0 timeouts), `make markdownlint` (0 issues), `make nixie`,
   `make spelling`, `make test-workflow-contracts` (260 passed).
-- [ ] Open the pull request, clear review, and merge.
+- [x] (2026-10-27) Addressed the review follow-up at `77db522`: added the
+  separate shared-cluster fallback in `shared.rs`, deterministic tests for
+  contention, fallback success and reuse, terminal failure caching, and
+  unrelated primary errors, plus a real-cluster template clone test. Corrected
+  the three migration documentation findings. CodeRabbit's reassessment found
+  the earlier findings addressed and no remaining in-scope implementation
+  defect.
+- [x] (2026-10-27) Hosted CI run
+  [40418836060](https://github.com/leynos/mxd/actions/runs/40418836060) passed
+  at `77db522eb34aba215ff01b3fad369228216445c3`. Its PostgreSQL coverage job
+  passed 638 tests with one skipped in 75.052 s; logs show the fallback, retry,
+  isolation, time-zone, and cleanup tests passed. The PostgreSQL build leg
+  skips its test step, so the coverage job is the PostgreSQL execution
+  evidence. CodeScene passed at the same head. Local gates were not rerun for
+  this head.
+- [ ] Clear review, merge PR #668, and verify its post-merge
+  `coverage-main.yml` run before marking this plan complete. This acceptance
+  criterion remains pending while the PR is open.
 
 ## Outcomes & Retrospective
 
@@ -238,11 +276,13 @@ Not yet complete.
 
 mxd is a Rust workspace. Its PostgreSQL tests run against an embedded cluster
 and have no route to an external server. The harness lives in
-`test-util/src/postgres/`, in three files:
+`test-util/src/postgres/`, in four files:
 
 - `embedded.rs` starts a cluster and starts or clones a database.
 - `common.rs` holds the URL and name newtypes, the template hash, the schema
   reset, and the drop-on-teardown helper.
+- `shared.rs` preserves the upstream shared-cluster initializer and provides a
+  separately cached fallback for slot-contention failures.
 - `mod.rs` presents `PostgresTestDb` and the `rstest` fixtures.
 
 The root `Cargo.toml` carries a dev-dependency on the crate that nothing in the
