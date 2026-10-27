@@ -226,7 +226,7 @@ identification (`sub_version == 2`), while the login request's version field
 `>= 190`). Login replies always report server version 151, include banner
 fields 161/162 for Hotline 1.8.5 and 1.9 clients, and omit those fields for
 SynHX. Future quirks must consult this policy so adapter-layer gating remains
-centralized. Roadmap item 1.5.6 implements ADR-003 by wiring `AuthStrategy` and
+centralized. Roadmap item 1.5.6 implements ADR-0003 by wiring `AuthStrategy` and
 `LoginReplyAugmenter` into the guardrail routing entrypoint while keeping
 request-side login metadata handling separate from reply augmentation. This
 preserves default Hotline and SynHX behaviour while keeping room for future
@@ -913,8 +913,8 @@ scenarios in `tests/features/wireframe_compat_guardrails.feature` cover banner
 field inclusion for Hotline 1.9, banner omission for SynHX, XOR login, and file
 list after login.
 
-See [ADR-002](adr-002-compatibility-guardrails-and-augmentation.md) (Option C,
-accepted) for the architectural rationale.
+See [ADR-0002](adrs/adr-0002-compatibility-guardrails-and-augmentation.md)
+(Option C, accepted) for the architectural rationale.
 
 ### CLI, Environment, and File Configuration (OrthoConfig)
 

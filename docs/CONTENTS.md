@@ -101,11 +101,11 @@ Documents for project planning and tracking progress.
 
 Architectural Decision Records (ADRs) capture significant design decisions.
 
-- [`adr-001-login-auth-reply-compatibility-layers.md`](adr-001-login-auth-reply-compatibility-layers.md)
+- [`adrs/adr-0001-separate-login-authentication-and-reply-augmentation.md`](adrs/adr-0001-separate-login-authentication-and-reply-augmentation.md)
   — ADR 001: Separate login authentication and reply augmentation (superseded).
-- [`adr-002-compatibility-guardrails-and-augmentation.md`](adr-002-compatibility-guardrails-and-augmentation.md)
+- [`adrs/adr-0002-compatibility-guardrails-and-augmentation.md`](adrs/adr-0002-compatibility-guardrails-and-augmentation.md)
   — ADR 002: Compatibility guardrails and augmentation (superseded).
-- [`adr-003-login-authentication-and-reply-augmentation.md`](adr-003-login-authentication-and-reply-augmentation.md)
+- [`adrs/adr-0003-split-login-authentication-and-reply-augmentation.md`](adrs/adr-0003-split-login-authentication-and-reply-augmentation.md)
   — ADR 003: Split login authentication and reply augmentation (accepted).
 
 ## Reference

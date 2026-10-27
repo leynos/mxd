@@ -73,10 +73,10 @@ Documentation is organized by purpose and audience.
 - `documentation-style-guide.md` — Conventions for authoring documentation.
 - `adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md` —
   Hexagonal architecture adoption notes.
-- `adr-*.md` — Architectural Decision Records (ADRs):
-  - `adr-001-login-auth-reply-compatibility-layers.md`
-  - `adr-002-compatibility-guardrails-and-augmentation.md`
-  - `adr-003-login-authentication-and-reply-augmentation.md`
+- `adrs/adr-*.md` — Architectural Decision Records (ADRs):
+  - `adrs/adr-0001-separate-login-authentication-and-reply-augmentation.md`
+  - `adrs/adr-0002-compatibility-guardrails-and-augmentation.md`
+  - `adrs/adr-0003-split-login-authentication-and-reply-augmentation.md`
 
 ### Feature-specific documentation
 

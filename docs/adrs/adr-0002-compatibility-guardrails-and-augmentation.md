@@ -1,4 +1,4 @@
-# Architectural decision record (ADR) 002: Compatibility guardrails and augmentation
+# Architectural decision record (ADR) 0002: Compatibility guardrails and augmentation
 
 ## Status
 
