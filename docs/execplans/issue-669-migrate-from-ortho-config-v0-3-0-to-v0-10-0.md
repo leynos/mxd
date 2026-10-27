@@ -729,3 +729,11 @@ unless inventory reveals an existing install or invocation that must move.
   GitHub Actions run `40464471304` and Release Dry Run `40464471411` are
   active. The final CodeRabbit review was rate-limited, so its requested
   cooldown is running before retry.
+- (2026-10-27 09:38Z) CodeRabbit's final-head review found that the mode-`000`
+  unreadable-file test could fail under `CAP_DAC_OVERRIDE`. Added an access
+  probe that skips only when the process can actually read the file, while
+  retaining the `PermissionDenied` assertion otherwise. The first full rerun
+  passed every gate except Whitaker's 400-line module limit: the added test made
+  `cli_tests.rs` 403 lines. Moved the file-error cases into
+  `cli_tests/file_errors.rs`; the exact-candidate full gate sequence is being
+  rerun before commit and another review.
