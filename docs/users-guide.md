@@ -177,7 +177,7 @@ installing the helper from crates.io and running it before `make test`:
 
 ```sh
 cargo install --locked pg-embed-setup-unpriv@0.6.3
-pg_embedded_setup_unpriv
+PG_VERSION_REQ='=18.6.0' pg_embedded_setup_unpriv
 ```
 
 The helper stages a PostgreSQL distribution with unprivileged ownership, so the

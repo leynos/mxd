@@ -297,9 +297,19 @@ where
 }
 
 /// Start a cluster on the caller's runtime, yielding during retry backoff.
-async fn start_cluster_async_retrying_slot_contention()
--> Result<(ClusterHandle, ClusterGuard), EmbeddedPgError> {
-    retry_slot_contention(TestCluster::start_async_split, tokio::time::sleep).await
+/// For example, one failed start waits once before a successful second start.
+async fn start_cluster_async_retrying_slot_contention<T, E, Start, StartFuture, Wait, WaitFuture>(
+    start: Start,
+    wait: Wait,
+) -> Result<T, EmbeddedPgError>
+where
+    E: StdError,
+    Start: FnMut() -> StartFuture,
+    StartFuture: Future<Output = Result<T, E>>,
+    Wait: FnMut(Duration) -> WaitFuture,
+    WaitFuture: Future<Output = ()>,
+{
+    retry_slot_contention(start, wait).await
 }
 
 /// Parse a URL the cluster produced, as an initialization failure if invalid.
@@ -329,7 +339,11 @@ pub(crate) async fn start_embedded_postgres_async<F>(
 where
     F: FnOnce(&DatabaseUrl) -> Result<(), Box<dyn StdError + Send + Sync>> + Send + 'static,
 {
-    let (handle, guard) = start_cluster_async_retrying_slot_contention().await?;
+    let (handle, guard) = start_cluster_async_retrying_slot_contention(
+        TestCluster::start_async_split,
+        tokio::time::sleep,
+    )
+    .await?;
     let admin_url = DatabaseUrl::parse(&handle.connection().database_url("postgres"))
         .map_err(|e| EmbeddedPgError::InitFailed(Box::new(e)))?;
     let (url, db_name) = tokio::task::spawn_blocking(move || {

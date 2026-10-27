@@ -290,22 +290,26 @@ Not yet complete.
 ## Context and orientation
 
 mxd is a Rust workspace. Its PostgreSQL tests run against an embedded cluster
-and have no route to an external server. The harness lives in
-`test-util/src/postgres/`, in four files:
+and have no route to an external server. The current harness implementation and
+regression coverage live in `test-util/src/postgres/`:
 
-- `embedded.rs` starts a cluster and starts or clones a database.
+- `embedded.rs` starts clusters and implements retry handling for slot
+  contention; its `retry_tests` module covers retry sequences.
 - `common.rs` holds the URL and name newtypes, the template hash, the schema
   reset, and the drop-on-teardown helper.
 - `shared.rs` preserves the upstream shared-cluster initializer and provides a
   separately cached fallback for slot-contention failures.
 - `mod.rs` presents `PostgresTestDb` and the `rstest` fixtures.
+- `test_errors.rs` supplies nested errors used to test source-chain reporting.
 
-The root `Cargo.toml` carries a dev-dependency on the crate that nothing in the
-root crate imports; `test-util/Cargo.toml` carries the real optional dependency
-behind its `postgres` feature. `.config/nextest.toml` holds the `postgres`
-profile and the single-slot `pg-embed` group that serializes every test. The
-`Makefile` exposes `test-postgres` and `warm-postgres`. Two workflows run the
-PostgreSQL lane, and a set of Python contract tests asserts their shape.
+At the start of this migration, the root manifest also had an unused
+dev-dependency; that was removed, leaving the optional dependency in
+`test-util/Cargo.toml`, gated by its `postgres` feature. The current
+`.config/nextest.toml` retains a `postgres` profile for cold-start timeout
+headroom, but no longer has the former single-slot `pg-embed` group or `all()`
+override. PostgreSQL tests run at default parallelism. The `Makefile` exposes
+`test-postgres` and `warm-postgres`. Two workflows run the PostgreSQL lane, and
+Python contract tests assert their shape.
 
 The `TimeZone` blocker arrives through diesel: `PgConnection::establish` sends
 `SET TIME ZONE 'UTC'` when it opens a connection, so a bundle that is missing

@@ -10,7 +10,11 @@ use futures_util::FutureExt;
 use proptest::prelude::*;
 use rstest::rstest;
 
-use super::{SLOT_CONTENTION_ATTEMPTS, retry_slot_contention};
+use super::{
+    SLOT_CONTENTION_ATTEMPTS,
+    retry_slot_contention,
+    start_cluster_async_retrying_slot_contention,
+};
 use crate::postgres::test_errors::NestedError;
 
 /// Verify nested slot errors respect the attempt limit and increasing delays.
@@ -102,7 +106,7 @@ fn unrelated_terminal_failure_preserves_source_after_retries() {
 async fn asynchronous_retry_yields_and_recovers_from_nested_slot_error() {
     let attempts = Cell::new(0);
     let delays = RefCell::new(Vec::new());
-    let result = retry_slot_contention(
+    let result = start_cluster_async_retrying_slot_contention(
         || {
             attempts.set(attempts.get() + 1);
             ready(if attempts.get() == 1 {
@@ -118,6 +122,37 @@ async fn asynchronous_retry_yields_and_recovers_from_nested_slot_error() {
     )
     .await;
     assert!(result.is_ok());
+    assert_eq!(attempts.get(), 2);
+    assert_eq!(*delays.borrow(), vec![Duration::from_millis(25)]);
+}
+
+/// Verify the async adapter preserves a terminal cause after a yielded retry.
+#[tokio::test]
+async fn asynchronous_retry_reports_nested_terminal_cause() {
+    let attempts = Cell::new(0);
+    let delays = RefCell::new(Vec::new());
+    let result = start_cluster_async_retrying_slot_contention(
+        || {
+            attempts.set(attempts.get() + 1);
+            let cause = if attempts.get() == 1 {
+                "slot lock /test is already held"
+            } else {
+                "async terminal source marker"
+            };
+            ready(Err::<(), _>(NestedError::new(cause)))
+        },
+        |delay| {
+            delays.borrow_mut().push(delay);
+            tokio::task::yield_now()
+        },
+    )
+    .await;
+    assert!(
+        result
+            .expect_err("terminal failure")
+            .to_string()
+            .contains("async terminal source marker")
+    );
     assert_eq!(attempts.get(), 2);
     assert_eq!(*delays.borrow(), vec![Duration::from_millis(25)]);
 }
