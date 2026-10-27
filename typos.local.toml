@@ -66,8 +66,7 @@ exclude = [
   # Immutable rstest-bdd v0.6.0 imports; provenance records their checksums.
   "docs/rstest-bdd-users-guide.md",
   "docs/rstest-bdd-v0-6-0-migration-guide.md",
-  # Historical review transcript and immutable database migrations.
-  "pr.txt",
+  # Immutable database migrations.
   "migrations/postgres/00000000000003_add_articles/up.sql",
   "migrations/sqlite/00000000000003_add_articles/up.sql",
   "migrations/sqlite/00000000000007_align_news_schema/down.sql",

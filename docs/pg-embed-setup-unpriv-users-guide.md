@@ -8,11 +8,15 @@ sandbox user. Unprivileged invocations keep the current identity and provision
 directories with the caller’s UID. This guide explains how to configure the
 tool and integrate it into automated test flows.
 
+This guide documents the published `pg-embed-setup-unpriv` crate from
+crates.io; mxd does not vendor it.
+
 ## Prerequisites
 
 - Linux host, VM, or container. `root` access enables the privilege-dropping
   path, but unprivileged executions are also supported.
-- Rust toolchain specified in `rust-toolchain.toml`.
+- For builds from an upstream source checkout, the Rust toolchain specified in
+  its `rust-toolchain.toml`.
 - Outbound network access to crates.io and the PostgreSQL binary archive.
 - System timezone database (package usually named `tzdata`). This matters when
   the selected bundle does not carry its own `share/timezone`: a bundle built
@@ -75,15 +79,18 @@ Troubleshooting guidance:
    budget. The helper accepts values between `1` and `600` seconds and reports
    an error when the override falls outside that range or cannot be parsed.
 
-3. Run the helper (`cargo run --release --bin pg_embedded_setup_unpriv`). The
-   command downloads the specified PostgreSQL release, ensures the directories
-   exist, applies PostgreSQL-compatible permissions (0755 for the installation
-   cache, 0700 for the runtime and data directories), and initializes the
-   cluster with the provided credentials. Invocations that begin as `root`
-   prepare directories for `nobody` and execute lifecycle commands through the
-   worker helper so the privileged operations run entirely under the sandbox
-   user. Ownership fix-ups occur on every call so running the tool twice
-   remains idempotent.
+3. Install the published helper with
+   `cargo install --locked pg-embed-setup-unpriv@0.6.3`, then run
+   `pg_embedded_setup_unpriv`. In an upstream source checkout, use
+   `cargo run --release --bin pg_embedded_setup_unpriv` instead. The command
+   downloads the specified PostgreSQL release, ensures the directories exist,
+   applies PostgreSQL-compatible permissions (0755 for the installation cache,
+   0700 for the runtime and data directories), and initializes the cluster with
+   the provided credentials. Invocations that begin as `root` prepare
+   directories for `nobody` and execute lifecycle commands through the worker
+   helper so the privileged operations run entirely under the sandbox user.
+   Ownership fix-ups occur on every call so running the tool twice remains
+   idempotent.
 
 4. Pass the resulting paths and credentials to the test runner. When
    `postgresql_embedded` is used directly after the setup step, it can reuse
