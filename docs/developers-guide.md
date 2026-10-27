@@ -111,12 +111,25 @@ than skipping it. `make test-postgres` needs no database running.
 ### The postgres leg runs in parallel
 
 pg-embed-setup-unpriv 0.6 gives each cluster its own data directory on the
-install root, so two test processes starting clusters at once no longer
-collide. The `pg-embed` single-slot test group that 0.5.x needed is gone, the
-`all()` override that applied it is gone, and so are the 22
+install root, so concurrent clusters no longer share data directories. The
+0.6.3 slot-claim race can still return `slot lock ... is already held`. The
+`pg-embed` single-slot test group that 0.5.x needed is gone, the `all()`
+override that applied it is gone, and so are the 22
 `#[serial_test::file_serial(postgres_embedded_setup)]` attributes. The leg runs
 at the default parallelism; `tests/postgres_harness_isolation.rs` holds two
 fixtures alive at once and asserts their databases are separate.
+
+The harness retries a lost slot race in `retry_slot_contention`, with up to
+eight start attempts and a backoff increasing in 25 ms steps. The
+`is_slot_contention` check searches the full error chain for both `slot lock`
+and `is already held`. Template startup uses the upstream shared-cluster
+initializer normally; if it reports this contention, `shared.rs` starts a
+separate shared cluster through the retry path, caches the fallback result, and
+registers its shutdown hook.
+
+Structured tracing records attempts, delays, error categories, and outcomes
+without raw error strings. Metrics count retry attempts and exhaustion,
+fallback selection and cache outcomes, and bootstrap duration.
 
 The `postgres` profile in `.config/nextest.toml` remains, because a cold
 cluster start is slower than the default 60 second slow timeout: one took 156
@@ -217,11 +230,11 @@ directories, success when the cache fills, and failure when it stays empty or
 
 ## PostgreSQL migration strategy (v0.6.0)
 
-The migration to pg-embed-setup-unpriv 0.6.3 changed no harness source: the
-handle/guard split, `test_support::shared_cluster_handle()`, the template
-helpers and the `async-api` signatures mxd uses are compatible. What the
-release changes is the isolation model, and that is what this branch acts on.
-The full narrative and the verification steps are in
+The migration to pg-embed-setup-unpriv 0.6.3 keeps the handle/guard split,
+`test_support::shared_cluster_handle()`, the template helpers, and the
+`async-api` signatures mxd uses compatible. The harness adds bounded slot-race
+retries and a cached fallback for template startup; the release changes the
+cluster isolation model. The full narrative and verification steps are in
 [`pg-embed-setup-unpriv-v0-6-0-migration-guide.md`](pg-embed-setup-unpriv-v0-6-0-migration-guide.md).
 
 - Run every PostgreSQL test against an embedded cluster. The

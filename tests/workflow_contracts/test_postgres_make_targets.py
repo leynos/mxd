@@ -18,6 +18,7 @@ import subprocess
 import typing as typ
 from pathlib import Path
 
+import pytest
 from ci_workflow_reader import REPO_ROOT
 
 if typ.TYPE_CHECKING:
@@ -30,7 +31,7 @@ FAKE_NAME = "pg_embedded_setup_unpriv"
 # would send rustup looking for a toolchain, so an inert command stands in: the
 # recipes under test never invoke Cargo.
 INERT_CARGO = "true"
-AMBIENT = ("PG_PASSWORD", "PG_BINARY_CACHE_DIR", "PG_WARM_DIR")
+AMBIENT = ("PG_PASSWORD", "PG_BINARY_CACHE_DIR", "PG_WARM_DIR", "PG_VERSION_REQ")
 
 
 def _make(
@@ -93,6 +94,17 @@ def test_test_postgres_bundle_pin_can_be_overridden() -> None:
     recipe = _dry_run("test-postgres", "PG_VERSION_REQ==17.11.0")
     assert 'PG_VERSION_REQ="=17.11.0"' in recipe
     assert "=18.6.0" not in recipe
+
+
+def test_bundle_default_ignores_ambient_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exported bundle requirement does not affect default-pin contracts."""
+    monkeypatch.setenv("PG_VERSION_REQ", "=17.11.0")
+    assert 'PG_VERSION_REQ="=18.6.0"' in _dry_run("test-postgres")
+    result = _make("--dry-run", "test-postgres", env={"PG_VERSION_REQ": "=17.11.0"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'PG_VERSION_REQ="=17.11.0"' in result.stdout
 
 
 def test_warm_postgres_pins_the_same_bundle() -> None:

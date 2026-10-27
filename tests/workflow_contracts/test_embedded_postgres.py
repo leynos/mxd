@@ -23,6 +23,7 @@ the 0.5.x runs is gone, and a contract keeps it gone.
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 import typing as typ
 
@@ -37,6 +38,7 @@ TOKEN_EXPRESSION: typ.Final = "${{ github.token }}"
 PROFILE: typ.Final = "postgres"
 URL_VARIABLE: typ.Final = "POSTGRES_TEST_URL"
 CRATE: typ.Final = "pg-embed-setup-unpriv"
+HELPER_VERSION = re.compile(r"(?<![\w-])pg-embed-setup-unpriv@([^\s;|&\"'\\]+)")
 
 
 class PostgresTestStep(typ.NamedTuple):
@@ -250,6 +252,53 @@ def test_every_postgres_job_pins_the_working_bundle(documents) -> None:
         )
 
 
+def _assert_helper_install(
+    job: cabc.Mapping[str, object], where: str, locked: str
+) -> None:
+    """Require one exact helper version in the job's run steps.
+
+    A job installing `pg-embed-setup-unpriv@0.6.30` fails for lock `0.6.3`.
+    """
+    versions = [
+        version
+        for step in _steps(job)
+        if isinstance(step.get("run"), str)
+        for version in HELPER_VERSION.findall(step["run"])
+    ]
+    assert versions == [locked], (
+        f"{where} must install {CRATE}@{locked} exactly once, found {versions}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("run", "valid"),
+    [
+        ("cargo binstall pg-embed-setup-unpriv@0.6.3", True),
+        ("cargo binstall something-else", False),
+        ("cargo binstall pg-embed-setup-unpriv@0.6.30", False),
+        (
+            "cargo binstall pg-embed-setup-unpriv@0.6.3 pg-embed-setup-unpriv@0.6.4",
+            False,
+        ),
+        (
+            "cargo binstall pg-embed-setup-unpriv@0.6.3 pg-embed-setup-unpriv@0.6.3",
+            False,
+        ),
+    ],
+    ids=["locked", "missing", "prefix", "multiple-versions", "duplicate"],
+)
+def test_helper_install_contract_rejects_missing_or_wrong_versions(
+    run: str, valid: bool
+) -> None:
+    """The version contract refuses missing, partial and duplicate installs."""
+    job = {"steps": [{"run": run}]}
+    if valid:
+        _assert_helper_install(job, "test", "0.6.3")
+    else:
+        with pytest.raises(AssertionError, match="must install"):
+            _assert_helper_install(job, "test", "0.6.3")
+
+
 def test_the_installed_helper_matches_the_locked_version(documents) -> None:
     """Both workflows install the crate version the lockfile holds.
 
@@ -261,11 +310,6 @@ def test_the_installed_helper_matches_the_locked_version(documents) -> None:
     versions = [p["version"] for p in lock["package"] if p["name"] == CRATE]
     assert len(versions) == 1, f"expected one {CRATE} in Cargo.lock, found {versions}"
     (locked,) = versions
-    for workflow, document in documents.items():
-        text = _text(document)
-        if "pg-embed-setup-unpriv@" not in text:
-            continue
-        assert f"pg-embed-setup-unpriv@{locked}" in text, (
-            f"{workflow} installs a helper version that Cargo.lock does not hold "
-            f"({locked})"
-        )
+    for expected in POSTGRES_TEST_STEPS:
+        job = _jobs(documents[expected.workflow])[expected.job_id]
+        _assert_helper_install(job, f"{expected.workflow}:{expected.job_id}", locked)

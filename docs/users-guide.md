@@ -195,8 +195,10 @@ cluster path customization and privilege troubleshooting details.
 links, which the extractor behind this harness version skips, so the cluster
 cannot resolve `UTC` and every diesel connection fails with
 `invalid value for parameter "TimeZone": "UTC"`. Set `PG_VERSION_REQ` to try
-another bundle; the pin is removed once a harness release can use an extractor
-that handles hard links.
+another bundle with an exact requirement, such as `PG_VERSION_REQ='=18.6.0'`. A
+bare version is a semver requirement rather than an exact pin, and selection
+uses the highest matching release. The pin is removed once a harness release
+can use an extractor that handles hard links.
 
 ## Behaviour coverage
 

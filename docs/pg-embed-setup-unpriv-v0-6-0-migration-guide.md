@@ -7,17 +7,15 @@ the evidence behind each decision.
 
 ## Scope and outcome
 
-The migration is a dependency bump plus the retirement of two serialization
-mechanisms, not a harness rewrite. `test-util/src/postgres/` compiled against
-0.6.3 with no source changes: the handle/guard split,
-`test_support::shared_cluster_handle()`, `ensure_template_exists`,
-`create_database_from_template` and the `async-api` signatures mxd uses are
-compatible. The `diesel-support` feature is not needed, because the harness
-returns connection URLs as strings and mxd opens its own diesel connections.
+The migration keeps the upstream handle/guard split,
+`test_support::shared_cluster_handle()`, template helpers, and the `async-api`
+signatures mxd uses compatible. The harness adds bounded slot-race retries and
+a cached fallback for template startup. The `diesel-support` feature is not
+needed, because the harness returns connection URLs as strings and mxd opens
+its own diesel connections.
 
-What the release does change is the isolation model, and that is what this
-branch acts on: every cluster now gets its own data directory, so the postgres
-leg no longer has to run one test at a time.
+The release changes the isolation model: every cluster gets its own data
+directory, so the postgres leg no longer has to run one test at a time.
 
 ## Quick upgrade checklist
 
@@ -35,15 +33,28 @@ leg no longer has to run one test at a time.
 ### Each cluster gets its own data directory
 
 Under 0.5.x every cluster in a run shared one data directory, and the guard
-that dropped a cluster deleted it, so two tests starting clusters at once
-collided. The serial nextest group and the `file_serial` attributes both
-existed to prevent that collision.
+that dropped a cluster deleted it, so two tests starting clusters at once could
+collide. The serial nextest group and the `file_serial` attributes both existed
+to prevent that collision.
 
 0.6 places each cluster's data on the install root, under `<root>/data`, so the
-shared resource is gone. Both mechanisms are removed and the leg runs at the
-default parallelism. `tests/postgres_harness_isolation.rs` keeps two
-`PostgresTestDb` fixtures alive at once and asserts their `current_database()`
-names differ and that a table created through one is invisible to the other.
+shared-data collision is gone. Both serialization mechanisms are removed and
+the leg runs at the default parallelism. `tests/postgres_harness_isolation.rs`
+keeps two `PostgresTestDb` fixtures alive at once, asserts their database names
+differ, and confirms a table created through one is invisible to the other.
+
+### Slot contention and shared template startup
+
+Separate data directories do not prevent the 0.6.3 slot-claim race, which can
+return `slot lock ... is already held`. `retry_slot_contention` makes up to
+eight start attempts, with backoff increasing in 25 ms steps. The
+`is_slot_contention` check searches the error chain for both `slot lock` and
+`is already held`.
+
+Template startup first uses the upstream shared-cluster initializer. If that
+initializer reports slot contention, `shared.rs` creates a separate shared
+cluster through the retry path, caches the fallback result, and registers its
+exit-time shutdown hook. Other upstream initialization errors remain failures.
 
 ### The password is stored with the cluster and reused
 
@@ -98,8 +109,9 @@ was built `--with-system-tzdata=/usr/share/zoneinfo`, carries no
 `share/timezone`, and accepts `UTC`.
 
 `PG_VERSION_REQ` is parsed verbatim into a semver requirement, and release
-selection takes the highest match, so a caret requirement would select 18.6.1
-again. The pin must be exact:
+selection takes the highest match. A bare version is not an exact pin, so it
+can select 18.6.1 again. Alternate bundle values must use an exact requirement,
+including the leading `=`. The pin is:
 
 ```make
 PG_VERSION_REQ ?= =18.6.0

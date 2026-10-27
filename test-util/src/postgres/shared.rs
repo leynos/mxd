@@ -1,6 +1,6 @@
 //! Shared cluster initialization with a fallback for upstream slot races.
 
-use std::{error::Error, sync::OnceLock};
+use std::{cell::Cell, error::Error, sync::OnceLock};
 
 use pg_embedded_setup_unpriv::{
     ClusterHandle,
@@ -16,27 +16,36 @@ use super::embedded::{
 
 static FALLBACK_CLUSTER: OnceLock<Result<ClusterHandle, String>> = OnceLock::new();
 
-/// Use the upstream singleton unless its cached initialization lost a slot race.
-pub(super) fn shared_cluster_handle() -> Result<&'static ClusterHandle, EmbeddedPgError> {
-    resolve_shared_handle(
+/// Initialize the shared cluster, falling back if the upstream singleton lost a slot race.
+///
+/// For example, repeated calls return the same initialized handle.
+#[tracing::instrument(skip_all, fields(operation = "shared_cluster_initialize"))]
+pub(super) fn initialize_shared_cluster() -> Result<&'static ClusterHandle, EmbeddedPgError> {
+    initialize_or_select_shared_cluster(
         &FALLBACK_CLUSTER,
         upstream_shared_cluster_handle,
         initialize_fallback_cluster,
     )
 }
 
-/// Preserve the upstream failure policy except for the slot race it cannot retry.
-fn resolve_shared_handle<'a, T, E: Error>(
+/// Initialize or reuse a fallback after a primary slot-contention failure.
+///
+/// For example, an unrelated primary failure is returned without a fallback.
+fn initialize_or_select_shared_cluster<'a, T, E: Error>(
     fallback: &'a OnceLock<Result<T, String>>,
     primary: impl FnOnce() -> Result<&'a T, E>,
     initialize: impl FnOnce() -> Result<T, EmbeddedPgError>,
 ) -> Result<&'a T, EmbeddedPgError> {
     match primary() {
-        Ok(handle) => Ok(handle),
-        Err(error) if is_slot_contention(&error) => fallback
-            .get_or_init(|| initialize().map_err(|failure| failure.to_string()))
-            .as_ref()
-            .map_err(|message| EmbeddedPgError::BootstrapFailed(message.clone())),
+        Ok(handle) => {
+            tracing::debug!(
+                source = "primary",
+                outcome = "success",
+                "shared cluster selected"
+            );
+            Ok(handle)
+        }
+        Err(error) if is_slot_contention(&error) => initialize_fallback(fallback, initialize),
         Err(error) => Err(EmbeddedPgError::BootstrapFailed(format!(
             "bootstrapping shared embedded PostgreSQL: {}",
             describe_error_chain(&error)
@@ -44,7 +53,39 @@ fn resolve_shared_handle<'a, T, E: Error>(
     }
 }
 
+/// Initialize or reuse the fallback, recording its bounded cache outcome.
+/// For example, a second call reuses the result of the first initialization.
+fn initialize_fallback<T>(
+    fallback: &OnceLock<Result<T, String>>,
+    initialize: impl FnOnce() -> Result<T, EmbeddedPgError>,
+) -> Result<&T, EmbeddedPgError> {
+    metrics::counter!("mxd_test_postgres_fallback_selected_total").increment(1);
+    let initialized = Cell::new(false);
+    let cached = fallback.get_or_init(|| {
+        initialized.set(true);
+        initialize().map_err(|failure| failure.to_string())
+    });
+    let outcome = if cached.is_ok() { "success" } else { "failure" };
+    let cache_state = if initialized.get() {
+        "initialized"
+    } else {
+        "reused"
+    };
+    metrics::counter!("mxd_test_postgres_fallback_cache_total", "outcome" => outcome, "state" => cache_state).increment(1);
+    tracing::warn!(
+        source = "fallback",
+        error_category = "slot_contention",
+        cache_state,
+        outcome,
+        "shared cluster fallback selected"
+    );
+    cached
+        .as_ref()
+        .map_err(|message| EmbeddedPgError::BootstrapFailed(message.clone()))
+}
+
 /// Keep the fallback alive until the upstream shutdown hook runs at exit.
+/// For example, successful registration returns a process-lifetime handle.
 fn initialize_fallback_cluster() -> Result<ClusterHandle, EmbeddedPgError> {
     let worker_guard = ensure_worker_env();
     let (handle, guard) = start_cluster_retrying_slot_contention()?;
@@ -67,16 +108,19 @@ mod tests {
 
     use futures_util::FutureExt;
 
-    use super::resolve_shared_handle;
-    use crate::postgres::embedded::{EmbeddedPgError, retry_slot_contention};
+    use super::initialize_or_select_shared_cluster;
+    use crate::postgres::{
+        embedded::{EmbeddedPgError, retry_slot_contention},
+        test_errors::NestedError,
+    };
 
-    fn slot_failure() -> io::Error { io::Error::other("slot lock /test is already held") }
+    fn slot_failure() -> NestedError { NestedError::new("slot lock /test is already held") }
 
     /// Inject one lost slot before invoking the selected bootstrap.
     fn fail_first<T>(
         attempts: &Cell<u32>,
-        start: impl FnOnce() -> Result<T, io::Error>,
-    ) -> Result<T, io::Error> {
+        start: impl FnOnce() -> Result<T, NestedError>,
+    ) -> Result<T, NestedError> {
         attempts.set(attempts.get() + 1);
         if attempts.get() == 1 {
             Err(slot_failure())
@@ -87,7 +131,7 @@ mod tests {
 
     /// Run a synchronous test bootstrap through the production retry policy.
     fn retry_test_start<T>(
-        mut start: impl FnMut() -> Result<T, io::Error>,
+        mut start: impl FnMut() -> Result<T, NestedError>,
     ) -> Result<T, EmbeddedPgError> {
         retry_slot_contention(|| ready(start()), |_| ready(()))
             .now_or_never()
@@ -99,9 +143,10 @@ mod tests {
             pg_embedded_setup_unpriv::ClusterHandle,
             pg_embedded_setup_unpriv::ClusterGuard,
         ),
-        io::Error,
+        NestedError,
     > {
-        super::start_cluster_retrying_slot_contention().map_err(io::Error::other)
+        super::start_cluster_retrying_slot_contention()
+            .map_err(|error| NestedError::new(&error.to_string()))
     }
 
     #[test]
@@ -110,7 +155,7 @@ mod tests {
         let attempts = Cell::new(0);
         let initializes = Cell::new(0);
         let resolve = || {
-            resolve_shared_handle(
+            initialize_or_select_shared_cluster(
                 &fallback,
                 || Err(slot_failure()),
                 || {
@@ -131,7 +176,7 @@ mod tests {
     fn slot_race_fallback_supports_template_database() -> anyhow::Result<()> {
         let fallback = OnceLock::new();
         let attempts = Cell::new(0);
-        let (handle, _guard) = resolve_shared_handle(
+        let (handle, _guard) = initialize_or_select_shared_cluster(
             &fallback,
             || Err(slot_failure()),
             || retry_test_start(|| fail_first(&attempts, start_real_cluster)),
@@ -149,7 +194,7 @@ mod tests {
     #[test]
     fn terminal_primary_error_reports_its_cause_without_fallback() {
         let fallback: OnceLock<Result<(), String>> = OnceLock::new();
-        let result = resolve_shared_handle(
+        let result = initialize_or_select_shared_cluster(
             &fallback,
             || {
                 Err(io::Error::other(io::Error::other(
@@ -173,7 +218,7 @@ mod tests {
         let fallback: OnceLock<Result<(), String>> = OnceLock::new();
         let initializes = Cell::new(0);
         let resolve = || {
-            resolve_shared_handle(
+            initialize_or_select_shared_cluster(
                 &fallback,
                 || Err(slot_failure()),
                 || {
