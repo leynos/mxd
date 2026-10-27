@@ -720,3 +720,12 @@ unless inventory reveals an existing install or invocation that must move.
   Workflow contracts passed 254 tests. Lint, typecheck, Rust audit, CodeScene
   delta, Markdown/Nixie, and Rust 1.94.0 checks passed. CodeRabbit review and
   delivery remain.
+- (2026-10-27 07:01Z) CodeRabbit's review of commit `9602a59` identified three
+  assertion-diagnostic and provenance-link findings; commit `81b1037` resolves
+  them. The full deterministic gate sequence passed again, including all three
+  Rust 1.94.0 feature lanes and the five imported-guide checksums. Pushed
+  `81b1037` to draft PR #670 with the requested title, issue references, and
+  Lody session link. Loom, CodeQL, TLA+ and security checks are terminal;
+  GitHub Actions run `40464471304` and Release Dry Run `40464471411` are
+  active. The final CodeRabbit review was rate-limited, so its requested
+  cooldown is running before retry.
