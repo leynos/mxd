@@ -190,8 +190,9 @@ replaces the existing `figment::Jail` code.
   all-target checks for PostgreSQL, SQLite, and wireframe-only.
   `git diff --check` and all five imported-document hash checks also passed.
   Logs use the `/tmp/*-isolation-fixes.out` suffix.
-- [ ] Request the second source CodeRabbit review on the gate-passed candidate
-  before pushing or creating the draft PR.
+- [x] (2026-10-27 02:35Z) The second source CodeRabbit review completed against
+  the full branch at `9d7ca280cf817e2eac2fb85134348cfc01fd247b` with zero
+  findings, clearing the two test-isolation concerns from its first review.
 - [x] Complete the v0.10.0 applicability matrix with source-level evidence.
 - [x] Migrate manifests, lockfile, compiler floor, source imports, loaders, and
   isolated configuration tests.
@@ -639,3 +640,7 @@ unless inventory reveals an existing install or invocation that must move.
   format nuance to provenance, and scoped the style-guide voice exception to
   byte-for-byte imports with provenance records. The source copies remain
   unchanged.
+- (2026-10-27 02:35Z) The full branch review cleared both source test-isolation
+  findings and returned zero findings after the deterministic gates passed on
+  the corrected candidate. The implementation is ready for push and draft PR
+  creation.
