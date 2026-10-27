@@ -109,9 +109,9 @@ fn cargo_run_command(manifest_path: &ManifestPath, addr: SocketAddr, db_url: &Db
     }
     #[cfg(feature = "sqlite")]
     {
-        // Keep sqlite builds aligned with default features: Cargo.toml defines
-        // `toml` (figment/toml + dep:toml) for configuration/fixture parsing,
-        // so we pass `--features sqlite,toml` to ensure compilation matches.
+        // Keep sqlite builds aligned with default features: the root `toml`
+        // feature forwards TOML parsing to OrthoConfig and `cli-defs`, so pass
+        // it explicitly to ensure the server has the same configuration path.
         cmd.args(["--features", "sqlite,toml"]);
     }
     // Ensure the server binary matches the feature set used by tests so Cargo

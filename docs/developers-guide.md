@@ -7,6 +7,8 @@ codebase, plus the PostgreSQL helper needed for integration coverage.
 ## Prerequisites
 
 - Rust toolchain pinned by `rust-toolchain.toml`.
+- The application and shared CLI definitions require Rust 1.94.0 or newer;
+  CI checks the supported feature lanes on that stable compiler.
 - `cargo` and `make` available on your `PATH`.
 - `cargo-audit` available for `make audit`; CI installs it with
   `cargo binstall --no-confirm cargo-audit`.
@@ -1496,6 +1498,12 @@ second contract holds the dry-run chain to least privilege: every job that
 condition, fails the contract.
 
 ## Dependabot and the Cargo toolchain floor
+
+The workspace declares `rust-version = "1.94.0"` because the complete locked
+application and test graph includes dependencies whose declared floors reach
+Rust 1.94.0. OrthoConfig v0.10.0 itself requires Rust 1.89.0, but that is not
+the effective floor for these packages. CI checks the feature lanes on stable
+1.94.0 as well as the repository's pinned `nightly-2026-03-26` toolchain.
 
 Dependabot's Cargo updater does not raise `Cargo.toml`. Its
 `versioning-strategy` accepts only `lockfile-only` and `auto`. The

@@ -135,6 +135,14 @@ When `--migration-timeout-secs` is unset, startup uses the built-in default
 migration timeout. A value of `0` is normalized back to that default rather
 than disabling the watchdog.
 
+Configuration values are resolved in this order: built-in defaults, discovered
+configuration files, environment variables, then values explicitly supplied on
+the command line. An explicit CLI value takes precedence even when it matches
+the built-in default. Optional discovered files may be absent; a selected file
+that cannot be read or parsed causes startup to fail with a diagnostic. Set
+`MXD_CONFIG_PATH` or pass `--config-path PATH` to select a required file; mxd
+does not fall through to automatic discovery when that selection fails.
+
 ## File metadata baseline
 
 Roadmap item 3.1.1 is an internal schema milestone rather than a new protocol

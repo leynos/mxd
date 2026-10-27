@@ -80,8 +80,9 @@ arguments and dispatches commands, leaving `src/main.rs` as a thin shim. This
 keeps the domain crate free of `wireframe::*` imports and guarantees that
 upcoming binaries (for example, `mxd-wireframe-server`) can embed the same
 domain logic without duplicating setup code. The change is protected by new
-`rstest` fixtures around `AppConfig::load_from_iter` plus `rstest-bdd`
-behaviour tests covering successful and failing `create-user` invocations.
+`rstest` fixtures around `AppConfig::load_from_iter_with_sources` plus
+`rstest-bdd` behaviour tests covering successful and failing `create-user`
+invocations.
 
 ### Shared-state kernels (`mxd-concurrency`)
 
@@ -918,121 +919,40 @@ accepted) for the architectural rationale.
 
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
-Configuration management in MXD is handled by the **OrthoConfig** library,
-which provides a unified way to load settings from **command-line arguments,
-environment variables, and configuration files**. The goal is to make running
-and configuring the daemon flexible but with minimal boilerplate in code. MXD’s
-`AppConfig` struct (now in `src/server/cli.rs`) defines all the configurable
-settings, and OrthoConfig’s derive macro automatically wires up CLI flags, env
-vars, and file parsing for those fields(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L124-L132)
-)(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L134-L142)).
+The shared CLI types live in `cli-defs/src/lib.rs`. Runtime binaries and the
+root `build.rs` use that crate, so the generated `mxd` man page and runtime
+arguments come from the same definitions. `AppConfig` and `CreateUserArgs`
+derive OrthoConfig with the `MXD_` prefix. OrthoConfig v0.10.0 is resolved from
+crates.io, and the workspace keeps its default features enabled.
 
-Key aspects of configuration:
+The configuration order is built-in defaults, discovered files, environment,
+and explicit CLI values. Explicit values win even when they equal the built-in
+default. For example, `mxd --bind 0.0.0.0:5500` remains an explicit override of
+`MXD_BIND` and a file value. The user guide records the supported startup
+settings and this precedence contract.
 
-- **Single Source Struct**: All config options are fields in `AppConfig` (e.g.
-  `bind` address, `database` URL/path, Argon2 parameters for password hashing)(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L124-L132)
-  )(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L134-L142)).
-  This struct is annotated with `#[derive(OrthoConfig)]` and a prefix `MXD_`(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L69-L76)).
-  The prefix defines the environment variable naming convention and default
-  config file name.
+With the default TOML feature, OrthoConfig discovers `.mxd.toml` files
+according to its standard discovery rules. `MXD_CONFIG_PATH` or the generated
+`--config-path PATH` option selects a specific file. The derive opts into
+`explicit_mode = "required_exclusive"`: a selected file must load and does not
+fall through to automatic discovery, while absent optional discovery candidates
+are allowed. Missing, unreadable, and malformed selected files fail
+configuration loading and remain distinguishable in source-injected tests and
+process-level checks of exit status and stderr.
 
-- **Command-line (CLI)**: Using Clap under the hood, OrthoConfig generates long
-  flags for each field. For example, the `bind` field becomes `--bind` on the
-  CLI, and `database` becomes `--database`. Defaults can be provided via
-  attributes: in code, `bind` has
-  `#[arg(default_value_t = "0.0.0.0:5500".to_string())]` which sets a default
-  if not otherwise specified(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L126-L134)).
-  These values can be overridden by passing arguments; e.g.
-  `mxd --bind 192.168.1.1:1234` to listen on a custom address.
+Global configuration uses the field names directly, such as `bind` and
+`database`. Subcommand values are nested under the command namespace; for
+`create-user`, the file table is `[cmds.create-user]` and environment keys use
+the `MXD_CMDS_CREATE_USER_` prefix. The runtime merges file and environment
+values with parsed command-line arguments through OrthoConfig's subcommand
+loader.
 
-- **Environment Variables**: For each field, an env var is automatically
-  recognized. The naming is `MXD_<FIELD>` in upper snake case by default. E.g.,
-  `MXD_BIND` can be set to define the bind address(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L376-L384)),
-  and `MXD_DATABASE` to set the database path(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L376-L384)).
-  If the program runs without CLI args for those fields, it will fall back to
-  env vars. Our tests confirm that the environment is picked up (and that CLI
-  will override env)(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L376-L384)
-  )(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L389-L396)).
-
-- **Config File**: OrthoConfig also supports reading from a file (TOML by
-  default). By convention, it looks for a file named `.mxd.toml` (since the
-  prefix is "MXD", the default config file is `.mxd.toml` in the current
-  directory or home directory). This file can contain keys matching the field
-  names (e.g. `bind = "1.2.3.4:1111"`). MXD will merge this file into the
-  configuration with lower precedence than env and CLI. In our tests, dropping a
-  `.mxd.toml` with a bind address works and is loaded when no other override
-  is given(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L398-L405)).
-
-**Precedence Order**: The layers override each other in increasing order of
-priority: **defaults < config file < environment < CLI**. That means default
-values (in code or derived) can be overridden by anything in `.mxd.toml`, which
-in turn can be overridden by environment variables, and finally any CLI option
-explicitly given will trump all(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L388-L396)).
-For example, if `.mxd.toml` sets `bind = "1.2.3.4:1111"` and the environment
-has `MXD_BIND=127.0.0.1:8000`, running `mxd` with no flags will result in the
-env value taking effect (127.0.0.1:8000)(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L376-L384)).
-If the user runs `mxd --bind 0.0.0.0:9000`, that CLI `--bind` will override
-both env and file(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L389-L396)).
-
-**Subcommands and Merging**: MXD’s CLI has subcommands (currently `create-user`
-in addition to the main server run). OrthoConfig seamlessly merges global
-config with subcommand-specific args. In `main.rs`, after parsing CLI, if a
-subcommand like `create-user` is invoked, we call
-`load_and_merge_subcommand_for<CreateUserArgs>(&args)` to combine any config
-file or env settings that apply to that subcommand’s options(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L156-L164)).
-This allows, for example, using env vars for subcommand inputs. The
-`create-user` subcommand expects a username and password; you could set
-`MXD_USERNAME` and `MXD_PASSWORD` env vars (since `CreateUserArgs` is also
-OrthoConfig-derived with the same prefix) instead of passing them explicitly.
-This merging ensures subcommands receive the full config context (including
-things like Argon2 cost parameters from file/env, so that the password hashing
-uses consistent settings).
-
-Internally, OrthoConfig uses the Figment library to merge these sources, but
-this is abstracted away. The result is that at runtime, our code simply does
-`let cfg = AppConfig::load()?;` (or in tests `load_from_iter`) and gets a
-populated `cfg` struct. Logging the config (via `Debug` derive) would show
-exactly which values were set from where. We have unit tests to verify this
-loading logic, covering env-only, CLI-over-env, and file loading cases(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L376-L384)
-)(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L389-L396)
-)(
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L397-L405)).
-
-**Example**: By default, MXD listens on `0.0.0.0:5500` and uses an SQLite file
-`mxd.db` (
-[4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L128-L136)).
-If an operator wants to run Postgres, they would disable default features at
-compile time and then run:
-
-```bash
-export MXD_DATABASE=postgres://user:pass@host/dbname
-export MXD_BIND=0.0.0.0:6600
-mxd
-```
-
-This would launch the server on port 6600 connected to the given Postgres.
-Alternatively, one could create a config file `.mxd.toml` with those settings,
-or pass them as CLI flags. The OrthoConfig system ensures all these methods
-result in the same `cfg` object. This consistency prevents configuration from
-being scattered across separate CLI parsing and manual env handling – it’s all
-declared in one place.
+Tests use OrthoConfig's injected source entry points with `MapEnv` and explicit
+file sources rather than changing the process environment. The optional `json5`
+and `yaml` features are forwarded through both the runtime crate and
+`cli-defs`, so build-time and runtime consumers resolve the same format
+support. The YAML tests cover YAML 1.2 string scalars and duplicate-key
+failures.
 
 ## Database Support (SQLite and PostgreSQL via Diesel)
 
@@ -3400,22 +3320,17 @@ etc.
 
 **Manual and Integration Testing**:
 
-- We test installation and CLI by having tests that run
-  `AppConfig::load_from_iter` with sample args and env to verify the merging
-  logic (as shown by those figment Jail tests)(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L376-L384)
-  )(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L389-L396)).
+- CLI configuration tests call `AppConfig::load_from_iter_with_sources` with
+  sample arguments, `MapEnv`, and explicit file sources. Process-level
+  integration tests verify exit status and stream placement.
 
 - We test error cases, e.g., if both `sqlite` and `postgres` features were on
   (though that can’t happen in normal use due to compile error), but maybe if
   the DSN string is wrong, does `establish_pool` error get propagated properly,
   etc.
 
-- Using the `temp-env` crate in tests to set env vars (which we did with
-  figment’s Jail)(
-  [4](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/main.rs#L376-L384))
-  ensures we don’t pollute real environment.
+- Injected test sources keep configuration values isolated from the process
+  environment.
 
 In CI, we run `cargo test` for both SQLite and Postgres configurations (two
 separate jobs). We also run clippy (with pedantic warnings), maybe fmt, etc.,

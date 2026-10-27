@@ -36,8 +36,10 @@ replaces the existing `figment::Jail` code.
 ## Tolerances (exception triggers)
 
 - Scope: changes outside the root manifest, `cli-defs`, `build.rs`, the current
-  configuration tests, CI/toolchain metadata, and migration documentation
-  trigger a scope review before continuing.
+  configuration tests, CI/toolchain metadata, the ExecPlan, and directly
+  affected configuration/design/user/developer documentation trigger a scope
+  review before continuing. This task explicitly requires user-facing and
+  internal documentation to match the migrated CLI and compiler floor.
 - Interface: do not add a new public mxd API or compatibility wrapper; update
   the internal callers together.
 - Dependencies: add no direct dependency beyond the published OrthoConfig
@@ -61,9 +63,10 @@ replaces the existing `figment::Jail` code.
 - YAML now uses the stricter Saphyr provider. Severity: medium; likelihood:
   medium. Exercise existing YAML fixtures and YAML 1.2 edge cases rather than
   assuming the parser swap is transparent.
-- The repository advertises a Rust floor that may be below v0.10.0's 1.89.0
-  floor. Severity: medium; likelihood: medium. Inspect all promised feature
-  lanes and compiler-coupled tooling, then update the floor only as required.
+- The repository has no declared Rust floor, and the locked full dependency
+  graph includes test packages requiring Rust 1.94.0. Severity: medium;
+  likelihood: high. Validate the actual targets on 1.94.0 and align the root
+  application and shared CLI package metadata with that floor.
 - Global Markdown formatting can alter imported upstream copies. Severity:
   low; likelihood: medium. Restore those files from the pinned commit after
   formatting and verify the recorded SHA-256 values.
@@ -125,10 +128,64 @@ replaces the existing `figment::Jail` code.
   upstream SHA-256 checksums still match the provenance record. The uppercase
   `docs/CONTENTS.md` is the repository's documentation catalogue and will be
   updated alongside `docs/repository-layout.md`.
-- [ ] Complete the v0.10.0 applicability matrix with source-level evidence.
-- [ ] Migrate manifests, lockfile, compiler floor, source imports, loaders, and
+- [x] (2026-10-26 17:41Z) Committed the five immutable upstream documents,
+  provenance and local repository documentation in `05f8c5c`. The final docs
+  gates passed sequentially, all imported hashes match, and the final
+  documentation CodeRabbit review returned zero findings.
+- [x] (2026-10-26 17:41Z) `cargo metadata --locked` showed the full existing
+  graph needs Rust 1.94.0 (`postgresql_*` and `sqlx`) and includes
+  `cargo-platform` 1.91. Root and `cli-defs` will declare 1.94.0, and each CI
+  feature lane will check all targets with that stable compiler.
+- [x] (2026-10-26 18:20Z) Updated root and `cli-defs` manifests to crates.io
+  OrthoConfig v0.10.0, removed direct Figment/YAML/JSON5/XDG dependencies,
+  retained OrthoConfig's defaults and forwarded TOML/JSON5/YAML features. The
+  lockfile retains the explained 0.5.0 helper chain. Declared the graph's Rust
+  1.94.0 floor and added a stable 1.94.0 all-target check to each CI lane.
+- [x] (2026-10-26 18:20Z) Replaced all ten `figment::Jail` tests with isolated
+  source-injected tests. The focused CLI suite passes 16 tests, including
+  explicit CLI-default precedence, required/malformed/unreadable file failures,
+  and `create-user` file/environment/CLI precedence. v0.10 hides the
+  derive-generated parser type, so `Cli` keeps it private in the flattened
+  field; `CreateUserArgs` now declares its file namespace explicitly.
+- [x] (2026-10-26 19:58Z) Process-level tests passed 8/8 for help, unknown
+  subcommands, invalid values, missing files selected by `MXD_CONFIG_PATH` and
+  `--config-path`, malformed selected files, local dotfile discovery failures,
+  and the generated man page. The man-page assertions account for roff's
+  escaped hyphens.
+- [x] (2026-10-26 18:49Z) Optional-format tests passed with `--features json5`
+  (17/17) and `--features yaml` (18/18). Coverage includes JSON5 loading, YAML
+  1.2 string scalars, and duplicate keys. Saphyr reports the duplicate as
+  `OrthoError::Merge` with the path and parser diagnostic; the regression
+  asserts that published error shape.
+- [x] (2026-10-26 21:39Z) Candidate deterministic gates passed. The isolated
+  aggregate `make test` used
+  `PG_DATA_DIR=/var/tmp/mxd-issue-669-pgdata-59318af2` after earlier PostgreSQL
+  bootstrap collisions with concurrent worktrees; it passed PostgreSQL 511/511,
+  SQLite 516/516, wireframe-only 506/506, UI 1/1, verification 69 passed/1
+  expected skip, fuzz 8/8, concurrency 7/7 and 7/7 doctests, and docs 5
+  passed/4 ignored. Exit status was 0 in 372 seconds. Log:
+  `/tmp/test-59318af2-3e23-4652-aeff-933ecec1b9dc-issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0-isolated-pg.out`.
+- [x] (2026-10-26 21:43Z) Final reverse dependency trees confirm both direct
+  consumers resolve `ortho_config 0.10.0` from crates.io. The only remaining
+  `ortho_config` and `ortho_config_macros` 0.5.0 pair is pulled by
+  `pg-embed-setup-unpriv 0.5.2` as a development dependency. Rust 1.94.0
+  identifies as `4a4ef493e3a1488c6e321570238084b38948f6db`; the repository
+  nightly identifies as `80d0e4be6f15899649ba31669077c59a986f96cc`.
+- [x] (2026-10-26 21:47Z) After the final design-note edit, `make fmt`,
+  `make check-fmt`, `make markdownlint` (including spelling), `make nixie`, and
+  `git diff --check` passed. All five imported-document hashes still match the
+  provenance record.
+- [ ] Source CodeRabbit review is pending a review-quota cooldown. The initial
+  request and two foreground retries after 75- and 64-minute waits returned
+  rate-limit responses, not review verdicts; each retry reported all 10
+  included reviews consumed. No usage-based review was enabled. Per the task
+  instruction, `vsleep` is running for a randomly selected 71 minutes before
+  the next foreground retry.
+- [x] Complete the v0.10.0 applicability matrix with source-level evidence.
+- [x] Migrate manifests, lockfile, compiler floor, source imports, loaders, and
   isolated configuration tests.
-- [ ] Run behavioral and feature-lane validation, generated-man-page checks,
+- [x] Complete behavioural and feature-lane validation, generated-man-page
+      checks,
   and final deterministic gates.
 - [ ] Complete milestone CodeRabbit reviews, push the branch, and create a
   draft pull request that closes #669 and supersedes #574.
@@ -155,12 +212,29 @@ replaces the existing `figment::Jail` code.
   metadata for v0.6.3 and its dependency list declares `ortho_config ^0.5.0`,
   the same range as v0.5.2. Impact: do not update this test helper merely to
   chase a single OrthoConfig version; retain and explain the dependency chain.
+- Observation: the locked full workspace graph includes dependencies declaring
+  Rust 1.94.0 (`postgresql_archive`, `postgresql_commands`,
+  `postgresql_embedded`, and `sqlx`), plus `cargo-platform` 1.91. Evidence:
+  `cargo metadata --locked` against the baseline lockfile. Impact: validate the
+  actual targets on 1.94.0 rather than inferring the repository floor from
+  OrthoConfig's lower 1.89.0 floor; the existing `nightly-2026-03-26` toolchain
+  already exceeds it.
 - Observation: `build.rs` only reads Cargo's `OUT_DIR` and `CARGO_PKG_NAME`;
   no `cargo-orthohelp` bridge is installed or invoked by this repository.
   Evidence: `build.rs` has the only application build-time environment reads,
   and repository search found no `cargo-orthohelp` command or metadata table.
   Impact: keep the existing clap-mangen generator and validate its actual
   output under the v0.10 build-time dependency.
+- Observation: v0.10 hides the generated parser as `__<Config>Cli`, so the
+  former public `AppConfigCli` name no longer exists. Evidence: the first build
+  failed at that type reference and the published derive source emits a private
+  helper. Impact: `Cli` retains the helper as a private flattened field;
+  runtime help and the generated man page retain the shared flags.
+- Observation: v0.10's legacy environment-selected config path is only an
+  optional discovery candidate. Evidence: the injected missing-path test fell
+  through to defaults. Impact: opt into `explicit_mode = "required_exclusive"`,
+  preserving first-wins automatic discovery while a selected path remains
+  required and suppresses fallback.
 
 ## Decision log
 
@@ -172,6 +246,10 @@ replaces the existing `figment::Jail` code.
   use its v0.10.0 source-aware APIs for hermetic tests. Rationale: this replaces
   `figment::Jail` without adding an application-owned injection API or
   changing domain dependencies. Date/Author: 2026-10-26, Codex.
+- Decision: enable v0.10 `required_exclusive` explicit discovery for
+  `AppConfig`. Rationale: a configured `MXD_CONFIG_PATH` or `--config-path`
+  must not silently fall through to defaults or another file; automatic
+  discovery remains first-wins. Date/Author: 2026-10-26, Codex.
 - Decision: remove direct configuration crates only when every remaining
   production and test import is supplied by the v0.10.0 facade or no longer
   needed. Rationale: the older guides document re-exports, but mxd's own
@@ -182,14 +260,40 @@ replaces the existing `figment::Jail` code.
   depends on `ortho_config ^0.5.0`, so changing this helper would add unrelated
   churn and would not remove the locked 0.5.0 copy. Date/Author: 2026-10-26,
   Codex.
+- Decision: declare Rust 1.94.0 for both `mxd` and `cli-defs`. Rationale: the
+  existing locked full feature/test graph already includes crates requiring
+  1.94.0; declaring only OrthoConfig's 1.89.0 floor would advertise an
+  unsupported compiler for promised targets. Keep the existing dated nightly
+  pin and test the full feature matrix on 1.94.0. Date/Author: 2026-10-26,
+  Codex.
 
 ## Outcomes & retrospective
 
-Implementation and validation are in progress. The baseline aggregate test
-command is red for embedded PostgreSQL initialization and stopped before the
-remaining lanes, which were run individually and are listed above. Record the
-final dependency graph, test inventory delta, compiler identities, review
-findings, and pull request URL here before marking the plan complete.
+The source migration and deterministic gates are complete, with a clean
+aggregate result after isolating this candidate's embedded PostgreSQL data
+directory. The baseline and first candidate PostgreSQL bootstrap failures
+occurred while multiple worktrees used the helper's shared default data
+directory. The isolated candidate run passed; since the baseline was not rerun
+with an isolated directory, shared-directory contention remains the likely
+cause rather than a proven one. The SQLite bind collision and UI timeout
+occurred on baseline; the migrated SQLite and UI lanes both passed in the final
+aggregate run.
+
+The migrated default PostgreSQL lane runs 511 tests versus 497 on baseline
+(+14), SQLite runs 516 versus 502 (+14), and wireframe-only runs 506 versus 500
+(+6). The delta consists of six additional injected-source configuration
+regressions replacing and expanding the ten `figment::Jail` cases, plus eight
+child-process CLI contract cases enabled in the PostgreSQL and SQLite lanes.
+Optional JSON5 and YAML checks add separate format-specific cases and are
+reported above. Verification, fuzz, concurrency, doctest, and documentation
+inventories retain their baseline counts and expected skips.
+
+Before completion, record source-review findings after the quota retry, the
+final docs-gate results, commit/push identities, and the draft pull request
+URL. The lockfile has no direct Git OrthoConfig source; the remaining 0.5.0
+`ortho_config`/`ortho_config_macros` pair is pulled by
+`pg-embed-setup-unpriv 0.5.2` as a development dependency, as shown by the
+reverse dependency trees above.
 
 ## Context and orientation
 
@@ -226,34 +330,34 @@ llvm-tools-preview, and rust-analyzer.
 
 ### v0.10.0 migration-guide applicability matrix
 
-| Guide change                                                       | Applicability and planned evidence                                                                                                                                                                 |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Update OrthoConfig, direct macro, and tooling versions together    | Required for root and `cli-defs`; inventory direct macro and tooling use, then inspect manifests and lock graph.                                                                                   |
-| Explicit CLI values win even when equal to defaults                | Review both root `load_from_iter` and subcommand merge paths; add a regression for explicit default versus lower file/environment values.                                                          |
-| Fluent identifiers and docs IR 2.0                                 | No current Fluent catalogue, localizer, `LocalizedParse` call, or IR-version consumer was found; confirm by final source search. The CLI currently uses Clap and OrthoConfig fallback diagnostics. |
-| `AgentContext.profiles` uses `ProfilesDeclaration`                 | No current `AgentContext` construction was found; confirm final source search.                                                                                                                     |
-| `DocMetadata` literals add `profiles`                              | No library or bridge `DocMetadata` literals were found; `cargo-orthohelp` is not an installed or invoked consumer.                                                                                 |
-| Boolean flags accept `--flag=false`                                | No boolean field exists in shared CLI configuration; confirm source inventory and generated man pages. The space-separated form remains rejected by v0.10.0.                                       |
-| Named profiles                                                     | Optional and unused; do not reserve `profile` or alter the config schema.                                                                                                                          |
-| Stacked discovery scopes                                           | Optional; retain current first-wins discovery behavior.                                                                                                                                            |
-| Injected environment and file sources                              | Applicable to replace `Jail` and process-state tests; use only published `_with_sources` entry points and `MapEnv`.                                                                                |
-| Inferred string defaults with `cli_default_as_absent`              | No clap `default_value`/`default_value_t` fields were found; do not add the attribute without a demonstrated need.                                                                                 |
-| Agent-native metadata and policy checking                          | Optional; no manifest policy tables or `cargo-orthohelp` invocation exists.                                                                                                                        |
-| Cargo external-subcommand helper                                   | Optional and unrelated to mxd's server CLI; do not adopt.                                                                                                                                          |
-| Standalone `ortho_l10n`                                            | No standalone localization-only consumer exists; retain localization through the facade if needed.                                                                                                 |
-| `cargo-orthohelp` stdout changes and bridge environment allow-list | No bridge invocation exists. Review `build.rs`, which currently reads only Cargo-provided `OUT_DIR` and `CARGO_PKG_NAME`, and validate clap-mangen output.                                         |
-| Localization re-exports, including `FluentValue`                   | No localization runtime or `fluent-bundle` dependency is used by this repository; do not add `ortho_l10n` or localization identifiers.                                                             |
-| Missing, malformed, and unreadable config remain distinct          | Required behavior; add or retain tests proving each outcome, visible diagnostics, exit status, and streams.                                                                                        |
+| Guide change                                                       | Applicability and planned evidence                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Update OrthoConfig, direct macro, and tooling versions together    | Required for root and `cli-defs`; inventory direct macro and tooling use, then inspect manifests and lock graph.                                                                                                                                                                                                   |
+| Explicit CLI values win even when equal to defaults                | Required; `explicit_cli_default_overrides_file_and_environment` passes through the source-aware loader. Subcommand file/environment/CLI precedence also passes.                                                                                                                                                    |
+| Fluent identifiers and docs IR 2.0                                 | Not applicable: there is no Fluent catalogue, localizer, `LocalizedParse` call, or IR-version consumer. Process tests cover existing Clap/fallback English diagnostics under `LC_ALL=C`.                                                                                                                           |
+| `AgentContext.profiles` uses `ProfilesDeclaration`                 | No current `AgentContext` construction was found; repository search confirms no construction site.                                                                                                                                                                                                                 |
+| `DocMetadata` literals add `profiles`                              | No library or bridge `DocMetadata` literals were found; `cargo-orthohelp` is not an installed or invoked consumer.                                                                                                                                                                                                 |
+| Boolean flags accept `--flag=false`                                | No boolean field exists in shared CLI configuration; repository-wide CLI field search confirms this. The space-separated form remains rejected by v0.10.0.                                                                                                                                                         |
+| Named profiles                                                     | Optional and unused; do not reserve `profile` or alter the config schema.                                                                                                                                                                                                                                          |
+| Stacked discovery scopes                                           | Not needed; retain first-wins automatic discovery. Set `explicit_mode = "required_exclusive"` because a focused test showed that v0.10's legacy environment selector otherwise falls through on a missing selected path; process tests cover missing selection through both `MXD_CONFIG_PATH` and `--config-path`. |
+| Injected environment and file sources                              | Applied: all ten former `Jail` tests use published `_with_sources` entry points, `MapEnv`, and explicit capability file sources. No process environment is mutated in these tests.                                                                                                                                 |
+| Inferred string defaults with `cli_default_as_absent`              | No clap `default_value`/`default_value_t` fields were found; do not add the attribute without a demonstrated need.                                                                                                                                                                                                 |
+| Agent-native metadata and policy checking                          | Optional; no manifest policy tables or `cargo-orthohelp` invocation exists.                                                                                                                                                                                                                                        |
+| Cargo external-subcommand helper                                   | Optional and unrelated to mxd's server CLI; do not adopt.                                                                                                                                                                                                                                                          |
+| Standalone `ortho_l10n`                                            | No standalone localization-only consumer exists; retain localization through the facade if needed.                                                                                                                                                                                                                 |
+| `cargo-orthohelp` stdout changes and bridge environment allow-list | No bridge invocation exists. Review `build.rs`, which currently reads only Cargo-provided `OUT_DIR` and `CARGO_PKG_NAME`, and validate clap-mangen output.                                                                                                                                                         |
+| Localization re-exports, including `FluentValue`                   | The application has no localization runtime or direct `fluent-bundle` dependency. The facade brings `ortho_l10n` and `fluent-bundle` transitively; no local type-identity import or catalogue migration is needed.                                                                                                 |
+| Missing, malformed, and unreadable config remain distinct          | Required behaviour; `required_exclusive` preserves the selected-path failure contract. Source-injected tests distinguish all three, and process tests check visible diagnostics, exit status, and streams for missing environment/CLI selections, malformed selections, and discovered dotfiles.                   |
 
 ### Earlier migration-guide applicability matrix
 
 | Earlier change                                            | Applicability and planned evidence                                                                                                                                                                      |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| v0.6 dependency re-exports                                | Replace direct Figment, JSON5, YAML, `uncased`, or `xdg` dependencies only after source imports are moved to v0.10 re-exports and tests pass.                                                           |
-| v0.6 declarative discovery and strict failures            | Audit manual discovery and missing/malformed/unreadable cases; keep discovery settings explicit and failures visible.                                                                                   |
-| v0.6 Saphyr YAML 1.2 parsing                              | Replace direct `serde_yaml`/legacy YAML providers where used; test existing YAML plus YAML 1.2 and duplicate-key behavior.                                                                              |
+| v0.6 dependency re-exports                                | Applied to root and `cli-defs`: removed direct Figment, JSON5, YAML, `uncased`, and `xdg` configuration dependencies. The validator retains TOML directly for its independent validator config parser.  |
+| v0.6 declarative discovery and strict failures            | Applied the v0.10 derive's `required_exclusive` policy for selected paths; tests cover absent candidates and missing, malformed, and unreadable selected files.                                         |
+| v0.6 Saphyr YAML 1.2 parsing                              | Replaced direct YAML providers with OrthoConfig's Saphyr-backed feature; YAML 1.2 scalar and duplicate-key tests pass.                                                                                  |
 | v0.7 layer composition and post-merge hooks               | No current composer or hook callers were found; retain existing loader structure unless the API migration requires a mechanical call-site update.                                                       |
-| v0.7 CLI defaults and localized parsing                   | No clap default attributes or localizer/catalogue source was found; preserve current help/error exits and localized output through binary tests.                                                        |
+| v0.7 CLI defaults and localized parsing                   | No clap default attributes or localizer/catalogue source was found. Preserve current Clap/fallback diagnostics, exit codes, and streams through process tests under a controlled C locale.              |
 | v0.9 discovery, YAML, aliases, localization, and metadata | Apply strict discovery and YAML contracts; use source injection for tests. Aliases, nested docs IR, agent context, metrics, and extra observability remain opt-in unless current code proves otherwise. |
 | v0.9 and earlier cumulative changelog                     | The upstream v0.9.0 section explicitly covers v0.8.0 and earlier; review cumulative notes alongside the imported v0.6/v0.7 guides.                                                                      |
 
@@ -361,13 +465,13 @@ and create a draft PR referencing #669 and superseding #574. Do not merge.
 - Conformance: no new public application interface, format feature, or
   configuration precedence rule.
 - Recovery: revert the isolated dependency/toolchain commit.
-- Remaining: runtime loaders and behavioral adaptation.
+- Remaining: runtime loaders and behavioural adaptation.
 - Compatibility decision: none.
 
 ### EP-M2: runtime consumers and regression coverage
 
 - Requirements advanced: issue #669 source, test isolation, discovery, output,
-  and behavior clauses.
+  and behaviour clauses.
 - Acceptance: existing configuration contracts pass across all required
   backend lanes; build-time man-page generation succeeds; no touched test uses
   `figment::Jail` or process environment mutation.

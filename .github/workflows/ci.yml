@@ -136,6 +136,10 @@ jobs:
       # re-resolve it instead of failing.
       - name: Check the lockfile matches the manifest
         run: make check-locked
+      - name: Check Rust 1.94 compatibility
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal
+          cargo +1.94.0 check --locked --all-targets ${{ matrix.cargo_flags }}
       - name: Install cargo-nextest
         env:
           GITHUB_TOKEN: ${{ github.token }}
