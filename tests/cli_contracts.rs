@@ -1,6 +1,9 @@
 //! Process-level checks for mxd CLI output and exit contracts.
 
-use std::{path::Path, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use anyhow::{Context, Result};
 use cap_std::{ambient_authority, fs::Dir};
@@ -34,125 +37,15 @@ fn write_fixture(root: &TempDir, name: &str, contents: &str) -> Result<()> {
         .context("write CLI fixture")
 }
 
-macro_rules! ensure_equal {
-    ($actual:expr, $expected:expr, $context:expr $(,)?) => {{
-        let actual = $actual;
-        let expected = $expected;
-        anyhow::ensure!(
-            actual == expected,
-            "{}: expected {expected:?}, got {actual:?}",
-            $context
-        );
-        Ok::<(), anyhow::Error>(())
-    }};
+fn fixture_path(root: &TempDir, name: &str) -> Result<String> {
+    root.path()
+        .join(name)
+        .into_os_string()
+        .into_string()
+        .map_err(|_| anyhow::anyhow!("temporary {name} path is not UTF-8"))
 }
 
-#[rstest]
-fn help_uses_stdout_and_exits_successfully() -> Result<()> {
-    let output = run_mxd(&["--help"], &[], None)?;
-    ensure_equal!(output.status.code(), Some(0), "help exit status")?;
-    anyhow::ensure!(output.stdout.windows(5).any(|w| w == b"Usage"));
-    anyhow::ensure!(output.stdout.windows(4).any(|w| w == b"bind"));
-    anyhow::ensure!(output.stderr.is_empty());
-    Ok(())
-}
-
-#[rstest]
-fn unknown_subcommand_uses_stderr_and_exits_with_clap_status() -> Result<()> {
-    let output = run_mxd(&["not-a-command"], &[], None)?;
-    ensure_equal!(
-        output.status.code(),
-        Some(2),
-        "unknown subcommand exit status",
-    )?;
-    anyhow::ensure!(output.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    anyhow::ensure!(stderr.contains("unrecognized subcommand"), "{stderr}");
-    Ok(())
-}
-
-#[rstest]
-fn clap_value_error_uses_stderr_and_exits_with_clap_status() -> Result<()> {
-    let output = run_mxd(&["--argon2-m-cost", "not-a-number"], &[], None)?;
-    ensure_equal!(output.status.code(), Some(2), "invalid value exit status")?;
-    anyhow::ensure!(output.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    anyhow::ensure!(stderr.contains("invalid value"), "{stderr}");
-    Ok(())
-}
-
-#[rstest]
-fn missing_explicit_config_fails_visibly() -> Result<()> {
-    let root = TempDir::new().context("create missing-config fixture root")?;
-    let missing = root.path().join("missing.toml");
-    let missing_path = missing
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("temporary path is not UTF-8"))?;
-    let output = run_mxd(
-        &["--bind", "127.0.0.1:5500"],
-        &[("MXD_CONFIG_PATH", missing_path)],
-        None,
-    )?;
-    ensure_equal!(
-        output.status.code(),
-        Some(1),
-        "missing environment config status",
-    )?;
-    anyhow::ensure!(output.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    anyhow::ensure!(stderr.contains("load configuration"), "{stderr}");
-    anyhow::ensure!(stderr.contains("missing.toml"), "{stderr}");
-    Ok(())
-}
-
-#[rstest]
-fn missing_cli_selected_config_fails_visibly() -> Result<()> {
-    let root = TempDir::new().context("create missing-config fixture root")?;
-    let missing_path = root
-        .path()
-        .join("missing.toml")
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("temporary path is not UTF-8"))?
-        .to_owned();
-    let output = run_mxd(
-        &["--config-path", &missing_path, "--bind", "127.0.0.1:5500"],
-        &[],
-        None,
-    )?;
-    ensure_equal!(output.status.code(), Some(1), "missing CLI config status")?;
-    anyhow::ensure!(output.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    anyhow::ensure!(stderr.contains("load configuration"), "{stderr}");
-    anyhow::ensure!(stderr.contains("missing.toml"), "{stderr}");
-    Ok(())
-}
-
-#[rstest]
-fn malformed_explicit_config_fails_visibly() -> Result<()> {
-    let root = TempDir::new().context("create malformed-config fixture root")?;
-    write_fixture(&root, "malformed.toml", "bind = [")?;
-    let path = root
-        .path()
-        .join("malformed.toml")
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("temporary path is not UTF-8"))?
-        .to_owned();
-    let output = run_mxd(
-        &["--bind", "127.0.0.1:5500"],
-        &[("MXD_CONFIG_PATH", &path)],
-        None,
-    )?;
-    ensure_equal!(output.status.code(), Some(1), "malformed config status")?;
-    anyhow::ensure!(output.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    anyhow::ensure!(stderr.contains("load configuration"), "{stderr}");
-    anyhow::ensure!(stderr.contains("malformed.toml"), "{stderr}");
-    Ok(())
-}
-
-#[rstest]
-fn local_dotfile_discovery_surfaces_parse_failures() -> Result<()> {
-    let root = TempDir::new().context("create dotfile fixture root")?;
+fn isolated_discovery_environment(root: &TempDir) -> Result<Vec<(String, String)>> {
     let directory = Dir::open_ambient_dir(root.path(), ambient_authority())
         .context("open isolated discovery root")?;
     for path in ["home", "xdg-config-home", "xdg-config-dirs"] {
@@ -160,44 +53,184 @@ fn local_dotfile_discovery_surfaces_parse_failures() -> Result<()> {
             .create_dir(path)
             .with_context(|| format!("create isolated discovery directory {path}"))?;
     }
-    let home = root.path().join("home");
-    let xdg_config_home = root.path().join("xdg-config-home");
-    let xdg_config_dirs = root.path().join("xdg-config-dirs");
-    let environment = [
-        (
-            "HOME",
-            home.to_str()
-                .ok_or_else(|| anyhow::anyhow!("temporary HOME path is not UTF-8"))?,
-        ),
-        (
-            "XDG_CONFIG_HOME",
-            xdg_config_home
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("temporary XDG_CONFIG_HOME is not UTF-8"))?,
-        ),
-        (
-            "XDG_CONFIG_DIRS",
-            xdg_config_dirs
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("temporary XDG_CONFIG_DIRS is not UTF-8"))?,
-        ),
-    ];
-    write_fixture(&root, ".mxd.toml", "bind = [")?;
-    let output = run_mxd(
-        &["--bind", "127.0.0.1:5500"],
-        &environment,
-        Some(root.path()),
-    )?;
-    ensure_equal!(
-        output.status.code(),
-        Some(1),
-        "discovered malformed config status",
-    )?;
-    anyhow::ensure!(output.stdout.is_empty());
+
+    [
+        ("HOME", "home"),
+        ("XDG_CONFIG_HOME", "xdg-config-home"),
+        ("XDG_CONFIG_DIRS", "xdg-config-dirs"),
+    ]
+    .into_iter()
+    .map(|(key, name)| Ok((key.to_owned(), fixture_path(root, name)?)))
+    .collect::<Result<Vec<_>>>()
+}
+
+fn assert_failure_contract(
+    output: &std::process::Output,
+    expected_status: i32,
+    expected_diagnostics: &[&str],
+) -> Result<()> {
+    anyhow::ensure!(
+        output.status.code() == Some(expected_status),
+        "expected exit status {expected_status}, got {:?}",
+        output.status.code()
+    );
+    anyhow::ensure!(output.stdout.is_empty(), "failed CLI writes to stdout");
+
     let stderr = String::from_utf8_lossy(&output.stderr);
-    anyhow::ensure!(stderr.contains("load configuration"), "{stderr}");
-    anyhow::ensure!(stderr.contains(".mxd.toml"), "{stderr}");
+    for diagnostic in expected_diagnostics {
+        anyhow::ensure!(stderr.contains(diagnostic), "{stderr}");
+    }
+
     Ok(())
+}
+
+#[rstest]
+fn help_uses_stdout_and_exits_successfully() -> Result<()> {
+    let output = run_mxd(&["--help"], &[], None)?;
+    anyhow::ensure!(
+        output.status.code() == Some(0),
+        "help exits successfully, got {:?}",
+        output.status.code()
+    );
+    anyhow::ensure!(output.stdout.windows(5).any(|w| w == b"Usage"));
+    anyhow::ensure!(output.stdout.windows(4).any(|w| w == b"bind"));
+    anyhow::ensure!(output.stderr.is_empty());
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug)]
+enum CliFailureScenario {
+    UnknownSubcommand,
+    InvalidValue,
+    MissingEnvironmentConfig,
+    MissingCliConfig,
+    MalformedExplicitConfig,
+    MalformedProjectDotfile,
+}
+
+struct CliFailureCase {
+    arguments: Vec<String>,
+    environment: Vec<(String, String)>,
+    expected_status: i32,
+    diagnostics: &'static [&'static str],
+    current_dir: Option<PathBuf>,
+}
+
+impl CliFailureCase {
+    fn new(
+        arguments: &[&str],
+        environment: Vec<(String, String)>,
+        expected_status: i32,
+        diagnostics: &'static [&'static str],
+    ) -> Self {
+        Self {
+            arguments: arguments
+                .iter()
+                .map(|argument| (*argument).to_owned())
+                .collect(),
+            environment,
+            expected_status,
+            diagnostics,
+            current_dir: None,
+        }
+    }
+
+    fn in_directory(mut self, path: &Path) -> Self {
+        self.current_dir = Some(path.to_path_buf());
+        self
+    }
+}
+
+fn build_failure_case(root: &TempDir, scenario: CliFailureScenario) -> Result<CliFailureCase> {
+    let case = match scenario {
+        CliFailureScenario::UnknownSubcommand => CliFailureCase::new(
+            &["not-a-command"],
+            Vec::new(),
+            2,
+            &["unrecognized subcommand"],
+        ),
+        CliFailureScenario::InvalidValue => CliFailureCase::new(
+            &["--argon2-m-cost", "not-a-number"],
+            Vec::new(),
+            2,
+            &["invalid value"],
+        ),
+        CliFailureScenario::MissingEnvironmentConfig => CliFailureCase::new(
+            &["--bind", "127.0.0.1:5500"],
+            vec![(
+                "MXD_CONFIG_PATH".to_owned(),
+                fixture_path(root, "missing.toml")?,
+            )],
+            1,
+            &["load configuration", "missing.toml"],
+        ),
+        CliFailureScenario::MissingCliConfig => CliFailureCase::new(
+            &[
+                "--config-path",
+                &fixture_path(root, "missing.toml")?,
+                "--bind",
+                "127.0.0.1:5500",
+            ],
+            Vec::new(),
+            1,
+            &["load configuration", "missing.toml"],
+        ),
+        CliFailureScenario::MalformedExplicitConfig => {
+            write_fixture(root, "malformed.toml", "bind = [")?;
+            CliFailureCase::new(
+                &["--bind", "127.0.0.1:5500"],
+                vec![(
+                    "MXD_CONFIG_PATH".to_owned(),
+                    fixture_path(root, "malformed.toml")?,
+                )],
+                1,
+                &["load configuration", "malformed.toml"],
+            )
+        }
+        CliFailureScenario::MalformedProjectDotfile => {
+            write_fixture(root, ".mxd.toml", "bind = [")?;
+            CliFailureCase::new(
+                &["--bind", "127.0.0.1:5500"],
+                isolated_discovery_environment(root)?,
+                1,
+                &["load configuration", ".mxd.toml"],
+            )
+            .in_directory(root.path())
+        }
+    };
+
+    Ok(case)
+}
+
+#[rstest]
+#[case::unknown_subcommand(CliFailureScenario::UnknownSubcommand)]
+#[case::invalid_value(CliFailureScenario::InvalidValue)]
+#[case::missing_environment_config(CliFailureScenario::MissingEnvironmentConfig)]
+#[case::missing_cli_config(CliFailureScenario::MissingCliConfig)]
+#[case::malformed_explicit_config(CliFailureScenario::MalformedExplicitConfig)]
+#[case::malformed_project_dotfile(CliFailureScenario::MalformedProjectDotfile)]
+fn cli_failure_scenarios_preserve_exit_and_stream_contracts(
+    #[case] scenario: CliFailureScenario,
+) -> Result<()> {
+    let root = TempDir::new().context("create CLI failure fixture root")?;
+    let case = build_failure_case(&root, scenario)?;
+    let argument_refs = case
+        .arguments
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let environment_refs = case
+        .environment
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    let output = run_mxd(
+        &argument_refs,
+        &environment_refs,
+        case.current_dir.as_deref(),
+    )?;
+
+    assert_failure_contract(&output, case.expected_status, case.diagnostics)
 }
 
 #[rstest]

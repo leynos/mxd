@@ -73,6 +73,15 @@ replaces the existing `figment::Jail` code.
 - Build and test work shares Cargo's cache and compiler admission with other
   repositories. Severity: low; likelihood: medium. Use the shared cache and
   allow healthy queues to make progress; do not bypass admission.
+- Fresh `pg-embed-setup-unpriv` PostgreSQL archives can omit the `UTC` alias
+  even though `UCT` is present, preventing CI's PostgreSQL lane from starting.
+  Severity: medium; likelihood: high for a cold binary cache. Repair the alias
+  in both the isolated warmed cache and install, then exercise that behaviour
+  in the workflow contract test.
+- The current RustSec advisory database flags vulnerable versions already
+  present on the baseline branch. Severity: medium; likelihood: high in hosted
+  CI. Update only the affected lockfile packages to the advisory's fixed
+  versions and explain that targeted graph change.
 
 ## Progress
 
@@ -570,6 +579,56 @@ and UI timeout also occurred on the clean baseline. They remain visible for
 final comparison and are not attributed to migration changes without evidence
 connecting them to changed code.
 
+### Final candidate validation
+
+The corrected candidate passed the complete deterministic sequence. Compared
+with the baseline, PostgreSQL and SQLite each gained 14 cases, and
+wireframe-only gained 6. These net increases come from the new source-aware
+configuration, format-provider, and process-level CLI contract tests; no
+previous test suite was removed. Six CLI failure scenarios are now parameterized
+`rstest` cases, so their generated names changed while their coverage remains
+intact. The UI test that timed out on baseline passed 1/1.
+
+| Gate                                 | Result                                         | Evidence                                                                                                                                                |
+| ------------------------------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make check-fmt`                     | Passed                                         | `/tmp/check-fmt-59318af2-issue-669-current-6.out`                                                                                                       |
+| `make test-workflow-contracts`       | Passed, 254 tests                              | `/tmp/test-workflow-contracts-59318af2-issue-669-current.out`                                                                                           |
+| `make lint`                          | Passed, all configured feature lanes           | `/tmp/lint-59318af2-issue-669-current-4.out`                                                                                                            |
+| `make typecheck`                     | Passed, PostgreSQL/SQLite/wireframe-only       | `/tmp/typecheck-59318af2-issue-669-current-2.out`                                                                                                       |
+| `make rust-audit`                    | Passed; 7 allowed advisories reported          | `/tmp/rust-audit-59318af2-issue-669-current-2.out`                                                                                                      |
+| `make warm-postgres` and alias check | Passed; cache and install contain `UTC -> UCT` | `/tmp/warm-postgres-59318af2-issue-669-current.out`                                                                                                     |
+| `make test`                          | Passed across every listed suite               | `/tmp/test-59318af2-issue-669-current-4.out`                                                                                                            |
+| Markdown lint, Nixie, and diff check | Passed                                         | `/tmp/markdownlint-59318af2-issue-669-current-2.out`, `/tmp/nixie-59318af2-issue-669-current-2.out`, `/tmp/diff-check-59318af2-issue-669-current-2.out` |
+| CodeScene delta                      | Passed; health 9.38 to 10.00                   | `/tmp/codescene-delta-cli-contracts-59318af2-issue-669-current-2.out`                                                                                   |
+
+The final aggregate inventory is PostgreSQL 511/511, SQLite 516/516,
+wireframe-only 506/506, UI 1/1, verification 69 passed/1 expected skip, fuzz
+8/8, concurrency 7/7 with 7 doctests, and documentation 5 passed/4 ignored.
+Rust 1.94.0 `cargo check --locked --all-targets` passed for each CI feature
+lane. Its compiler was `rustc 1.94.0 (4a4ef493e 2026-03-02)`. The repository
+pin remains `nightly-2026-03-26`, resolving to
+`rustc 1.96.0-nightly (80d0e4be6 2026-03-25)`. Whitaker used
+`nightly-2026-05-28` (`rustc 1.98.0-nightly`). Identities are recorded in
+`/tmp/rust-toolchain-identities-59318af2.out`.
+
+Hosted RustSec findings affected versions already present on baseline. Targeted
+lockfile updates moved `ctutils` 0.4.2 to 0.4.4, `rustls` 0.23.45 to 0.23.46,
+and `rustls-webpki` 0.103.15 to 0.103.16. The final audit exits successfully
+with seven configured allowed advisories reported; no audit warnings were
+suppressed.
+
+`make check-locked` passed. The locked reverse dependency tree shows v0.10.0
+used by root `mxd` and `cli-defs`, including `cli-defs` in the root build
+dependency. The only v0.5.0 copy is the `pg-embed-setup-unpriv 0.5.2`
+development dependency chain. Tree output is in
+`/tmp/cargo-tree-ortho-config-0.10.0-59318af2.out` and
+`/tmp/cargo-tree-ortho-config-0.5.0-59318af2.out`.
+
+Fresh PostgreSQL archives omitted the `UTC` alias while retaining `UCT`.
+`warm-postgres` now repairs the relative alias in both its binary cache and
+isolated install. The workflow contract test verifies both paths, and the full
+PostgreSQL lane passed against that fresh setup.
+
 ## Idempotence and recovery
 
 The upstream import can be repeated from the pinned commit and must reproduce
@@ -644,3 +703,20 @@ unless inventory reveals an existing install or invocation that must move.
   findings and returned zero findings after the deterministic gates passed on
   the corrected candidate. The implementation is ready for push and draft PR
   creation.
+- (2026-10-27 03:32Z) Hosted CI exposed a PostgreSQL timezone archive missing
+  `UTC` while retaining `UCT`; adding the relative alias in a disposable cache
+  made all 511 PostgreSQL tests pass when tests installed from that cache. A
+  later exact warm-target run reused the already installed runtime and showed
+  that the cache-only repair does not update that copy. The warm target now
+  repairs both cache and install, with its workflow contract test checking both
+  paths. Hosted CodeScene also found duplicated CLI failure-contract tests, so
+  those scenarios are parameterized with `rstest`. The current RustSec
+  advisories affect baseline lock versions; only `ctutils`, `rustls`, and
+  `rustls-webpki` were updated to the reported fixed releases.
+- (2026-10-27 03:55Z) The corrected warm target passed with a fresh cache and
+  install. The complete `make test` aggregate passed across PostgreSQL 511,
+  SQLite 516, wireframe-only 506, UI 1, verification 69 plus one expected skip,
+  fuzz 8, concurrency 7 plus 7 doctests, and documentation 5 plus 4 ignored.
+  Workflow contracts passed 254 tests. Lint, typecheck, Rust audit, CodeScene
+  delta, Markdown/Nixie, and Rust 1.94.0 checks passed. CodeRabbit review and
+  delivery remain.

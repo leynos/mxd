@@ -143,6 +143,11 @@ def _host(tmp_path: Path, *, populates_cache: bool) -> Host:
     body = f'echo "$PG_RUNTIME_DIR $PG_DATA_DIR" > "{seen}"\n'
     if populates_cache:
         body += f'echo binary > "{cache}/postgres.tar"\n'
+        timezone_dir = cache / "18.6.1" / "share" / "timezone"
+        body += f'mkdir -p "{timezone_dir}"\n'
+        body += f'touch "{timezone_dir / "UCT"}"\n'
+        body += 'mkdir -p "$PG_RUNTIME_DIR/18.6.1/share/timezone"\n'
+        body += 'touch "$PG_RUNTIME_DIR/18.6.1/share/timezone/UCT"\n'
     fake = bin_dir / FAKE_NAME
     fake.write_text(f"#!/usr/bin/env sh\n{body}", encoding="utf-8")
     fake.chmod(0o755)
@@ -151,7 +156,7 @@ def _host(tmp_path: Path, *, populates_cache: bool) -> Host:
 
 
 def test_warm_postgres_succeeds_when_the_cache_is_filled(tmp_path: Path) -> None:
-    """A downloader that fills the cache passes, with the throwaway directories."""
+    """Warm-up fills the cache, fixes its UTC alias and uses throwaway directories."""
     host = _host(tmp_path, populates_cache=True)
     result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -159,6 +164,14 @@ def test_warm_postgres_succeeds_when_the_cache_is_filled(tmp_path: Path) -> None
         f"{tmp_path}/warm/install",
         f"{tmp_path}/warm/data",
     ]
+    runtime_install = Path(host.seen.read_text("utf-8").split()[0])
+    utc_aliases = [
+        host.cache / "18.6.1" / "share" / "timezone" / "UTC",
+        runtime_install / "18.6.1" / "share" / "timezone" / "UTC",
+    ]
+    for utc_alias in utc_aliases:
+        assert utc_alias.is_symlink()
+        assert os.readlink(utc_alias) == "UCT"
 
 
 def test_warm_postgres_fails_when_nothing_was_downloaded(tmp_path: Path) -> None:
