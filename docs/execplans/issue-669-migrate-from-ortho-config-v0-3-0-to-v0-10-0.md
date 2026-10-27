@@ -737,3 +737,10 @@ unless inventory reveals an existing install or invocation that must move.
   `cli_tests.rs` 403 lines. Moved the file-error cases into
   `cli_tests/file_errors.rs`; the exact-candidate full gate sequence is being
   rerun before commit and another review.
+- (2026-10-27 10:05Z) Commit `e0f7d17` contains the capability-aware unreadable
+  file test and the extracted file-error test module. The full local sequence
+  passed, including all test lanes, lint/Whitaker, Rust 1.94 feature checks,
+  and imported-guide hashes. Hosted CI, Loom, release artefacts, CodeQL, TLA+,
+  CodeScene, and Gecko checks also passed. The final CodeRabbit attempt was
+  rate-limited after the requested cooldown; another random `vsleep` is running
+  before retry.
