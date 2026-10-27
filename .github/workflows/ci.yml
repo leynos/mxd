@@ -130,7 +130,7 @@ jobs:
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
       - name: Cache Cargo directories
         id: rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # Before anything long runs: a lockfile the manifest does not admit is a
       # tree nothing here builds from, and every later step would silently
       # re-resolve it instead of failing.
@@ -254,7 +254,7 @@ jobs:
           install-sqlite-deps: true
       - name: Cache Cargo directories
         id: rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Add validator bin directory to PATH
         run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
       - name: Install SynHX
@@ -329,7 +329,7 @@ jobs:
           install-postgres-deps: true
       - name: Cache Cargo directories
         id: rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Add validator bin directory to PATH
         run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
       - name: Install SynHX
@@ -344,7 +344,7 @@ jobs:
           fi
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@v2.87.27
+      - uses: taiki-e/install-action@v2.87.29
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
