@@ -264,6 +264,21 @@ Success is observable when:
   skips its test step, so the coverage job is the PostgreSQL execution
   evidence. CodeScene passed at the same head. Local gates were not rerun for
   this head.
+- [x] (2026-10-27) Final review repairs are present at `d4b5e96`: added
+  retry/fallback metrics and bounded tracing, source-chain regression tests for
+  terminal failures, a property test for mixed retry sequences, and workflow
+  contract coverage for PostgreSQL target overrides and exact helper versions.
+  Reconciled the design, developer, and migration documentation. The manual
+  documented-function check remains 45/45 (100%); this is not a refreshed
+  provider score.
+- [x] (2026-10-27) Hosted CI run
+  [40430679039](https://github.com/leynos/mxd/actions/runs/40430679039) passed
+  at `d4b5e9613bf8ac7962c1a7ca328013f47b733a02`. PostgreSQL coverage passed 640
+  tests with one skipped in 80.141 s; SQLite coverage passed 633 with one
+  skipped. Logs confirm retry, property, fallback, isolation, time-zone, and
+  cleanup tests passed. CodeScene succeeded. The PostgreSQL build leg skips its
+  test step, so coverage is the PostgreSQL execution evidence. Local gates were
+  not rerun for this head.
 - [ ] Clear review, merge PR #668, and verify its post-merge
   `coverage-main.yml` run before marking this plan complete. This acceptance
   criterion remains pending while the PR is open.
