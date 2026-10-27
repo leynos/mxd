@@ -15,8 +15,8 @@ crates.io; mxd does not vendor it.
 
 - Linux host, VM, or container. `root` access enables the privilege-dropping
   path, but unprivileged executions are also supported.
-- For builds from an upstream source checkout, the Rust toolchain specified in
-  its `rust-toolchain.toml`.
+- For builds from an upstream source checkout, use the Rust toolchain specified
+  in that checkout’s `rust-toolchain.toml`.
 - Outbound network access to crates.io and the PostgreSQL binary archive.
 - System timezone database (package usually named `tzdata`). This matters when
   the selected bundle does not carry its own `share/timezone`: a bundle built
@@ -88,7 +88,7 @@ Troubleshooting guidance:
    0700 for the runtime and data directories), and initializes the cluster with
    the provided credentials. Invocations that begin as `root` prepare
    directories for `nobody` and execute lifecycle commands through the worker
-   helper so the privileged operations run entirely under the sandbox user.
+   helper, so the privileged operations run entirely under the sandbox user.
    Ownership fix-ups occur on every call so running the tool twice remains
    idempotent.
 
