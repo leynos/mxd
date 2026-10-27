@@ -15,8 +15,8 @@ crates.io; mxd does not vendor it.
 
 - Linux host, VM, or container. `root` access enables the privilege-dropping
   path, but unprivileged executions are also supported.
-- For builds from an upstream source checkout, use the Rust toolchain specified
-  in that checkout’s `rust-toolchain.toml`.
+- Rust and Cargo to install the published crate. For builds from an upstream
+  source checkout, use the toolchain in that checkout’s `rust-toolchain.toml`.
 - Outbound network access to crates.io and the PostgreSQL binary archive.
 - System timezone database (package usually named `tzdata`). This matters when
   the selected bundle does not carry its own `share/timezone`: a bundle built
