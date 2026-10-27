@@ -175,12 +175,23 @@ replaces the existing `figment::Jail` code.
   `make check-fmt`, `make markdownlint` (including spelling), `make nixie`, and
   `git diff --check` passed. All five imported-document hashes still match the
   provenance record.
-- [ ] Source CodeRabbit review is pending a review-quota cooldown. The initial
-  request and two foreground retries after 75- and 64-minute waits returned
-  rate-limit responses, not review verdicts; each retry reported all 10
-  included reviews consumed. No usage-based review was enabled. Per the task
-  instruction, `vsleep` is running for a randomly selected 71 minutes before
-  the next foreground retry.
+- [x] (2026-10-27 01:58Z) The first source CodeRabbit review completed against
+  `5738204fdb73608fdffb4fe920c9e883191a0ff9` and found two minor test-isolation
+  risks: injected-source tests could discover a host project file, and the
+  child-process project-file test could discover host HOME/XDG files. Commit
+  `4cd88c9` selects an empty controlled file for default-value tests, keeps
+  home-dotfile discovery as a separate check, and supplies temporary HOME/XDG
+  directories to the child process.
+- [x] (2026-10-27 02:30Z) All deterministic gates passed after the review fixes:
+  `make check-fmt`, all six `make lint` lanes, isolated `make test` (PostgreSQL
+  511/511, SQLite 516/516, wireframe-only 506/506, UI 1/1, verification 69
+  passed/1 expected skip, fuzz 8/8, concurrency 7/7 plus 7 doctests, docs 5
+  passed/4 ignored), focused JSON5 (1/1), focused YAML (2/2), and Rust 1.94.0
+  all-target checks for PostgreSQL, SQLite, and wireframe-only.
+  `git diff --check` and all five imported-document hash checks also passed.
+  Logs use the `/tmp/*-isolation-fixes.out` suffix.
+- [ ] Request the second source CodeRabbit review on the gate-passed candidate
+  before pushing or creating the draft PR.
 - [x] Complete the v0.10.0 applicability matrix with source-level evidence.
 - [x] Migrate manifests, lockfile, compiler floor, source imports, loaders, and
   isolated configuration tests.
