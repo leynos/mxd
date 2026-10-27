@@ -27,13 +27,18 @@ use tempfile::TempDir;
 
 use super::*;
 
-fn isolated_environment(root: &TempDir) -> MapEnv {
+fn discovery_environment(root: &TempDir) -> MapEnv {
     let xdg_home = root.path().join("xdg-home");
     let xdg_dirs = root.path().join("xdg-dirs");
     MapEnv::new()
         .with_var("HOME", root.path().as_os_str())
         .with_var("XDG_CONFIG_HOME", xdg_home.as_os_str())
         .with_var("XDG_CONFIG_DIRS", xdg_dirs.as_os_str())
+}
+
+fn isolated_environment(root: &TempDir) -> Result<MapEnv> {
+    let config_path = write_config(root, "empty.toml", "")?;
+    Ok(discovery_environment(root).with_var("MXD_CONFIG_PATH", config_path.as_os_str()))
 }
 
 fn load_config<I, T>(args: I, environment: MapEnv) -> ortho_config::OrthoResult<AppConfig>
@@ -101,7 +106,7 @@ fn argon2_default_constants_match_upstream() {
 #[rstest]
 fn argon2_defaults_applied_to_config() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
-    let cfg = load_config(["mxd"], isolated_environment(&root))?;
+    let cfg = load_config(["mxd"], isolated_environment(&root)?)?;
     ensure_equal!(
         cfg.argon2_m_cost,
         DEFAULT_ARGON2_M_COST,
@@ -125,7 +130,7 @@ fn env_config_loading() -> Result<()> {
         "bind = '1.2.3.4:1111'\ndatabase = 'file.db'",
     )?;
     let environment = select_file(
-        isolated_environment(&root)
+        isolated_environment(&root)?
             .with_var("MXD_BIND", "127.0.0.1:8000")
             .with_var("MXD_DATABASE", "env.db"),
         &path,
@@ -139,7 +144,7 @@ fn env_config_loading() -> Result<()> {
 #[rstest]
 fn cli_overrides_env() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
-    let environment = isolated_environment(&root).with_var("MXD_BIND", "127.0.0.1:8000");
+    let environment = isolated_environment(&root)?.with_var("MXD_BIND", "127.0.0.1:8000");
     let cfg = load_config(["mxd", "--bind", "0.0.0.0:9000"], environment)?;
     ensure_equal!(cfg.bind.as_str(), "0.0.0.0:9000", "CLI bind override")?;
     Ok(())
@@ -150,7 +155,7 @@ fn explicit_cli_default_overrides_file_and_environment() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
     let path = write_config(&root, "config.toml", "bind = '1.2.3.4:1111'")?;
     let environment = select_file(
-        isolated_environment(&root).with_var("MXD_BIND", "127.0.0.1:8000"),
+        isolated_environment(&root)?.with_var("MXD_BIND", "127.0.0.1:8000"),
         &path,
     );
     let cfg = load_config(["mxd", "--bind", "0.0.0.0:5500"], environment)?;
@@ -161,7 +166,7 @@ fn explicit_cli_default_overrides_file_and_environment() -> Result<()> {
 #[rstest]
 fn migration_timeout_loads_from_env() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
-    let environment = isolated_environment(&root).with_var("MXD_MIGRATION_TIMEOUT_SECS", "9");
+    let environment = isolated_environment(&root)?.with_var("MXD_MIGRATION_TIMEOUT_SECS", "9");
     let cfg = load_config(["mxd"], environment)?;
     ensure_equal!(cfg.migration_timeout_secs, Some(9), "migration timeout")?;
     Ok(())
@@ -171,7 +176,7 @@ fn migration_timeout_loads_from_env() -> Result<()> {
 fn loads_from_home_dotfile() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
     write_config(&root, ".mxd.toml", "bind = '1.2.3.4:1111'")?;
-    let cfg = load_config(["mxd"], isolated_environment(&root))?;
+    let cfg = load_config(["mxd"], discovery_environment(&root))?;
     ensure_equal!(cfg.bind.as_str(), "1.2.3.4:1111", "home dotfile bind")?;
     Ok(())
 }
@@ -189,7 +194,7 @@ fn argon2_cli_overrides_all_params() -> Result<()> {
             "--argon2-p-cost",
             "2",
         ],
-        isolated_environment(&root),
+        isolated_environment(&root)?,
     )?;
     ensure_equal!(cfg.argon2_m_cost, 1024, "CLI Argon2 memory cost")?;
     ensure_equal!(cfg.argon2_t_cost, 4, "CLI Argon2 time cost")?;
@@ -200,7 +205,7 @@ fn argon2_cli_overrides_all_params() -> Result<()> {
 #[rstest]
 fn argon2_env_overrides() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
-    let environment = isolated_environment(&root)
+    let environment = isolated_environment(&root)?
         .with_var("MXD_ARGON2_M_COST", "2048")
         .with_var("MXD_ARGON2_T_COST", "8")
         .with_var("MXD_ARGON2_P_COST", "4");
@@ -223,7 +228,7 @@ fn argon2_config_file_overrides() -> Result<()> {
             "argon2_p_cost = 8\n"
         ),
     )?;
-    let environment = select_file(isolated_environment(&root), &path);
+    let environment = select_file(isolated_environment(&root)?, &path);
     let cfg = load_config(["mxd"], environment)?;
     ensure_equal!(cfg.argon2_m_cost, 4096, "file Argon2 memory cost")?;
     ensure_equal!(cfg.argon2_t_cost, 16, "file Argon2 time cost")?;
@@ -236,7 +241,7 @@ fn argon2_cli_overrides_env_and_file() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
     let path = write_config(&root, "config.toml", "argon2_m_cost = 4096\n")?;
     let environment = select_file(
-        isolated_environment(&root).with_var("MXD_ARGON2_M_COST", "2048"),
+        isolated_environment(&root)?.with_var("MXD_ARGON2_M_COST", "2048"),
         &path,
     );
     let cfg = load_config(["mxd", "--argon2-m-cost", "1024"], environment)?;
@@ -248,7 +253,7 @@ fn argon2_cli_overrides_env_and_file() -> Result<()> {
 fn missing_selected_config_is_not_treated_as_absent() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
     let missing = root.path().join("missing.toml");
-    let environment = select_file(isolated_environment(&root), &missing);
+    let environment = select_file(isolated_environment(&root)?, &missing);
     let error = load_config(["mxd"], environment)
         .err()
         .ok_or_else(|| anyhow!("selected file must be required"))?;
@@ -270,7 +275,7 @@ fn missing_selected_config_is_not_treated_as_absent() -> Result<()> {
 fn malformed_config_remains_a_file_error() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
     let path = write_config(&root, "malformed.toml", "bind = [")?;
-    let error = load_config(["mxd"], select_file(isolated_environment(&root), &path))
+    let error = load_config(["mxd"], select_file(isolated_environment(&root)?, &path))
         .expect_err("malformed TOML must fail");
     let OrthoError::File { source, .. } = error.as_ref() else {
         return Err(anyhow!("expected malformed-file error, received {error}"));
@@ -292,7 +297,7 @@ fn unreadable_config_remains_a_permission_error() -> Result<()> {
     directory
         .set_permissions("unreadable.toml", Permissions::from_mode(0o000))
         .context("remove configuration read permissions")?;
-    let error = load_config(["mxd"], select_file(isolated_environment(&root), &path))
+    let error = load_config(["mxd"], select_file(isolated_environment(&root)?, &path))
         .expect_err("unreadable TOML must fail");
     let OrthoError::File { source, .. } = error.as_ref() else {
         return Err(anyhow!("expected unreadable-file error, received {error}"));
@@ -312,7 +317,7 @@ fn unreadable_config_remains_a_permission_error() -> Result<()> {
 fn invalid_config_value_fails_instead_of_using_defaults() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
     let path = write_config(&root, "invalid-value.toml", "argon2_m_cost = 'fast'")?;
-    let error = load_config(["mxd"], select_file(isolated_environment(&root), &path))
+    let error = load_config(["mxd"], select_file(isolated_environment(&root)?, &path))
         .err()
         .ok_or_else(|| anyhow!("invalid field type must fail"))?;
     anyhow::ensure!(

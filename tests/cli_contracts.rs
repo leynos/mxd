@@ -153,8 +153,41 @@ fn malformed_explicit_config_fails_visibly() -> Result<()> {
 #[rstest]
 fn local_dotfile_discovery_surfaces_parse_failures() -> Result<()> {
     let root = TempDir::new().context("create dotfile fixture root")?;
+    let directory = Dir::open_ambient_dir(root.path(), ambient_authority())
+        .context("open isolated discovery root")?;
+    for path in ["home", "xdg-config-home", "xdg-config-dirs"] {
+        directory
+            .create_dir(path)
+            .with_context(|| format!("create isolated discovery directory {path}"))?;
+    }
+    let home = root.path().join("home");
+    let xdg_config_home = root.path().join("xdg-config-home");
+    let xdg_config_dirs = root.path().join("xdg-config-dirs");
+    let environment = [
+        (
+            "HOME",
+            home.to_str()
+                .ok_or_else(|| anyhow::anyhow!("temporary HOME path is not UTF-8"))?,
+        ),
+        (
+            "XDG_CONFIG_HOME",
+            xdg_config_home
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("temporary XDG_CONFIG_HOME is not UTF-8"))?,
+        ),
+        (
+            "XDG_CONFIG_DIRS",
+            xdg_config_dirs
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("temporary XDG_CONFIG_DIRS is not UTF-8"))?,
+        ),
+    ];
     write_fixture(&root, ".mxd.toml", "bind = [")?;
-    let output = run_mxd(&["--bind", "127.0.0.1:5500"], &[], Some(root.path()))?;
+    let output = run_mxd(
+        &["--bind", "127.0.0.1:5500"],
+        &environment,
+        Some(root.path()),
+    )?;
     ensure_equal!(
         output.status.code(),
         Some(1),
