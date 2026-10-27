@@ -235,6 +235,12 @@ fn cli_failure_scenarios_preserve_exit_and_stream_contracts(
 
 #[rstest]
 fn generated_man_page_keeps_shared_cli_options_and_subcommands() {
-    assert!(GENERATED_MAN_PAGE.contains(r"\-\-bind"));
-    assert!(GENERATED_MAN_PAGE.contains(r"create\-user"));
+    assert!(
+        GENERATED_MAN_PAGE.contains(r"\-\-bind"),
+        "generated man page is missing the --bind option"
+    );
+    assert!(
+        GENERATED_MAN_PAGE.contains(r"create\-user"),
+        "generated man page is missing the create-user subcommand"
+    );
 }

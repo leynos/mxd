@@ -41,6 +41,10 @@ copies deliberately keep the original relative targets.
 | `docs/v0-10-0-migration-guide.md` | [v0.10.0 migration guide](ortho-config-v0-10-0-migration-guide.md)                    |
 | `docs/v0-9-0-migration-guide.md`  | [v0.9.0 migration guide](ortho-config-v0-9-0-migration-guide.md)                      |
 
+The users' guide's
+`v0-10-0-migration-guide.md#infer-parser-faithful-string-defaults` link maps to
+[the local v0.10.0 migration guide](ortho-config-v0-10-0-migration-guide.md#infer-parser-faithful-string-defaults).
+
 The original source names are retained in the copied files, so a relative
 `users-guide.md` link in an imported migration guide would otherwise open mxd's
 guide at `docs/users-guide.md`. Since the imported files must remain byte-for-

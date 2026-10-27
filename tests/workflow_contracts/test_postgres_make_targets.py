@@ -170,8 +170,8 @@ def test_warm_postgres_succeeds_when_the_cache_is_filled(tmp_path: Path) -> None
         runtime_install / "18.6.1" / "share" / "timezone" / "UTC",
     ]
     for utc_alias in utc_aliases:
-        assert utc_alias.is_symlink()
-        assert os.readlink(utc_alias) == "UCT"
+        assert utc_alias.is_symlink(), f"expected {utc_alias} to be a symlink"
+        assert os.readlink(utc_alias) == "UCT", f"expected {utc_alias} to point to UCT"
 
 
 def test_warm_postgres_fails_when_nothing_was_downloaded(tmp_path: Path) -> None:
