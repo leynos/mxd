@@ -2,13 +2,14 @@
 
 `make test-postgres` and `make warm-postgres` are the local twins of the CI
 steps that `test_embedded_postgres.py` holds, so a local run must not differ
-from CI on the points that made CI fail: the nextest profile that serializes
-the clusters, the pinned superuser password, the exact PostgreSQL bundle,
+from CI on the points that made CI fail: the PostgreSQL nextest profile, the
+pinned superuser password, the exact PostgreSQL bundle,
 throwaway directories for the warm-up, and a warm-up that fails when it
-downloads nothing. The test recipe is read from `make --dry-run`; the warm-up
-recipe is executed against a fake `pg_embedded_setup_unpriv` placed where the
-Makefile's `PATH` looks first, so the emptiness guard is driven rather than
-merely matched.
+downloads nothing. The profile runs at default parallelism; the former
+single-slot group is removed. The test recipe is read from `make --dry-run`;
+the warm-up recipe is executed against a fake `pg_embedded_setup_unpriv`
+placed where the Makefile's `PATH` looks first, so the emptiness guard is
+driven rather than merely matched.
 """
 
 from __future__ import annotations
