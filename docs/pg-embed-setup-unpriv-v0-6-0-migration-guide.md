@@ -55,6 +55,8 @@ Template startup first uses the upstream shared-cluster initializer. If that
 initializer reports slot contention, `shared.rs` creates a separate shared
 cluster through the retry path, caches the fallback result, and registers its
 exit-time shutdown hook. Other upstream initialization errors remain failures.
+The tracing fields, metric names, and failure-diagnosis guidance are documented
+in the [developer guide](developers-guide.md#embedded-postgresql-in-tests).
 
 ### The password is stored with the cluster and reused
 

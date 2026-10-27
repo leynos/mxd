@@ -104,7 +104,12 @@ fn initialize_fallback_cluster() -> Result<ClusterHandle, EmbeddedPgError> {
 mod tests {
     //! Exercise fallback selection, retries, caching and error reporting.
 
-    use std::{cell::Cell, future::ready, io, sync::OnceLock};
+    use std::{
+        cell::{Cell, RefCell},
+        future::ready,
+        sync::OnceLock,
+        time::Duration,
+    };
 
     use futures_util::FutureExt;
 
@@ -196,11 +201,7 @@ mod tests {
         let fallback: OnceLock<Result<(), String>> = OnceLock::new();
         let result = initialize_or_select_shared_cluster(
             &fallback,
-            || {
-                Err(io::Error::other(io::Error::other(
-                    "underlying server failure",
-                )))
-            },
+            || Err(NestedError::new("primary terminal source marker")),
             || {
                 Err(EmbeddedPgError::BootstrapFailed(
                     "unexpected fallback".into(),
@@ -209,23 +210,47 @@ mod tests {
         );
 
         let error = result.expect_err("unrelated startup error remains terminal");
-        assert!(error.to_string().contains("underlying server failure"));
+        assert!(error.to_string().contains("primary terminal source marker"));
         assert!(fallback.get().is_none());
     }
 
+    /// Simulate a lost slot followed by a different terminal failure.
+    fn terminal_fallback_start(
+        attempts: &Cell<u32>,
+        delays: &RefCell<Vec<Duration>>,
+    ) -> Result<(), EmbeddedPgError> {
+        retry_slot_contention(
+            || {
+                attempts.set(attempts.get() + 1);
+                let cause = if attempts.get() == 1 {
+                    "slot lock /test is already held"
+                } else {
+                    "fallback terminal source marker"
+                };
+                ready(Err::<(), _>(NestedError::new(cause)))
+            },
+            |delay| {
+                delays.borrow_mut().push(delay);
+                ready(())
+            },
+        )
+        .now_or_never()
+        .ok_or_else(|| EmbeddedPgError::BootstrapFailed("test retry suspended".into()))?
+    }
+
     #[test]
-    fn exhausted_fallback_is_cached_with_its_cause() {
+    fn terminal_fallback_failure_is_cached_with_its_cause() {
         let fallback: OnceLock<Result<(), String>> = OnceLock::new();
         let initializes = Cell::new(0);
+        let attempts = Cell::new(0);
+        let delays = RefCell::new(Vec::new());
         let resolve = || {
             initialize_or_select_shared_cluster(
                 &fallback,
                 || Err(slot_failure()),
                 || {
                     initializes.set(initializes.get() + 1);
-                    Err(EmbeddedPgError::BootstrapFailed(
-                        "last slot lock cause".into(),
-                    ))
+                    terminal_fallback_start(&attempts, &delays)
                 },
             )
         };
@@ -235,9 +260,11 @@ mod tests {
                 resolve()
                     .expect_err("failure is cached")
                     .to_string()
-                    .contains("last slot lock cause")
+                    .contains("fallback terminal source marker")
             );
         }
         assert_eq!(initializes.get(), 1);
+        assert_eq!(attempts.get(), 2);
+        assert_eq!(*delays.borrow(), vec![Duration::from_millis(25)]);
     }
 }

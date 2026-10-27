@@ -3172,65 +3172,34 @@ end-to-end protocol compliance with real clients.
 
 ### Embedded Postgres for Testing
 
-To test against PostgreSQL without requiring a developer to set up a database,
-we utilize an **embedded Postgres server** via the `postgresql-embedded` crate.
-In tests (when compiled with `--features postgres`), we use a fixture called
-`postgres_db` that will launch a Postgres instance in a temporary directory,
-create a fresh database, run migrations, and provide a connection URL(
-[15](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/README.md#L86-L94)
-)(
-[15](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/README.md#L88-L95)).
-This is managed by our `test-util` helper:
+PostgreSQL tests use `pg-embed-setup-unpriv` 0.6.3 through the fixtures in
+`test-util/src/postgres/`. Fresh-start fixtures create independent clusters;
+each cluster has its own data directory, so the test leg runs at default
+parallelism. Template-based fixtures share a process-wide cluster handle and
+create isolated databases from a migrated template.
 
-- The fixture starts an embedded cluster through `pg-embed-setup-unpriv` and
-  never connects to an external server. The `POSTGRES_TEST_URL` override that
-  once let a test reuse a manually provided server was removed, so every
-  PostgreSQL test runs against a cluster it started.
+Fresh cluster starts retry the 0.6.3 slot-claim race up to eight times, with
+backoff increasing in 25 ms steps. Template startup first uses the upstream
+shared-cluster initializer. If that initializer reports slot contention, the
+harness starts a separate shared cluster through the retry path, caches that
+fallback result, and registers its process-exit shutdown hook. Unrelated
+initialization errors remain failures.
 
-- `start_embedded_postgres()` in our test util ensures a single global Postgres
-  binary download/installation (with a lock file to avoid races between tests)(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L114-L123)
-  )(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L130-L139)),
-  then starts the server and creates a database with a unique name (using a
-  UUID)(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L159-L168)
-  )(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L170-L178)).
-  It returns an object containing the `DatabaseUrl` (with the new DB name)(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L172-L180)).
-  We run our Diesel migrations on that database to set up schema for tests(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L146-L155)
-  )(
-  [19](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/test-util/src/postgres.rs#L150-L158)).
+The implementation is split between
+[`embedded.rs`](../test-util/src/postgres/embedded.rs), which starts clusters
+and prepares fresh databases, and
+[`shared.rs`](../test-util/src/postgres/shared.rs), which owns shared template
+initialization and its fallback. Database names and teardown helpers live in
+[`common.rs`](../test-util/src/postgres/common.rs); the public fixture types
+and constructors live in [`mod.rs`](../test-util/src/postgres/mod.rs).
+[`postgres_harness_isolation.rs`](../tests/postgres_harness_isolation.rs)
+checks separate live databases and time-zone handling.
 
-- Each test that needs a database can simply have a parameter of type
-  `PostgresTestDb` or similar, and through `#[fixture]` macro, the
-  `postgres_db()` provides a fresh isolated DB. We drop and recreate the public
-  schema before each test to ensure a clean slate(
-  [15](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/README.md#L89-L95))
-  (the fixture does `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` on the
-  connection).
-
-- We verify engine-specific features with tests like `test_audit_postgres()`
-  which starts an embedded PG, connects, and calls `audit_postgres_features()`
-  to ensure the server is version 14+(
-  [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L159-L167)
-  )(
-  [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L661-L670)).
-  Similarly for SQLite, `audit_sqlite_features()` is tested on an in-memory DB(
-  [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L134-L143)
-  )(
-  [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L654-L662)),
-  so we don’t inadvertently use unsupported SQL.
-
-Using embedded Postgres in CI means our test suite can run fully automated,
-covering both backends. The overhead of launching PG is mitigated by reusing it
-for multiple tests if possible (but since we recreate schema per test, we keep
-one PG process around rather than per test process). We also guard some tests
-with `#[ignore]` if they require certain setup (e.g. `test_audit_postgres` uses
-embedded PG differently)(
-[9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L661-L670)).
+See the
+[developer guide's embedded PostgreSQL section](developers-guide.md#embedded-postgresql-in-tests)
+for test commands and instrumentation, and the
+[v0.6 migration guide](pg-embed-setup-unpriv-v0-6-0-migration-guide.md) for the
+bundle pin and migration evidence.
 
 For SQLite tests, it’s simpler: we can use `:memory:` or temp files and run
 migrations there. Many tests are written generic enough that they run under

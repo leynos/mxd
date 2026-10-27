@@ -28,7 +28,9 @@ fn retries_nested_slot_errors_with_bounded_backoff(
         || {
             attempts.set(attempts.get() + 1);
             ready(if attempts.get() <= failures {
-                Err(NestedError::new("slot lock /test is already held"))
+                Err(NestedError::new(
+                    "slot lock /test is already held: exhaustion source marker",
+                ))
             } else {
                 Ok(())
             })
@@ -41,6 +43,14 @@ fn retries_nested_slot_errors_with_bounded_backoff(
     .now_or_never()
     .expect("ready callbacks never suspend");
     assert_eq!(result.is_ok(), succeeds);
+    if !succeeds {
+        assert!(
+            result
+                .expect_err("retry exhaustion")
+                .to_string()
+                .contains("exhaustion source marker")
+        );
+    }
     assert_eq!(attempts.get(), expected_attempts);
     assert_eq!(
         *delays.borrow(),
@@ -48,6 +58,40 @@ fn retries_nested_slot_errors_with_bounded_backoff(
             .into_iter()
             .map(Duration::from_millis)
             .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn unrelated_terminal_failure_preserves_source_after_retries() {
+    let attempts = Cell::new(0);
+    let delays = RefCell::new(Vec::new());
+    let result = retry_slot_contention(
+        || {
+            attempts.set(attempts.get() + 1);
+            let cause = if attempts.get() <= 2 {
+                "slot lock /test is already held"
+            } else {
+                "unrelated terminal source marker"
+            };
+            ready(Err::<(), _>(NestedError::new(cause)))
+        },
+        |delay| {
+            delays.borrow_mut().push(delay);
+            ready(())
+        },
+    )
+    .now_or_never()
+    .expect("ready callbacks never suspend");
+    assert!(
+        result
+            .expect_err("terminal failure")
+            .to_string()
+            .contains("unrelated terminal source marker")
+    );
+    assert_eq!(attempts.get(), 3);
+    assert_eq!(
+        *delays.borrow(),
+        vec![Duration::from_millis(25), Duration::from_millis(50)]
     );
 }
 

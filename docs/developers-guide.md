@@ -127,9 +127,26 @@ initializer normally; if it reports this contention, `shared.rs` starts a
 separate shared cluster through the retry path, caches the fallback result, and
 registers its shutdown hook.
 
-Structured tracing records attempts, delays, error categories, and outcomes
-without raw error strings. Metrics count retry attempts and exhaustion,
-fallback selection and cache outcomes, and bootstrap duration.
+Structured tracing records numeric `attempt`, `max_attempts`, and
+`delay_seconds` fields with bounded `error_category`, `outcome`, `source`, and
+`cache_state` values. It does not record raw errors, database URLs, or
+credentials. Terminal causes are returned to the caller and appear in the
+failed test's bootstrap error chain. After retry exhaustion or a cached
+fallback failure, inspect that chain for the underlying startup cause before
+choosing a fix and rerunning `make test-postgres`.
+
+The harness emits these metrics:
+
+- `mxd_test_postgres_retry_attempts_total` counts scheduled retries.
+- `mxd_test_postgres_retry_exhausted_total` counts exhausted slot-contention
+  retries.
+- `mxd_test_postgres_fallback_selected_total` counts fallback selections.
+- `mxd_test_postgres_fallback_cache_total` counts fallback cache results. Its
+  bounded `outcome` labels are `success` or `failure`; `state` is `initialized`
+  or `reused`.
+- `mxd_test_postgres_bootstrap_seconds` records elapsed time for a
+  retry-managed bootstrap through success or terminal failure, including retry
+  delays. It has no labels.
 
 The `postgres` profile in `.config/nextest.toml` remains, because a cold
 cluster start is slower than the default 60 second slow timeout: one took 156
