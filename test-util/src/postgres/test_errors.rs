@@ -12,11 +12,13 @@ impl NestedError {
 }
 
 impl fmt::Display for NestedError {
+    /// Hide the nested cause in the outer display message.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("bootstrap failed")
     }
 }
 
 impl Error for NestedError {
+    /// Expose the nested cause for error-chain traversal.
     fn source(&self) -> Option<&(dyn Error + 'static)> { Some(&self.0) }
 }

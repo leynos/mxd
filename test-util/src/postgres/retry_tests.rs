@@ -13,6 +13,7 @@ use rstest::rstest;
 use super::{SLOT_CONTENTION_ATTEMPTS, retry_slot_contention};
 use crate::postgres::test_errors::NestedError;
 
+/// Verify nested slot errors respect the attempt limit and increasing delays.
 #[rstest]
 #[case(2, true, 3, vec![25, 50])]
 #[case(SLOT_CONTENTION_ATTEMPTS, false, SLOT_CONTENTION_ATTEMPTS, vec![25, 50, 75, 100, 125, 150, 175])]
@@ -61,6 +62,7 @@ fn retries_nested_slot_errors_with_bounded_backoff(
     );
 }
 
+/// Verify a different terminal error keeps its source after contention retries.
 #[test]
 fn unrelated_terminal_failure_preserves_source_after_retries() {
     let attempts = Cell::new(0);
@@ -95,6 +97,7 @@ fn unrelated_terminal_failure_preserves_source_after_retries() {
     );
 }
 
+/// Verify async retry yields while recovering from nested contention.
 #[tokio::test]
 async fn asynchronous_retry_yields_and_recovers_from_nested_slot_error() {
     let attempts = Cell::new(0);
@@ -120,6 +123,7 @@ async fn asynchronous_retry_yields_and_recovers_from_nested_slot_error() {
 }
 
 proptest! {
+    /// Check retry limits, delays and outcomes across mixed error sequences.
     #[test]
     fn retry_policy_stops_at_first_terminal_event(failures in 0_u32..16, unrelated_at in 0_u32..16) {
         let attempts = Cell::new(0_u32);

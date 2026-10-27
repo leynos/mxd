@@ -119,6 +119,7 @@ mod tests {
         test_errors::NestedError,
     };
 
+    /// Construct a contention error whose outer display hides its cause.
     fn slot_failure() -> NestedError { NestedError::new("slot lock /test is already held") }
 
     /// Inject one lost slot before invoking the selected bootstrap.
@@ -143,6 +144,7 @@ mod tests {
             .ok_or_else(|| EmbeddedPgError::BootstrapFailed("test retry suspended".into()))?
     }
 
+    /// Start a real cluster for the template fallback regression.
     fn start_real_cluster() -> Result<
         (
             pg_embedded_setup_unpriv::ClusterHandle,
@@ -154,6 +156,7 @@ mod tests {
             .map_err(|error| NestedError::new(&error.to_string()))
     }
 
+    /// Verify contention retries precede caching the shared fallback handle.
     #[test]
     fn slot_failure_retries_fallback_before_caching_template_handle() {
         let fallback = OnceLock::new();
@@ -177,6 +180,7 @@ mod tests {
         assert_eq!(initializes.get(), 1);
     }
 
+    /// Verify a retried fallback supports template creation and cloning.
     #[test]
     fn slot_race_fallback_supports_template_database() -> anyhow::Result<()> {
         let fallback = OnceLock::new();
@@ -196,6 +200,7 @@ mod tests {
         Ok(())
     }
 
+    /// Verify non-contention primary failures retain their cause without fallback.
     #[test]
     fn terminal_primary_error_reports_its_cause_without_fallback() {
         let fallback: OnceLock<Result<(), String>> = OnceLock::new();
@@ -238,6 +243,7 @@ mod tests {
         .ok_or_else(|| EmbeddedPgError::BootstrapFailed("test retry suspended".into()))?
     }
 
+    /// Verify a terminal fallback cause survives caching and repeated lookup.
     #[test]
     fn terminal_fallback_failure_is_cached_with_its_cause() {
         let fallback: OnceLock<Result<(), String>> = OnceLock::new();
