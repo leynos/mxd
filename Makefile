@@ -88,6 +88,17 @@ PG_WARM_DIR ?= $(CURDIR)/.pg-embedded/warm
 # directory left by one test process then refuses the next. A fixed password
 # for these throwaway local clusters keeps every process in agreement.
 PG_PASSWORD ?= mxd-embedded-test
+# Pin the PostgreSQL bundle, not just the harness. The October theseus rebuilds
+# express the time-zone aliases as tar hard links, and the postgresql_archive
+# that pg-embed-setup-unpriv 0.6.3 depends on skips hard links, so
+# share/timezone/UTC never lands and every diesel connection fails with
+# `invalid value for parameter "TimeZone": "UTC"`. The August 18.6.0 asset was
+# built --with-system-tzdata and is still the original upload, so it is intact
+# and reproducible. The pin must be exact: the variable is parsed as a semver
+# requirement and the highest match wins, so a range would select 18.6.1 again.
+# Remove it once a pg-embed-setup-unpriv release can select
+# postgresql_archive 0.22.0 or newer, which extracts hard links.
+PG_VERSION_REQ ?= =18.6.0
 
 all: check-fmt typecheck lint test spelling
 
@@ -238,15 +249,15 @@ test: test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-veri
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
 # timeout feature requires Send. See docs/pg-embed-setup-unpriv-users-guide.md
 # "Thread safety constraints (v0.4.0)" for details.
-# NEXTEST_PROFILE=postgres serializes the run: every embedded cluster shares
-# one data directory and pg-embed-setup-unpriv does not coordinate across the
-# processes nextest runs. See "Embedded PostgreSQL in tests" in the
-# developers' guide.
+# NEXTEST_PROFILE=postgres selects the profile with headroom for a cold cluster
+# start. It no longer serializes the run: pg-embed-setup-unpriv 0.6 gives each
+# cluster its own data directory, so the tests run at the default parallelism.
+# See "Embedded PostgreSQL in tests" in the developers' guide.
 test-postgres: ## Run tests with the postgres backend
-	NEXTEST_PROFILE=postgres PG_PASSWORD="$(PG_PASSWORD)" RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
+	NEXTEST_PROFILE=postgres PG_PASSWORD="$(PG_PASSWORD)" PG_VERSION_REQ="$(PG_VERSION_REQ)" RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
 
 warm-postgres: ## Download the embedded PostgreSQL binaries into PG_BINARY_CACHE_DIR
-	PG_RUNTIME_DIR="$(PG_WARM_DIR)/install" PG_DATA_DIR="$(PG_WARM_DIR)/data" pg_embedded_setup_unpriv
+	PG_VERSION_REQ="$(PG_VERSION_REQ)" PG_RUNTIME_DIR="$(PG_WARM_DIR)/install" PG_DATA_DIR="$(PG_WARM_DIR)/data" pg_embedded_setup_unpriv
 	test -n "$$(ls -A "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}")"
 
 test-sqlite: ## Run tests with the sqlite backend

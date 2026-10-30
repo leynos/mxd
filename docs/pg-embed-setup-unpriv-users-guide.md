@@ -14,7 +14,12 @@ tool and integrate it into automated test flows.
   path, but unprivileged executions are also supported.
 - Rust toolchain specified in `rust-toolchain.toml`.
 - Outbound network access to crates.io and the PostgreSQL binary archive.
-- System timezone database (package usually named `tzdata`).
+- System timezone database (package usually named `tzdata`). This matters when
+  the selected bundle does not carry its own `share/timezone`: a bundle built
+  with `--with-system-tzdata` relies on the host's, and one built without it
+  ships its own. A bundle whose own time-zone data was extracted incompletely
+  makes `SET TIME ZONE` fail; see the v0.6.0 migration guide for the defect mxd
+  pins around.
 
 ## Platform expectations
 
@@ -183,8 +188,14 @@ Enable the feature in the project's `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-pg-embed-setup-unpriv = { version = "0.5.0", features = ["async-api"] }
+pg-embed-setup-unpriv = { version = "0.6.3", features = ["async-api"] }
 ```
+
+mxd holds the crate in `test-util` rather than in the root crate, behind
+`test-util`'s `postgres` feature, so a SQLite-only build never compiles it. Add
+`diesel-support` only if code depends on the crate's diesel helpers; mxd does
+not, because the harness returns connection URLs as strings and mxd opens its
+own connections.
 
 Then use `start_async()` and `stop_async()` in async tests:
 

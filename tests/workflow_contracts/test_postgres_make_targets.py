@@ -2,12 +2,14 @@
 
 `make test-postgres` and `make warm-postgres` are the local twins of the CI
 steps that `test_embedded_postgres.py` holds, so a local run must not differ
-from CI on the points that made CI fail: the nextest profile that serializes
-the clusters, the pinned superuser password, throwaway directories for the
-warm-up, and a warm-up that fails when it downloads nothing. The test recipe
-is read from `make --dry-run`; the warm-up recipe is executed against a fake
-`pg_embedded_setup_unpriv` placed where the Makefile's `PATH` looks first, so
-the emptiness guard is driven rather than merely matched.
+from CI on the points that made CI fail: the PostgreSQL nextest profile, the
+pinned superuser password, the exact PostgreSQL bundle,
+throwaway directories for the warm-up, and a warm-up that fails when it
+downloads nothing. The profile runs at default parallelism; the former
+single-slot group is removed. The test recipe is read from `make --dry-run`;
+the warm-up recipe is executed against a fake `pg_embedded_setup_unpriv`
+placed where the Makefile's `PATH` looks first, so the emptiness guard is
+driven rather than merely matched.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import subprocess
 import typing as typ
 from pathlib import Path
 
+import pytest
 from ci_workflow_reader import REPO_ROOT
 
 if typ.TYPE_CHECKING:
@@ -29,7 +32,7 @@ FAKE_NAME = "pg_embedded_setup_unpriv"
 # would send rustup looking for a toolchain, so an inert command stands in: the
 # recipes under test never invoke Cargo.
 INERT_CARGO = "true"
-AMBIENT = ("PG_PASSWORD", "PG_BINARY_CACHE_DIR", "PG_WARM_DIR")
+AMBIENT = ("PG_PASSWORD", "PG_BINARY_CACHE_DIR", "PG_WARM_DIR", "PG_VERSION_REQ")
 
 
 def _make(
@@ -75,6 +78,44 @@ def test_test_postgres_password_can_be_overridden() -> None:
     recipe = _dry_run("test-postgres", "PG_PASSWORD=caller-choice")
     assert 'PG_PASSWORD="caller-choice"' in recipe
     assert "mxd-embedded-test" not in recipe
+
+
+def test_test_postgres_pins_the_working_bundle() -> None:
+    """The recipe hands the exact bundle pin to the test process.
+
+    The harness version alone does not choose a working bundle: the October
+    rebuilds have hard-linked time-zone data the pinned extractor skips. The
+    pin must be exact, because a range resolves to the broken release.
+    """
+    assert 'PG_VERSION_REQ="=18.6.0"' in _dry_run("test-postgres")
+
+
+def test_test_postgres_bundle_pin_can_be_overridden() -> None:
+    """A caller can lift the pin without editing the Makefile."""
+    recipe = _dry_run("test-postgres", "PG_VERSION_REQ==17.11.0")
+    assert 'PG_VERSION_REQ="=17.11.0"' in recipe
+    assert "=18.6.0" not in recipe
+
+
+def test_bundle_default_ignores_ambient_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exported bundle requirement does not affect default-pin contracts."""
+    monkeypatch.setenv("PG_VERSION_REQ", "=17.11.0")
+    assert 'PG_VERSION_REQ="=18.6.0"' in _dry_run("test-postgres")
+    result = _make("--dry-run", "test-postgres", env={"PG_VERSION_REQ": "=17.11.0"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'PG_VERSION_REQ="=17.11.0"' in result.stdout
+
+
+def test_warm_postgres_pins_the_same_bundle() -> None:
+    """The warm-up fills the cache for the bundle the tests will ask for.
+
+    The binary cache is keyed by version, so a warm-up that resolved a
+    different release would leave the tests to download their own.
+    """
+    recipe = _dry_run("warm-postgres", "PG_WARM_DIR=/scratch/warm")
+    assert 'PG_VERSION_REQ="=18.6.0"' in recipe
 
 
 def test_warm_postgres_uses_throwaway_directories() -> None:
