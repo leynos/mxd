@@ -3,7 +3,8 @@
 This ExecPlan is a living document for issue
 [#669](https://github.com/leynos/mxd/issues/669).
 
-Status: IN PROGRESS
+Status: ACTIVE — acceptance gaps closed and the candidate validated; awaiting
+review convergence and the authorized merge for PR #670.
 
 ## Purpose / big picture
 
@@ -55,11 +56,11 @@ replaces the existing `figment::Jail` code.
 
 ## Risks
 
-- The lockfile includes OrthoConfig 0.5.0 through the PostgreSQL test helper.
-  Severity: medium; likelihood: high. Crates.io lists helper v0.6.3 as the
-  latest release, and its dependency API still requires `ortho_config ^0.5.0`.
-  Keep the existing helper rather than taking unrelated dependency churn that
-  would not remove the duplicate.
+- Baseline fact (2026-10-26): the lockfile included OrthoConfig 0.5.0 through
+  the PostgreSQL test helper. Severity: medium; likelihood: high. Crates.io
+  lists helper v0.6.3 as the latest release, and its dependency API still
+  requires `ortho_config ^0.5.0`. Keep the existing helper rather than taking
+  unrelated dependency churn that would not remove the duplicate.
 - YAML now uses the stricter Saphyr provider. Severity: medium; likelihood:
   medium. Exercise existing YAML fixtures and YAML 1.2 edge cases rather than
   assuming the parser swap is transparent.
@@ -98,10 +99,12 @@ replaces the existing `figment::Jail` code.
   explicitly includes v0.8.0 and earlier changes.
 - [x] (2026-10-26 12:17Z) Completed read-only baseline inventory: one workspace
   lockfile, eight packages, two direct v0.3.0 consumers, and a separate 0.5.0
-  test-helper dependency chain.
-- [x] (2026-10-26 12:25Z) Confirmed that the latest published PostgreSQL test
-  helper (v0.6.3) still requires `ortho_config ^0.5.0`; the 0.5.0 lockfile
-  entry remains an explained transitive dependency.
+  test-helper dependency chain. These are baseline dependency facts, not the
+  final migrated graph.
+- [x] (2026-10-26 12:25Z; baseline survey) Confirmed that the latest
+  published PostgreSQL test helper (v0.6.3) still requires
+  `ortho_config ^0.5.0`; the 0.5.0 lockfile entry remains an explained
+  transitive dependency.
 - [x] (2026-10-26 12:25Z) Counted ten existing `AppConfig` loading tests in
   `src/server/cli.rs`; all currently run inside the `figment::Jail` helper.
 - [x] (2026-10-26 12:33Z) Confirmed the application has no Fluent catalogue,
@@ -208,13 +211,35 @@ replaces the existing `figment::Jail` code.
 - [x] Complete behavioural and feature-lane validation, generated-man-page
       checks,
   and final deterministic gates.
-- [ ] Complete milestone CodeRabbit reviews, push the branch, and create a
-  draft pull request that closes #669 and supersedes #574.
+- [x] (2026-10-27) Complete milestone reviews, push the branch, and create
+  draft PR #670, which closes #669 and supersedes #574. The PR is not yet
+  merged.
+- [x] Fix the CLI argv scanner and add process-level regressions for a
+  subcommand name used as an option value, the `--` terminator, and supported
+  option placement around the subcommand.
+- [x] Complete the precedence-conflict matrix for migration timeout, database,
+  Argon2 time and parallelism, and subcommand credentials. Exercise the
+  production password-restoration path with disposable storage; prove that a
+  CLI password overrides file/environment values, is excluded from
+  serialization, and produces the expected stored password hash.
+- [x] Run and record independent `cli-defs` default, no-default, and format
+  feature checks outside workspace feature unification. Keep OrthoConfig's
+  default features enabled. Add YAML scalar checks for `no`, `on`, `off`,
+  `true`, and `false`, and record the formats actually enabled before making
+  any disabled-format coverage claim.
+- [x] (2026-10-30) Reran the candidate's deterministic gates sequentially on
+  the final source bytes. `make check-fmt`, `make typecheck`, `make lint`,
+  `make markdownlint`, and `make nixie` passed, and aggregate `make test`
+  passed every suite once the embedded PostgreSQL cluster was given a private
+  `PG_DATA_DIR`.
+- [ ] Obtain a fresh CodeRabbit review at the final head, update the PR
+  description and plan with the resulting evidence, and merge only after the PR
+  reaches equilibrium.
 
 ## Surprises & discoveries
 
-- Observation: the root lockfile resolves OrthoConfig 0.5.0 as well as the
-  directly declared Git-tagged 0.3.0 release. Evidence:
+- Baseline observation (2026-10-26): the root lockfile resolved OrthoConfig
+  0.5.0 as well as the directly declared Git-tagged 0.3.0 release. Evidence:
   `cargo tree -i ortho_config@0.5.0 --locked` traces the 0.5.0 copy through
   `pg-embed-setup-unpriv 0.5.2` as a development dependency. Impact: the final
   graph must explain this chain if a compatible PostgreSQL helper release does
@@ -228,11 +253,12 @@ replaces the existing `figment::Jail` code.
   exposed in this session. Evidence: the available tool list and targeted tool
   search returned no `codegraph_*` operation. Impact: use the requested
   targeted source searches and keep file/line evidence in this plan.
-- Observation: the newest published `pg-embed-setup-unpriv` release still
-  depends on the old OrthoConfig line. Evidence: Firecrawl retrieved crates.io
-  metadata for v0.6.3 and its dependency list declares `ortho_config ^0.5.0`,
-  the same range as v0.5.2. Impact: do not update this test helper merely to
-  chase a single OrthoConfig version; retain and explain the dependency chain.
+- Baseline survey observation (2026-10-26): the newest published
+  `pg-embed-setup-unpriv` release still depends on the old OrthoConfig line.
+  Evidence: Firecrawl retrieved crates.io metadata for v0.6.3 and its
+  dependency list declares `ortho_config ^0.5.0`, the same range as v0.5.2.
+  Impact: do not update this test helper merely to chase a single OrthoConfig
+  version; retain and explain the dependency chain.
 - Observation: the locked full workspace graph includes dependencies declaring
   Rust 1.94.0 (`postgresql_archive`, `postgresql_commands`,
   `postgresql_embedded`, and `sqlx`), plus `cargo-platform` 1.91. Evidence:
@@ -276,11 +302,11 @@ replaces the existing `figment::Jail` code.
   needed. Rationale: the older guides document re-exports, but mxd's own
   imports decide whether a direct dependency remains necessary. Date/Author:
   2026-10-26, Codex.
-- Decision: keep `pg-embed-setup-unpriv` at 0.5.2 unless the migration itself
-  requires an API update. Rationale: crates.io's latest 0.6.3 release still
-  depends on `ortho_config ^0.5.0`, so changing this helper would add unrelated
-  churn and would not remove the locked 0.5.0 copy. Date/Author: 2026-10-26,
-  Codex.
+- Baseline decision (2026-10-26): keep `pg-embed-setup-unpriv` at 0.5.2
+  unless the migration itself requires an API update. Rationale: crates.io's
+  latest 0.6.3 release still depends on `ortho_config ^0.5.0`, so changing this
+  helper would add unrelated churn and would not remove the locked 0.5.0 copy.
+  Date/Author: 2026-10-26, Codex.
 - Decision: declare Rust 1.94.0 for both `mxd` and `cli-defs`. Rationale: the
   existing locked full feature/test graph already includes crates requiring
   1.94.0; declaring only OrthoConfig's 1.89.0 floor would advertise an
@@ -309,25 +335,64 @@ Optional JSON5 and YAML checks add separate format-specific cases and are
 reported above. Verification, fuzz, concurrency, doctest, and documentation
 inventories retain their baseline counts and expected skips.
 
-Before completion, record source-review findings after the quota retry, the
-final docs-gate results, commit/push identities, and the draft pull request
-URL. The lockfile has no direct Git OrthoConfig source; the remaining 0.5.0
+The first delivery milestone produced draft PR #670 from commit `4fd7a85`; its
+final CodeRabbit review returned zero findings and the reported hosted checks
+passed. The newly raised acceptance gaps below remain active work, so that
+review does not clear the current candidate. Prior dependency statements in the
+baseline inventory describe the pre-migration graph: the migrated root lockfile
+has no direct Git OrthoConfig source, while the remaining 0.5.0
 `ortho_config`/`ortho_config_macros` pair is pulled by
-`pg-embed-setup-unpriv 0.5.2` as a development dependency, as shown by the
-reverse dependency trees above.
+`pg-embed-setup-unpriv 0.5.2` as a development dependency.
+
+### Acceptance gaps (closed 2026-10-30)
+
+All four gaps below are closed. The scanner now validates its prefix with Clap
+before treating a token as a subcommand, and process-level contract tests cover
+command-name option values, `--`, and option placement on either side of the
+subcommand. A four-tier precedence matrix and a disposable-storage credential
+test exercise the merge and restoration paths end to end. Independent
+`cli-defs` feature checks and YAML 1.2 scalar cases passed. Only review
+convergence and the authorized merge remain for delivery.
+
+1. **CLI token classification and process coverage.** The retained scanner in
+   `src/server/cli.rs` treats any `create-user` token as the subcommand
+   boundary. Consequently, a valid value such as `--database create-user` is
+   truncated before the second parser sees it. Fix the scanner's distinction
+   between option values and subcommands, then cover command-name option values,
+   `--`, and supported option placement around the subcommand through the real
+   `load_cli()` process path. The existing injected-loader tests do not cover
+   this path.
+2. **Conflicting precedence layers and credential restoration.** Add the
+   missing migration-timeout, database CLI, Argon2 time/parallelism, and
+   subcommand password conflict cases. Verify that CLI password input wins over
+   file and environment values, remains absent from serialized config, and
+   reaches the production restoration path with disposable storage and the
+   expected resulting password hash.
+3. **Independent `cli-defs` feature coverage and YAML scalars.** Validate the
+   package's default, package-level no-default, and format feature combinations
+   independently of workspace feature unification. This must not disable
+   OrthoConfig's own default features. Test YAML scalars `no`, `on`, `off`,
+   `true`, and `false`; record which formats are enabled before asserting
+   coverage for disabled formats.
+4. **Delivery reconciliation.** The implementation already has a pushed
+   draft PR and a zero-finding review at `4fd7a85`, but the new work must be
+   gated and reviewed at its final head. Update the PR description and this
+   plan with that evidence, then follow the requested babysitting workflow and
+   merge only when all checks and review state reach equilibrium.
 
 ## Context and orientation
 
-The workspace root and `cli-defs/Cargo.toml` both pin `ortho_config` to Git tag
-`v0.3.0`. `cli-defs/src/lib.rs` defines `AppConfig` and shared CLI structs; the
-crate is used both by runtime binaries and the root `build.rs` man-page
-generator. `src/server/cli.rs` calls `AppConfig::load_from_iter`, while
-`src/server/admin.rs` uses the subcommand merge API. Existing configuration
-tests in `src/server/cli.rs` use `figment::Jail`, environment mutation, and
-temporary config files.
+At the migration baseline, the workspace root and `cli-defs/Cargo.toml` both
+pinned `ortho_config` to Git tag `v0.3.0`. `cli-defs/src/lib.rs` defines
+`AppConfig` and shared CLI structs; the crate is used both by runtime binaries
+and the root `build.rs` man-page generator. `src/server/cli.rs` calls
+`AppConfig::load_from_iter`, while `src/server/admin.rs` uses the subcommand
+merge API. At baseline, configuration tests in `src/server/cli.rs` used
+`figment::Jail`, environment mutation, and temporary config files.
 
-The root lockfile also contains registry OrthoConfig 0.5.0 through
-`pg-embed-setup-unpriv 0.5.2`. The baseline compiler is
+At the migration baseline, the root lockfile also contained registry
+OrthoConfig 0.5.0 through `pg-embed-setup-unpriv 0.5.2`. The baseline compiler
+is
 `rustc 1.96.0-nightly (80d0e4be6f15899649ba31669077c59a986f96cc, 2026-03-25)`;
 `rust-toolchain.toml` pins `nightly-2026-03-26` with rustfmt, Clippy,
 llvm-tools-preview, and rust-analyzer.
@@ -453,14 +518,16 @@ localized diagnostics, exit status, and streams. Go/no-go: affected tests pass
 in the PostgreSQL, SQLite, and wireframe-only lanes and generated man-page
 output remains compatible.
 
-### EP-M3 — integration, review, and draft PR
+### EP-M3 — integration, review, and pull request delivery
 
 Run formatting, lint, Markdown, spelling, Mermaid, type-check, and test gates
 in the repository's prescribed order. Review each coherent milestone with
 CodeRabbit only after its deterministic gates pass; resolve every actionable
 concern before continuing. Inspect final lockfiles, snapshots, generated docs,
 and test-inventory deltas. Commit, push over SSH, set the requested upstream,
-and create a draft PR referencing #669 and superseding #574. Do not merge.
+and create a draft PR referencing #669 and superseding #574. After the newly
+raised acceptance gaps are closed and current-head checks and review reach
+equilibrium, follow the requested PR-babysitting workflow and merge the PR.
 
 ## Milestones and plateaus
 
@@ -510,9 +577,12 @@ and create a draft PR referencing #669 and superseding #574. Do not merge.
   resolved, branch tracks the requested origin ref, and the draft PR includes
   `Closes #669`, `Closes #574`, and the Lody session link in terminal
   `## References`.
-- Conformance: PR head matches the pushed branch; no merge or release occurs.
+- Conformance: PR head matches the pushed branch; merge only after the
+  acceptance gaps and current-head checks and review reach equilibrium. Do not
+  publish a release.
 - Recovery: no history rewrite is planned; use normal follow-up commits.
-- Remaining: review feedback on the draft PR, if any.
+- Remaining: the four newly recorded acceptance gaps, fresh gates/review, and
+  the authorized merge after equilibrium.
 - Compatibility decision: none.
 
 ## Concrete steps
@@ -629,6 +699,35 @@ Fresh PostgreSQL archives omitted the `UTC` alias while retaining `UCT`.
 isolated install. The workflow contract test verifies both paths, and the full
 PostgreSQL lane passed against that fresh setup.
 
+### Final candidate validation (2026-10-30)
+
+The gates were rerun sequentially against the acceptance-gap commits, with no
+other check overlapping them.
+
+| Gate                | Result                                   | Evidence                                                                                     |
+| ------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `make check-fmt`    | Passed; 68 files unchanged               | `/tmp/check-fmt-59318af2-*-issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.out`        |
+| `make typecheck`    | Passed; `GATE_RC=0` after 607s           | `/tmp/typecheck-59318af2-*-issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.status`     |
+| `make lint`         | Passed; `GATE_RC=0` after 871s           | `/tmp/lint-59318af2-*-issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.status`          |
+| `make markdownlint` | Passed; 0 issues in 68 files             | `/tmp/markdownlint-59318af2-*-issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.out`     |
+| `make nixie`        | Passed; all diagrams validated           | `/tmp/nixie-59318af2-*-issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.out`            |
+| `make test`         | Passed; `MAKE_EXIT=0` across every suite | `/tmp/test-59318af2-*-issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0-isolated-r2.out` |
+
+The final inventory is PostgreSQL 527/527, SQLite 533/533, wireframe-only
+515/515, the UI compile fixture 1/1, verification 69 passed with one expected
+skip, fuzz 8/8, concurrency 7/7 plus seven doctests, and documentation five
+passed with four ignored. The UI fixture that previously exhausted its
+300-second limit passed in 189.9s, so that earlier timeout did not reproduce.
+
+Two earlier aggregate runs failed in embedded-PostgreSQL bootstrap rather than
+in any assertion: first `failed to connect to admin database: db error`, then
+`postgresql_embedded::setup() failed`. A sibling mxd worktree was running the
+same suite against the per-user default data directory
+`/var/tmp/pg-embed-<uid>/data`. Giving this candidate its own
+`PG_DATA_DIR=/var/tmp/mxd-issue-669-pgdata-59318af2-r2`, as the developers'
+guide prescribes for concurrent checkouts, made the lane pass. The failures are
+environmental and are recorded here rather than suppressed.
+
 ## Idempotence and recovery
 
 The upstream import can be repeated from the pinned commit and must reproduce
@@ -737,10 +836,43 @@ unless inventory reveals an existing install or invocation that must move.
   `cli_tests.rs` 403 lines. Moved the file-error cases into
   `cli_tests/file_errors.rs`; the exact-candidate full gate sequence is being
   rerun before commit and another review.
-- (2026-10-27 10:05Z) Commit `e0f7d17` contains the capability-aware unreadable
-  file test and the extracted file-error test module. The full local sequence
-  passed, including all test lanes, lint/Whitaker, Rust 1.94 feature checks,
-  and imported-guide hashes. Hosted CI, Loom, release artefacts, CodeQL, TLA+,
-  CodeScene, and Gecko checks also passed. The final CodeRabbit attempt was
-  rate-limited after the requested cooldown; another random `vsleep` is running
-  before retry.
+- (2026-10-27 10:05Z; historical) Commit `e0f7d17` contains the
+  capability-aware unreadable-file test and the extracted file-error module.
+  The full local sequence passed, including all test lanes, lint/Whitaker, Rust
+  1.94 feature checks, and imported-guide hashes. Hosted CI, Loom, release
+  artefacts, CodeQL, TLA+, CodeScene, and Gecko checks also passed. The final
+  CodeRabbit attempt was rate-limited after the requested cooldown; review was
+  pending at this point.
+- (2026-10-28) Draft PR #670 is pushed at
+  `4fd7a85e7aeeb33f126e14614a529953e9d3c9d9`; its final CodeRabbit review
+  returned zero findings. The new acceptance gaps recorded above supersede the
+  earlier completion assessment. CLI scanner process coverage, precedence and
+  credential conflict tests, independent `cli-defs` feature validation, and
+  YAML scalar cases remain to be completed. The PR description must be updated
+  after those changes. No merge has yet occurred; merge remains authorized
+  after the candidate reaches equilibrium.
+
+- (2026-10-28) The scanner now validates the prefix with Clap before treating
+  a token as a subcommand. The pre-fix process regression failed on two
+  separated `--database create-user` cases; the migrated process tests pass.
+  Four-tier conflicts cover database, migration timeout, and Argon2 time and
+  parallelism. A disposable SQLite process test proves CLI password precedence,
+  omission from serialization, restoration, and the stored Argon2 hash.
+- Independent `cli-defs` checks passed for default, no-default, and all seven
+  nonempty combinations of `toml`, `json5`, and `yaml`: each ran zero unit
+  tests and reported two ignored doctests. Feature trees show OrthoConfig's
+  `serde_json` and `toml` defaults enabled in every selection. In the separate
+  application graph, JSON5 and YAML were absent before four disabled-format
+  assertions passed; YAML-enabled checks passed nine cases, including strings
+  `yes`, `no`, `on`, `off`, booleans `true` and `false`, and duplicate keys.
+  The JSON5-enabled check passed one case.
+- Current candidate gates passed formatting, lint, typecheck, locked-graph and
+  audit checks, 254 workflow contracts, PostgreSQL 527/527, SQLite 533/533,
+  wireframe-only 515/515, verification 69 passed and one skipped, fuzz 8/8,
+  concurrency 7/7 plus seven doctests, and documentation five passed with four
+  ignored. The UI compile-fixture test timed out twice at its 300-second limit
+  while waiting on shared Cargo cache and compiler admission; aggregate
+  `make test` therefore failed and remains unresolved. Markdown lint found one
+  spelling error, corrected before its required rerun. Mermaid validation
+  passed. Logs use `/tmp/*-mxd-issue669-acceptance-v5*`. Fresh review, PR
+  reconciliation, and merge remain pending.
