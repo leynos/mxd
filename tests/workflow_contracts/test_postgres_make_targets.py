@@ -133,8 +133,20 @@ class Host(typ.NamedTuple):
     seen: Path
 
 
-def _host(tmp_path: Path, *, populates_cache: bool) -> Host:
-    """Build a host whose downloader fills the cache, or does not."""
+def _host(
+    tmp_path: Path,
+    *,
+    populates_cache: bool,
+    dangling_utc: bool = False,
+    installs_runtime_root: bool = True,
+) -> Host:
+    """Build a host whose downloader fills the cache, or does not.
+
+    `dangling_utc` leaves a broken `UTC` symlink behind in the cache, the shape
+    a half-run warm-up creates. `installs_runtime_root` controls whether the
+    downloader creates the install tree the recipe scans second; without it the
+    scan meets a path that does not exist.
+    """
     bin_dir = tmp_path / "home" / ".cargo" / "bin"
     bin_dir.mkdir(parents=True)
     cache = tmp_path / "cache"
@@ -146,8 +158,11 @@ def _host(tmp_path: Path, *, populates_cache: bool) -> Host:
         timezone_dir = cache / "18.6.1" / "share" / "timezone"
         body += f'mkdir -p "{timezone_dir}"\n'
         body += f'touch "{timezone_dir / "UCT"}"\n'
-        body += 'mkdir -p "$PG_RUNTIME_DIR/18.6.1/share/timezone"\n'
-        body += 'touch "$PG_RUNTIME_DIR/18.6.1/share/timezone/UCT"\n'
+        if dangling_utc:
+            body += f'ln -s nowhere "{timezone_dir / "UTC"}"\n'
+        if installs_runtime_root:
+            body += 'mkdir -p "$PG_RUNTIME_DIR/18.6.1/share/timezone"\n'
+            body += 'touch "$PG_RUNTIME_DIR/18.6.1/share/timezone/UCT"\n'
     fake = bin_dir / FAKE_NAME
     fake.write_text(f"#!/usr/bin/env sh\n{body}", encoding="utf-8")
     fake.chmod(0o755)
@@ -172,6 +187,32 @@ def test_warm_postgres_succeeds_when_the_cache_is_filled(tmp_path: Path) -> None
     for utc_alias in utc_aliases:
         assert utc_alias.is_symlink(), f"expected {utc_alias} to be a symlink"
         assert os.readlink(utc_alias) == "UCT", f"expected {utc_alias} to point to UCT"
+
+
+def test_warm_postgres_replaces_a_dangling_utc_alias(tmp_path: Path) -> None:
+    """A broken alias from an earlier run is replaced, not left dangling.
+
+    `ln -s` fails when the link already exists and `-e` is false for a link
+    whose target is gone, so a recipe that only guards on existence would keep
+    the broken link while still reporting success.
+    """
+    host = _host(tmp_path, populates_cache=True, dangling_utc=True)
+    result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    cache_alias = host.cache / "18.6.1" / "share" / "timezone" / "UTC"
+    assert cache_alias.is_symlink(), f"expected {cache_alias} to be a symlink"
+    assert os.readlink(cache_alias) == "UCT", f"expected {cache_alias} to be repaired"
+
+
+def test_warm_postgres_fails_when_an_alias_root_is_missing(tmp_path: Path) -> None:
+    """A scan root that does not exist fails the recipe, rather than being skipped.
+
+    The loop visits the cache and the install tree. A downloader that leaves the
+    install tree absent must not turn the second scan's failure into success.
+    """
+    host = _host(tmp_path, populates_cache=True, installs_runtime_root=False)
+    result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
+    assert result.returncode != 0, "a missing install root must fail the warm-up"
 
 
 def test_warm_postgres_fails_when_nothing_was_downloaded(tmp_path: Path) -> None:

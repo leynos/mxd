@@ -259,14 +259,20 @@ test-postgres: ## Run tests with the postgres backend
 warm-postgres: ## Download the embedded PostgreSQL binaries into PG_BINARY_CACHE_DIR
 	PG_VERSION_REQ="$(PG_VERSION_REQ)" PG_RUNTIME_DIR="$(PG_WARM_DIR)/install" PG_DATA_DIR="$(PG_WARM_DIR)/data" pg_embedded_setup_unpriv
 	test -n "$$(ls -A "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}")"
-	@for root in "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}" "$(PG_WARM_DIR)/install"; do \
+	@status=0; \
+	for root in "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}" "$(PG_WARM_DIR)/install"; do \
 		find "$$root" -path '*/share/timezone/UCT' -exec sh -c \
-			'for uct do \
-				[ -e "$$uct" ] || continue; \
+			'status=0; \
+			for uct do \
+				[ -e "$$uct" ] || [ -L "$$uct" ] || continue; \
 				utc="$${uct%UCT}UTC"; \
-				[ -e "$$utc" ] || ln -s UCT "$$utc"; \
-			done' sh {} +; \
-	done
+				if [ -e "$$utc" ]; then continue; fi; \
+				rm -f "$$utc"; \
+				ln -s UCT "$$utc" || status=1; \
+			done; \
+			exit "$$status"' sh {} + || status=1; \
+	done; \
+	exit "$$status"
 
 test-sqlite: ## Run tests with the sqlite backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_SQLITE_FEATURES)
