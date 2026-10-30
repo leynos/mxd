@@ -232,9 +232,15 @@ replaces the existing `figment::Jail` code.
   `make markdownlint`, and `make nixie` passed, and aggregate `make test`
   passed every suite once the embedded PostgreSQL cluster was given a private
   `PG_DATA_DIR`.
-- [ ] Obtain a fresh CodeRabbit review at the final head, update the PR
-  description and plan with the resulting evidence, and merge only after the PR
-  reaches equilibrium.
+- [x] (2026-10-30) Rebased onto `origin/main` at `0c0b853d`, which had advanced
+  with the embedded-PostgreSQL harness migration. Only `Cargo.lock` conflicted;
+  it was resolved with the target's file and then regenerated with
+  `cargo metadata`. `git range-diff` shows eleven commits unchanged and two
+  differing only in replaced lockfile hunks. All nine gates were rerun at the
+  new head `c2dadc8` and passed.
+- [ ] Publish the rewritten head with a lease-bounded force push, obtain a fresh
+  CodeRabbit review at that head, update the PR description and plan with the
+  resulting evidence, and merge only after the PR reaches equilibrium.
 
 ## Surprises & discoveries
 
@@ -725,16 +731,62 @@ in any assertion: first `failed to connect to admin database: db error`, then
 same suite against the per-user default data directory
 `/var/tmp/pg-embed-<uid>/data`. Giving this candidate its own
 `PG_DATA_DIR=/var/tmp/mxd-issue-669-pgdata-59318af2-r2`, as the developers'
-guide prescribes for concurrent checkouts, made the lane pass. The failures are
-environmental and are recorded here rather than suppressed.
+guide prescribed for concurrent checkouts under `pg-embed-setup-unpriv` 0.5.2,
+made the lane pass. The failures are environmental and are recorded here rather
+than suppressed.
+
+That workaround is now historical. The rebase brought in
+`pg-embed-setup-unpriv` 0.6.3, which gives each cluster its own data directory
+and retries the residual slot-claim race itself, so the post-rebase run needed
+no `PG_DATA_DIR` override and hit no `slot lock` contention. The current
+guidance lives in the developers' guide's "Embedded PostgreSQL in tests"
+section.
+
+### Post-rebase validation (2026-10-30)
+
+The rebase created a new candidate, so every gate was rerun from scratch at
+`c2dadc8`, sequentially and with no overlapping run. Logs carry the `-rebase`
+suffix so the earlier evidence keeps its own scope.
+
+| Gate                           | Result                                         | Evidence                                    |
+| ------------------------------ | ---------------------------------------------- | ------------------------------------------- |
+| `make check-fmt`               | Passed; 70 files unchanged                     | `/tmp/check-fmt-*-rebase.out`               |
+| `make typecheck`               | Passed; three feature lanes                    | `/tmp/typecheck-*-rebase.out`               |
+| `make lint`                    | Passed; Clippy and Whitaker in three lanes     | `/tmp/lint-*-rebase.out`                    |
+| `make test`                    | Passed; all eight lanes                        | `/tmp/test-*-rebase.out`                    |
+| `make markdownlint`            | Passed; spelling current, 0 issues in 70 files | `/tmp/markdownlint-*-rebase.out`            |
+| `make nixie`                   | Passed; all diagrams validated                 | `/tmp/nixie-*-rebase.out`                   |
+| `make check-locked`            | Passed; `cargo metadata --locked` admitted     | `/tmp/check-locked-*-rebase.out`            |
+| `make rust-audit`              | Passed; seven configured-allowed advisories    | `/tmp/rust-audit-*-rebase.out`              |
+| `make test-workflow-contracts` | Passed; 266 cases plus ruff format and check   | `/tmp/test-workflow-contracts-*-rebase.out` |
+
+The post-rebase inventory is PostgreSQL 529/529 (two cases inherited from the
+new base), SQLite 533/533, wireframe-only 515/515, UI 1/1, verification 69
+passed with one expected skip, fuzz 8/8, concurrency 7/7 plus seven doctests,
+and documentation five passed with four ignored. The PostgreSQL lane hit no
+slot contention because the new harness isolates cluster directories itself.
 
 ## Idempotence and recovery
 
 The upstream import can be repeated from the pinned commit and must reproduce
 the recorded hashes. Cargo lockfile updates are deterministic when run through
 Cargo. Before any push, verify branch identity, remote head, GitHub identity,
-and exact candidate commit. The task branch starts at the recorded baseline;
-there is no rebase or force-push in the plan.
+and exact candidate commit.
+
+The branch was rebased once, on 2026-10-30, because `origin/main` advanced from
+the recorded baseline `da9c7da3` to `0c0b853d` with the embedded-PostgreSQL
+harness migration. The exclusive replay boundary is `da9c7da3`; all thirteen
+branch commits descend from it, and the range contains no merges. Recovery refs
+`refs/recovery/669-old-head`, `refs/recovery/669-old-base`,
+`refs/recovery/669-target`, and `refs/recovery/669-remote-head` record the
+pre-rebase head, boundary, target, and previously published remote head. Only
+`Cargo.lock` conflicted; both times it was resolved by taking the target's file
+wholesale and then re-resolving from the merged manifests with
+`cargo metadata`, as the plan's packaging rule requires. `git range-diff` shows
+eleven of the thirteen commits unchanged and the other two differing only in
+the lockfile hunks that resolution replaced. A rewritten head needs a force
+push with lease bounded to the recorded remote head, which the delivery step
+authorizes.
 
 ## Artefacts and notes
 
@@ -876,3 +928,19 @@ unless inventory reveals an existing install or invocation that must move.
   spelling error, corrected before its required rerun. Mermaid validation
   passed. Logs use `/tmp/*-mxd-issue669-acceptance-v5*`. Fresh review, PR
   reconciliation, and merge remain pending.
+- (2026-10-30) The UI timeout did not reproduce: the UI compile fixture passed
+  in 189.9s, and aggregate `make test` exited 0 once the embedded cluster had a
+  private `PG_DATA_DIR`. Two earlier aggregate failures
+  (`failed to connect to admin database: db error`, then
+  `postgresql_embedded::setup() failed`) were environmental collisions with a
+  sibling worktree, not assertion failures.
+- (2026-10-30) `origin/main` advanced to `0c0b853d` with the
+  `pg-embed-setup-unpriv` 0.6.3 harness migration, so the branch was rebased
+  from its `da9c7da3` boundary onto that target. Only `Cargo.lock` conflicted;
+  both conflicts were resolved with the target's file and the lock was then
+  regenerated with `cargo metadata`, whose only delta from the target is the
+  OrthoConfig v0.10.0 resolution. The replays are recorded at
+  `969a3c2..c2dadc8`; range-diff shows eleven commits unchanged and the other
+  two differing only in the replaced lockfile hunks. The rewritten head passed
+  all nine local gates, including 266 workflow contracts and a PostgreSQL lane
+  of 529/529 that needed no data-directory override.
