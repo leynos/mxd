@@ -310,3 +310,10 @@ mod formats;
 
 #[path = "cli_tests/file_errors.rs"]
 mod file_errors;
+
+#[path = "cli_tests/precedence.rs"]
+mod precedence;
+
+#[cfg(not(all(feature = "json5", feature = "yaml")))]
+#[path = "cli_tests/disabled_formats.rs"]
+mod disabled_formats;
