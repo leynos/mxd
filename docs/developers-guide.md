@@ -1313,6 +1313,22 @@ Tolerated failure: `continue-on-error` on the SQLite coverage step, and
 the Whitaker step's flags dropped. Unit cases drive the same query with
 constructed copies of the workflow.
 
+### Pinned Whitaker installer
+
+`ci.yml` pins `install-whitaker` to the shared-actions revision whose default
+installer is 0.2.11. Earlier revisions build the Dylint driver against a fresh
+clone of rust-clippy and check out that repository's `master` branch; upstream
+renamed it to `main`, so that bootstrap stopped resolving and every
+`build-test` lane failed in the install step. Installer 0.2.11 provisions a
+verified Clippy snapshot bundle instead, so the driver build no longer reads a
+mutable upstream branch.
+
+The pin is a commit, like every other `leynos/shared-actions` reference here,
+so a Dependabot bump is what advances it. A Whitaker failure that appears in
+all three lanes at once is an installer problem, not a defect in the diff:
+check the pinned revision and the workflow's install step before suspecting the
+new code.
+
 ### Authenticated binstall
 
 `cargo binstall` resolves a crate's release through `api.github.com`. An

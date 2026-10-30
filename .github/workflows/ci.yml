@@ -174,8 +174,12 @@ jobs:
         run: make check-fmt
       - name: Lint with Clippy
         run: RUSTFLAGS="-D warnings" cargo clippy ${{ matrix.cargo_flags }} --workspace --all-targets -- -D warnings
+      # Pin the installer that provisions a verified Clippy snapshot. Earlier
+      # installers build the Dylint driver against a fresh clone of rust-clippy
+      # and check out its `master` branch, which upstream renamed to `main`, so
+      # that bootstrap no longer resolves.
       - name: Install Whitaker
-        uses: leynos/shared-actions/.github/actions/install-whitaker@7d751eded578e48dacf43ab173d5820e6437c474
+        uses: leynos/shared-actions/.github/actions/install-whitaker@5a99aed78ce68dcebd3052b75c31e6f173162b1e
       - name: Lint with Whitaker
         run: RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
       # Only the wireframe-only leg runs tests here. The sqlite and postgres
