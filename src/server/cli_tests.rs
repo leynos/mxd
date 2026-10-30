@@ -314,6 +314,9 @@ mod file_errors;
 #[path = "cli_tests/precedence.rs"]
 mod precedence;
 
+#[path = "cli_tests/argument_scanning.rs"]
+mod argument_scanning;
+
 #[cfg(not(all(feature = "json5", feature = "yaml")))]
 #[path = "cli_tests/disabled_formats.rs"]
 mod disabled_formats;

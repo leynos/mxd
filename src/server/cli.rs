@@ -58,32 +58,62 @@ pub fn load_cli() -> Result<ResolvedCli> {
 /// name remains attached to its option. `OrthoConfig`'s parser then receives
 /// only the arguments preceding the actual subcommand.
 fn config_args_without_subcommand() -> Vec<OsString> {
-    let args: Vec<OsString> = std::env::args_os().collect();
-    let subcommands = Cli::command()
-        .get_subcommands()
-        .map(|cmd| cmd.get_name().to_owned())
-        .collect::<Vec<_>>();
-    let mut subcommand_index = None;
-    for (index, arg) in args.iter().enumerate().skip(1) {
-        if arg.as_os_str() == OsStr::new("--") {
-            break;
-        }
-        if arg
-            .to_str()
-            .is_some_and(|value| subcommands.iter().any(|name| name == value))
-            && Cli::try_parse_from(args.iter().take(index).cloned()).is_ok()
-        {
-            subcommand_index = Some(index);
-            break;
-        }
-    }
+    config_args_from(&std::env::args_os().collect::<Vec<_>>())
+}
+
+/// Return the arguments that precede a subcommand boundary.
+///
+/// `args` is a complete argument vector whose first element is the program
+/// name, the shape `std::env::args_os` produces. The scan is pure so tests can
+/// drive it with generated vectors instead of a fabricated process.
+///
+/// # Examples
+///
+/// Given `["mxd", "--database", "db", "create-user", "alice"]` the scan stops
+/// at `create-user` and returns `["mxd", "--database", "db"]`.
+fn config_args_from(args: &[OsString]) -> Vec<OsString> {
     // OrthoConfig's CLI parser does not handle subcommands, so strip any
     // subcommand and its arguments before loading configuration.
-    if let Some(index) = subcommand_index {
-        args.into_iter().take(index).collect()
-    } else {
-        args
-    }
+    let end = subcommand_boundary(args).unwrap_or(args.len());
+    args.iter().take(end).cloned().collect()
+}
+
+/// Find the index of the token that starts the subcommand section.
+///
+/// A token equal to a subcommand name is a boundary only when clap accepts
+/// every preceding token, so a value that happens to equal a command name
+/// stays attached to its option. The `--` separator ends the scan.
+///
+/// # Examples
+///
+/// For `["mxd", "--database", "create-user"]`, `create-user` is the value of
+/// `--database`, the preceding tokens do not parse, and no boundary is
+/// reported.
+fn subcommand_boundary(args: &[OsString]) -> Option<usize> {
+    let subcommands = subcommand_names();
+    args.iter()
+        .enumerate()
+        .skip(1)
+        .take_while(|(_, arg)| arg.as_os_str() != OsStr::new("--"))
+        .find(|(index, arg)| {
+            is_subcommand_name(arg, &subcommands)
+                && Cli::try_parse_from(args.iter().take(*index).cloned()).is_ok()
+        })
+        .map(|(index, _)| index)
+}
+
+/// Names of the CLI's subcommands, spelled as clap spells them.
+fn subcommand_names() -> Vec<String> {
+    Cli::command()
+        .get_subcommands()
+        .map(|cmd| cmd.get_name().to_owned())
+        .collect()
+}
+
+/// Whether `arg` spells one of `subcommands` exactly.
+fn is_subcommand_name(arg: &OsStr, subcommands: &[String]) -> bool {
+    arg.to_str()
+        .is_some_and(|value| subcommands.iter().any(|name| name == value))
 }
 
 #[cfg(test)]
