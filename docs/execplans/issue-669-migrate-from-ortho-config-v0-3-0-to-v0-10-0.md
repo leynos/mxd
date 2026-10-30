@@ -853,6 +853,16 @@ sequence has run.
   completion locally before handing the ordered sequence to a gate runner, and
   freeze the tree while a sequence runs, because an edit mid-run leaves that
   gate's verdict describing a different tree.
+- **Spelling gate and stale tool caches.** `make spelling` passed locally at
+  the repaired tree while the hosted `docs-tooling` lane rejected an `-ise`
+  spelling in the new test module's header, which en-GB-oxendict corrects to the
+  `-ize` form. The local run reused a cached `uv` tool environment whose
+  `typos` binary predated that correction. Reproducing the hosted command with
+  fresh `UV_CACHE_DIR` and `UV_TOOL_DIR` failed on the same word, and the same
+  command passed once it was corrected. Lesson: when a spelling result differs
+  from the hosted lane, rerun the gate under fresh `uv` cache directories
+  before trusting the local pass, and do not quote a rejected spelling in the
+  plan, because the plan is scanned too.
 
 ## Idempotence and recovery
 

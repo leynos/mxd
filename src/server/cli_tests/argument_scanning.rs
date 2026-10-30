@@ -30,7 +30,7 @@ const ALL_OPTIONS: [usize; 6] = [0, 1, 2, 3, 4, 5];
 /// Option indices other than `--database`, which the retention cases reuse.
 const WITHOUT_DATABASE: [usize; 5] = [0, 2, 3, 4, 5];
 
-/// The subcommand name the scan must recognise.
+/// The subcommand name the scan must recognize.
 const CREATE_USER: &str = "create-user";
 
 /// Build an argument vector whose first element is the program name.
