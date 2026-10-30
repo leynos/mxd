@@ -180,9 +180,12 @@ replaces the existing `figment::Jail` code.
 - [x] (2026-10-26 21:43Z) Final reverse dependency trees confirm both direct
   consumers resolve `ortho_config 0.10.0` from crates.io. The only remaining
   `ortho_config` and `ortho_config_macros` 0.5.0 pair is pulled by
-  `pg-embed-setup-unpriv 0.5.2` as a development dependency. Rust 1.94.0
-  identifies as `4a4ef493e3a1488c6e321570238084b38948f6db`; the repository
-  nightly identifies as `80d0e4be6f15899649ba31669077c59a986f96cc`.
+  `pg-embed-setup-unpriv 0.5.2` as a development dependency. The 2026-10-30
+  rebase moved that helper to 0.6.3, which pulls the same 0.5.0 pair, so the
+  current locked chain is `pg-embed-setup-unpriv 0.6.3` → `ortho_config 0.5.0`
+  and the conclusion is unchanged. Rust 1.94.0 identifies as
+  `4a4ef493e3a1488c6e321570238084b38948f6db`; the repository nightly identifies
+  as `80d0e4be6f15899649ba31669077c59a986f96cc`.
 - [x] (2026-10-26 21:47Z) After the final design-note edit, `make fmt`,
   `make check-fmt`, `make markdownlint` (including spelling), `make nixie`, and
   `git diff --check` passed. All five imported-document hashes still match the
@@ -238,9 +241,38 @@ replaces the existing `figment::Jail` code.
   `cargo metadata`. `git range-diff` shows eleven commits unchanged and two
   differing only in replaced lockfile hunks. All nine gates were rerun at the
   new head `c2dadc8` and passed.
-- [ ] Publish the rewritten head with a lease-bounded force push, obtain a fresh
-  CodeRabbit review at that head, update the PR description and plan with the
-  resulting evidence, and merge only after the PR reaches equilibrium.
+- [x] (2026-10-30) Published the rewritten head `8b681fe` with a lease-bounded
+  force push and obtained a fresh CodeRabbit review there. Its assessment
+  confirmed the migration and the four closed gaps and left three items:
+  restore hosted Whitaker validation, add range-based verification of the
+  scanner invariant, and reconcile this plan's current-state text.
+- [x] (2026-10-30) Repaired the hosted Whitaker bootstrap by pinning
+  `install-whitaker` to the revision whose installer (0.2.11) provisions a
+  verified Clippy snapshot instead of cloning rust-clippy's mutable branch.
+- [x] (2026-10-30) Repaired the `warm-postgres` UTC alias loop so it replaces a
+  dangling `UTC` link and propagates `find` and `ln` failures instead of
+  masking them; both behaviours were exercised in a scratch tree.
+- [x] (2026-10-30) Added the two executing contract cases for that repair:
+  `test_warm_postgres_replaces_a_dangling_utc_alias` (a seeded broken link must
+  end up pointing at `UCT`) and
+  `test_warm_postgres_fails_when_an_alias_root_is_missing` (a missing install
+  root must fail). The workflow-contract gate rose from 266 to 268 cases.
+- [x] (2026-10-30) Extracted a pure `config_args_from` scanner and added a
+  `proptest` suite for the token-classification invariant, keeping the
+  process-level contracts as the end-to-end specification.
+- [x] (2026-10-30) Reran the eleven deterministic gates sequentially. The first
+  two sequences failed on Clippy findings in the new code, both fixed in the
+  source rather than suppressed: `clippy::indexing-slicing` on `args[..end]` in
+  `config_args_from`, now `args.iter().take(end).cloned().collect()`, and
+  `clippy::doc_markdown` on an unbackticked `OrthoConfig` in the new test
+  module's `//!` header. `make lint` then passed in all three feature sets,
+  including Whitaker, and `make test` passed every lane: 1680 nextest cases and
+  12 doctests, one nextest case and four doctests skipped or ignored as
+  recorded. `make check-fmt`, `make markdownlint`, `make spelling`,
+  `make nixie`, `make test-workflow-contracts`, `make test-dependabot-policy`,
+  `make check-locked`, and `mbake validate Makefile` passed.
+- [ ] Push the repaired head, reconcile the remaining pre-merge rows against the
+  live table, and merge only after the PR reaches equilibrium.
 
 ## Surprises & discoveries
 
@@ -312,7 +344,9 @@ replaces the existing `figment::Jail` code.
   unless the migration itself requires an API update. Rationale: crates.io's
   latest 0.6.3 release still depends on `ortho_config ^0.5.0`, so changing this
   helper would add unrelated churn and would not remove the locked 0.5.0 copy.
-  Date/Author: 2026-10-26, Codex.
+  Date/Author: 2026-10-26, Codex. Superseded on 2026-10-30: `main` adopted
+  0.6.3 through its own harness migration, and rebasing onto it carried that
+  version in; the 0.5.0 pair remains, exactly as predicted here.
 - Decision: declare Rust 1.94.0 for both `mxd` and `cli-defs`. Rationale: the
   existing locked full feature/test graph already includes crates requiring
   1.94.0; declaring only OrthoConfig's 1.89.0 floor would advertise an
@@ -341,22 +375,24 @@ Optional JSON5 and YAML checks add separate format-specific cases and are
 reported above. Verification, fuzz, concurrency, doctest, and documentation
 inventories retain their baseline counts and expected skips.
 
-The first delivery milestone produced draft PR #670 from commit `4fd7a85`; its
-final CodeRabbit review returned zero findings and the reported hosted checks
-passed. The newly raised acceptance gaps below remain active work, so that
-review does not clear the current candidate. Prior dependency statements in the
+The first delivery milestone produced PR #670 from commit `4fd7a85`; its final
+CodeRabbit review returned zero findings. That review predates the acceptance
+gaps below, so it does not clear the current candidate. The gaps were closed in
+`840224f`, `1ddc716`, and their follow-ups, and the PR is ready rather than
+draft at head `8b681fe` on base `0c0b853d`. Prior dependency statements in the
 baseline inventory describe the pre-migration graph: the migrated root lockfile
 has no direct Git OrthoConfig source, while the remaining 0.5.0
 `ortho_config`/`ortho_config_macros` pair is pulled by
-`pg-embed-setup-unpriv 0.5.2` as a development dependency.
+`pg-embed-setup-unpriv 0.6.3` as a development dependency.
 
-### Acceptance gaps (closed 2026-10-30)
+### Acceptance gaps (closed 2026-10-30; retained as history)
 
-All four gaps below are closed. The scanner now validates its prefix with Clap
-before treating a token as a subcommand, and process-level contract tests cover
-command-name option values, `--`, and option placement on either side of the
-subcommand. A four-tier precedence matrix and a disposable-storage credential
-test exercise the merge and restoration paths end to end. Independent
+The four items below record each gap as it was raised on 2026-10-30, not work
+that remains. All four are closed. The scanner now validates its prefix with
+Clap before treating a token as a subcommand, and process-level contract tests
+cover command-name option values, `--`, and option placement on either side of
+the subcommand. A four-tier precedence matrix and a disposable-storage
+credential test exercise the merge and restoration paths end to end. Independent
 `cli-defs` feature checks and YAML 1.2 scalar cases passed. Only review
 convergence and the authorized merge remain for delivery.
 
@@ -480,6 +516,13 @@ integration contracts across OrthoConfig and mxd's CLI adapters:
   Method: representative YAML fixtures including legacy booleans and duplicate
   keys. Artefact: config loader tests. Evidence: expected parse values/errors
   in SQLite, PostgreSQL, and wireframe-only feature selections as applicable.
+- **OC-CLI-ARGS:** the subcommand-boundary scan passes through every token that
+  belongs to the global options and removes exactly the subcommand and its
+  arguments. Method: a `proptest` suite over generated option subsequences for
+  the retention, stripping, `--`, and mixed cases, with the process-level
+  contracts retained as the end-to-end specification. Artefact:
+  `src/server/cli_tests/argument_scanning.rs`. Evidence: four generated
+  properties and two named cases passing in the library suite.
 - **OC-MANPAGES:** the build-time `cli-defs` consumer compiles and still emits
   its expected clap-mangen page. Method: root build/man-page target and
   snapshot or generated-output checks. Evidence: all required feature lanes
@@ -491,9 +534,13 @@ integration contracts across OrthoConfig and mxd's CLI adapters:
 The negative control for precedence is a lower-layer value that disagrees with
 an explicitly supplied CLI default; the migrated test must fail if the CLI
 layer is discarded. Discovery tests use distinct absent, malformed, and
-permission-denied inputs so collapsing failures to defaults is observable. No
-property test or formal proof is proportionate because the migration adds no
-new state machine or general algorithm.
+permission-denied inputs so collapsing failures to defaults is observable. The
+scanner does carry a general algorithm: it decides which prefix of an arbitrary
+argument vector is a valid configuration prefix. Its invariant is therefore
+stated over generated token sequences rather than exemplars. A formal proof is
+still not proportionate, because the property is sampled over a bounded option
+grammar whose acceptance decisions come from Clap itself, and a bounded
+exhaustive check would only re-derive Clap's acceptance predicate.
 
 ## Plan of work
 
@@ -765,6 +812,47 @@ new base), SQLite 533/533, wireframe-only 515/515, UI 1/1, verification 69
 passed with one expected skip, fuzz 8/8, concurrency 7/7 plus seven doctests,
 and documentation five passed with four ignored. The PostgreSQL lane hit no
 slot contention because the new harness isolates cluster directories itself.
+
+### Post-review repairs (2026-10-30)
+
+CodeRabbit's assessment of `8b681fe` left three items. Each repair is recorded
+here with its own evidence; the gate table for this head follows once the full
+sequence has run.
+
+- **Hosted Whitaker bootstrap.** All three `build-test` lanes failed in
+  `install-whitaker` and took `build-test-result` with them. The cause is
+  external to this diff: `dylint_driver 6.0.1` builds by cloning rust-clippy
+  and checking out `master`, and upstream renamed that branch to `main`, so the
+  pinned installer's cold bootstrap no longer resolves.
+  `.github/workflows/ci.yml` now pins `install-whitaker` to `5a99aed`, which
+  defaults to installer 0.2.11 and provisions a verified Clippy snapshot
+  bundle. The previous head `4fd7a85` passed the same jobs on 2026-10-27 and
+  `rust-toolchain.toml` is unchanged against `0c0b853d`, which is why the
+  failure is not attributed to the migration.
+- **`warm-postgres` UTC alias.** The alias loop skipped a pre-existing dangling
+  `UTC` link, so `ln -s` failed with `File exists` and the failure was masked
+  by the loop's last `find`. The loop now removes a dangling link before
+  creating it and carries a sticky status through `exit`, so a failing root can
+  no longer be hidden by a later one. A scratch tree with a dangling link, an
+  already correct link, and a missing root reported `0`, `0`, and `1`
+  respectively and left both aliases valid.
+- **Scanner verification.** `config_args_without_subcommand` is now a thin
+  wrapper over the pure `config_args_from`, with `subcommand_boundary`,
+  `subcommand_names`, and `is_subcommand_name` extracted beside it.
+  `src/server/cli_tests/argument_scanning.rs` states the invariant as four
+  `proptest` properties over generated option subsequences plus two named
+  cases, and all six passed in the library suite at the repaired head.
+- **Lint findings in the new code.** Two Clippy errors surfaced only once the
+  full lint lane ran, because `make lint` stops at its first failing
+  prerequisite. `clippy::indexing-slicing` rejected `args[..end].to_vec()` in
+  `config_args_from`; the slice is now
+  `args.iter().take(end).cloned().collect()`, which cannot panic and needs no
+  suppression. `clippy::doc_markdown` rejected an unbackticked `OrthoConfig` in
+  the new test module's `//!` header; the sentence now names the parser the
+  derive adds, with the crate name in backticks. Lesson: run `make lint` to
+  completion locally before handing the ordered sequence to a gate runner, and
+  freeze the tree while a sequence runs, because an edit mid-run leaves that
+  gate's verdict describing a different tree.
 
 ## Idempotence and recovery
 
