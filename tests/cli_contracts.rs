@@ -233,6 +233,9 @@ fn cli_failure_scenarios_preserve_exit_and_stream_contracts(
     assert_failure_contract(&output, case.expected_status, case.diagnostics)
 }
 
+#[path = "cli_contracts/argument_placement.rs"]
+mod argument_placement;
+
 #[rstest]
 fn generated_man_page_keeps_shared_cli_options_and_subcommands() {
     assert!(

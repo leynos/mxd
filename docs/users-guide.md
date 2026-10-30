@@ -167,12 +167,14 @@ and `docs/file-sharing-design.md`.
 ## Creating users
 
 The `create-user` subcommand now runs entirely inside the library so that it is
-available to every binary. Supply both `--username` and `--password`; missing
-values produce the same `missing username`/`missing password` errors that the
-new `rstest-bdd` scenarios cover. Example:
+available to every binary. Supply the username and password as positional
+arguments. Put global configuration options such as `--database` before the
+subcommand. Missing values produce the same
+`missing username`/`missing password` errors that the new `rstest-bdd`
+scenarios cover. Example:
 
 ```sh
-cargo run --bin mxd -- create-user --username alice --password secret
+cargo run --bin mxd -- --database mxd.db create-user alice secret
 ```
 
 The command runs pending migrations before inserting the user. Errors bubble up

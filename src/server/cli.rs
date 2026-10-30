@@ -53,10 +53,10 @@ pub fn load_cli() -> Result<ResolvedCli> {
 /// Collect program arguments with any subcommand and its trailing args stripped.
 ///
 /// Scans arguments and stops at the `--` separator to avoid treating literal
-/// values as subcommands. Detects known clap subcommands via
-/// `Cli::command().get_subcommands()` and, when found, returns only the args
-/// preceding the subcommand. This allows `OrthoConfig`'s CLI parser (which does
-/// not handle subcommands) to load configuration safely.
+/// values as subcommands. A candidate command is a boundary only when clap
+/// accepts the preceding arguments, so a value that happens to equal a command
+/// name remains attached to its option. `OrthoConfig`'s parser then receives
+/// only the arguments preceding the actual subcommand.
 fn config_args_without_subcommand() -> Vec<OsString> {
     let args: Vec<OsString> = std::env::args_os().collect();
     let subcommands = Cli::command()
@@ -64,13 +64,14 @@ fn config_args_without_subcommand() -> Vec<OsString> {
         .map(|cmd| cmd.get_name().to_owned())
         .collect::<Vec<_>>();
     let mut subcommand_index = None;
-    for (index, arg) in args.iter().enumerate() {
+    for (index, arg) in args.iter().enumerate().skip(1) {
         if arg.as_os_str() == OsStr::new("--") {
             break;
         }
         if arg
             .to_str()
             .is_some_and(|value| subcommands.iter().any(|name| name == value))
+            && Cli::try_parse_from(args.iter().take(index).cloned()).is_ok()
         {
             subcommand_index = Some(index);
             break;
