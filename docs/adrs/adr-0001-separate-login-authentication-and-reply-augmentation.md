@@ -1,8 +1,8 @@
-# Architectural decision record (ADR) 001: Separate login authentication and reply augmentation
+# Architectural decision record (ADR) 0001: Separate login authentication and reply augmentation
 
 ## Status
 
-Superseded on 2026-02-05 by ADR-003 (Split login authentication and reply
+Superseded on 2026-02-05 by ADR-0003 (Split login authentication and reply
 augmentation).
 
 ## Date
