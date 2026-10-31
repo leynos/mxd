@@ -570,7 +570,7 @@ dependencies = [
  "figment",
  "figment-json5",
  "ortho_config 0.3.0",
- "rstest 0.27.0",
+ "rstest",
  "serde",
  "serde_yaml",
  "toml 0.9.8",
@@ -781,9 +781,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.2"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e"
+checksum = "a2376ffd6f96d8a9db59875b4b6b0237d6900b5baf64279714e05493ce64828a"
 dependencies = [
  "cmov",
 ]
@@ -906,9 +906,9 @@ dependencies = [
 
 [[package]]
 name = "diesel"
-version = "2.3.13"
+version = "2.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3b934ddbdcb2abb9f9fc9c30bd47bcc5618b615eea1d334cda5fdf8ff9b072a"
+checksum = "ebe9f7eaef33febd60290c5a9f3b0571d03c4c04a24739cd64808ce30e65a5d3"
 dependencies = [
  "bitflags 2.13.2",
  "byteorder",
@@ -1022,9 +1022,9 @@ dependencies = [
 
 [[package]]
 name = "dirs"
-version = "6.0.0"
+version = "7.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
+checksum = "8d57d423b3c82e89b9a24ca3091fee61f456a26edbd28d26c65906f4bc1dcd8f"
 dependencies = [
  "dirs-sys 0.5.0",
 ]
@@ -1344,6 +1344,16 @@ dependencies = [
  "io-lifetimes 2.0.4",
  "rustix",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "fs4"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e72ed92b67c146290f88e9c89d60ca163ea417a446f61ffd7b72df3e7f1dfd5"
+dependencies = [
+ "rustix",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2405,10 +2415,9 @@ dependencies = [
  "mxd-concurrency",
  "ortho_config 0.3.0",
  "paste",
- "pg-embed-setup-unpriv",
  "proptest",
  "rand 0.10.3",
- "rstest 0.27.0",
+ "rstest",
  "rstest-bdd",
  "rstest-bdd-harness-tokio",
  "rstest-bdd-macros",
@@ -2435,14 +2444,14 @@ name = "mxd-concurrency"
 version = "0.1.0"
 dependencies = [
  "loom",
- "rstest 0.27.0",
+ "rstest",
 ]
 
 [[package]]
 name = "mxd-verification"
 version = "0.1.0"
 dependencies = [
- "rstest 0.27.0",
+ "rstest",
  "rstest-bdd",
  "rstest-bdd-macros",
  "stateright",
@@ -2819,9 +2828,9 @@ dependencies = [
 
 [[package]]
 name = "pg-embed-setup-unpriv"
-version = "0.5.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d1532f44d856d5a9ea2b22915d11234542c10689ba3e575ff559d99085ae170"
+checksum = "4138a96b28dda86101e396f6c3e6ed475dcc4c0205ba3206d463be5d9c3959e6"
 dependencies = [
  "camino",
  "cap-std",
@@ -2829,23 +2838,26 @@ dependencies = [
  "clap",
  "color-eyre",
  "dashmap",
- "diesel",
- "dirs 6.0.0",
+ "dirs 7.0.0",
  "figment",
  "figment-json5",
  "filetime",
+ "flate2",
+ "fs4",
  "libc",
  "nix 0.31.3",
  "ortho_config 0.5.0",
  "postgres",
+ "postgresql_archive",
  "postgresql_embedded",
- "pq-sys",
- "rstest 0.26.1",
+ "reqwest",
+ "rstest",
  "secrecy",
  "serde",
  "serde_json",
  "serde_with",
  "sha2 0.11.0",
+ "tar",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -3029,16 +3041,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pq-src"
-version = "0.3.10+libpq-18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56ef39ce621f4993d6084fdcd4cbf1e01c84bdba53109cfad095d2cf441b85b9"
-dependencies = [
- "cc",
- "openssl-sys",
-]
-
-[[package]]
 name = "pq-sys"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3046,7 +3048,6 @@ checksum = "574ddd6a267294433f140b02a726b0640c43cf7c6f717084684aaa3b285aba61"
 dependencies = [
  "libc",
  "pkg-config",
- "pq-src",
  "vcpkg",
 ]
 
@@ -3370,6 +3371,7 @@ checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
 dependencies = [
  "base64 0.23.1",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",
@@ -3486,24 +3488,13 @@ checksum = "323c417e1d9665a65b263ec744ba09030cfb277e9daa0b018a4ab62e57bc8189"
 
 [[package]]
 name = "rstest"
-version = "0.26.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5a3193c063baaa2a95a33f03035c8a72b83d97a54916055ba22d35ed3839d49"
-dependencies = [
- "futures-timer",
- "futures-util",
- "rstest_macros 0.26.1",
-]
-
-[[package]]
-name = "rstest"
 version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "948203e6d13b83e51a90d7cf236dd58a0065f23f4b902f00f306e7eb2bd09b9c"
 dependencies = [
  "futures-timer",
  "futures-util",
- "rstest_macros 0.27.0",
+ "rstest_macros",
 ]
 
 [[package]]
@@ -3600,29 +3591,11 @@ checksum = "5a763e4ca8dea3871aef38f58ef0a6fa9b8a47dd06e34f1503aa32467db87d70"
 name = "rstest-bdd-ui-tests"
 version = "0.0.0"
 dependencies = [
- "rstest 0.27.0",
+ "rstest",
  "rstest-bdd",
  "rstest-bdd-harness-tokio",
  "rstest-bdd-macros",
  "trybuild",
-]
-
-[[package]]
-name = "rstest_macros"
-version = "0.26.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c845311f0ff7951c5506121a9ad75aec44d083c31583b2ea5a30bcb0b0abba0"
-dependencies = [
- "cfg-if",
- "glob",
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "regex",
- "relative-path",
- "rustc_version",
- "syn 2.0.119",
- "unicode-ident",
 ]
 
 [[package]]
@@ -3723,9 +3696,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
@@ -3758,9 +3731,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -4429,11 +4402,13 @@ dependencies = [
  "diesel_migrations",
  "eyre",
  "futures-util",
+ "metrics",
  "mxd",
  "nix 0.31.3",
  "pg-embed-setup-unpriv",
  "postgres",
- "rstest 0.27.0",
+ "proptest",
+ "rstest",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -5149,7 +5124,7 @@ dependencies = [
  "expectrl",
  "mxd",
  "nix 0.31.3",
- "rstest 0.27.0",
+ "rstest",
  "serde",
  "tempfile",
  "test-util",

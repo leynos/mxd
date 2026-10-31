@@ -1,4 +1,4 @@
-"""Every PostgreSQL test in CI runs against an embedded cluster, serialized.
+"""Every PostgreSQL test in CI runs against an embedded cluster.
 
 The postgres leg once ran against a `postgres:15` service container reached
 through `POSTGRES_TEST_URL`, so the embedded path the suite is written for
@@ -6,21 +6,24 @@ never ran in CI at all. Both are gone, and these contracts keep them gone:
 no job declares a service container, no workflow sets the URL, and no Rust
 source reads it.
 
-The embedded path brings two obligations of its own, asserted here per job
-that runs the PostgreSQL tests. Every cluster in a run shares one data
-directory and pg-embed-setup-unpriv does not coordinate across the processes
-nextest runs, so the tests run under the `postgres` nextest profile, whose
-single-slot group serializes them. Each process also generates its own
-superuser password unless `PG_PASSWORD` fixes one, and a cluster directory left
-by one process then refuses the next, so each such job pins it. And a cluster
-bootstrap failure is cached
-for the rest of a test process, so the binaries are downloaded by
+The embedded path brings obligations of its own, asserted here per job that
+runs the PostgreSQL tests. Each process generates its own superuser password
+unless `PG_PASSWORD` fixes one, and a cluster directory left by one process
+then refuses the next, so each such job pins it. A cluster bootstrap failure
+is cached for the rest of a test process, so the binaries are downloaded by
 `make warm-postgres` before the tests start rather than by the first test.
+Each job also pins the PostgreSQL bundle, because the harness version alone
+does not choose a working one; see the bundle-pin contract for why.
+
+The tests themselves run in parallel. pg-embed-setup-unpriv 0.6 gives every
+cluster its own data directory, so the single-slot test group that serialized
+the 0.5.x runs is gone, and a contract keeps it gone.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 import typing as typ
 
@@ -34,6 +37,8 @@ WARM_COMMAND: typ.Final = "make warm-postgres"
 TOKEN_EXPRESSION: typ.Final = "${{ github.token }}"
 PROFILE: typ.Final = "postgres"
 URL_VARIABLE: typ.Final = "POSTGRES_TEST_URL"
+CRATE: typ.Final = "pg-embed-setup-unpriv"
+HELPER_VERSION = re.compile(r"(?<![\w-])pg-embed-setup-unpriv@([^\s;|&\"'\\]+)")
 
 
 class PostgresTestStep(typ.NamedTuple):
@@ -190,12 +195,121 @@ def test_the_warm_up_is_authenticated(
     )
 
 
-def test_the_postgres_profile_serializes_every_test() -> None:
-    """One slot, applied to every test the profile runs."""
-    config = tomllib.loads(
+def _nextest_config() -> dict[str, object]:
+    """The parsed nextest configuration."""
+    return tomllib.loads(
         (REPO_ROOT / ".config" / "nextest.toml").read_text(encoding="utf-8")
     )
-    group = config["test-groups"]["pg-embed"]
-    assert group == {"max-threads": 1}, f"pg-embed group is {group}"
-    overrides = config["profile"][PROFILE]["overrides"]
-    assert {"filter": "all()", "test-group": "pg-embed"} in overrides, overrides
+
+
+def test_the_postgres_profile_does_not_serialize_the_tests() -> None:
+    """No single-slot group, and no override that applies one to every test.
+
+    pg-embed-setup-unpriv 0.5.x shared one data directory between every cluster
+    in a run, so the profile had to run one test at a time. 0.6 gives each
+    cluster its own directory, and the profile now runs at the default
+    parallelism; a reintroduced group or `all()` override would silently undo
+    that and hide the throughput the migration was for.
+    """
+    config = _nextest_config()
+    groups = config.get("test-groups") or {}
+    assert "pg-embed" not in groups, f"the serializing group returned: {groups}"
+    overrides = config["profile"][PROFILE].get("overrides") or []
+    wide = [o for o in overrides if o.get("filter") == "all()" and "test-group" in o]
+    assert not wide, f"an override serializes every test again: {wide}"
+
+
+def test_the_postgres_profile_keeps_its_time_budget() -> None:
+    """The profile still exists, with the slow timeouts it had.
+
+    Removing the serialization must not quietly take the cold-start headroom
+    with it: a cold cluster start was measured at 156 s, well past the default
+    60 s slow timeout.
+    """
+    config = _nextest_config()
+    profile = config["profile"][PROFILE]
+    assert profile["global-timeout"] == "60m", profile
+    assert profile["slow-timeout"]["period"] == "300s", profile["slow-timeout"]
+
+
+def test_every_postgres_job_pins_the_working_bundle(documents) -> None:
+    """Each job that runs the PostgreSQL tests pins the bundle exactly.
+
+    The harness version does not choose a working bundle. The October theseus
+    rebuilds express the time-zone aliases as tar hard links, the
+    `postgresql_archive` behind 0.6.3 skips hard links, and every diesel
+    connection then fails with `invalid value for parameter "TimeZone": "UTC"`.
+    The pin must be exact: the variable is a semver requirement and the highest
+    match wins, so a range would select the broken release again.
+    """
+    for expected in POSTGRES_TEST_STEPS:
+        where = f"{expected.workflow}:{expected.job_id}"
+        job = _jobs(documents[expected.workflow])[expected.job_id]
+        env = job.get("env")
+        assert isinstance(env, dict), f"{where} has no job env"
+        assert env.get("PG_VERSION_REQ") == "=18.6.0", (
+            f"{where} must pin PG_VERSION_REQ exactly, found {env.get('PG_VERSION_REQ')!r}"
+        )
+
+
+def _assert_helper_install(
+    job: cabc.Mapping[str, object], where: str, locked: str
+) -> None:
+    """Require one exact helper version in the job's run steps.
+
+    A job installing `pg-embed-setup-unpriv@0.6.30` fails for lock `0.6.3`.
+    """
+    versions = [
+        version
+        for step in _steps(job)
+        if isinstance(step.get("run"), str)
+        for version in HELPER_VERSION.findall(step["run"])
+    ]
+    assert versions == [locked], (
+        f"{where} must install {CRATE}@{locked} exactly once, found {versions}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("run", "valid"),
+    [
+        ("cargo binstall pg-embed-setup-unpriv@0.6.3", True),
+        ("cargo binstall something-else", False),
+        ("cargo binstall pg-embed-setup-unpriv@0.6.30", False),
+        (
+            "cargo binstall pg-embed-setup-unpriv@0.6.3 pg-embed-setup-unpriv@0.6.4",
+            False,
+        ),
+        (
+            "cargo binstall pg-embed-setup-unpriv@0.6.3 pg-embed-setup-unpriv@0.6.3",
+            False,
+        ),
+    ],
+    ids=["locked", "missing", "prefix", "multiple-versions", "duplicate"],
+)
+def test_helper_install_contract_rejects_missing_or_wrong_versions(
+    run: str, valid: bool
+) -> None:
+    """The version contract refuses missing, partial and duplicate installs."""
+    job = {"steps": [{"run": run}]}
+    if valid:
+        _assert_helper_install(job, "test", "0.6.3")
+    else:
+        with pytest.raises(AssertionError, match="must install"):
+            _assert_helper_install(job, "test", "0.6.3")
+
+
+def test_the_installed_helper_matches_the_locked_version(documents) -> None:
+    """Both workflows install the crate version the lockfile holds.
+
+    CI runs `pg_embedded_setup_unpriv` from the pinned binary for the warm-up
+    while the tests link the crate from `Cargo.lock`. If the two disagree, the
+    warm-up fills a cache for one version and the tests look for another.
+    """
+    lock = tomllib.loads((REPO_ROOT / "Cargo.lock").read_text(encoding="utf-8"))
+    versions = [p["version"] for p in lock["package"] if p["name"] == CRATE]
+    assert len(versions) == 1, f"expected one {CRATE} in Cargo.lock, found {versions}"
+    (locked,) = versions
+    for expected in POSTGRES_TEST_STEPS:
+        job = _jobs(documents[expected.workflow])[expected.job_id]
+        _assert_helper_install(job, f"{expected.workflow}:{expected.job_id}", locked)

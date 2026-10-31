@@ -141,42 +141,94 @@ installed under its resolved directory, and user-local tools under
 ## Embedded PostgreSQL in tests
 
 Every PostgreSQL test, locally and in CI, runs against an embedded cluster
-started by `pg-embed-setup-unpriv` 0.5.2. There is no external database option:
+started by `pg-embed-setup-unpriv` 0.6.3. There is no external database option:
 the `POSTGRES_TEST_URL` override and the CI `postgres:15` service container
 that fed it are gone, and a cluster that fails to start fails the test rather
 than skipping it. `make test-postgres` needs no database running.
 
-### The postgres leg runs serially
+### The postgres leg runs in parallel
 
-Each test process starts its own cluster, and every cluster in a run uses the
-same data directory, `/var/tmp/pg-embed-<uid>/data` unless `PG_DATA_DIR` says
-otherwise. pg-embed-setup-unpriv coordinates cluster start-up within one
-process but not across the processes nextest runs, and the guard that drops a
-cluster deletes that directory. Two tests starting clusters at once therefore
-collide. The `postgres` profile in `.config/nextest.toml` puts every test in a
-single-slot group, and `make test-postgres` and each CI step running the
-PostgreSQL tests select it through `NEXTEST_PROFILE=postgres`. The profile also
-allows a cold cluster start 300 seconds; one took 156 seconds on a quiet host.
-A local run of the whole leg spends about fourteen minutes in its tests. With
-the service container and parallel tests, CI's postgres test step took under
-three minutes.
+pg-embed-setup-unpriv 0.6 gives each cluster its own data directory on the
+install root, so concurrent clusters no longer share data directories. The
+0.6.3 slot-claim race can still return `slot lock ... is already held`. The
+`pg-embed` single-slot test group that 0.5.x needed is gone, the `all()`
+override that applied it is gone, and so are the 22
+`#[serial_test::file_serial(postgres_embedded_setup)]` attributes. The leg runs
+at the default parallelism; `tests/postgres_harness_isolation.rs` holds two
+fixtures alive at once and asserts their databases are separate.
 
-Serial is not enough on its own. pg-embed-setup-unpriv 0.5.2 generates a
-superuser password per process, and a test using the shared template cluster
-leaves state that the next process, holding a different password, cannot
-authenticate against: the first test after it failed with "failed to connect to
-admin database" on every local run until the password was fixed.
-`make test-postgres` and each CI job running the PostgreSQL tests therefore set
-`PG_PASSWORD` to a fixed throwaway value. It is not a secret; the clusters
+The harness retries a lost slot race in `retry_slot_contention`, with up to
+eight start attempts and a backoff increasing in 25 ms steps. The
+`is_slot_contention` check searches the full error chain for both `slot lock`
+and `is already held`. Template startup uses the upstream shared-cluster
+initializer normally; if it reports this contention, `shared.rs` starts a
+separate shared cluster through the retry path, caches the fallback result, and
+registers its shutdown hook.
+
+Structured tracing records numeric `attempt`, `max_attempts`, and
+`delay_seconds` fields with bounded `error_category`, `outcome`, `source`, and
+`cache_state` values. It does not record raw errors, database URLs, or
+credentials. Terminal causes are returned to the caller and appear in the
+failed test's bootstrap error chain. After retry exhaustion or a cached
+fallback failure, inspect that chain for the underlying startup cause before
+choosing a fix and rerunning `make test-postgres`.
+
+The harness emits these metrics:
+
+- `mxd_test_postgres_retry_attempts_total` counts scheduled retries.
+- `mxd_test_postgres_retry_exhausted_total` counts exhausted slot-contention
+  retries.
+- `mxd_test_postgres_fallback_selected_total` counts fallback selections.
+- `mxd_test_postgres_fallback_cache_total` counts fallback cache results. Its
+  bounded `outcome` labels are `success` or `failure`; `state` is `initialized`
+  or `reused`.
+- `mxd_test_postgres_bootstrap_seconds` records elapsed time for a
+  retry-managed bootstrap through success or terminal failure, including retry
+  delays. It has no labels.
+
+The `postgres` profile in `.config/nextest.toml` remains, because a cold
+cluster start is slower than the default 60 second slow timeout: one took 156
+seconds on a quiet host. It allows 300 seconds per test and 60 minutes for the
+run, and `make test-postgres` and each CI step running the PostgreSQL tests
+select it through `NEXTEST_PROFILE=postgres`.
+
+A fixed superuser password is still required, though for a different reason
+than in 0.5.x. 0.6 stores the password with the cluster and reuses it, so a
+process can only join a cluster another process created if both agree on the
+password; it does not generate one per process and then refuse its own cluster.
+`make test-postgres` and each CI job running the PostgreSQL tests set
+`PG_PASSWORD` to a fixed throwaway value. It is not a secret: the clusters
 listen on localhost and live only as long as the run.
 
-The serial group is an interim measure for pg-embed-setup-unpriv 0.5.2. Revisit
-it when mxd moves to the 0.6.0 release, and drop it if that release keeps
-concurrent clusters apart.
+### The bundle is pinned exactly
 
-Because the default directory is per user rather than per checkout, a second
-checkout running PostgreSQL tests at the same time collides with the first.
-Give each concurrent run its own directories:
+The harness version alone does not choose a working PostgreSQL bundle. The
+October theseus rebuilds (18.6.1 and later) are built `--with-icu` without
+`--with-system-tzdata`, so they ship their own `share/timezone` and express the
+time-zone aliases as tar hard links. The `postgresql_archive` behind 0.6.3
+extracts directories, files and symlinks but skips hard links, so
+`share/timezone/UTC` never lands. PostgreSQL then rejects
+`SET TIME ZONE 'UTC'`, which diesel's `PgConnection::establish` sends during
+connect, and every database test fails at its first connection with
+`invalid value for parameter "TimeZone": "UTC"`.
+
+`PG_VERSION_REQ` therefore pins `=18.6.0`, the August asset built
+`--with-system-tzdata` and still the original upload. The pin must be exact:
+the variable is parsed verbatim as a semver requirement and release selection
+takes the highest match, so a caret requirement would select 18.6.1 again. The
+Makefile defaults it and passes it to both `test-postgres` and `warm-postgres`,
+so the cache the warm-up fills is the one the tests read, and each CI job sets
+it next to `PG_PASSWORD`.
+
+`cluster_accepts_the_utc_time_zone` in `tests/postgres_harness_isolation.rs` is
+the regression test. Remove the pin once a `pg-embed-setup-unpriv` release can
+select `postgresql_archive` 0.22.0 or newer, which extracts hard links.
+
+### Two checkouts at once
+
+A second checkout running PostgreSQL tests at the same time still collides with
+the first, because the default install root is per user rather than per
+checkout. Give each concurrent run its own directories:
 
 ```sh
 PG_RUNTIME_DIR=/var/tmp/mxd-pg-b/install PG_DATA_DIR=/var/tmp/mxd-pg-b/data \
@@ -188,12 +240,17 @@ PG_RUNTIME_DIR=/var/tmp/mxd-pg-b/install PG_DATA_DIR=/var/tmp/mxd-pg-b/data \
 pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest of a test
 process, so a download failing inside the suite would fail every later test in
 that process. CI installs the `pg_embedded_setup_unpriv` binary at the crate's
-version and runs `make warm-postgres` first. That target runs setup with
-throwaway install and data directories under `.pg-embedded/warm`, which fills
-the binary cache named by `PG_BINARY_CACHE_DIR`. It then fails if the cache is
-still empty, because the tool skips caching silently when it cannot take the
-cache lock. Each job sets `PG_BINARY_CACHE_DIR` once, so the warm-up and the
-tests read one cache.
+version (`cargo binstall pg-embed-setup-unpriv@0.6.3`) and runs
+`make warm-postgres` first. That target runs setup with throwaway install and
+data directories under `.pg-embedded/warm`, pinned to the same bundle as the
+tests, which fills the binary cache named by `PG_BINARY_CACHE_DIR`. It then
+fails if the cache is still empty, because the tool skips caching silently when
+it cannot take the cache lock. Each job sets `PG_BINARY_CACHE_DIR` once, so the
+warm-up and the tests read one cache.
+
+There is no binary-cache restore across CI runs, by design. Every job warms the
+cache from scratch, which keeps the warm-up's cost visible and its failure
+attributable to that run rather than to a stale cache entry.
 
 The warm-up step sets `GITHUB_TOKEN: ${{ github.token }}`. postgresql_embedded
 lists the PostgreSQL releases through the GitHub API, which rate limits
@@ -207,30 +264,33 @@ it with a literal, fails the named case.
 `tests/workflow_contracts/test_embedded_postgres.py` asserts that no job
 declares a service container, that no workflow mentions `POSTGRES_TEST_URL`,
 and that no Rust source reads it. For each job that runs the PostgreSQL tests,
-it asserts that the job pins `PG_PASSWORD`, that the step sets the `postgres`
-profile, and that `make warm-postgres` runs once earlier in the same job. It
-also asserts that the profile's group has one slot and applies to every test.
-Seven mutations each fail exactly the case named for them: a service container,
-the URL in a step's `env`, the URL read in `test-util`, the profile dropped,
-the warm-up removed, the password dropped, and the group widened to two slots.
-The jobs it covers are the two coverage jobs, `coverage` in `ci.yml` and
-`coverage-upload` in `coverage-main.yml`; the `build-test` postgres leg no
-longer runs the PostgreSQL tests.
+it asserts that the job pins `PG_PASSWORD` and `PG_VERSION_REQ`, that the step
+sets the `postgres` profile, and that `make warm-postgres` runs once earlier in
+the same job. It asserts that the profile declares no `pg-embed` group and no
+`all()` override, and keeps its 300 second and 60 minute budgets. It also
+asserts that both workflows install the helper version `Cargo.lock` holds, so
+the warm-up cannot fill a cache the tests will not read. The jobs it covers are
+the two coverage jobs, `coverage` in `ci.yml` and `coverage-upload` in
+`coverage-main.yml`; the `build-test` postgres leg no longer runs the
+PostgreSQL tests.
 
 `tests/workflow_contracts/test_postgres_make_targets.py` holds the local twins
 of those steps. It reads the `test-postgres` recipe from `make --dry-run` and
-asserts the `postgres` profile and the default and overridden `PG_PASSWORD`. It
-runs `make warm-postgres` against a stand-in `pg_embedded_setup_unpriv` under a
-fake home and asserts the throwaway directories, success when the cache fills,
-and failure when it stays empty or `PG_BINARY_CACHE_DIR` is unset. Five
-Makefile mutations each fail the cases named for them: the profile dropped, the
-default password changed, the emptiness guard deleted, the data directory
-moved, and the password made a literal.
+asserts the `postgres` profile, the default and overridden `PG_PASSWORD`, and
+the exact bundle pin and its override. It asserts that `warm-postgres` passes
+the same pin. It runs `make warm-postgres` against a stand-in
+`pg_embedded_setup_unpriv` under a fake home and asserts the throwaway
+directories, success when the cache fills, and failure when it stays empty or
+`PG_BINARY_CACHE_DIR` is unset.
 
-## PostgreSQL migration strategy (v0.5.0)
+## PostgreSQL migration strategy (v0.6.0)
 
-The migration target for this branch adopts v0.5.0 lifecycle APIs to improve
-test reliability and throughput without changing test semantics.
+The migration to pg-embed-setup-unpriv 0.6.3 keeps the handle/guard split,
+`test_support::shared_cluster_handle()`, the template helpers, and the
+`async-api` signatures mxd uses compatible. The harness adds bounded slot-race
+retries and a cached fallback for template startup; the release changes the
+cluster isolation model. The full narrative and verification steps are in
+[`pg-embed-setup-unpriv-v0-6-0-migration-guide.md`](pg-embed-setup-unpriv-v0-6-0-migration-guide.md).
 
 - Run every PostgreSQL test against an embedded cluster. The
   `POSTGRES_TEST_URL` route to an external server, the CI service container
@@ -572,9 +632,9 @@ The shared helper surface is intentionally split between writers and readers:
 
 SQLite tests run against a fresh in-memory database per test or fixture.
 PostgreSQL tests run through `with_postgres_test_db`, which creates an isolated
-database in an embedded PostgreSQL cluster. PostgreSQL tests use
-`serial_test::file_serial(postgres_embedded_setup)` locks so the embedded
-cluster setup and teardown are not raced by concurrent tests.
+database in an embedded PostgreSQL cluster. The 0.6 harness gives each cluster
+its own data directory, so PostgreSQL tests can start clusters concurrently
+without file-based serialization.
 
 Run only the SQLite schema-alignment tests with:
 
@@ -832,17 +892,25 @@ on `ubicloud-standard-2`; `build-test-result`, a trivial aggregate, stays
 hosted. `runs-on` selects it with the runner-selection expression:
 
 ```yaml
-runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+runs-on: >-
+  ${{ (github.event.pull_request.head.repo.fork
+  || github.event.pull_request.user.login == 'dependabot[bot]')
+  && 'ubuntu-latest' || 'ubicloud-standard-2' }}
 ```
 
 A pull request from a fork cannot obtain an Ubicloud runner, so it falls back to
-`ubuntu-latest`; a push and a dispatch have no pull request, so the fork value
-is null and they select Ubicloud. Ubicloud's cache proxy is scoped by ref, so a
-pull request's Ubicloud lane reads a warm main scope only when a main job on
-Ubicloud writes it: the writer moves first, and the `ci.yml` lanes follow. A
-fork's pull request restores a hosted cache that main no longer refreshes; fork
-pull requests are rare here, and a second hosted writer would pay double on
-every main push.
+`ubuntu-latest`. So does a pull request Dependabot opened: hosted minutes cost
+nothing on a public repository, and Dependabot opens many pull requests. The
+expression tests the pull request's author, not `github.actor`, because the
+actor is whoever triggered the run, so a person pushing to a Dependabot branch
+would flip the runner. A push and a dispatch have no pull request, so both
+values are empty strings (falsy) and the expression selects Ubicloud; a
+Dependabot pull request therefore builds cold on the hosted pool. Ubicloud's
+cache proxy is scoped by ref, so a pull request's Ubicloud lane reads a warm
+main scope only when a main job on Ubicloud writes it: the writer moves first,
+and the `ci.yml` lanes follow. A fork's pull request restores a hosted cache
+that main no longer refreshes; fork pull requests are rare here, and a second
+hosted writer would pay double on every main push.
 
 An Ubicloud runner is a self-hosted just-in-time runner, so GitHub's six-hour
 cap for hosted jobs does not bound it; `coverage-upload` keeps its 65-minute
@@ -878,7 +946,8 @@ API, as the placement pull requests did:
 
 `tests/workflow_contracts/test_runner_placement.py` pins the labels of every
 lane in both directions and requires each conditional placement to be guarded
-by the fork test with the hosted arm first, so a pair under another guard fails.
+by the fork test or the Dependabot author test, with the hosted arm first, so a
+pair under another guard (or `github.actor`) fails.
 
 ## CodeScene coverage is owned by `main`
 

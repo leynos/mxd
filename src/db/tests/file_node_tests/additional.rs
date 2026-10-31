@@ -11,7 +11,6 @@ macro_rules! run_pg_scenario {
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_resolve_file_node_path_returns_none_for_missing_path() {
     run_pg_scenario!(
         super::resolve_file_node_path_returns_none_for_missing_path_body,
@@ -21,7 +20,6 @@ async fn test_resolve_file_node_path_returns_none_for_missing_path() {
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_non_download_permission_does_not_grant_visibility() {
     run_pg_scenario!(
         super::non_download_permission_does_not_grant_visibility_body,
@@ -31,7 +29,6 @@ async fn test_non_download_permission_does_not_grant_visibility() {
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_nested_child_not_visible_without_explicit_grant() {
     run_pg_scenario!(
         super::nested_child_not_visible_without_explicit_grant_body,
@@ -41,7 +38,6 @@ async fn test_nested_child_not_visible_without_explicit_grant() {
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_file_node_check_kind_constraints() {
     run_pg_scenario!(
         super::file_node_check_kind_constraint_body,
@@ -51,7 +47,6 @@ async fn test_file_node_check_kind_constraints() {
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_grant_revocation_removes_visibility() {
     run_pg_scenario!(
         super::grant_revocation_removes_visibility_body,
@@ -61,7 +56,6 @@ async fn test_grant_revocation_removes_visibility() {
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_group_membership_removal_revokes_visibility() {
     run_pg_scenario!(
         super::group_membership_removal_revokes_visibility_body,
@@ -71,7 +65,6 @@ async fn test_group_membership_removal_revokes_visibility() {
 
 #[cfg(feature = "postgres")]
 #[tokio::test]
-#[serial_test::file_serial(postgres_embedded_setup)]
 async fn test_visible_root_files_merge_postgres() {
     run_pg_scenario!(
         super::visible_root_files_merge_body,
