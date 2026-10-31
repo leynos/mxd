@@ -1438,9 +1438,11 @@ Common Table Expressions (CTEs) to handle certain queries elegantly:
   [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L449-L457)).
   This single query replaces what could be multiple queries or complex logic
   in Rust, and it runs efficiently inside the database. We verify on startup
-  that SQLite has support for **recursive CTEs** (the code runs a quick
-  `WITH RECURSIVE c(x)...` query on SQLite to ensure the build includes that
-  feature)(
+  that the linked SQLite library is at least 3.35.0 and provides both features
+  the query needs: the JSON1 `json_each` function, and support for **recursive
+  CTEs**. The audit runs each as a probe and inspects the returned rows, so a
+  library that accepts the syntax but computes the wrong answer is rejected
+  rather than trusted(
   [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L134-L143)
   )(
   [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L146-L154)).

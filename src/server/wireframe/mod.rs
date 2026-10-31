@@ -129,6 +129,16 @@ impl WireframeBootstrap {
         })
     }
 
+    /// Establish the pool, audit the linked `SQLite` library, then serve.
+    ///
+    /// The `sqlite` audit runs after the pool is established and before the
+    /// listener binds, so an incompatible library fails startup rather than the
+    /// first query.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pool cannot be established, if the `SQLite`
+    /// capability audit fails, or if binding or serving fails.
     async fn run(self) -> Result<()> {
         let Self { bind_addr, config } = self;
         println!("mxd-wireframe-server using database {}", config.database);
@@ -137,6 +147,15 @@ impl WireframeBootstrap {
         let pool = establish_pool(&config.database)
             .await
             .context("failed to establish database pool")?;
+        // Audit the linked SQLite library before binding the listener, so an
+        // incompatible library fails the startup rather than the first query.
+        #[cfg(feature = "sqlite")]
+        {
+            let mut conn = pool.get().await.context("failed to get db connection")?;
+            crate::db::audit_sqlite_features(&mut conn)
+                .await
+                .context("SQLite capability audit failed")?;
+        }
         let argon2 = Arc::new(admin::argon2_from_config(&config)?);
 
         let outbound_registry = Arc::new(WireframeOutboundRegistry::default());

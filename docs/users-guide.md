@@ -5,6 +5,49 @@ administrative subcommands. The command-line interface (CLI) definitions live in
 `mxd::server::cli`, while the active networking runtime is selected by the
 `legacy-networking` Cargo feature.
 
+## SQLite runtime requirements
+
+The SQLite library that the binary links must be 3.35.0 or later and must
+provide the `JSON1` extension's `json_each` function and support for recursive
+common table expressions. The server uses `json_each` to split slash-delimited
+paths and recursive CTEs to walk the file-node hierarchy.
+
+The default SQLite build links the system shared library rather than bundling
+its own, so a machine that runs such a build needs a shared library that meets
+these requirements. A build that links SQLite statically instead carries the
+library inside the binary and needs no SQLite shared library on the host.
+
+Both server runtimes and the `create-user` subcommand audit the library they
+are linked to at start-up. If a capability is missing, the command exits with
+an error naming it, before binding its listening socket and before writing any
+data. The `sqlite3` command-line tool is a separate build, so its version says
+nothing about the library the daemon links; the start-up audit is the
+authoritative check.
+
+### Recovering from a failed start-up audit
+
+The audit runs before any migration and before the subcommand inserts anything,
+so a rejected library leaves the schema and the stored data unchanged and
+retrying is safe. Opening the connection can still create a missing database
+file, so check for that rather than assuming no file appears. This capability
+check changes no table and requires no schema migration; upgrading `SQLite`
+does not require exporting or rebuilding the database.
+
+If the binary links the system library, upgrade the shared `SQLite` library on
+the host to 3.35.0 or later with `JSON1` and recursive CTE support, then start
+the command again. Compare with `sqlite3 --version` only as a hint about which
+library is installed, since that tool is a separate build; the start-up audit
+is what decides.
+
+If the binary was built to link `SQLite` statically with `SQLITE3_STATIC=1`,
+the library is fixed at build time and upgrading the host changes nothing.
+Rebuild against a newer `SQLite`, or set `SQLITE3_LIB_DIR` to a directory
+holding one, and rebuild.
+
+To confirm the fix, run the command that previously failed and check that it
+starts without printing a capability error. The audit prints only failures, so
+silence means every probe passed.
+
 ## Launching the legacy server
 
 - Build the sqlite variant with `make sqlite` or the postgres variant with
