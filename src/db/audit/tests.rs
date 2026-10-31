@@ -15,13 +15,20 @@ use super::{
 };
 use crate::db::DbConnection;
 
-/// Assert that a validator rejected its input with an error naming
-/// `capability`, so a failure message always says which check broke.
-fn assert_rejected_naming(result: Result<(), DieselError>, capability: &str) {
+/// Assert that a validator rejected its input with an error naming the feature
+/// that `capability` stands for, so a failure message always says which check
+/// broke.
+///
+/// Taking the capability rather than a `&str` keeps the expected wording in
+/// one place: [`Capability::describe`] is already pinned by
+/// `capability_contract_is_pinned`, so this helper cannot drift away from the
+/// text an operator will actually see.
+fn assert_rejected_naming(result: Result<(), DieselError>, capability: Capability) {
+    let expected = capability.describe();
     let error = result.expect_err("unexpected probe rows must be rejected");
     assert!(
-        error.to_string().contains(capability),
-        "error must name the capability {capability}: {error}"
+        error.to_string().contains(expected),
+        "error must name {expected}: {error}"
     );
 }
 
@@ -75,10 +82,7 @@ fn json_each_accepts_expected_rows() {
 #[case(&[])]
 fn json_each_rejects_unexpected_rows(#[case] pairs: &[(i32, &str)]) {
     let rows = json_each_rows(pairs);
-    assert_rejected_naming(
-        validate_json_each_rows(&rows),
-        "SQLite JSON1 json_each probe failed",
-    );
+    assert_rejected_naming(validate_json_each_rows(&rows), Capability::Json1JsonEach);
 }
 
 #[rstest]
@@ -94,38 +98,58 @@ fn recursive_cte_accepts_expected_rows() {
 #[case(&[3, 2, 1])]
 #[case(&[1, 2, 3, 4])]
 fn recursive_cte_rejects_unexpected_rows(#[case] rows: &[i32]) {
-    assert_rejected_naming(
-        validate_recursive_cte_rows(rows),
-        "SQLite recursive CTE probe failed",
-    );
+    assert_rejected_naming(validate_recursive_cte_rows(rows), Capability::RecursiveCte);
 }
 
-/// Every capability keeps a distinct, stable telemetry label.
+/// The operational contract for every capability: variant, telemetry label,
+/// operator-facing description.
 ///
-/// The labels are emitted as `tracing` field values, so they are an operational
-/// contract: an operator alerting on `capability = "recursive_cte"` breaks
-/// silently if a rename lands. The labels must also stay distinct, because two
-/// capabilities sharing a label would merge into one series and make the
-/// per-capability breakdown meaningless. This test is the only place that can
-/// fail when the set changes, since the variants are private.
-#[rstest]
-#[case(Capability::Version, "version")]
-#[case(Capability::Json1JsonEach, "json1_json_each")]
-#[case(Capability::RecursiveCte, "recursive_cte")]
-fn capability_labels_are_stable(#[case] capability: Capability, #[case] expected: &str) {
-    assert_eq!(capability.label(), expected);
+/// Declared as data rather than spelled inline so the two views of the same
+/// capability cannot drift apart, and so the table is the single place a
+/// maintainer edits when the set changes. Both the label and the description
+/// are observable outside this crate — the label is a `tracing` field value
+/// and the description is the tail of the user-visible start-up error — which
+/// is why both are pinned rather than derived.
+const CAPABILITY_CONTRACT: &[(Capability, &str, &str)] = &[
+    (Capability::Version, "version", "sqlite version"),
+    (
+        Capability::Json1JsonEach,
+        "json1_json_each",
+        "SQLite JSON1 json_each",
+    ),
+    (
+        Capability::RecursiveCte,
+        "recursive_cte",
+        "SQLite recursive CTE",
+    ),
+];
+
+/// Every capability matches the pinned contract table.
+#[test]
+fn capability_contract_is_pinned() {
+    for (capability, label, description) in CAPABILITY_CONTRACT {
+        assert_eq!(capability.label(), *label);
+        assert_eq!(capability.describe(), *description);
+    }
 }
 
-/// Every capability is describable and its description names the feature.
-#[rstest]
-#[case(Capability::Version, "sqlite version")]
-#[case(Capability::Json1JsonEach, "SQLite JSON1 json_each")]
-#[case(Capability::RecursiveCte, "SQLite recursive CTE")]
-fn capability_descriptions_name_the_feature(
-    #[case] capability: Capability,
-    #[case] expected: &str,
-) {
-    assert_eq!(capability.describe(), expected);
+/// No two capabilities share a telemetry label.
+///
+/// A duplicate would merge two capabilities into one series and make the
+/// per-capability breakdown meaningless. Adding a variant is already caught by
+/// the compiler, because `label` and `describe` both match exhaustively, so
+/// distinctness is the one property of the set that nothing else enforces.
+#[test]
+fn capability_labels_are_distinct() {
+    let mut labels: Vec<_> = CAPABILITY_CONTRACT
+        .iter()
+        .map(|(_, label, _)| *label)
+        .collect();
+    labels.sort_unstable();
+    let total = labels.len();
+    labels.dedup();
+
+    assert_eq!(labels.len(), total, "two capabilities share a label");
 }
 
 /// Run the three probe queries against a real library.
@@ -136,7 +160,6 @@ fn capability_descriptions_name_the_feature(
 /// every one of them passing. This test drives the fetch helpers against
 /// the linked library instead. The probes touch no table, so an empty
 /// in-memory connection is enough and no migration is required.
-#[rstest]
 #[tokio::test]
 async fn probes_execute_against_the_linked_library() {
     let mut conn = DbConnection::establish(":memory:")
