@@ -5,8 +5,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use argon2::Argon2;
+#[cfg(feature = "sqlite")]
+use diesel_async::{AsyncConnection, RunQueryDsl};
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use rstest::rstest;
+#[cfg(feature = "sqlite")]
+use tempfile::TempDir;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -74,4 +78,87 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
     assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
 
     Ok(())
+}
+
+/// Count the rows in a table, or return `None` when it does not exist.
+///
+/// `sqlite_master` is consulted first so that a missing table reads as "nothing
+/// was written" rather than as a query error; `COUNT(*)` always yields a row, so
+/// `BigInt` is the correct `sql_type` for the aggregate.
+#[cfg(feature = "sqlite")]
+async fn count_rows(conn: &mut crate::db::DbConnection, table: &str) -> Option<i64> {
+    use diesel::{
+        QueryableByName,
+        sql_query,
+        sql_types::{BigInt, Text},
+    };
+
+    #[derive(QueryableByName)]
+    struct RowCount {
+        #[diesel(sql_type = BigInt)]
+        total: i64,
+    }
+
+    #[derive(QueryableByName)]
+    struct TableExists {
+        #[diesel(sql_type = BigInt)]
+        present: i64,
+    }
+
+    let exists = sql_query(
+        "SELECT COUNT(*) AS present FROM sqlite_master WHERE type = 'table' AND name = ?",
+    )
+    .bind::<Text, _>(table)
+    .get_result::<TableExists>(conn)
+    .await
+    .expect("sqlite_master must be queryable");
+    if exists.present == 0 {
+        return None;
+    }
+
+    let query = format!("SELECT COUNT(*) AS total FROM \"{table}\"");
+    let count = sql_query(query)
+        .get_result::<RowCount>(conn)
+        .await
+        .expect("row count must be readable once the table exists");
+    Some(count.total)
+}
+
+/// A legacy start-up audit failure must stop the migration runner.
+///
+/// `setup_database` audits before it calls `apply_migrations`, and that ordering
+/// is what makes the check worth having: a library that cannot execute the
+/// probes must fail the server rather than migrate a schema the server cannot
+/// then use. Nothing else in the suite reaches this ordering, because every
+/// other test either uses the in-memory pool or never gets past argument
+/// parsing.
+///
+/// The assertion is on table absence rather than a zero row count, so it cannot
+/// pass vacuously on a migration table that was created and left empty.
+#[cfg(feature = "sqlite")]
+#[tokio::test]
+async fn setup_database_stops_before_migrating_when_the_audit_fails() {
+    let temp_dir = TempDir::new().expect("temporary directory must be created");
+    let database = temp_dir.path().join("audited.mxd.db");
+
+    let error = {
+        let _injection = crate::db::fail_next_audit();
+        super::setup_database(&database.to_string_lossy(), None)
+            .await
+            .expect_err("an audit failure must abort start-up")
+    };
+
+    assert!(
+        format!("{error:#}").contains("SQLite capability audit failed"),
+        "the start-up error must carry the audit context: {error:#}"
+    );
+
+    let mut conn = crate::db::DbConnection::establish(&database.to_string_lossy())
+        .await
+        .expect("the database file must be openable");
+    assert_eq!(
+        count_rows(&mut conn, "__diesel_schema_migrations").await,
+        None,
+        "no migration may run when the audit fails"
+    );
 }

@@ -61,6 +61,74 @@ fn version_rejects_unsupported(#[case] raw: &str, #[case] expected: &str) {
     );
 }
 
+#[cfg(feature = "sqlite")]
+mod version_contract {
+    //! Acceptance is exactly the comparison the audit claims to make.
+    //!
+    //! The literal `rstest` cases elsewhere in this file pin a handful of
+    //! strings, which cannot show that the parser agrees with the floor for an
+    //! arbitrary triple. The contract is a range property over `u32` fields: a
+    //! well-formed version string is accepted precisely when its triple is at
+    //! least `(3, 35, 0)`. A sign error or a swapped `minor`/`patch` comparison
+    //! would break it while leaving every literal case above passing.
+    //!
+    //! Both directions are asserted against the same generated triple, so
+    //! neither "always accept" nor "always reject" can satisfy the property.
+    //!
+    //! The generator deliberately does not rely on `any::<u32>()` to stumble
+    //! onto the boundary: a uniform draw almost never lands on `3.35.0`, and an
+    //! off-by-one at the floor was measured to survive `any::<u32>()` alone.
+    //! The `near_floor` strategy pins `major`, `minor` and the patch values
+    //! around the boundary, and `any::<u32>()` covers the wide range.
+
+    use proptest::prelude::*;
+
+    use super::ensure_supported_sqlite_version;
+
+    const FLOOR: (u32, u32, u32) = (3, 35, 0);
+
+    /// Triples clustered on the comparison boundary, where a `<` versus `<=`
+    /// mistake is observable.
+    fn near_floor() -> impl Strategy<Value = (u32, u32, u32)> {
+        prop_oneof![
+            Just(FLOOR),
+            Just((3, 34, u32::MAX)),
+            Just((3, 35, 1)),
+            Just((3, 36, 0)),
+            Just((2, u32::MAX, u32::MAX)),
+            (
+                0u32..3,
+                0u32..40,
+                prop_oneof![Just(0u32), Just(1), Just(34), Just(35)]
+            ),
+        ]
+    }
+
+    fn any_triple() -> impl Strategy<Value = (u32, u32, u32)> {
+        prop_oneof![near_floor(), (any::<u32>(), any::<u32>(), any::<u32>())]
+    }
+
+    proptest! {
+        #[test]
+        fn acceptance_matches_the_floor((major, minor, patch) in any_triple()) {
+            let raw = format!("{major}.{minor}.{patch}");
+            let accepted = ensure_supported_sqlite_version(&raw).is_ok();
+            prop_assert_eq!(accepted, (major, minor, patch) >= FLOOR, "triple {}", raw);
+        }
+    }
+
+    /// The exact floor is the one input where `>=` and `>` differ.
+    ///
+    /// Kept as a named test so a failing control points at a readable
+    /// assertion rather than at a shrinking strategy.
+    #[test]
+    fn the_floor_is_accepted() {
+        assert!(ensure_supported_sqlite_version("3.35.0").is_ok());
+        assert!(ensure_supported_sqlite_version("3.34.65535").is_err());
+        assert!(ensure_supported_sqlite_version("2.65535.65535").is_err());
+    }
+}
+
 /// Build a probe row vector from literal pairs.
 fn json_each_rows(pairs: &[(i32, &str)]) -> Vec<(i32, String)> {
     pairs

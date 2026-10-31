@@ -184,6 +184,26 @@ Thresholds that trigger escalation when breached.
 - [x] (2026-10-13) CodeRabbit round five: no findings. This was the first round
   to see the refactored test module, and it reports zero issues across all ten
   files in the diff.
+- [x] (2026-10-31) Split the module to `src/db/audit/mod.rs` and
+  `src/db/audit/tests.rs` as the test module grew past the 400-line ceiling;
+  the split was in any case required by `clippy::self_named_module_files`.
+- [x] (2026-10-31) Added `src/db/audit/test_seam.rs`, a `#[cfg(test)]`
+  thread-local seam, so a failing audit can be driven through the public entry
+  point; `audit_reports_injected_probe_failure` and
+  `audit_passes_once_the_injected_failure_is_cleared` cover it.
+- [x] (2026-10-31) Added
+  `create_user_aborts_before_writing_when_the_audit_fails`, which drives
+  `run_create_user` through a failing audit and asserts that neither the
+  migration table nor the `users` table exists afterwards.
+- [x] (2026-10-31) Added
+  `setup_database_stops_before_migrating_when_the_audit_fails`, covering the
+  legacy entry point's audit-before-migrate ordering.
+- [x] (2026-10-31) Added the `proptest` version-contract property and measured
+  the off-by-one negative control; the first, boundary-blind generator survived
+  it, so the generator now pins the boundary triples.
+- [x] (2026-10-31) `make fmt`, `make check-fmt`, `make lint` (all three feature
+  lanes), `make markdownlint`, `make spelling`, and `make nixie` pass on the
+  candidate that adds these tests.
 
 ## Surprises & discoveries
 
@@ -218,6 +238,17 @@ Thresholds that trigger escalation when breached.
   and the JSON1 probe test genuinely different things, and neither subsumes the
   other. Both are kept, and the documentation states them as two separate
   requirements.
+- Observation: a property test whose generator is only `any::<u32>()` does not
+  exercise the version boundary, and an off-by-one at the floor survives it.
+  Evidence: with `ensure_supported_sqlite_version` mutated from
+  `parsed < MINIMUM_SQLITE_VERSION` to `parsed <= MINIMUM_SQLITE_VERSION`, the
+  `any::<u32>()`-only property still passed (the literal-case test failed, the
+  property did not). A uniform draw over `u32` almost never lands on
+  `(3, 35, 0)`. Impact: the generator now pins the boundary triples and
+  composes them with `any::<u32>()` via `prop_oneof!`. Re-running the same
+  mutation with the new generator makes both tests fail, and the property
+  shrinks to `triple 3.35.0`. This is the seeded-fault control for V1, and it
+  is recorded because the first version of this plan asserted the opposite.
 
 ## Decision log
 
@@ -252,8 +283,19 @@ Thresholds that trigger escalation when breached.
   provided it keeps the file under 400 lines; otherwise split it to
   `src/db/audit/tests.rs`. Rationale: keeps related code colocated as
   `AGENTS.md` prefers, while respecting the hard 400-line limit. Date/Author:
-  2026-10-13, agent. Outcome: the inline module leaves `src/db/audit.rs` at 361
-  lines, so no split was needed.
+  2026-10-13, agent. Outcome: the inline module left `src/db/audit.rs` at 361
+  lines at the time of the first split decision, so no split was made then.
+- Decision (supersedes the previous entry): split the module to
+  `src/db/audit/mod.rs` and `src/db/audit/tests.rs` once the test module grew
+  past the ceiling. Rationale: the property test, the capability contract
+  table, and the seam tests pushed the combined file to 656 lines. The split
+  was in any case forced by the workspace lint: creating a sibling
+  `src/db/audit/tests.rs` makes `src/db/audit.rs` a directory-named module, and
+  `clippy::self_named_module_files` then requires `src/db/audit/mod.rs`. The
+  repo already does this in `src/news_handlers/mod.rs` and
+  `src/db/schema_alignment_tests/mod.rs`. Result: `src/db/audit/mod.rs` 395
+  lines, `src/db/audit/tests.rs` 338, `src/db/audit/test_seam.rs` 64. All three
+  are under the 400-line ceiling. Date/Author: 2026-10-31, agent.
 - Decision: drop the version-string test case carrying a 64-character build
   hash and use a plain `3.46.1 2024-08-13 09:16:08` case instead. Rationale:
   `make markdownlint` flagged a two-letter fragment of the hash as a
@@ -294,9 +336,11 @@ Thresholds that trigger escalation when breached.
   with `git diff --numstat` between base `df48e51` and head `775299f`, the
   landed diff changes 10 tracked files, adding 1495 lines and removing 34 for a
   net of 1461. Both limbs of the tolerance are therefore breached on the full
-  diff. The ten files are four source files (`src/db/audit.rs` plus the three
-  enforced entry points) and five documentation files (`README.md`,
-  `docs/design.md`, `docs/developers-guide.md`,
+  diff. The ten files at that head were four source files (`src/db/audit.rs`
+  plus the three enforced entry points; `src/db/audit.rs` has since been split
+  into `src/db/audit/mod.rs` and `src/db/audit/tests.rs`) and five
+  documentation files (`README.md`, `docs/design.md`,
+  `docs/developers-guide.md`,
   `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`, and
   `docs/users-guide.md`), with this plan as the tenth. Excluding the plan the
   product diff is nine files, 404 added and 34 removed, a net of 370: the
@@ -364,6 +408,19 @@ Thresholds that trigger escalation when breached.
   capability audit. The gap is real and worth an issue of its own; raising it
   to the task owner rather than widening this diff. Date/Author: 2026-10-31,
   agent, in response to review 5722131376.
+- Decision: describe the audit telemetry as *emitted but not collected by the
+  shipped binaries*, and record subscriber initialization as a residual gap
+  rather than a fixed item. Rationale: review 5722131376 accepted the scope
+  judgement above but drew a distinction this plan should carry explicitly.
+  Operator-visible failure reporting does not depend on the subscriber: the
+  audit returns a capability-specific error through the existing command
+  failure path, and that error is what the operator sees. The missing
+  subscriber suppresses only the structured `warn!` event. Therefore the
+  Observability row is **not** recorded as passed and the subscriber gap is
+  **not** recorded as fixed; it is stated as a known residual gap with its
+  remediation deferred to a separate observability change covering both
+  binaries and `create-user`. Date/Author: 2026-10-31, agent, in response to
+  review 5722131376.
 
 ## Outcomes & retrospective
 
@@ -390,9 +447,13 @@ and `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`, and
 
 ### Gate evidence
 
-The final gate run was made on `b94f9f5`, the last commit to change Rust code.
-Since then every commit has touched Markdown only, and the docs-scoped gates
-were re-run green on each.
+The original gate run was made on `b94f9f5`. The Rust code has changed since
+then — the `test_seam` module, the `create_user` and `setup_database` boundary
+tests, the `version_contract` property, and the split into
+`src/db/audit/mod.rs` and `src/db/audit/tests.rs` — so the code gates below are
+supplemented by a later run, recorded in the revision note. Every commit
+between those two runs that did not change Rust touched Markdown only, and the
+docs-scoped gates were re-run green on each.
 
 | Gate                       | Result                                 |
 | -------------------------- | -------------------------------------- |
@@ -429,8 +490,8 @@ connect to its admin database during a period of heavy machine load. That abort
 cannot be attributed to this change, and the argument is structural rather than
 circumstantial:
 
-- The failing test is postgres-gated, while everything this branch adds to
-  `src/db/audit.rs` sits behind `#[cfg(feature = "sqlite")]`, so the two cannot
+- The failing test is postgres-gated, while everything this branch adds to the
+  audit module sits behind `#[cfg(feature = "sqlite")]`, so the two cannot
   appear in the same compilation.
 - The compiled postgres test binary, `target/debug/deps/mxd-121da3fba04b18a3`,
   contains 191 references to the failing test and no reference at all to
@@ -454,8 +515,10 @@ from `5ec1709` until the duplication fix in `b94f9f5`.
 ### Reconciliation with the conformance basis
 
 - `ISSUE-63-action-audit` -> EP-M1 -> satisfied; the validator cases in
-  `src/db/audit.rs` pass and the real-connection `test_audit_features` proves
-  the typed rows deserialize from the linked library.
+  `src/db/audit/tests.rs` pass, the `version_contract` property pins the
+  version comparison against a measured negative control, and the
+  real-connection `probes_execute_against_the_linked_library` proves the typed
+  rows deserialize from the linked library.
 - `ISSUE-63-action-audit` -> EP-M2 -> satisfied; all three entry points audit
   before binding or writing (V6, by inspection at
   `src/server/wireframe/mod.rs:144-145` before `:166`, `src/server/admin.rs:78`
@@ -508,10 +571,13 @@ one must be enabled; `src/db/connection.rs` and `src/lib.rs` both emit
 
 The relevant pieces, by path:
 
-- `src/db/audit.rs` — the module this work extends. It holds
+- `src/db/audit/` — the module this work extends. It holds
   `audit_sqlite_features` (gated on the `sqlite` feature) and
-  `audit_postgres_features` (gated on `postgres`). The PostgreSQL function is
-  the template: it loads `SELECT version()` into a typed `QueryableByName` row,
+  `audit_postgres_features` (gated on `postgres`). It was a single file,
+  `src/db/audit.rs`, when this plan was written and was split to
+  `src/db/audit/mod.rs` with sibling `tests.rs` and `test_seam.rs` when the
+  test module outgrew the 400-line ceiling. The PostgreSQL function is the
+  template: it loads `SELECT version()` into a typed `QueryableByName` row,
   parses the version in Rust, and returns a
   `DieselError::QueryBuilderError(Box<io::Error>)` carrying an explanatory
   message when the version is unsupported or unparsable.
@@ -579,7 +645,8 @@ governing artefacts are:
 Trace links:
 
 ```plaintext
-ISSUE-63-action-audit        -> EP-M1 -> src/db/audit.rs tests (validator cases)
+ISSUE-63-action-audit        -> EP-M1 -> src/db/audit/tests.rs (validator cases,
+                                         property test, capability contract)
 ISSUE-63-action-audit        -> EP-M2 -> legacy, wireframe, admin call sites
 ISSUE-63-doc-requirements    -> EP-M3 -> README.md, docs/developers-guide.md,
                                          docs/users-guide.md,
@@ -596,20 +663,30 @@ proportionate; parameterized and example-based tests are.
 
 Obligation V1 (invariant): *the audit accepts exactly those SQLite libraries
 that report a version at or above 3.35.0 and answer both probes as expected.*
-Method: parameterized `rstest` cases over version strings plus example-based
-tests over probe rows. Rationale: the input space is a small finite partition
-(above floor, at floor, below floor, unparsable, empty) with distinct semantics
-per class, which is exactly the shape a table test covers and a property test
-would not improve on. Domain: version strings drawn from the five classes;
-probe rows that match and that mismatch. Artefact: the `#[cfg(test)]` module in
-`src/db/audit.rs`. Evidence: `cargo test` per the commands below; before
-implementation the tests fail to compile because the validators do not exist,
-and after implementation they pass. Discharge condition: all cases pass and
-each rejection case asserts the error message names the capability.
-Non-vacuity: the cases include both accepting and rejecting examples in every
-class, so a validator stubbed to always return `Ok` fails the rejecting cases
-and a validator stubbed to always reject fails the accepting cases. This is the
-seeded-fault control; it is exercised explicitly during the red stage.
+Method: a `proptest` property over the version comparison, plus example-based
+tests over probe rows. Rationale: the probe rows form a small finite partition
+with distinct semantics per class, which a table covers well. The version
+comparison, however, is a range property over `u32` triples, and a table of
+literals cannot show that the parser agrees with the floor for an arbitrary
+triple — a sign error or a swapped `minor`/`patch` comparison passes every
+literal case. The first version of this plan claimed a property test "would not
+improve on" the table. That claim was measured and is false: an off-by-one
+(`<=` for `<`) at the floor was introduced deliberately and the literal cases
+alone did not all catch it in the property's own terms. Domain: version triples
+generated by a strategy that pins the boundary cases (`3.35.0`, `3.34.65535`,
+`3.35.1`, `3.36.0`, `2.65535.65535`) and composes them with `any::<u32>()`;
+probe rows that match and that mismatch. Artefact: `src/db/audit/tests.rs`,
+module `version_contract`. Evidence: `cargo test` per the commands below;
+before implementation the tests fail to compile because the validators do not
+exist, and after implementation they pass. Discharge condition: all cases pass,
+the property asserts acceptance in both directions against the same generated
+triple, and each rejection case asserts the error message names the capability.
+Non-vacuity: the literal cases include both accepting and rejecting examples in
+every class, and the property asserts `accepted == (triple >= FLOOR)` on the
+same input, so neither "always accept" nor "always reject" satisfies it. The
+seeded-fault control is recorded under Surprises & discoveries: a uniform
+`any::<u32>()`-only generator was measured to survive the off-by-one, which is
+why the boundary-pinning strategy exists.
 
 Obligation V2 (lemma): *a version string of the form `major.minor.patch` with
 optional trailing text parses to the correct triple, and any string that does
@@ -1086,8 +1163,9 @@ upstream all named `4082d18a6ac3bcb3b81fc530465535a6ed218aa3` at that point.
 
 ## Interfaces and dependencies
 
-At the end of EP-M1 the following must exist in `src/db/audit.rs`, all gated on
-`#[cfg(feature = "sqlite")]`:
+At the end of EP-M1 the following must exist in the audit module — now
+`src/db/audit/mod.rs`, after the split recorded in the decision log — all gated
+on `#[cfg(feature = "sqlite")]`:
 
 ```rust
 pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()>;
@@ -1103,8 +1181,26 @@ fn validate_recursive_cte_rows(rows: &[i32]) -> Result<(), DieselError>;
 private to the module and exist so that the failure paths can be tested without
 a broken SQLite library. No new public type, trait, or dependency is introduced.
 
-No new crate is added. The work uses `diesel`, `diesel_async`, and `rstest`,
-all already present.
+No new crate is added. The work uses `diesel`, `diesel_async`, `rstest`, and
+`proptest`, all already present; `proptest` is a workspace dev-dependency
+(`Cargo.toml:149`) already used by `tests/wireframe_transaction.rs:17`.
+
+The test surface added on top of the original plan, all under
+`#[cfg(feature = "sqlite")]` and none of it public:
+
+- `src/db/audit/test_seam.rs` — a thread-local `Cell<Option<Capability>>`
+  plus an `InjectionGuard` whose `Drop` clears the override.
+  `run_sqlite_probes` reads the seam before its first `await`, because
+  everything after that point may resume on a blocking-pool thread and a
+  thread-local read there would see a different thread's value.
+- `src/db/audit/tests.rs` module `version_contract` — the `proptest`
+  property `acceptance_matches_the_floor` and the named case
+  `the_floor_is_accepted`.
+- `src/server/admin.rs` —
+  `create_user_aborts_before_writing_when_the_audit_fails`.
+- `src/server/legacy/unit_tests.rs` —
+  `setup_database_stops_before_migrating_when_the_audit_fails`, plus a
+  `count_rows` helper that distinguishes "table absent" from "table empty".
 
 A later review asked for a test that can force the audit to fail, on the
 grounds that the success test above cannot detect a no-op audit. That request
@@ -1178,3 +1274,27 @@ was a cold cache, not a defect. `Outcomes & retrospective` has been updated to
 carry the final run's numbers rather than the superseded ones, and the section
 that described the timeout has been reduced to the one sentence that remains
 true.
+
+2026-10-31: two pre-merge rows asked for tests the original plan had excluded
+as out of scope, and both requests were taken up rather than argued again. The
+audit module gained a `#[cfg(test)]` thread-local seam, so a failing audit can
+be driven through the public `audit_sqlite_features` and through two real entry
+points (`run_create_user` and the legacy `setup_database`). The version
+comparison gained a `proptest` property. The module was split to
+`src/db/audit/mod.rs`, `src/db/audit/tests.rs`, and
+`src/db/audit/test_seam.rs`; the split is required by
+`clippy::self_named_module_files` once a sibling test module exists, and the
+three files measure 395, 338, and 64 lines.
+
+The property test's first version was measured against a deliberate off-by-one
+and passed it: a uniform `any::<u32>()` generator almost never produces
+`3.35.0`. The generator now pins the boundary triples, and the same mutation
+makes the property fail and shrink to `triple 3.35.0`. `Verification plan`
+obligation V1 and the `Surprises & discoveries` entry record the correction;
+the earlier claim that a property test "would not improve on" a table test was
+wrong and has been removed rather than left standing.
+
+The code gates were re-run on the resulting candidate: `make fmt`,
+`make check-fmt`, `make lint` across all three feature lanes,
+`make markdownlint` (65 files, 0 issues), `make spelling`, and `make nixie` (0)
+all pass.
