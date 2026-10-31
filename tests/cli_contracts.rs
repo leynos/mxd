@@ -12,6 +12,7 @@ use tempfile::TempDir;
 
 const GENERATED_MAN_PAGE: &str = include_str!(concat!(env!("OUT_DIR"), "/mxd.1"));
 
+/// Run the built `mxd` binary with a clean environment.
 fn run_mxd(
     args: &[&str],
     environment: &[(&str, &str)],
@@ -29,6 +30,7 @@ fn run_mxd(
     command.output()
 }
 
+/// Write `contents` to `name` under `root`.
 fn write_fixture(root: &TempDir, name: &str, contents: &str) -> Result<()> {
     let directory = Dir::open_ambient_dir(root.path(), ambient_authority())
         .context("open CLI fixture directory")?;
@@ -37,6 +39,7 @@ fn write_fixture(root: &TempDir, name: &str, contents: &str) -> Result<()> {
         .context("write CLI fixture")
 }
 
+/// Return the UTF-8 path of a fixture under `root`.
 fn fixture_path(root: &TempDir, name: &str) -> Result<String> {
     root.path()
         .join(name)
@@ -45,6 +48,7 @@ fn fixture_path(root: &TempDir, name: &str) -> Result<String> {
         .map_err(|_| anyhow::anyhow!("temporary {name} path is not UTF-8"))
 }
 
+/// Environment that confines discovery to directories under `root`.
 fn isolated_discovery_environment(root: &TempDir) -> Result<Vec<(String, String)>> {
     let directory = Dir::open_ambient_dir(root.path(), ambient_authority())
         .context("open isolated discovery root")?;
@@ -64,6 +68,7 @@ fn isolated_discovery_environment(root: &TempDir) -> Result<Vec<(String, String)
     .collect::<Result<Vec<_>>>()
 }
 
+/// Assert the failure exit status, an empty stdout, and each diagnostic.
 fn assert_failure_contract(
     output: &std::process::Output,
     expected_status: i32,
@@ -84,6 +89,7 @@ fn assert_failure_contract(
     Ok(())
 }
 
+/// `--help` writes usage to stdout, nothing to stderr, and exits 0.
 #[rstest]
 fn help_uses_stdout_and_exits_successfully() -> Result<()> {
     let output = run_mxd(&["--help"], &[], None)?;
@@ -117,6 +123,7 @@ struct CliFailureCase {
 }
 
 impl CliFailureCase {
+    /// Build a case from its arguments, environment, status, and diagnostics.
     fn new(
         arguments: &[&str],
         environment: Vec<(String, String)>,
@@ -135,12 +142,14 @@ impl CliFailureCase {
         }
     }
 
+    /// Run the case from `path` so project dotfiles are discovered.
     fn in_directory(mut self, path: &Path) -> Self {
         self.current_dir = Some(path.to_path_buf());
         self
     }
 }
 
+/// Build the fixtures and expectations for `scenario`.
 fn build_failure_case(root: &TempDir, scenario: CliFailureScenario) -> Result<CliFailureCase> {
     let case = match scenario {
         CliFailureScenario::UnknownSubcommand => CliFailureCase::new(
@@ -203,6 +212,7 @@ fn build_failure_case(root: &TempDir, scenario: CliFailureScenario) -> Result<Cl
 }
 
 #[rstest]
+/// Each failure scenario keeps its exit status, streams, and diagnostics.
 #[case::unknown_subcommand(CliFailureScenario::UnknownSubcommand)]
 #[case::invalid_value(CliFailureScenario::InvalidValue)]
 #[case::missing_environment_config(CliFailureScenario::MissingEnvironmentConfig)]
@@ -236,6 +246,7 @@ fn cli_failure_scenarios_preserve_exit_and_stream_contracts(
 #[path = "cli_contracts/argument_placement.rs"]
 mod argument_placement;
 
+/// The generated man page carries the shared options and subcommands.
 #[rstest]
 fn generated_man_page_keeps_shared_cli_options_and_subcommands() {
     assert!(

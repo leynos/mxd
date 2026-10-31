@@ -23,6 +23,7 @@ use tempfile::TempDir;
 
 use super::*;
 
+/// Environment variables that confine discovery to directories under `root`.
 fn discovery_environment(root: &TempDir) -> MapEnv {
     let xdg_home = root.path().join("xdg-home");
     let xdg_dirs = root.path().join("xdg-dirs");
@@ -32,11 +33,13 @@ fn discovery_environment(root: &TempDir) -> MapEnv {
         .with_var("XDG_CONFIG_DIRS", xdg_dirs.as_os_str())
 }
 
+/// Discovery environment plus an empty file selected through `MXD_CONFIG_PATH`.
 fn isolated_environment(root: &TempDir) -> Result<MapEnv> {
     let config_path = write_config(root, "empty.toml", "")?;
     Ok(discovery_environment(root).with_var("MXD_CONFIG_PATH", config_path.as_os_str()))
 }
 
+/// Load `AppConfig` from `args` with `environment` injected as every source.
 fn load_config<I, T>(args: I, environment: MapEnv) -> ortho_config::OrthoResult<AppConfig>
 where
     I: IntoIterator<Item = T>,
@@ -48,6 +51,7 @@ where
     AppConfig::load_from_iter_with_sources(args, discovery, merge)
 }
 
+/// Assert equality with a labelled diagnostic, returning `Result` for `?`.
 macro_rules! ensure_equal {
     ($actual:expr, $expected:expr, $context:expr $(,)?) => {{
         let actual = $actual;
@@ -61,6 +65,7 @@ macro_rules! ensure_equal {
     }};
 }
 
+/// Write `contents` to `name` under `root` and return its path.
 fn write_config(root: &TempDir, name: &str, contents: &str) -> Result<PathBuf> {
     let directory = Dir::open_ambient_dir(root.path(), ambient_authority())
         .context("open test configuration directory")?;
@@ -70,6 +75,7 @@ fn write_config(root: &TempDir, name: &str, contents: &str) -> Result<PathBuf> {
     Ok(root.path().join(name))
 }
 
+/// Select `path` as the required configuration file.
 fn select_file(environment: MapEnv, path: &Path) -> MapEnv {
     environment.with_var("MXD_CONFIG_PATH", path.as_os_str())
 }
@@ -117,6 +123,7 @@ fn argon2_defaults_applied_to_config() -> Result<()> {
     Ok(())
 }
 
+/// Environment values override the selected file.
 #[rstest]
 fn env_config_loading() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -137,6 +144,7 @@ fn env_config_loading() -> Result<()> {
     Ok(())
 }
 
+/// Explicit CLI values override the environment.
 #[rstest]
 fn cli_overrides_env() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -146,6 +154,7 @@ fn cli_overrides_env() -> Result<()> {
     Ok(())
 }
 
+/// A CLI value equal to the default still outranks the file and environment.
 #[rstest]
 fn explicit_cli_default_overrides_file_and_environment() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -159,6 +168,7 @@ fn explicit_cli_default_overrides_file_and_environment() -> Result<()> {
     Ok(())
 }
 
+/// The migration timeout is read from its environment variable.
 #[rstest]
 fn migration_timeout_loads_from_env() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -168,6 +178,7 @@ fn migration_timeout_loads_from_env() -> Result<()> {
     Ok(())
 }
 
+/// A `.mxd.toml` in the home directory is discovered.
 #[rstest]
 fn loads_from_home_dotfile() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -177,6 +188,7 @@ fn loads_from_home_dotfile() -> Result<()> {
     Ok(())
 }
 
+/// CLI flags set every Argon2 parameter.
 #[rstest]
 fn argon2_cli_overrides_all_params() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -198,6 +210,7 @@ fn argon2_cli_overrides_all_params() -> Result<()> {
     Ok(())
 }
 
+/// Environment variables set every Argon2 parameter.
 #[rstest]
 fn argon2_env_overrides() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -212,6 +225,7 @@ fn argon2_env_overrides() -> Result<()> {
     Ok(())
 }
 
+/// The selected file sets every Argon2 parameter.
 #[rstest]
 fn argon2_config_file_overrides() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -232,6 +246,7 @@ fn argon2_config_file_overrides() -> Result<()> {
     Ok(())
 }
 
+/// A CLI Argon2 value outranks both the environment and the file.
 #[rstest]
 fn argon2_cli_overrides_env_and_file() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -245,6 +260,7 @@ fn argon2_cli_overrides_env_and_file() -> Result<()> {
     Ok(())
 }
 
+/// Subcommand merging keeps file, environment, and CLI precedence and scope.
 #[rstest]
 fn subcommand_merge_preserves_file_environment_and_cli_precedence() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;

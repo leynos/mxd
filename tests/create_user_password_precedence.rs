@@ -26,6 +26,7 @@ const CLI_PASSWORD: &str = "command-line-password";
 const USERNAME: &str = "credential-precedence-user";
 const PASSWORD_ENV: &str = "MXD_CMDS_CREATE_USER_PASSWORD";
 
+/// Write a home-scoped `.mxd.toml` carrying the file password.
 fn write_config(root: &TempDir) -> Result<()> {
     let directory = Dir::open_ambient_dir(root.path(), ambient_authority())
         .context("open isolated credential fixture")?;
@@ -43,6 +44,7 @@ fn write_config(root: &TempDir) -> Result<()> {
     Ok(())
 }
 
+/// Environment that confines discovery to directories under `root`.
 fn discovery_environment(root: &TempDir) -> MapEnv {
     MapEnv::new()
         .with_var("HOME", root.path().join("home").as_os_str())
@@ -50,6 +52,7 @@ fn discovery_environment(root: &TempDir) -> MapEnv {
         .with_var("XDG_CONFIG_DIRS", root.path().join("xdg-dirs").as_os_str())
 }
 
+/// Prove the file supplies the password and the environment overrides it.
 fn verify_lower_priority_credentials(root: &TempDir) -> Result<()> {
     let discovery = discovery_environment(root);
     let files = SubcommandFileContext::new(root.path(), &discovery);
@@ -75,6 +78,8 @@ fn verify_lower_priority_credentials(root: &TempDir) -> Result<()> {
     Ok(())
 }
 
+/// The CLI password wins every lower tier, is restored after merging, never
+/// serializes, and is the value hashed into the stored user.
 #[rstest]
 #[tokio::test]
 async fn cli_password_is_restored_after_merge_and_used_for_the_hash() -> Result<()> {

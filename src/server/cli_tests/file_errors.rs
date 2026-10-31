@@ -11,6 +11,7 @@ use tempfile::TempDir;
 
 use super::{isolated_environment, load_config, select_file, write_config};
 
+/// A selected but missing file is a `NotFound` error, not an absent source.
 #[rstest]
 fn missing_selected_config_is_not_treated_as_absent() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -33,6 +34,7 @@ fn missing_selected_config_is_not_treated_as_absent() -> Result<()> {
     Ok(())
 }
 
+/// Malformed TOML stays a file error distinct from an I/O failure.
 #[rstest]
 fn malformed_config_remains_a_file_error() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
@@ -49,6 +51,8 @@ fn malformed_config_remains_a_file_error() -> Result<()> {
     Ok(())
 }
 
+/// An unreadable file surfaces `PermissionDenied`, or skips when the runner is
+/// privileged enough to read it anyway.
 #[cfg(unix)]
 #[rstest]
 fn unreadable_config_remains_a_permission_error() -> Result<()> {
@@ -84,6 +88,7 @@ fn unreadable_config_remains_a_permission_error() -> Result<()> {
     Ok(())
 }
 
+/// A wrong field type fails as a merge error instead of using defaults.
 #[rstest]
 fn invalid_config_value_fails_instead_of_using_defaults() -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;

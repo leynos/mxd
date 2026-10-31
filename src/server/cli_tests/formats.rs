@@ -8,6 +8,7 @@ use tempfile::TempDir;
 
 use super::*;
 
+/// JSON5 syntax loads when the `json5` feature is enabled.
 #[cfg(feature = "json5")]
 #[rstest]
 fn json5_config_is_loaded_by_ortho_config() -> Result<()> {
@@ -18,6 +19,7 @@ fn json5_config_is_loaded_by_ortho_config() -> Result<()> {
     Ok(())
 }
 
+/// `yes`, `no`, `on`, and `off` remain YAML 1.2 strings.
 #[cfg(feature = "yaml")]
 #[rstest]
 #[case::yes("yes")]
@@ -32,6 +34,7 @@ fn yaml_uses_yaml_12_string_scalars(#[case] scalar: &str) -> Result<()> {
     Ok(())
 }
 
+/// `true` and `false` decode as YAML 1.2 booleans.
 #[cfg(feature = "yaml")]
 #[rstest]
 #[case::true_literal("true", true)]
@@ -54,6 +57,7 @@ fn yaml_uses_yaml_12_boolean_scalars(#[case] scalar: &str, #[case] expected: boo
     Ok(())
 }
 
+/// Duplicate YAML keys fail with the offending key and file named.
 #[cfg(feature = "yaml")]
 #[rstest]
 fn yaml_duplicate_keys_are_rejected() -> Result<()> {

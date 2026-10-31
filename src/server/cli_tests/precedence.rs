@@ -9,6 +9,8 @@ struct ExpectedConfiguration {
     parallelism: u32,
 }
 
+/// Each field resolves independently across defaults, file, environment, and
+/// CLI, and later layers override earlier ones field by field.
 #[rstest]
 #[case::defaults(
     vec!["mxd"],

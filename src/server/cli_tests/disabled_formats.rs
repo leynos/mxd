@@ -11,6 +11,7 @@ use tempfile::TempDir;
 
 use super::{isolated_environment, load_config, select_file, write_config};
 
+/// Assert a disabled format fails as a file error naming the selected path.
 fn assert_format_disabled(name: &str, contents: &str, diagnostic: &str) -> Result<()> {
     let root = TempDir::new().context("create isolated config root")?;
     let path = write_config(&root, name, contents)?;
@@ -44,6 +45,7 @@ fn assert_format_disabled(name: &str, contents: &str, diagnostic: &str) -> Resul
     Ok(())
 }
 
+/// JSON and JSON5 files report the disabled `json5` feature.
 #[cfg(not(feature = "json5"))]
 #[rstest]
 #[case::json("config.json", "{\"bind\": \"example\"}")]
@@ -52,6 +54,7 @@ fn json_formats_report_disabled_feature(#[case] name: &str, #[case] contents: &s
     assert_format_disabled(name, contents, "json5 feature disabled")
 }
 
+/// YAML files report the disabled `yaml` feature.
 #[cfg(not(feature = "yaml"))]
 #[rstest]
 #[case::yaml("config.yaml")]

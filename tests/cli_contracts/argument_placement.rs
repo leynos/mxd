@@ -2,6 +2,8 @@
 
 use super::*;
 
+/// Global options before the subcommand reach it, and a command name used as an
+/// option value stays a value.
 #[rstest]
 #[case::command_name_as_database_value(
     &["--database", "create-user", "create-user", "alice"],
@@ -39,6 +41,7 @@ fn global_options_and_subcommand_arguments_reach_the_command(
     assert_failure_contract(&output, 1, &[diagnostic])
 }
 
+/// Clap rejects global options after the subcommand and a separator before it.
 #[rstest]
 #[case::separator_before_command(&["--", "create-user"], "create-user")]
 #[case::global_option_after_subcommand(
