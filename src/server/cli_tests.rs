@@ -123,6 +123,28 @@ fn argon2_defaults_applied_to_config() -> Result<()> {
     Ok(())
 }
 
+/// Discovery with no selected file and no overrides yields the built-in
+/// defaults.
+///
+/// `MXD_CONFIG_PATH` is deliberately absent, and the discovery directories
+/// hold no configuration file, so every field must come from the defaults
+/// compiled into `AppConfig`. This covers the lowest tier of the documented
+/// precedence order on its own; the other tests all select a file first.
+/// `migration_timeout_secs` stays `None` because its documented 15-second
+/// fallback is resolved when the migrations run, not while loading.
+#[rstest]
+fn optional_discovery_applies_builtin_defaults() -> Result<()> {
+    let root = TempDir::new().context("create isolated config root")?;
+    let cfg = load_config(["mxd"], discovery_environment(&root))?;
+    ensure_equal!(cfg.bind.as_str(), "0.0.0.0:5500", "default bind")?;
+    ensure_equal!(cfg.database.as_str(), "mxd.db", "default database")?;
+    ensure_equal!(cfg.migration_timeout_secs, None, "default timeout")?;
+    ensure_equal!(cfg.argon2_m_cost, DEFAULT_ARGON2_M_COST, "memory cost")?;
+    ensure_equal!(cfg.argon2_t_cost, DEFAULT_ARGON2_T_COST, "time cost")?;
+    ensure_equal!(cfg.argon2_p_cost, DEFAULT_ARGON2_P_COST, "parallel cost")?;
+    Ok(())
+}
+
 /// Environment values override the selected file.
 #[rstest]
 fn env_config_loading() -> Result<()> {

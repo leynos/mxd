@@ -1076,3 +1076,19 @@ unless inventory reveals an existing install or invocation that must move.
   two differing only in the replaced lockfile hunks. The rewritten head passed
   all nine local gates, including 266 workflow contracts and a PostgreSQL lane
   of 529/529 that needed no data-directory override.
+- (2026-10-31) CodeRabbit's pre-merge table left one error and three warnings.
+  The error named missing optional-discovery coverage: every earlier
+  configuration test selected a file through `MXD_CONFIG_PATH`. Added
+  `optional_discovery_applies_builtin_defaults`, which loads with only a
+  discovery environment rooted in an empty temporary directory and asserts the
+  compiled-in bind, database, and Argon2 defaults, plus an unset migration
+  timeout. The Developer Documentation warning was answered by "The warm-up
+  repairs the time-zone alias" in the developers' guide, which states the two
+  scan roots, `find -H`, dangling-link replacement, and failure propagation,
+  and names the workflow-contract test. The Out of Scope row stays in scope
+  with evidence: the alias repair is tooling this PR's own `test-postgres` gate
+  needs, recorded in the risk register and the 2026-10-27 entry, and covered by
+  the executing contract test. The Compile-Time/Ui row remains an
+  evidence-backed rebuttal, because the repository has no trybuild target and
+  the derive behaviour is exercised through the runtime, process, and man-page
+  contracts.
