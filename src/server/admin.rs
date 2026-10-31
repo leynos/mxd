@@ -61,6 +61,17 @@ pub fn argon2_from_config(cfg: &AppConfig) -> Result<Argon2<'static>> {
     Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
+/// Create a user from the parsed command line.
+///
+/// On the `sqlite` feature the linked library is audited before migrations run
+/// and before the row is inserted, so an unsupported `SQLite` fails the command
+/// without touching the database.
+///
+/// # Errors
+///
+/// Returns an error if the username or password is missing, if the password
+/// cannot be hashed, if the `SQLite` capability audit fails, or if the
+/// migration or insert fails.
 async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
     let username = args.username.ok_or_else(|| anyhow!("missing username"))?;
     let password = args.password.ok_or_else(|| anyhow!("missing password"))?;

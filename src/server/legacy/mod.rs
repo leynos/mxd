@@ -96,11 +96,6 @@ pub async fn dispatch(cli: ResolvedCli) -> Result<()> {
     }
 }
 
-/// Execute an administrative command.
-///
-/// # Errors
-///
-/// Propagates failures from configuration merging or database operations.
 /// Run the legacy TCP server using the supplied configuration.
 ///
 /// # Errors

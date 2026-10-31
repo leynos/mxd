@@ -6,6 +6,8 @@ use diesel::QueryableByName;
 use diesel::result::Error as DieselError;
 use diesel::result::QueryResult;
 use diesel_async::RunQueryDsl;
+#[cfg(feature = "sqlite")]
+use tracing::{debug, warn};
 
 #[cfg(feature = "sqlite")]
 use super::connection::DbConnection;
@@ -44,6 +46,44 @@ const EXPECTED_JSON_EACH_ROWS: [(i32, &str); 3] = [(0, "a"), (1, "b"), (2, "c")]
 #[cfg(feature = "sqlite")]
 const EXPECTED_RECURSIVE_CTE_ROWS: [i32; 3] = [1, 2, 3];
 
+/// The fixed set of capabilities the audit probes.
+///
+/// The variants double as low-cardinality telemetry labels. Keep the set
+/// closed: a capability derived from runtime input would make the emitted
+/// labels unbounded. The displayed names are the ones an operator sees in the
+/// startup error, so they name the user-facing feature rather than the probe.
+#[cfg(feature = "sqlite")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Capability {
+    /// The linked library reports a supported version.
+    Version,
+    /// The JSON1 `json_each` table-valued function answers usefully.
+    Json1JsonEach,
+    /// A recursive common table expression answers usefully.
+    RecursiveCte,
+}
+
+#[cfg(feature = "sqlite")]
+impl Capability {
+    /// Describe the capability as it appears in an operator-facing message.
+    const fn describe(self) -> &'static str {
+        match self {
+            Self::Version => "sqlite version",
+            Self::Json1JsonEach => "SQLite JSON1 json_each",
+            Self::RecursiveCte => "SQLite recursive CTE",
+        }
+    }
+
+    /// Name the capability as a stable, low-cardinality telemetry label.
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Version => "version",
+            Self::Json1JsonEach => "json1_json_each",
+            Self::RecursiveCte => "recursive_cte",
+        }
+    }
+}
+
 /// Verify that `SQLite` supports features required by the application.
 ///
 /// The audit runs three checks, in order:
@@ -62,16 +102,58 @@ const EXPECTED_RECURSIVE_CTE_ROWS: [i32; 3] = [1, 2, 3];
 #[cfg(feature = "sqlite")]
 #[must_use = "handle the result"]
 pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
-    ensure_supported_sqlite_version(&fetch_sqlite_version(conn).await?)?;
-    validate_json_each_rows(&fetch_json_each_rows(conn).await?)?;
-    validate_recursive_cte_rows(&fetch_recursive_cte_rows(conn).await?)
+    run_sqlite_probes(conn)
+        .await
+        .inspect(|()| debug!("SQLite capability audit passed"))
+        .map_err(|(capability, error)| report_probe_failure(capability, error))
+}
+
+/// Log a failed probe and pass its error through unchanged.
+///
+/// The caller already wraps this error with an entry-point context. Emitting the
+/// capability as its own field keeps the failure machine-filterable without
+/// parsing the message, and the probe rows stay out of the log.
+#[cfg(feature = "sqlite")]
+fn report_probe_failure(capability: Capability, error: DieselError) -> DieselError {
+    warn!(
+        capability = capability.label(),
+        %error,
+        "SQLite capability audit failed"
+    );
+    error
+}
+
+/// Run the three probes in order, stopping at the first failure.
+///
+/// Returns the failing capability alongside the error so the caller can emit
+/// it as a telemetry label without re-deriving it from error text. The label is
+/// deliberately separate from the error: `probe_failure` is the only place
+/// that knows which probe ran, and threading the pair keeps that knowledge
+/// local rather than re-parsed downstream.
+#[cfg(feature = "sqlite")]
+async fn run_sqlite_probes(conn: &mut DbConnection) -> Result<(), (Capability, DieselError)> {
+    fetch_sqlite_version(conn)
+        .await
+        .and_then(|version| ensure_supported_sqlite_version(&version))
+        .map_err(|error| (Capability::Version, error))?;
+
+    fetch_json_each_rows(conn)
+        .await
+        .and_then(|rows| validate_json_each_rows(&rows))
+        .map_err(|error| (Capability::Json1JsonEach, error))?;
+
+    fetch_recursive_cte_rows(conn)
+        .await
+        .and_then(|rows| validate_recursive_cte_rows(&rows))
+        .map_err(|error| (Capability::RecursiveCte, error))
 }
 
 /// Build the error reported when a capability check fails.
 #[cfg(feature = "sqlite")]
-fn probe_failure(capability: &str, detail: &str) -> DieselError {
+fn probe_failure(capability: Capability, detail: &str) -> DieselError {
     DieselError::QueryBuilderError(Box::new(std::io::Error::other(format!(
-        "{capability} probe failed: {detail}"
+        "{} probe failed: {detail}",
+        capability.describe()
     ))))
 }
 
@@ -90,7 +172,7 @@ async fn fetch_sqlite_version(conn: &mut DbConnection) -> Result<String, DieselE
         .get_result::<SqliteVersion>(conn)
         .await
         .map(|row| row.version)
-        .map_err(|error| probe_failure("sqlite version", &error.to_string()))
+        .map_err(|error| probe_failure(Capability::Version, &error.to_string()))
 }
 
 /// Read the rows produced by the JSON1 `json_each` probe.
@@ -113,7 +195,7 @@ async fn fetch_json_each_rows(conn: &mut DbConnection) -> Result<Vec<(i32, Strin
         .load::<JsonEachRow>(conn)
         .await
         .map(|rows| rows.into_iter().map(|row| (row.key, row.value)).collect())
-        .map_err(|error| probe_failure("SQLite JSON1 json_each", &error.to_string()))
+        .map_err(|error| probe_failure(Capability::Json1JsonEach, &error.to_string()))
 }
 
 /// Read the rows produced by the recursive CTE probe.
@@ -131,7 +213,7 @@ async fn fetch_recursive_cte_rows(conn: &mut DbConnection) -> Result<Vec<i32>, D
         .load::<RecursiveCteRow>(conn)
         .await
         .map(|rows| rows.into_iter().map(|row| row.x).collect())
-        .map_err(|error| probe_failure("SQLite recursive CTE", &error.to_string()))
+        .map_err(|error| probe_failure(Capability::RecursiveCte, &error.to_string()))
 }
 
 /// Parse and range-check the version string reported by `sqlite_version()`.
@@ -188,7 +270,7 @@ fn validate_json_each_rows(rows: &[(i32, String)]) -> Result<(), DieselError> {
     }
 
     Err(probe_failure(
-        "SQLite JSON1 json_each",
+        Capability::Json1JsonEach,
         &format!("unexpected rows {rows:?}"),
     ))
 }
@@ -201,7 +283,7 @@ fn validate_recursive_cte_rows(rows: &[i32]) -> Result<(), DieselError> {
     }
 
     Err(probe_failure(
-        "SQLite recursive CTE",
+        Capability::RecursiveCte,
         &format!("unexpected rows {rows:?}"),
     ))
 }
@@ -270,100 +352,4 @@ pub async fn audit_postgres_features(
 
 #[cfg(feature = "sqlite")]
 #[cfg(test)]
-mod sqlite_tests {
-    //! Validator tests for the `SQLite` capability audit.
-
-    use rstest::rstest;
-
-    use super::{
-        DieselError,
-        ensure_supported_sqlite_version,
-        validate_json_each_rows,
-        validate_recursive_cte_rows,
-    };
-
-    /// Assert that a validator rejected its input with an error naming
-    /// `capability`, so a failure message always says which check broke.
-    fn assert_rejected_naming(result: Result<(), DieselError>, capability: &str) {
-        let error = result.expect_err("unexpected probe rows must be rejected");
-        assert!(
-            error.to_string().contains(capability),
-            "error must name the capability {capability}: {error}"
-        );
-    }
-
-    #[rstest]
-    #[case("3.35.0")]
-    #[case("3.45.1")]
-    // Deliberate parser-tolerance case: `sqlite_version()` returns a bare
-    // triple, and the build date belongs to `sqlite_source_id()`. Trailing
-    // text must still be ignored rather than treated as unparsable.
-    #[case("3.46.1 2024-08-13 09:16:08")]
-    fn version_accepts_supported(#[case] raw: &str) {
-        let parsed = ensure_supported_sqlite_version(raw).expect("version must be accepted");
-        assert!(parsed >= (3, 35, 0), "{raw} must meet the floor");
-    }
-
-    #[rstest]
-    #[case("3.34.1", "sqlite version 3.34.1 is not supported (require >= 3.35.0)")]
-    #[case("2.8.17", "sqlite version 2.8.17 is not supported (require >= 3.35.0)")]
-    #[case("", "unable to parse sqlite version: ")]
-    #[case("abc", "unable to parse sqlite version: abc")]
-    #[case("3.46", "unable to parse sqlite version: 3.46")]
-    fn version_rejects_unsupported(#[case] raw: &str, #[case] expected: &str) {
-        let error =
-            ensure_supported_sqlite_version(raw).expect_err("unsupported version must be rejected");
-        assert!(
-            error.to_string().contains(expected),
-            "expected {error} to contain {expected}"
-        );
-    }
-
-    /// Build a probe row vector from literal pairs.
-    fn json_each_rows(pairs: &[(i32, &str)]) -> Vec<(i32, String)> {
-        pairs
-            .iter()
-            .map(|(key, value)| (*key, (*value).to_owned()))
-            .collect()
-    }
-
-    #[rstest]
-    fn json_each_accepts_expected_rows() {
-        let rows = json_each_rows(&[(0, "a"), (1, "b"), (2, "c")]);
-        validate_json_each_rows(&rows).expect("expected probe rows must be accepted");
-    }
-
-    #[rstest]
-    #[case(&[(0, "a"), (1, "b")])]
-    #[case(&[(0, "a"), (1, "b"), (2, "d")])]
-    #[case(&[(1, "a"), (2, "b"), (3, "c")])]
-    #[case(&[(0, "c"), (1, "b"), (2, "a")])]
-    #[case(&[(0, "a"), (1, "b"), (2, "c"), (3, "d")])]
-    #[case(&[])]
-    fn json_each_rejects_unexpected_rows(#[case] pairs: &[(i32, &str)]) {
-        let rows = json_each_rows(pairs);
-        assert_rejected_naming(
-            validate_json_each_rows(&rows),
-            "SQLite JSON1 json_each probe failed",
-        );
-    }
-
-    #[rstest]
-    fn recursive_cte_accepts_expected_rows() {
-        validate_recursive_cte_rows(&[1, 2, 3]).expect("expected probe rows must be accepted");
-    }
-
-    #[rstest]
-    #[case(&[1])]
-    #[case(&[])]
-    #[case(&[1, 2])]
-    #[case(&[1, 2, 4])]
-    #[case(&[3, 2, 1])]
-    #[case(&[1, 2, 3, 4])]
-    fn recursive_cte_rejects_unexpected_rows(#[case] rows: &[i32]) {
-        assert_rejected_naming(
-            validate_recursive_cte_rows(rows),
-            "SQLite recursive CTE probe failed",
-        );
-    }
-}
+mod tests;

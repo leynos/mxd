@@ -129,6 +129,16 @@ impl WireframeBootstrap {
         })
     }
 
+    /// Establish the pool, audit the linked `SQLite` library, then serve.
+    ///
+    /// The `sqlite` audit runs after the pool is established and before the
+    /// listener binds, so an incompatible library fails startup rather than the
+    /// first query.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pool cannot be established, if the `SQLite`
+    /// capability audit fails, or if binding or serving fails.
     async fn run(self) -> Result<()> {
         let Self { bind_addr, config } = self;
         println!("mxd-wireframe-server using database {}", config.database);
