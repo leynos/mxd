@@ -3637,6 +3637,7 @@ dependencies = [
  "rstest-bdd",
  "rstest-bdd-harness-tokio",
  "rstest-bdd-macros",
+ "tokio",
  "trybuild",
 ]
 
