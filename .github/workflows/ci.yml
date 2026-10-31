@@ -145,6 +145,10 @@ jobs:
       # re-resolve it instead of failing.
       - name: Check the lockfile matches the manifest
         run: make check-locked
+      - name: Check Rust 1.94 compatibility
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal
+          cargo +1.94.0 check --locked --all-targets ${{ matrix.cargo_flags }}
       - name: Install cargo-nextest
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -179,6 +183,10 @@ jobs:
         run: make check-fmt
       - name: Lint with Clippy
         run: RUSTFLAGS="-D warnings" cargo clippy ${{ matrix.cargo_flags }} --workspace --all-targets -- -D warnings
+      # Pin the installer that provisions a verified Clippy snapshot. Earlier
+      # installers build the Dylint driver against a fresh clone of rust-clippy
+      # and check out its `master` branch, which upstream renamed to `main`, so
+      # that bootstrap no longer resolves.
       - name: Install Whitaker
         uses: leynos/shared-actions/.github/actions/install-whitaker@5a99aed78ce68dcebd3052b75c31e6f173162b1e
       - name: Lint with Whitaker

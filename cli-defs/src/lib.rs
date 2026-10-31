@@ -5,18 +5,6 @@
 //! Extracting these types into a separate crate avoids brittle `#[path = ...]`
 //! includes and keeps build-time and runtime dependencies cleanly separated.
 
-// FIXME: File-wide suppressions are unavoidable here. Clap and OrthoConfig derive macros
-// inject generated code throughout the module, and there is no mechanism to narrow
-// the scope without restructuring the crate.
-#![expect(
-    non_snake_case,
-    reason = "Clap/OrthoConfig derive macros generate helper modules with uppercase names"
-)]
-#![expect(
-    missing_docs,
-    reason = "OrthoConfig and Clap derive macros generate items that cannot be documented"
-)]
-
 use clap::{Args, Parser, Subcommand};
 use ortho_config::OrthoConfig;
 use serde::{Deserialize, Serialize};
@@ -43,6 +31,7 @@ pub const DEFAULT_ARGON2_P_COST: u32 = 1;
 
 /// Arguments for the `create-user` administrative subcommand.
 #[derive(Parser, OrthoConfig, Deserialize, Serialize, Default, Debug, Clone)]
+#[command(name = "create-user")]
 #[ortho_config(prefix = "MXD_")]
 pub struct CreateUserArgs {
     /// Username for the new account.
@@ -67,7 +56,7 @@ pub enum Commands {
 /// bind to a specific interface (for example `127.0.0.1`) and sit behind a
 /// reverse proxy.
 #[derive(Args, OrthoConfig, Serialize, Deserialize, Default, Debug, Clone)]
-#[ortho_config(prefix = "MXD_")]
+#[ortho_config(prefix = "MXD_", discovery(explicit_mode = "required_exclusive"))]
 pub struct AppConfig {
     /// Server bind address.
     #[ortho_config(default = "0.0.0.0:5500".to_owned())]
@@ -99,7 +88,7 @@ pub struct AppConfig {
 pub struct Cli {
     /// CLI configuration overrides (merged with files and defaults at runtime).
     #[command(flatten)]
-    pub config: AppConfigCli,
+    config: __AppConfigCli,
     /// Optional subcommand.
     #[command(subcommand)]
     pub command: Option<Commands>,

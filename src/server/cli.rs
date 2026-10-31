@@ -18,6 +18,7 @@ pub use cli_defs::{
     DEFAULT_ARGON2_P_COST,
     DEFAULT_ARGON2_T_COST,
 };
+use ortho_config::OrthoConfig;
 
 const _: () = {
     assert!(DEFAULT_ARGON2_M_COST == Params::DEFAULT_M_COST);
@@ -52,201 +53,69 @@ pub fn load_cli() -> Result<ResolvedCli> {
 /// Collect program arguments with any subcommand and its trailing args stripped.
 ///
 /// Scans arguments and stops at the `--` separator to avoid treating literal
-/// values as subcommands. Detects known clap subcommands via
-/// `Cli::command().get_subcommands()` and, when found, returns only the args
-/// preceding the subcommand. This allows `OrthoConfig`'s CLI parser (which does
-/// not handle subcommands) to load configuration safely.
+/// values as subcommands. A candidate command is a boundary only when clap
+/// accepts the preceding arguments, so a value that happens to equal a command
+/// name remains attached to its option. `OrthoConfig`'s parser then receives
+/// only the arguments preceding the actual subcommand.
 fn config_args_without_subcommand() -> Vec<OsString> {
-    let args: Vec<OsString> = std::env::args_os().collect();
-    let subcommands = Cli::command()
-        .get_subcommands()
-        .map(|cmd| cmd.get_name().to_owned())
-        .collect::<Vec<_>>();
-    let mut subcommand_index = None;
-    for (index, arg) in args.iter().enumerate() {
-        if arg.as_os_str() == OsStr::new("--") {
-            break;
-        }
-        if arg
-            .to_str()
-            .is_some_and(|value| subcommands.iter().any(|name| name == value))
-        {
-            subcommand_index = Some(index);
-            break;
-        }
-    }
+    config_args_from(&std::env::args_os().collect::<Vec<_>>())
+}
+
+/// Return the arguments that precede a subcommand boundary.
+///
+/// `args` is a complete argument vector whose first element is the program
+/// name, the shape `std::env::args_os` produces. The scan is pure so tests can
+/// drive it with generated vectors instead of a fabricated process.
+///
+/// # Examples
+///
+/// Given `["mxd", "--database", "db", "create-user", "alice"]` the scan stops
+/// at `create-user` and returns `["mxd", "--database", "db"]`.
+fn config_args_from(args: &[OsString]) -> Vec<OsString> {
     // OrthoConfig's CLI parser does not handle subcommands, so strip any
     // subcommand and its arguments before loading configuration.
-    if let Some(index) = subcommand_index {
-        args.into_iter().take(index).collect()
-    } else {
-        args
-    }
+    let end = subcommand_boundary(args).unwrap_or(args.len());
+    args.iter().take(end).cloned().collect()
+}
+
+/// Find the index of the token that starts the subcommand section.
+///
+/// A token equal to a subcommand name is a boundary only when clap accepts
+/// every preceding token, so a value that happens to equal a command name
+/// stays attached to its option. The `--` separator ends the scan.
+///
+/// # Examples
+///
+/// For `["mxd", "--database", "create-user"]`, `create-user` is the value of
+/// `--database`, the preceding tokens do not parse, and no boundary is
+/// reported.
+fn subcommand_boundary(args: &[OsString]) -> Option<usize> {
+    let subcommands = subcommand_names();
+    args.iter()
+        .enumerate()
+        .skip(1)
+        .take_while(|(_, arg)| arg.as_os_str() != OsStr::new("--"))
+        .find(|(index, arg)| {
+            is_subcommand_name(arg, &subcommands)
+                && Cli::try_parse_from(args.iter().take(*index).cloned()).is_ok()
+        })
+        .map(|(index, _)| index)
+}
+
+/// Names of the CLI's subcommands, spelled as clap spells them.
+fn subcommand_names() -> Vec<String> {
+    Cli::command()
+        .get_subcommands()
+        .map(|cmd| cmd.get_name().to_owned())
+        .collect()
+}
+
+/// Whether `arg` spells one of `subcommands` exactly.
+fn is_subcommand_name(arg: &OsStr, subcommands: &[String]) -> bool {
+    arg.to_str()
+        .is_some_and(|value| subcommands.iter().any(|name| name == value))
 }
 
 #[cfg(test)]
-mod tests {
-    //! Tests for this module.
-    use argon2::Params;
-    use figment::Jail;
-    use rstest::rstest;
-
-    use super::*;
-
-    /// Runs `body` inside a figment `Jail`, with an ordinary boxed error.
-    ///
-    /// `Jail::expect_with` fixes its closure's error type at `figment::Error`
-    /// (208 bytes), which trips `clippy::result_large_err` at every call site.
-    /// This helper is the one place that closure appears, so the lint stays on
-    /// for every other test in the module.
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail::expect_with fixes its closure's error type at figment::Error, \
-                  which this helper must return"
-    )]
-    fn with_jail(body: impl FnOnce(&mut Jail) -> Result<(), Box<dyn std::error::Error>>) {
-        Jail::expect_with(|jail| body(jail).map_err(|err| figment::Error::from(err.to_string())));
-    }
-
-    /// Verifies that our local constants match the upstream argon2 crate defaults.
-    ///
-    /// This guards against silent drift if argon2 changes its defaults in a
-    /// future release.
-    #[rstest]
-    fn argon2_default_constants_match_upstream() {
-        assert_eq!(
-            DEFAULT_ARGON2_M_COST,
-            Params::DEFAULT_M_COST,
-            "DEFAULT_ARGON2_M_COST should match argon2::Params::DEFAULT_M_COST"
-        );
-        assert_eq!(
-            DEFAULT_ARGON2_T_COST,
-            Params::DEFAULT_T_COST,
-            "DEFAULT_ARGON2_T_COST should match argon2::Params::DEFAULT_T_COST"
-        );
-        assert_eq!(
-            DEFAULT_ARGON2_P_COST,
-            Params::DEFAULT_P_COST,
-            "DEFAULT_ARGON2_P_COST should match argon2::Params::DEFAULT_P_COST"
-        );
-    }
-
-    /// Verifies `AppConfig` uses the expected Argon2 defaults when no overrides
-    /// are provided.
-    #[rstest]
-    fn argon2_defaults_applied_to_config() {
-        with_jail(|_j| {
-            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
-            assert_eq!(cfg.argon2_m_cost, DEFAULT_ARGON2_M_COST);
-            assert_eq!(cfg.argon2_t_cost, DEFAULT_ARGON2_T_COST);
-            assert_eq!(cfg.argon2_p_cost, DEFAULT_ARGON2_P_COST);
-            Ok(())
-        });
-    }
-
-    #[rstest]
-    fn env_config_loading() {
-        with_jail(|j| {
-            j.set_env("MXD_BIND", "127.0.0.1:8000");
-            j.set_env("MXD_DATABASE", "env.db");
-            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
-            assert_eq!(cfg.bind, "127.0.0.1:8000");
-            assert_eq!(cfg.database, "env.db".to_string());
-            Ok(())
-        });
-    }
-
-    #[rstest]
-    fn cli_overrides_env() {
-        with_jail(|j| {
-            j.set_env("MXD_BIND", "127.0.0.1:8000");
-            let cfg = AppConfig::load_from_iter(["mxd", "--bind", "0.0.0.0:9000"]).expect("load");
-            assert_eq!(cfg.bind, "0.0.0.0:9000");
-            Ok(())
-        });
-    }
-
-    #[rstest]
-    fn migration_timeout_loads_from_env() {
-        with_jail(|j| {
-            j.set_env("MXD_MIGRATION_TIMEOUT_SECS", "9");
-            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
-            assert_eq!(cfg.migration_timeout_secs, Some(9));
-            Ok(())
-        });
-    }
-
-    #[rstest]
-    fn loads_from_dotfile() {
-        with_jail(|j| {
-            j.create_file(".mxd.toml", "bind = \"1.2.3.4:1111\"")?;
-            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
-            assert_eq!(cfg.bind, "1.2.3.4:1111".to_string());
-            Ok(())
-        });
-    }
-
-    #[rstest]
-    fn argon2_cli_overrides_all_params() {
-        with_jail(|_j| {
-            let cfg = AppConfig::load_from_iter([
-                "mxd",
-                "--argon2-m-cost",
-                "1024",
-                "--argon2-t-cost",
-                "4",
-                "--argon2-p-cost",
-                "2",
-            ])
-            .expect("load");
-            assert_eq!(cfg.argon2_m_cost, 1024);
-            assert_eq!(cfg.argon2_t_cost, 4);
-            assert_eq!(cfg.argon2_p_cost, 2);
-            Ok(())
-        });
-    }
-
-    #[rstest]
-    fn argon2_env_overrides() {
-        with_jail(|j| {
-            j.set_env("MXD_ARGON2_M_COST", "2048");
-            j.set_env("MXD_ARGON2_T_COST", "8");
-            j.set_env("MXD_ARGON2_P_COST", "4");
-            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
-            assert_eq!(cfg.argon2_m_cost, 2048);
-            assert_eq!(cfg.argon2_t_cost, 8);
-            assert_eq!(cfg.argon2_p_cost, 4);
-            Ok(())
-        });
-    }
-
-    #[rstest]
-    fn argon2_config_file_overrides() {
-        with_jail(|j| {
-            j.create_file(
-                ".mxd.toml",
-                concat!(
-                    "argon2_m_cost = 4096\n",
-                    "argon2_t_cost = 16\n",
-                    "argon2_p_cost = 8\n"
-                ),
-            )?;
-            let cfg = AppConfig::load_from_iter(["mxd"]).expect("load");
-            assert_eq!(cfg.argon2_m_cost, 4096);
-            assert_eq!(cfg.argon2_t_cost, 16);
-            assert_eq!(cfg.argon2_p_cost, 8);
-            Ok(())
-        });
-    }
-
-    #[rstest]
-    fn argon2_cli_overrides_env_and_file() {
-        with_jail(|j| {
-            j.create_file(".mxd.toml", "argon2_m_cost = 4096\n")?;
-            j.set_env("MXD_ARGON2_M_COST", "2048");
-            let cfg = AppConfig::load_from_iter(["mxd", "--argon2-m-cost", "1024"]).expect("load");
-            assert_eq!(cfg.argon2_m_cost, 1024);
-            Ok(())
-        });
-    }
-}
+#[path = "cli_tests.rs"]
+mod tests;

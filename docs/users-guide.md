@@ -135,6 +135,14 @@ When `--migration-timeout-secs` is unset, startup uses the built-in default
 migration timeout. A value of `0` is normalized back to that default rather
 than disabling the watchdog.
 
+Configuration values are resolved in this order: built-in defaults, discovered
+configuration files, environment variables, then values explicitly supplied on
+the command line. An explicit CLI value takes precedence even when it matches
+the built-in default. Optional discovered files may be absent; a selected file
+that cannot be read or parsed causes startup to fail with a diagnostic. Set
+`MXD_CONFIG_PATH` or pass `--config-path PATH` to select a required file; mxd
+does not fall through to automatic discovery when that selection fails.
+
 ## File metadata baseline
 
 Roadmap item 3.1.1 is an internal schema milestone rather than a new protocol
@@ -159,12 +167,14 @@ and `docs/file-sharing-design.md`.
 ## Creating users
 
 The `create-user` subcommand now runs entirely inside the library so that it is
-available to every binary. Supply both `--username` and `--password`; missing
-values produce the same `missing username`/`missing password` errors that the
-new `rstest-bdd` scenarios cover. Example:
+available to every binary. Supply the username and password as positional
+arguments. Put global configuration options such as `--database` before the
+subcommand. Missing values produce the same
+`missing username`/`missing password` errors that the new `rstest-bdd`
+scenarios cover. Example:
 
 ```sh
-cargo run --bin mxd -- create-user --username alice --password secret
+cargo run --bin mxd -- --database mxd.db create-user alice secret
 ```
 
 The command runs pending migrations before inserting the user. Errors bubble up

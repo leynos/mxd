@@ -31,6 +31,9 @@ consistent, and easy to maintain across projects.
   releasing an update".
 - Avoid first and second person personal pronouns outside the `README.md`
   file.
+- Byte-for-byte upstream documents identified in a migration provenance
+  record retain their source voice. Locally written notes remain subject to
+  this rule.
 
 ## Headings
 

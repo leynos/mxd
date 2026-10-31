@@ -7,6 +7,8 @@ codebase, plus the PostgreSQL helper needed for integration coverage.
 ## Prerequisites
 
 - Rust toolchain pinned by `rust-toolchain.toml`.
+- The application and shared CLI definitions require Rust 1.94.0 or newer;
+  CI checks the supported feature lanes on that stable compiler.
 - `cargo` and `make` available on your `PATH`.
 - `cargo-audit` available for `make audit`; CI installs it with
   `cargo binstall --no-confirm cargo-audit`.
@@ -221,6 +223,29 @@ warm-up, and with it the only PostgreSQL run in the job. The contract asserts
 the token on the warm-up step of both coverage jobs; removing it, or replacing
 it with a literal, fails the named case.
 
+### The warm-up repairs the time-zone alias
+
+The pinned August bundle is intact, but a cache or install tree written by an
+earlier, broken download can still hold a dangling `share/timezone/UTC` link.
+`make warm-postgres` therefore does two things after setup succeeds: it fails
+if the cache is still empty, and it walks both `PG_BINARY_CACHE_DIR` and the
+throwaway `.pg-embedded/warm/install` tree for `share/timezone/UCT`, creating
+the `UTC` alias wherever it is missing.
+
+The scan uses `find -H`. That follows a symbolic link named on the command
+line, which is exactly the `PG_BINARY_CACHE_DIR` case when a deployment keeps
+the cache on another volume, while leaving any links found beneath the root
+alone. A dangling `UTC` link is removed before the replacement is created: plain
+`[ -e ]` is false for a link whose target is gone, so an existence-only guard
+would leave the broken link in place while still reporting success. A failed
+scan or a failed `ln` fails the target rather than being swallowed.
+
+`tests/workflow_contracts/test_postgres_make_targets.py` drives this against a
+stand-in downloader. It asserts that a filled cache gains the alias in both
+roots, that a dangling link is replaced, that a cache reached through a
+symbolic link is still scanned, and that a missing install root or an empty
+cache fails the target.
+
 ### The contract
 
 `tests/workflow_contracts/test_embedded_postgres.py` asserts that no job
@@ -242,7 +267,8 @@ asserts the `postgres` profile, the default and overridden `PG_PASSWORD`, and
 the exact bundle pin and its override. It asserts that `warm-postgres` passes
 the same pin. It runs `make warm-postgres` against a stand-in
 `pg_embedded_setup_unpriv` under a fake home and asserts the throwaway
-directories, success when the cache fills, and failure when it stays empty or
+directories, success when the cache fills and the `UTC` alias is created or
+repaired, and failure when the cache stays empty, an alias root is missing, or
 `PG_BINARY_CACHE_DIR` is unset.
 
 ## PostgreSQL migration strategy (v0.6.0)
@@ -1320,6 +1346,25 @@ Tolerated failure: `continue-on-error` on the SQLite coverage step, and
 the Whitaker step's flags dropped. Unit cases drive the same query with
 constructed copies of the workflow.
 
+### Pinned Whitaker installer
+
+`ci.yml` pins `install-whitaker` to the shared-actions revision whose default
+installer is 0.2.11. Earlier revisions build the Dylint driver against a fresh
+clone of rust-clippy and check out that repository's `master` branch; upstream
+renamed it to `main`, so that bootstrap stopped resolving and every
+`build-test` lane failed in the install step. Installer 0.2.11 provisions a
+verified Clippy snapshot bundle instead, so the driver build no longer reads a
+mutable upstream branch.
+
+The pin is a commit, like every other `leynos/shared-actions` reference here,
+so a Dependabot bump is what advances it. The pin records one observed
+bootstrap incident, not a rule about every three-lane failure: a shared source
+defect can fail all three lanes just as a broken installer does. Inspect the
+failing step and its diagnostic before assigning a cause. A bootstrap error in
+the install step points at the pinned revision and the installer; a compile or
+lint diagnostic from the changed code points at the diff. Keep Whitaker enabled
+while investigating; do not skip the lanes to make the check green.
+
 ### Authenticated binstall
 
 `cargo binstall` resolves a crate's release through `api.github.com`. An
@@ -1505,6 +1550,12 @@ second contract holds the dry-run chain to least privilege: every job that
 condition, fails the contract.
 
 ## Dependabot and the Cargo toolchain floor
+
+The workspace declares `rust-version = "1.94.0"` because the complete locked
+application and test graph includes dependencies whose declared floors reach
+Rust 1.94.0. OrthoConfig v0.10.0 itself requires Rust 1.89.0, but that is not
+the effective floor for these packages. CI checks the feature lanes on stable
+1.94.0 as well as the repository's pinned `nightly-2026-03-26` toolchain.
 
 Dependabot's Cargo updater does not raise `Cargo.toml`. Its
 `versioning-strategy` accepts only `lockfile-only` and `auto`. The
