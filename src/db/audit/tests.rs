@@ -101,6 +101,39 @@ fn recursive_cte_rejects_unexpected_rows(#[case] rows: &[i32]) {
     assert_rejected_naming(validate_recursive_cte_rows(rows), Capability::RecursiveCte);
 }
 
+/// A rejected row set must not have its rows copied into the error text.
+///
+/// `report_probe_failure` puts the whole error into a `warn!` field, so any row
+/// value present here would be written to the log. The probe rows are a
+/// fixed constant today, but the contract is that this module never treats
+/// database output as log-safe, and a future probe over real data would
+/// otherwise inherit the leak silently. Distinctive sentinel values prove the
+/// assertion can fail: a validator that formatted its rows would reproduce
+/// them here.
+#[rstest]
+#[case(&[(0, "SENTINEL_JSON_ROW")])]
+#[case(&[(0, "a"), (1, "b"), (2, "SENTINEL_JSON_ROW")])]
+fn rejected_json_each_rows_are_not_echoed(#[case] pairs: &[(i32, &str)]) {
+    let rows = json_each_rows(pairs);
+    let error = validate_json_each_rows(&rows).expect_err("unexpected rows must be rejected");
+    assert!(
+        !error.to_string().contains("SENTINEL_JSON_ROW"),
+        "row values must not reach the error text: {error}"
+    );
+}
+
+/// The recursive CTE validator must not echo rejected rows either.
+#[rstest]
+#[case(&[1, 2, 424_242])]
+#[case(&[424_242])]
+fn rejected_recursive_cte_rows_are_not_echoed(#[case] rows: &[i32]) {
+    let error = validate_recursive_cte_rows(rows).expect_err("unexpected rows must be rejected");
+    assert!(
+        !error.to_string().contains("424242"),
+        "row values must not reach the error text: {error}"
+    );
+}
+
 /// The operational contract for every capability: variant, telemetry label,
 /// operator-facing description.
 ///

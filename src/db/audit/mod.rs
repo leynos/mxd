@@ -112,7 +112,13 @@ pub async fn audit_sqlite_features(conn: &mut DbConnection) -> QueryResult<()> {
 ///
 /// The caller already wraps this error with an entry-point context. Emitting the
 /// capability as its own field keeps the failure machine-filterable without
-/// parsing the message, and the probe rows stay out of the log.
+/// parsing the message.
+///
+/// This event copies the whole error into the `error` field, so whatever the
+/// error's `Display` produces reaches the log. The row validators therefore
+/// keep queried rows out of their errors and report only a row count; the
+/// driver errors raised by the fetch helpers describe the failure itself and
+/// are safe to include.
 #[cfg(feature = "sqlite")]
 fn report_probe_failure(capability: Capability, error: DieselError) -> DieselError {
     warn!(
@@ -130,6 +136,14 @@ fn report_probe_failure(capability: Capability, error: DieselError) -> DieselErr
 /// deliberately separate from the error: `probe_failure` is the only place
 /// that knows which probe ran, and threading the pair keeps that knowledge
 /// local rather than re-parsed downstream.
+///
+/// # Errors
+///
+/// Returns the first failing [`Capability`] paired with its [`DieselError`],
+/// and does not run the remaining probes. A version below the documented floor
+/// or an unparsable version string fails the version probe; a query the linked
+/// library cannot execute fails that query's probe; and rows that differ from
+/// the expected constant fail the corresponding row validator.
 #[cfg(feature = "sqlite")]
 async fn run_sqlite_probes(conn: &mut DbConnection) -> Result<(), (Capability, DieselError)> {
     fetch_sqlite_version(conn)
@@ -255,24 +269,42 @@ fn parse_version_triple(raw: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
-/// Check that the JSON1 probe returned exactly the expected rows, in order.
+/// Whether the JSON1 probe rows match the expected constant exactly, in order.
 #[cfg(feature = "sqlite")]
-fn validate_json_each_rows(rows: &[(i32, String)]) -> Result<(), DieselError> {
-    let is_expected = rows.len() == EXPECTED_JSON_EACH_ROWS.len()
+fn json_each_rows_match(rows: &[(i32, String)]) -> bool {
+    rows.len() == EXPECTED_JSON_EACH_ROWS.len()
         && rows.iter().zip(EXPECTED_JSON_EACH_ROWS.iter()).all(
             |((key, value), (expected_key, expected_value))| {
                 key == expected_key && value == expected_value
             },
-        );
+        )
+}
 
-    if is_expected {
+/// Describe a row mismatch without disclosing the rows.
+///
+/// `report_probe_failure` copies this text into a `warn!` field, so anything
+/// returned here is written to whatever sink the subscriber uses. The expected
+/// output is a compile-time constant in this module and safe to name; the
+/// rows actually read from the database are not, so only their count is
+/// reported and the contents are described rather than reproduced.
+#[cfg(feature = "sqlite")]
+fn row_mismatch_detail(observed: usize, expected: usize) -> String {
+    if observed == expected {
+        return "row contents did not match the expected constant".to_owned();
+    }
+
+    format!("expected {expected} rows, observed {observed}")
+}
+
+/// Check that the JSON1 probe returned exactly the expected rows, in order.
+#[cfg(feature = "sqlite")]
+fn validate_json_each_rows(rows: &[(i32, String)]) -> Result<(), DieselError> {
+    if json_each_rows_match(rows) {
         return Ok(());
     }
 
-    Err(probe_failure(
-        Capability::Json1JsonEach,
-        &format!("unexpected rows {rows:?}"),
-    ))
+    let detail = row_mismatch_detail(rows.len(), EXPECTED_JSON_EACH_ROWS.len());
+    Err(probe_failure(Capability::Json1JsonEach, &detail))
 }
 
 /// Check that the recursive CTE probe returned exactly the expected rows.
@@ -282,10 +314,8 @@ fn validate_recursive_cte_rows(rows: &[i32]) -> Result<(), DieselError> {
         return Ok(());
     }
 
-    Err(probe_failure(
-        Capability::RecursiveCte,
-        &format!("unexpected rows {rows:?}"),
-    ))
+    let detail = row_mismatch_detail(rows.len(), EXPECTED_RECURSIVE_CTE_ROWS.len());
+    Err(probe_failure(Capability::RecursiveCte, &detail))
 }
 
 /// Verify that the Postgres server meets application requirements.

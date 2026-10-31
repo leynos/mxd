@@ -24,6 +24,28 @@ data. The `sqlite3` command-line tool is a separate build, so its version says
 nothing about the library the daemon links; the start-up audit is the
 authoritative check.
 
+### Recovering from a failed start-up audit
+
+The audit runs before any migration, so a rejected library leaves the database
+untouched and retrying is safe. This capability check changes no table and
+requires no schema migration; upgrading `SQLite` does not require exporting or
+rebuilding the database.
+
+If the binary links the system library, upgrade the shared `SQLite` library on
+the host to 3.35.0 or later with `JSON1` and recursive CTE support, then start
+the command again. Compare with `sqlite3 --version` only as a hint about which
+library is installed, since that tool is a separate build; the start-up audit
+is what decides.
+
+If the binary was built to link `SQLite` statically with `SQLITE3_STATIC=1`,
+the library is fixed at build time and upgrading the host changes nothing.
+Rebuild against a newer `SQLite`, or set `SQLITE3_LIB_DIR` to a directory
+holding one, and rebuild.
+
+To confirm the fix, run the command that previously failed and check that it
+starts without printing a capability error. The audit prints only failures, so
+silence means every probe passed.
+
 ## Launching the legacy server
 
 - Build the sqlite variant with `make sqlite` or the postgres variant with
