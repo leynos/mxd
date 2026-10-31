@@ -346,6 +346,24 @@ Thresholds that trigger escalation when breached.
   assessment; corrected to distinguish plan approval from a tolerance waiver
   after the first response to that assessment, which rightly said the agent's
   own rationale had been substituted for authorization.
+- Decision: add a `#[cfg(test)]` failure-injection seam for the probes rather
+  than a public or production-visible executor trait. Rationale: a review
+  correctly observed that the existing success test cannot detect a no-op
+  audit, and measurement confirmed no database state can fail these probes,
+  because none of them reads a table. The seam is a thread-local read before
+  the first `await`, so concurrent tests cannot observe it and no test needs
+  serializing. It introduces no public item and no dependency, so the earlier
+  "no new public type, trait, or dependency" constraint still holds.
+  Date/Author: 2026-10-31, agent.
+- Decision: decline the request to initialize a `tracing` subscriber in the
+  binary entry points. Rationale: no binary installs one today, so all emitted
+  events are discarded, but that is a pre-existing property of the whole crate
+  (43 emit sites), not of this change. Fixing it requires the
+  `tracing-subscriber` crate, which this plan forbids adding, and it would
+  alter the logging behaviour of every binary in a change scoped to a SQLite
+  capability audit. The gap is real and worth an issue of its own; raising it
+  to the task owner rather than widening this diff. Date/Author: 2026-10-31,
+  agent, in response to review 5722131376.
 
 ## Outcomes & retrospective
 
@@ -1087,6 +1105,18 @@ a broken SQLite library. No new public type, trait, or dependency is introduced.
 
 No new crate is added. The work uses `diesel`, `diesel_async`, and `rstest`,
 all already present.
+
+A later review asked for a test that can force the audit to fail, on the
+grounds that the success test above cannot detect a no-op audit. That request
+is sound: the probes are pure expressions that read no table, so no database
+state can make them fail on demand — even a file of arbitrary bytes answers
+`sqlite_version()`, `json_each`, and the recursive CTE, as measured. Injection
+is therefore the only way to reach the failure path. The seam is
+`src/db/audit/test_seam.rs`, declared `#[cfg(test)]` and holding a thread-local
+`Cell<Option<Capability>>` read once at the top of `run_sqlite_probes`. It adds
+no public item, no trait, and no dependency: the module and its items are
+`pub(crate)`, and none of it is compiled into a release binary. This is
+consistent with the constraint above rather than a departure from it.
 
 ## Revision note
 

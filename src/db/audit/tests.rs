@@ -6,10 +6,12 @@ use rstest::rstest;
 use super::{
     Capability,
     DieselError,
+    audit_sqlite_features,
     ensure_supported_sqlite_version,
     fetch_json_each_rows,
     fetch_recursive_cte_rows,
     fetch_sqlite_version,
+    test_seam,
     validate_json_each_rows,
     validate_recursive_cte_rows,
 };
@@ -214,4 +216,55 @@ async fn probes_execute_against_the_linked_library() {
         .await
         .expect("recursive CTE probe must execute");
     validate_recursive_cte_rows(&cte_rows).expect("recursive CTE must return the expected rows");
+}
+
+/// The audit reports an injected failure through its public signature.
+///
+/// `probes_execute_against_the_linked_library` asserts only success, so
+/// `audit_sqlite_features` could stop calling `run_sqlite_probes` entirely and
+/// still pass. This test is the negative control: a failure that only the
+/// probes can observe must reach the caller, naming the capability.
+///
+/// The seam is read before the first `await` and is thread-local, so this test
+/// needs no serialization against the success test above.
+#[rstest]
+#[case(Capability::Version)]
+#[case(Capability::Json1JsonEach)]
+#[case(Capability::RecursiveCte)]
+#[tokio::test]
+async fn audit_reports_injected_probe_failure(#[case] capability: Capability) {
+    let mut conn = DbConnection::establish(":memory:")
+        .await
+        .expect("in-memory connection must open");
+
+    let error = {
+        // Bind the guard so the override lifts when this block ends, even if
+        // the assertion below fails.
+        let _injection = test_seam::inject_failure(capability);
+        audit_sqlite_features(&mut conn)
+            .await
+            .expect_err("an injected failure must reach the caller")
+    };
+
+    assert!(
+        error.to_string().contains(capability.describe()),
+        "the error must name {}: {error}",
+        capability.describe()
+    );
+}
+
+/// The override lifts when its guard drops.
+///
+/// Without this, the tests above would pass even if the guard leaked, and a
+/// later test on the same thread would fail for an unrelated reason.
+#[tokio::test]
+async fn audit_passes_once_the_injected_failure_is_cleared() {
+    let mut conn = DbConnection::establish(":memory:")
+        .await
+        .expect("in-memory connection must open");
+
+    drop(test_seam::inject_failure(Capability::Version));
+    audit_sqlite_features(&mut conn)
+        .await
+        .expect("the audit must pass once the override is gone");
 }

@@ -12,6 +12,9 @@ use tracing::{debug, warn};
 #[cfg(feature = "sqlite")]
 use super::connection::DbConnection;
 
+#[cfg(all(test, feature = "sqlite"))]
+pub(crate) mod test_seam;
+
 /// Minimum `SQLite` version the application requires.
 ///
 /// The floor exists because the `sqlite` Cargo feature enables Diesel's
@@ -146,6 +149,13 @@ fn report_probe_failure(capability: Capability, error: DieselError) -> DieselErr
 /// the expected constant fail the corresponding row validator.
 #[cfg(feature = "sqlite")]
 async fn run_sqlite_probes(conn: &mut DbConnection) -> Result<(), (Capability, DieselError)> {
+    // Read before the first `await`: the seam is thread-local, and everything
+    // below this point may resume on a blocking-pool thread.
+    #[cfg(test)]
+    if let Some(failure) = test_seam::injected_failure() {
+        return Err(failure);
+    }
+
     fetch_sqlite_version(conn)
         .await
         .and_then(|version| ensure_supported_sqlite_version(&version))

@@ -26,10 +26,12 @@ authoritative check.
 
 ### Recovering from a failed start-up audit
 
-The audit runs before any migration, so a rejected library leaves the database
-untouched and retrying is safe. This capability check changes no table and
-requires no schema migration; upgrading `SQLite` does not require exporting or
-rebuilding the database.
+The audit runs before any migration and before the subcommand inserts anything,
+so a rejected library leaves the schema and the stored data unchanged and
+retrying is safe. Opening the connection can still create a missing database
+file, so check for that rather than assuming no file appears. This capability
+check changes no table and requires no schema migration; upgrading `SQLite`
+does not require exporting or rebuilding the database.
 
 If the binary links the system library, upgrade the shared `SQLite` library on
 the host to 3.35.0 or later with `JSON1` and recursive CTE support, then start
