@@ -246,7 +246,7 @@ def test_the_serial_test_ignore_still_has_its_reason() -> None:
 # group per ecosystem batches minor and patch bumps, and majors stay ungrouped
 # except for a named lockstep family, which must precede the catch-all because
 # Dependabot assigns a dependency to the first group that matches it.
-ECOSYSTEMS: typ.Final = ("github-actions", "cargo")
+ECOSYSTEMS: typ.Final = ("github-actions", "cargo", "rust-toolchain")
 CATCH_ALL_UPDATE_TYPES: typ.Final = frozenset({"minor", "patch"})
 # rstest-bdd and rstest-bdd-macros release together; Cargo counts a 0.x minor
 # as a major, which the catch-all leaves ungrouped, so the pair would split.
