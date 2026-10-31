@@ -1751,3 +1751,15 @@ transactions:
 - `build_notify_delete_user(user_id)` produces transaction 302.
 - `build_client_info_text_reply(header, display_name, info_text)` produces
   transaction 303.
+
+## Toolchain updates
+
+`rust-toolchain.toml` pins `nightly-2026-03-26`. Dependabot's `rust-toolchain`
+entry in `.github/dependabot.yml` (directory `/`, daily, the `dependencies` and
+`rust-toolchain` labels, one `minor-and-patch` catch-all group) opens a pull
+request when a newer toolchain exists. Review it like any other change: CI
+builds and tests the project on the new toolchain. Dated nightly versions carry
+no SemVer meaning, so whether Dependabot groups a bump or opens it alone
+depends on how it classifies the version; both are normal. The entry sets no
+cooldown: Dependabot's toolchain fetcher publishes no release date, so a
+cooldown would delay nothing.
