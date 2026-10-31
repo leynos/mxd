@@ -17,7 +17,7 @@ built without `json_each`, or older than 3.35.0, would let the daemon start and
 then fail at the first path lookup — a runtime failure in front of users rather
 than a startup failure in front of an operator.
 
-After this change an operator who starts any of the three entry points (the
+After this change, an operator who starts any of the three entry points (the
 legacy server, the Wireframe server, and the `create-user` administrative
 command) against an incompatible SQLite library sees the process refuse to
 start and exit with an error naming the missing capability, before the
@@ -146,7 +146,7 @@ Thresholds that trigger escalation when breached.
 - [x] (2026-10-13) First full gate run (commit `6429e45`): `nixie` passed;
   `fmt`, `check-fmt`, `markdownlint`, and `lint` failed. All four failures were
   in this change's own new material: two MD013 over-long lines holding inline
-  SQL in this ExecPlan, one typos false positive against a hash-shaped test
+  SQL in this ExecPlan, one typo false positive against a hash-shaped test
   string in `src/db/audit.rs`, and the `module_max_lines` 400-line ceiling on
   `src/server/legacy/mod.rs`. Fixed in `ceccd66`.
 - [x] (2026-10-13) Second full gate run on `ceccd66`: all gates pass. See
@@ -486,7 +486,7 @@ firing on them.
 mxd is a Hotline protocol server written in Rust. It supports two database
 backends selected by Cargo feature: `sqlite` (default) and `postgres`. Exactly
 one must be enabled; `src/db/connection.rs` and `src/lib.rs` both emit
-`compile_error!` if neither or both are set.
+`compile_error!` unless exactly one is enabled.
 
 The relevant pieces, by path:
 
@@ -766,11 +766,14 @@ Stage D: documentation and validation for EP-M3 and EP-M4. Four files:
   the command to exit with an error.
 - `docs/developers-guide.md`: in the prerequisites section, state that source
   builds link the system SQLite library and therefore need its development
-  files, such as `libsqlite3-dev` on Debian-derived systems. Show
-  `pkg-config --modversion sqlite3` as the way to check the version that will
-  be linked. Warn that the version reported by the `sqlite3` command-line tool
-  does not prove what the linked library provides. Identify the startup audit
-  as the authoritative check.
+  files, such as `libsqlite3-dev` on Debian-derived systems. Present
+  `pkg-config --modversion sqlite3` as an advisory probe only: it reports the
+  version `pkg-config` would offer, and `libsqlite3-sys` bypasses it when
+  `SQLITE3_LIB_DIR` or `SQLITE3_STATIC` is set, so it does not determine which
+  library is linked. Warn that the version reported by the `sqlite3`
+  command-line tool does not prove what the linked library provides either.
+  Identify the startup audit as the authoritative check, since only it queries
+  the library the process actually loaded.
 - `docs/users-guide.md`: state the runtime requirement for system-linked
   binaries.
 - `docs/supporting-both-sqlite3-and-postgresql-in-diesel.md`: explain that the
@@ -850,8 +853,14 @@ EP-M3 — documentation matches the code.
 
 EP-M4 — validated, pushed, and reviewable.
 
-- Outcome: every gate passes, the branch is pushed and tracking `origin`, and a
-  draft pull request is open with the required title, body, and references.
+- Outcome: the branch is pushed and tracking `origin`, and a draft pull request
+  is open with the required title, body, and references. Every gate passes
+  except the aggregate `make test` wrapper target, which aborts in its first
+  sub-target, `test-postgres`, on an embedded-PostgreSQL startup error under
+  machine load; each of the eight test sub-targets passes individually, and the
+  abort is argued in `Gate evidence` not to be attributable to this change.
+  `make test` itself has therefore not been observed to exit zero on this
+  branch, and this milestone does not claim that it has.
 - Requirements and gaps: ISSUE-63-acceptance.
 - Acceptance evidence: gate logs under `/tmp/`, the remote head matching
   `git rev-parse HEAD`, and the pull request URL.
