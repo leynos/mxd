@@ -133,16 +133,10 @@ class Host(typ.NamedTuple):
     seen: Path
 
 
-def _host(
-    tmp_path: Path,
-    *,
-    populates_cache: bool,
-    dangling_utc: bool = False,
-    installs_runtime_root: bool = True,
-    symlinked_cache_root: bool = False,
-) -> Host:
-    """Build a host whose downloader fills the cache, or does not.
+class CacheLayout(typ.NamedTuple):
+    """What the fake downloader leaves in the cache and the install tree.
 
+    `populates_cache` controls whether anything is downloaded at all.
     `dangling_utc` leaves a broken `UTC` symlink behind in the cache, the shape
     a half-run warm-up creates. `installs_runtime_root` controls whether the
     downloader creates the install tree the recipe scans second; without it the
@@ -150,24 +144,33 @@ def _host(
     `PG_BINARY_CACHE_DIR` at a symbolic link to the cache, as a deployment that
     keeps the cache on another volume would.
     """
+
+    populates_cache: bool = True
+    dangling_utc: bool = False
+    installs_runtime_root: bool = True
+    symlinked_cache_root: bool = False
+
+
+def _host(tmp_path: Path, layout: CacheLayout = CacheLayout()) -> Host:
+    """Build a host whose downloader leaves the cache in `layout`'s shape."""
     bin_dir = tmp_path / "home" / ".cargo" / "bin"
     bin_dir.mkdir(parents=True)
     cache = tmp_path / "cache"
     cache.mkdir()
     scan_root = cache
-    if symlinked_cache_root:
+    if layout.symlinked_cache_root:
         scan_root = tmp_path / "cache-link"
         scan_root.symlink_to(cache, target_is_directory=True)
     seen = tmp_path / "seen.txt"
     body = f'echo "$PG_RUNTIME_DIR $PG_DATA_DIR" > "{seen}"\n'
-    if populates_cache:
+    if layout.populates_cache:
         body += f'echo binary > "{cache}/postgres.tar"\n'
         timezone_dir = cache / "18.6.1" / "share" / "timezone"
         body += f'mkdir -p "{timezone_dir}"\n'
         body += f'touch "{timezone_dir / "UCT"}"\n'
-        if dangling_utc:
+        if layout.dangling_utc:
             body += f'ln -s nowhere "{timezone_dir / "UTC"}"\n'
-        if installs_runtime_root:
+        if layout.installs_runtime_root:
             body += 'mkdir -p "$PG_RUNTIME_DIR/18.6.1/share/timezone"\n'
             body += 'touch "$PG_RUNTIME_DIR/18.6.1/share/timezone/UCT"\n'
     fake = bin_dir / FAKE_NAME
@@ -179,7 +182,7 @@ def _host(
 
 def test_warm_postgres_succeeds_when_the_cache_is_filled(tmp_path: Path) -> None:
     """Warm-up fills the cache, fixes its UTC alias and uses throwaway directories."""
-    host = _host(tmp_path, populates_cache=True)
+    host = _host(tmp_path)
     result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
     assert result.returncode == 0, result.stdout + result.stderr
     assert host.seen.read_text("utf-8").split() == [
@@ -203,7 +206,7 @@ def test_warm_postgres_replaces_a_dangling_utc_alias(tmp_path: Path) -> None:
     whose target is gone, so a recipe that only guards on existence would keep
     the broken link while still reporting success.
     """
-    host = _host(tmp_path, populates_cache=True, dangling_utc=True)
+    host = _host(tmp_path, CacheLayout(dangling_utc=True))
     result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
     assert result.returncode == 0, result.stdout + result.stderr
     cache_alias = host.cache / "18.6.1" / "share" / "timezone" / "UTC"
@@ -218,7 +221,7 @@ def test_warm_postgres_follows_a_symlinked_cache_root(tmp_path: Path) -> None:
     unless `-H` is given, so a cache kept behind a link would keep its missing
     `UTC` alias while the recipe still reported the install tree's success.
     """
-    host = _host(tmp_path, populates_cache=True, symlinked_cache_root=True)
+    host = _host(tmp_path, CacheLayout(symlinked_cache_root=True))
     result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
     assert result.returncode == 0, result.stdout + result.stderr
     cache_alias = host.cache / "18.6.1" / "share" / "timezone" / "UTC"
@@ -232,21 +235,21 @@ def test_warm_postgres_fails_when_an_alias_root_is_missing(tmp_path: Path) -> No
     The loop visits the cache and the install tree. A downloader that leaves the
     install tree absent must not turn the second scan's failure into success.
     """
-    host = _host(tmp_path, populates_cache=True, installs_runtime_root=False)
+    host = _host(tmp_path, CacheLayout(installs_runtime_root=False))
     result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
     assert result.returncode != 0, "a missing install root must fail the warm-up"
 
 
 def test_warm_postgres_fails_when_nothing_was_downloaded(tmp_path: Path) -> None:
     """An empty cache after the downloader ran fails the recipe."""
-    host = _host(tmp_path, populates_cache=False)
+    host = _host(tmp_path, CacheLayout(populates_cache=False))
     result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
     assert result.returncode != 0, "an empty cache must fail the warm-up"
 
 
 def test_warm_postgres_requires_a_cache_directory(tmp_path: Path) -> None:
     """Without `PG_BINARY_CACHE_DIR` the recipe names the missing variable."""
-    host = _host(tmp_path, populates_cache=True)
+    host = _host(tmp_path)
     env = {"HOME": host.env["HOME"]}
     result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=env)
     assert result.returncode != 0, "a missing cache directory must fail"
