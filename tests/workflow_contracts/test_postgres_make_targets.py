@@ -139,18 +139,25 @@ def _host(
     populates_cache: bool,
     dangling_utc: bool = False,
     installs_runtime_root: bool = True,
+    symlinked_cache_root: bool = False,
 ) -> Host:
     """Build a host whose downloader fills the cache, or does not.
 
     `dangling_utc` leaves a broken `UTC` symlink behind in the cache, the shape
     a half-run warm-up creates. `installs_runtime_root` controls whether the
     downloader creates the install tree the recipe scans second; without it the
-    scan meets a path that does not exist.
+    scan meets a path that does not exist. `symlinked_cache_root` points
+    `PG_BINARY_CACHE_DIR` at a symbolic link to the cache, as a deployment that
+    keeps the cache on another volume would.
     """
     bin_dir = tmp_path / "home" / ".cargo" / "bin"
     bin_dir.mkdir(parents=True)
     cache = tmp_path / "cache"
     cache.mkdir()
+    scan_root = cache
+    if symlinked_cache_root:
+        scan_root = tmp_path / "cache-link"
+        scan_root.symlink_to(cache, target_is_directory=True)
     seen = tmp_path / "seen.txt"
     body = f'echo "$PG_RUNTIME_DIR $PG_DATA_DIR" > "{seen}"\n'
     if populates_cache:
@@ -166,7 +173,7 @@ def _host(
     fake = bin_dir / FAKE_NAME
     fake.write_text(f"#!/usr/bin/env sh\n{body}", encoding="utf-8")
     fake.chmod(0o755)
-    env = {"HOME": str(tmp_path / "home"), "PG_BINARY_CACHE_DIR": str(cache)}
+    env = {"HOME": str(tmp_path / "home"), "PG_BINARY_CACHE_DIR": str(scan_root)}
     return Host(env=env, cache=cache, seen=seen)
 
 
@@ -202,6 +209,21 @@ def test_warm_postgres_replaces_a_dangling_utc_alias(tmp_path: Path) -> None:
     cache_alias = host.cache / "18.6.1" / "share" / "timezone" / "UTC"
     assert cache_alias.is_symlink(), f"expected {cache_alias} to be a symlink"
     assert os.readlink(cache_alias) == "UCT", f"expected {cache_alias} to be repaired"
+
+
+def test_warm_postgres_follows_a_symlinked_cache_root(tmp_path: Path) -> None:
+    """A cache reached through a symbolic link is still scanned.
+
+    `find` does not descend into a symbolic link named on its command line
+    unless `-H` is given, so a cache kept behind a link would keep its missing
+    `UTC` alias while the recipe still reported the install tree's success.
+    """
+    host = _host(tmp_path, populates_cache=True, symlinked_cache_root=True)
+    result = _make("warm-postgres", f"PG_WARM_DIR={tmp_path}/warm", env=host.env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    cache_alias = host.cache / "18.6.1" / "share" / "timezone" / "UTC"
+    assert cache_alias.is_symlink(), f"expected {cache_alias} to be repaired"
+    assert os.readlink(cache_alias) == "UCT", f"expected {cache_alias} to point to UCT"
 
 
 def test_warm_postgres_fails_when_an_alias_root_is_missing(tmp_path: Path) -> None:

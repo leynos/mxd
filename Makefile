@@ -261,7 +261,7 @@ warm-postgres: ## Download the embedded PostgreSQL binaries into PG_BINARY_CACHE
 	test -n "$$(ls -A "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}")"
 	@status=0; \
 	for root in "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}" "$(PG_WARM_DIR)/install"; do \
-		find "$$root" -path '*/share/timezone/UCT' -exec sh -c \
+		find -H "$$root" -path '*/share/timezone/UCT' -exec sh -c \
 			'status=0; \
 			for uct do \
 				[ -e "$$uct" ] || [ -L "$$uct" ] || continue; \
