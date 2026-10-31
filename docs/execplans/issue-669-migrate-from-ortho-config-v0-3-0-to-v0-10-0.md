@@ -3,8 +3,42 @@
 This ExecPlan is a living document for issue
 [#669](https://github.com/leynos/mxd/issues/669).
 
-Status: ACTIVE — acceptance gaps closed and the candidate validated; awaiting
-review convergence and the authorized merge for PR #670.
+Status: ACCEPTED — the plan's implementation and validation obligations were
+accepted on 2026-10-31 (see the acceptance record below); PR #670 awaits review
+convergence and the authorized merge.
+
+## ExecPlan acceptance record
+
+Accepted: 2026-10-31. Accepted by the delivery owner of PR #670, which is the
+authority this plan appoints for its own acceptance; implementation completion
+alone was not treated as acceptance.
+
+Evidence on which the acceptance rests:
+
+- every obligation in "Validation and acceptance" below was executed and its
+  result recorded, including the full gate sequence, the feature lanes, the
+  build-time man-page contract, and the imported-document hash comparison;
+- an independent assessment of the implementation accepted the migration
+  obligations (Assessment-ID `EXECPLAN-669-8B681FE-001`) and left only the
+  delivery record and verification gaps open;
+- the two verification gaps it raised were closed: the scanner invariant now
+  carries property tests, and the hosted Whitaker lanes pass at the current
+  head;
+- every pre-merge check has a disposition, and the current CI run for the
+  candidate is green.
+
+Remaining after acceptance: only merge of PR #670 and post-merge verification,
+which do not change the plan's obligations.
+
+One follow-up is recorded but deliberately left out of this PR. Running
+`make spelling` on an up-to-date host rewrites `typos.toml`: the pinned
+`typos-config-builder` v0.1.3 now emits two `extend-ignore-re` patterns for
+`tokio` attribute arguments and drops the earlier broad pattern that ignored
+every `\bflavor` occurrence. `main` and this branch carry the same pre-change
+copy, so the drift predates this work and is unrelated to the migration.
+Committing it here would add unrelated generated content to a reviewed diff, so
+it will be regenerated and committed in a separate base pull request after #670
+lands.
 
 ## Purpose / big picture
 

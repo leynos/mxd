@@ -1324,10 +1324,13 @@ verified Clippy snapshot bundle instead, so the driver build no longer reads a
 mutable upstream branch.
 
 The pin is a commit, like every other `leynos/shared-actions` reference here,
-so a Dependabot bump is what advances it. A Whitaker failure that appears in
-all three lanes at once is an installer problem, not a defect in the diff:
-check the pinned revision and the workflow's install step before suspecting the
-new code.
+so a Dependabot bump is what advances it. The pin records one observed
+bootstrap incident, not a rule about every three-lane failure: a shared source
+defect can fail all three lanes just as a broken installer does. Inspect the
+failing step and its diagnostic before assigning a cause. A bootstrap error in
+the install step points at the pinned revision and the installer; a compile or
+lint diagnostic from the changed code points at the diff. Keep Whitaker enabled
+while investigating; do not skip the lanes to make the check green.
 
 ### Authenticated binstall
 
