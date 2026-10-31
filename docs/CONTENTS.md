@@ -11,6 +11,8 @@ Start here for newcomers to the project.
   usage.
 - [`users-guide.md`](users-guide.md) — Guide to running the server binaries
   and using administrative commands.
+- [`mxd-v0-2-0-change-guide.md`](mxd-v0-2-0-change-guide.md) — What changed in
+  the v0.2.0 development line, and how to check a deployment's configuration.
 - [`developers-guide.md`](developers-guide.md) — Developer workflow, quality
   gates, and local setup.
 

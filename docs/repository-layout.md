@@ -66,6 +66,8 @@ Documentation is organized by purpose and audience.
 - `execplans/3-1-1-file-node-schema-and-permission-model.md` — File metadata
   and permission-model execution plan.
 - `users-guide.md` — End-user guide for running the server.
+- `mxd-v0-2-0-change-guide.md` — Configuration and command-line changes in the
+  v0.2.0 development line.
 - `developers-guide.md` — Developer workflow and quality gates.
 
 ### Architecture and decisions
