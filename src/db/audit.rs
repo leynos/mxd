@@ -136,10 +136,13 @@ async fn fetch_recursive_cte_rows(conn: &mut DbConnection) -> Result<Vec<i32>, D
 
 /// Parse and range-check the version string reported by `sqlite_version()`.
 ///
-/// Accepts a leading `major.minor.patch` triple and ignores any trailing text,
-/// because `sqlite_version()` may append a build date. Returns the
-/// "unable to parse" error when no such prefix is present, so that an
-/// unrecognized library is never mistaken for a supported one.
+/// Accepts a leading `major.minor.patch` triple and ignores any trailing text.
+/// `sqlite_version()` returns the bare triple, so trailing text should not
+/// occur; the tolerance is defensive, so that a library whose version string
+/// carries an unexpected suffix is still recognized rather than rejected as
+/// unparsable. Returns the "unable to parse" error when no such prefix is
+/// present, so that an unrecognized library is never mistaken for a supported
+/// one.
 #[cfg(feature = "sqlite")]
 fn ensure_supported_sqlite_version(raw: &str) -> Result<(u32, u32, u32), DieselError> {
     let parsed = parse_version_triple(raw).ok_or_else(|| {
@@ -292,7 +295,9 @@ mod sqlite_tests {
     #[rstest]
     #[case("3.35.0")]
     #[case("3.45.1")]
-    // `sqlite_version()` may append a build date; parsing must ignore it.
+    // Deliberate parser-tolerance case: `sqlite_version()` returns a bare
+    // triple, and the build date belongs to `sqlite_source_id()`. Trailing
+    // text must still be ignored rather than treated as unparsable.
     #[case("3.46.1 2024-08-13 09:16:08")]
     fn version_accepts_supported(#[case] raw: &str) {
         let parsed = ensure_supported_sqlite_version(raw).expect("version must be accepted");
