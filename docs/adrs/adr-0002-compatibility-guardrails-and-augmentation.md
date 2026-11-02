@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (February 2026).
+Accepted (February 2026). Use `WireframeRouter` as the sole public routing
+entrypoint, with a `CompatibilityLayer` to orchestrate authentication and reply
+augmentation.
 
 ## Date
 

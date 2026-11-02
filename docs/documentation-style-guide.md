@@ -105,6 +105,8 @@ migration guide per release that changes observable behaviour.
 
 ### Contents file
 
+In mxd, the existing index is `docs/CONTENTS.md`.
+
 Use a dedicated contents file, typically `docs/contents.md`, as the index for
 the documentation set.
 
@@ -185,6 +187,11 @@ this means operators, end users, or integrators.
   that loader between integration tests and behaviour-driven scenarios, so a
   documented example becomes a contract the implementation must satisfy and
   cannot drift from the behaviour it claims.
+
+  In mxd, apply this rule to new project-authored user guides and to new or
+  substantively changed examples in existing guides. Existing examples and
+  library guides predate the shared loader and are not yet covered; migrate
+  them when their examples are changed.
 
 ### Migration guide
 
