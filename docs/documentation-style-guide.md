@@ -732,7 +732,8 @@ contents of the manual.
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```rust
+/// # use example::add;
 /// assert_eq!(add(2, 3), 5);
 /// ```
 #[inline]
