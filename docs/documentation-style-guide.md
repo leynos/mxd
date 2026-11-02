@@ -444,7 +444,7 @@ proposal:
 - Update links when RFC filenames change, especially cross-references from one
   RFC to another.
 
-#### RFC template
+### RFC template
 
 ```markdown
 # RFC 0001: <title>
