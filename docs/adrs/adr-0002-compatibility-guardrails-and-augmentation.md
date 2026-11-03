@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted (February 2026). Use `WireframeRouter` as the sole public routing
-entrypoint, with a `CompatibilityLayer` to orchestrate authentication and reply
+Accepted (February 2026). Adopt `WireframeRouter` as the sole public routing
+entrypoint, with `CompatibilityLayer` orchestrating authentication and reply
 augmentation.
+
+Amended by [ADR-0004](adr-0004-amend-adr-0002-status-summary.md) (2026-11-03).
 
 ## Date
 
@@ -135,3 +137,11 @@ preserving a clean separation between authentication strategies and reply
 augmentation. It reduces coupling by making the compatibility lifecycle a
 single, testable path and supports future HOPE extensions and SynHX hashed
 authentication without duplicating logic across routes.
+
+## Amendments
+
+### ADR-0004 (2026-11-03): Status summary
+
+The Status section now summarizes the accepted routing and compatibility
+decision as required by the documentation style guide. The Decision outcome
+section preserves the original decision; this summary does not change its scope.

@@ -915,7 +915,8 @@ field inclusion for Hotline 1.9, banner omission for SynHX, XOR login, and file
 list after login.
 
 See [ADR-0002](adrs/adr-0002-compatibility-guardrails-and-augmentation.md)
-(Option C, accepted) for the architectural rationale.
+(Option C, accepted) for the architectural rationale. Its status summary is
+recorded by [ADR-0004](adrs/adr-0004-amend-adr-0002-status-summary.md).
 
 ### CLI, Environment, and File Configuration (OrthoConfig)
 
