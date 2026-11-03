@@ -117,12 +117,15 @@ Documents for project planning and tracking progress.
 
 Architectural Decision Records (ADRs) capture significant design decisions.
 
-- [`adr-001-login-auth-reply-compatibility-layers.md`](adr-001-login-auth-reply-compatibility-layers.md)
-  — ADR 001: Separate login authentication and reply augmentation (superseded).
-- [`adr-002-compatibility-guardrails-and-augmentation.md`](adr-002-compatibility-guardrails-and-augmentation.md)
-  — ADR 002: Compatibility guardrails and augmentation (superseded).
-- [`adr-003-login-authentication-and-reply-augmentation.md`](adr-003-login-authentication-and-reply-augmentation.md)
-  — ADR 003: Split login authentication and reply augmentation (accepted).
+- [`adrs/adr-0001-separate-login-authentication-and-reply-augmentation.md`](adrs/adr-0001-separate-login-authentication-and-reply-augmentation.md)
+  — ADR 0001: Separate login authentication and reply augmentation (superseded).
+- [`adrs/adr-0002-compatibility-guardrails-and-augmentation.md`](adrs/adr-0002-compatibility-guardrails-and-augmentation.md)
+  — ADR 0002: Compatibility guardrails and augmentation (accepted; amended by
+  ADR-0004).
+- [`adrs/adr-0003-split-login-authentication-and-reply-augmentation.md`](adrs/adr-0003-split-login-authentication-and-reply-augmentation.md)
+  — ADR 0003: Split login authentication and reply augmentation (proposed).
+- [`adrs/adr-0004-amend-adr-0002-status-summary.md`](adrs/adr-0004-amend-adr-0002-status-summary.md)
+  — ADR 0004: Amendment to the ADR 0002 status summary (accepted).
 
 ## Reference
 

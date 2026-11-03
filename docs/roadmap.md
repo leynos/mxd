@@ -195,17 +195,17 @@ and explicit dependencies. Timeframes are intentionally omitted.
   Acceptance: A `WireframeRouter` provides the only public routing entrypoint, a
   `CompatibilityLayer` runs request and reply hooks, and a spy-based test
   asserts login hook ordering. See
-  [ADR-002](docs/adr-002-compatibility-guardrails-and-augmentation.md). Status:
-  Completed on 15 February 2026. `WireframeRouter` is the sole `pub` routing
-  entrypoint; `CompatibilityLayer` orchestrates `on_request` and `on_reply`
-  hooks; compatibility decisions derive from `TransactionType` semantics;
-  spy-based and BDD tests verify hook ordering and client-specific behaviour.
-  Dependencies: 1.5.2.
+  [ADR-0002](adrs/adr-0002-compatibility-guardrails-and-augmentation.md).
+  Status: Completed on 15 February 2026. `WireframeRouter` is the sole `pub`
+  routing entrypoint; `CompatibilityLayer` orchestrates `on_request` and
+  `on_reply` hooks; compatibility decisions derive from `TransactionType`
+  semantics; spy-based and BDD tests verify hook ordering and client-specific
+  behaviour. Dependencies: 1.5.2.
 - [x] 1.5.6. Split login authentication strategies from reply augmentation.
   Acceptance: `AuthStrategy` and `LoginReplyAugmenter` are wired into the
   guardrail routing entrypoint, and default behaviour for Hotline and SynHX
   remains unchanged. See
-  [ADR-003](docs/adr-003-login-authentication-and-reply-augmentation.md).
+  [ADR-0003](adrs/adr-0003-split-login-authentication-and-reply-augmentation.md).
   Status: Completed on 20 February 2026 by wiring `AuthStrategy` and
   `LoginReplyAugmenter` into `WireframeRouter`/`CompatibilityLayer` while
   preserving default Hotline and SynHX behaviour. Validation includes

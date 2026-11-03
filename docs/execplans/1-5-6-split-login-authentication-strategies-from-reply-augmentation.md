@@ -56,7 +56,7 @@ Success is observable when:
 - Interface: if public APIs outside wireframe compatibility/routing surfaces
   must change, stop and escalate.
 - Dependency: if a new crate or cargo feature is required, stop and escalate.
-- Ambiguity: if ADR-003 requirements can be interpreted in materially different
+- Ambiguity: if ADR-0003 requirements can be interpreted in materially different
   ways (especially where authentication executes), pause and get direction.
 - Rework loop: if required gates fail after two fix passes, stop and escalate
   with logs.
@@ -82,7 +82,7 @@ Implementation uses a coordinated agent team with explicit ownership:
 
 - Architecture agent:
   finalizes `AuthStrategy` and `LoginReplyAugmenter` contracts, selection
-  rules, and boundary-safe wiring points using ADR-002/ADR-003 constraints.
+  rules, and boundary-safe wiring points using ADR-0002/ADR-0003 constraints.
 - Implementation agent:
   applies code changes in wireframe routing/compatibility modules and any
   minimal command/login integration shim required to execute selected strategy.
@@ -117,8 +117,8 @@ Current relevant implementation state:
 Documentation and requirements anchors:
 
 - `docs/roadmap.md` item 1.5.6 acceptance and dependency on 1.5.5.
-- `docs/adr-003-login-authentication-and-reply-augmentation.md`.
-- `docs/adr-002-compatibility-guardrails-and-augmentation.md`.
+- `docs/adrs/adr-0003-split-login-authentication-and-reply-augmentation.md`.
+- `docs/adrs/adr-0002-compatibility-guardrails-and-augmentation.md`.
 - `docs/design.md` compatibility and guardrail sections.
 - `docs/protocol.md` login response expectations.
 - `docs/users-guide.md` operator-visible wireframe compatibility behaviour.
@@ -145,7 +145,7 @@ Documentation and requirements anchors:
 
 Exit criteria:
 
-- interface names and responsibilities match ADR-003;
+- interface names and responsibilities match ADR-0003;
 - no user-visible behaviour changes versus current baseline;
 - design decisions recorded.
 
@@ -271,7 +271,7 @@ before skipping.
 ## Progress
 
 - [x] (2026-02-20 13:20Z) Reviewed roadmap 1.5.6 acceptance criteria,
-  dependency on 1.5.5, ADR-002, and ADR-003.
+  dependency on 1.5.5, ADR-0002, and ADR-0003.
 - [x] (2026-02-20 13:20Z) Collected current routing and compatibility context
   from `src/wireframe/router.rs`, `src/wireframe/compat_layer.rs`,
   `src/wireframe/compat_policy.rs`, and existing behavioural suites.
@@ -322,13 +322,13 @@ before skipping.
 
 ## Decision Log
 
-- Decision: treat 1.5.6 as ADR-003 phase 1 and phase 2 delivery (introduce
+- Decision: treat 1.5.6 as ADR-0003 phase 1 and phase 2 delivery (introduce
   interfaces + wire through guardrail entrypoint) while preserving current
   client-visible behaviour. Rationale: aligns with roadmap acceptance and keeps
   scope bounded. Date/Author: 2026-02-20 / Codex.
 - Decision: keep compatibility-specific strategy/augmenter ownership in
   wireframe adapter modules and avoid domain-layer quirk leakage. Rationale:
-  aligns with hexagonal boundary constraints and ADR-002/ADR-003 intent.
+  aligns with hexagonal boundary constraints and ADR-0002/ADR-0003 intent.
   Date/Author: 2026-02-20 / Codex.
 - Decision: require both unit (`rstest`) and behavioural (`rstest-bdd`)
   coverage for happy, unhappy, and edge paths before closing roadmap 1.5.6.
