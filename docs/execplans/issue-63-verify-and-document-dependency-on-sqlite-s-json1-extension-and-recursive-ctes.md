@@ -59,9 +59,9 @@ escalation, not a workaround.
 - Documentation and comments use en-GB-oxendict spelling.
 - No single code file may exceed 400 lines (repository rule in `AGENTS.md`).
   Measured at the head this plan accompanies: `src/db/audit/mod.rs` is 331
-  lines, `src/db/audit/tests.rs` is 393, `src/db/audit/test_seam.rs` is 114,
-  and `src/db/audit/probes.rs` is 99. The split into a directory module, and
-  then into `probes.rs`, is what keeps each file under the limit; move further
+  lines, `src/db/audit/tests.rs` is 393, `src/db/audit/test_seam.rs` is 114, and
+  `src/db/audit/probes.rs` is 99. The split into a directory module, and then
+  into `probes.rs`, is what keeps each file under the limit; move further
   growth into a sibling file rather than breaching it.
 
 ## Tolerances (exception triggers)
