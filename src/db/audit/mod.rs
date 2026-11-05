@@ -12,6 +12,9 @@ use tracing::{debug, warn};
 #[cfg(feature = "sqlite")]
 use super::connection::DbConnection;
 
+#[cfg(feature = "sqlite")]
+mod probes;
+
 #[cfg(all(test, feature = "sqlite"))]
 pub(crate) mod test_seam;
 
@@ -22,32 +25,6 @@ pub(crate) mod test_seam;
 /// older libraries reject at run time.
 #[cfg(feature = "sqlite")]
 const MINIMUM_SQLITE_VERSION: (u32, u32, u32) = (3, 35, 0);
-
-/// Probe that exercises the JSON1 `json_each` table-valued function.
-///
-/// `json_each` is what the file-node path resolver uses to split a path into
-/// segments, so the audit must prove the function runs and returns usable
-/// rows, not merely that the JSON1 scalar functions exist.
-#[cfg(feature = "sqlite")]
-const JSON_EACH_PROBE_SQL: &str = concat!(
-    "SELECT key, CAST(value AS TEXT) AS value ",
-    "FROM json_each('[\"a\",\"b\",\"c\"]') ORDER BY key"
-);
-
-/// Probe that exercises recursive common table expression support.
-#[cfg(feature = "sqlite")]
-const RECURSIVE_CTE_PROBE_SQL: &str = concat!(
-    "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 ",
-    "FROM c WHERE x < 3) SELECT x FROM c ORDER BY x"
-);
-
-/// Rows the JSON1 probe must produce, in order.
-#[cfg(feature = "sqlite")]
-const EXPECTED_JSON_EACH_ROWS: [(i32, &str); 3] = [(0, "a"), (1, "b"), (2, "c")];
-
-/// Rows the recursive CTE probe must produce, in order.
-#[cfg(feature = "sqlite")]
-const EXPECTED_RECURSIVE_CTE_ROWS: [i32; 3] = [1, 2, 3];
 
 /// The fixed set of capabilities the audit probes.
 ///
@@ -161,12 +138,12 @@ async fn run_sqlite_probes(conn: &mut DbConnection) -> Result<(), (Capability, D
         .and_then(|version| ensure_supported_sqlite_version(&version))
         .map_err(|error| (Capability::Version, error))?;
 
-    fetch_json_each_rows(conn)
+    probes::fetch_json_each_rows(conn)
         .await
         .and_then(|rows| validate_json_each_rows(&rows))
         .map_err(|error| (Capability::Json1JsonEach, error))?;
 
-    fetch_recursive_cte_rows(conn)
+    probes::fetch_recursive_cte_rows(conn)
         .await
         .and_then(|rows| validate_recursive_cte_rows(&rows))
         .map_err(|error| (Capability::RecursiveCte, error))
@@ -197,47 +174,6 @@ async fn fetch_sqlite_version(conn: &mut DbConnection) -> Result<String, DieselE
         .await
         .map(|row| row.version)
         .map_err(|error| probe_failure(Capability::Version, &error.to_string()))
-}
-
-/// Read the rows produced by the JSON1 `json_each` probe.
-#[cfg(feature = "sqlite")]
-async fn fetch_json_each_rows(conn: &mut DbConnection) -> Result<Vec<(i32, String)>, DieselError> {
-    use diesel::{
-        sql_query,
-        sql_types::{Integer, Text},
-    };
-
-    #[derive(QueryableByName)]
-    struct JsonEachRow {
-        #[diesel(sql_type = Integer)]
-        key: i32,
-        #[diesel(sql_type = Text)]
-        value: String,
-    }
-
-    sql_query(JSON_EACH_PROBE_SQL)
-        .load::<JsonEachRow>(conn)
-        .await
-        .map(|rows| rows.into_iter().map(|row| (row.key, row.value)).collect())
-        .map_err(|error| probe_failure(Capability::Json1JsonEach, &error.to_string()))
-}
-
-/// Read the rows produced by the recursive CTE probe.
-#[cfg(feature = "sqlite")]
-async fn fetch_recursive_cte_rows(conn: &mut DbConnection) -> Result<Vec<i32>, DieselError> {
-    use diesel::{sql_query, sql_types::Integer};
-
-    #[derive(QueryableByName)]
-    struct RecursiveCteRow {
-        #[diesel(sql_type = Integer)]
-        x: i32,
-    }
-
-    sql_query(RECURSIVE_CTE_PROBE_SQL)
-        .load::<RecursiveCteRow>(conn)
-        .await
-        .map(|rows| rows.into_iter().map(|row| row.x).collect())
-        .map_err(|error| probe_failure(Capability::RecursiveCte, &error.to_string()))
 }
 
 /// Parse and range-check the version string reported by `sqlite_version()`.
@@ -282,8 +218,8 @@ fn parse_version_triple(raw: &str) -> Option<(u32, u32, u32)> {
 /// Whether the JSON1 probe rows match the expected constant exactly, in order.
 #[cfg(feature = "sqlite")]
 fn json_each_rows_match(rows: &[(i32, String)]) -> bool {
-    rows.len() == EXPECTED_JSON_EACH_ROWS.len()
-        && rows.iter().zip(EXPECTED_JSON_EACH_ROWS.iter()).all(
+    rows.len() == probes::EXPECTED_JSON_EACH_ROWS.len()
+        && rows.iter().zip(probes::EXPECTED_JSON_EACH_ROWS.iter()).all(
             |((key, value), (expected_key, expected_value))| {
                 key == expected_key && value == expected_value
             },
@@ -313,18 +249,18 @@ fn validate_json_each_rows(rows: &[(i32, String)]) -> Result<(), DieselError> {
         return Ok(());
     }
 
-    let detail = row_mismatch_detail(rows.len(), EXPECTED_JSON_EACH_ROWS.len());
+    let detail = row_mismatch_detail(rows.len(), probes::EXPECTED_JSON_EACH_ROWS.len());
     Err(probe_failure(Capability::Json1JsonEach, &detail))
 }
 
 /// Check that the recursive CTE probe returned exactly the expected rows.
 #[cfg(feature = "sqlite")]
 fn validate_recursive_cte_rows(rows: &[i32]) -> Result<(), DieselError> {
-    if rows == EXPECTED_RECURSIVE_CTE_ROWS {
+    if rows == probes::EXPECTED_RECURSIVE_CTE_ROWS {
         return Ok(());
     }
 
-    let detail = row_mismatch_detail(rows.len(), EXPECTED_RECURSIVE_CTE_ROWS.len());
+    let detail = row_mismatch_detail(rows.len(), probes::EXPECTED_RECURSIVE_CTE_ROWS.len());
     Err(probe_failure(Capability::RecursiveCte, &detail))
 }
 

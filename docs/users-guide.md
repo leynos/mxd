@@ -44,9 +44,19 @@ the library is fixed at build time and upgrading the host changes nothing.
 Rebuild against a newer `SQLite`, or set `SQLITE3_LIB_DIR` to a directory
 holding one, and rebuild.
 
-To confirm the fix, run the command that previously failed and check that it
-starts without printing a capability error. The audit prints only failures, so
-silence means every probe passed.
+To confirm the fix, rerun the command that previously failed and require it to
+reach the point where the audit has demonstrably finished. Do not read the
+absence of a capability error as success on its own: a command that exits early
+for an unrelated reason, or one whose output you did not capture, also prints
+no capability error.
+
+For a server, wait for its listening announcement — `mxd listening on …` on the
+legacy runtime, or `mxd-wireframe-server listening on …` on the Wireframe
+runtime. Both are printed only after the audit has passed, so seeing one is
+proof that every probe ran and passed.
+
+For `create-user`, require the command to exit successfully and print
+`User <name> created`.
 
 ## Launching the legacy server
 

@@ -58,9 +58,11 @@ escalation, not a workaround.
   dependencies, i.e. the system library is linked, not vendored.
 - Documentation and comments use en-GB-oxendict spelling.
 - No single code file may exceed 400 lines (repository rule in `AGENTS.md`).
-  `src/db/audit.rs` is currently about 90 lines, so the added test module must
-  stay within roughly 300 further lines. If it grows past that, move the test
-  module to a sibling file rather than breaching the limit.
+  Measured at the head this plan accompanies: `src/db/audit/mod.rs` is 331
+  lines, `src/db/audit/tests.rs` is 393, `src/db/audit/test_seam.rs` is 114,
+  and `src/db/audit/probes.rs` is 99. The split into a directory module, and
+  then into `probes.rs`, is what keeps each file under the limit; move further
+  growth into a sibling file rather than breaching it.
 
 ## Tolerances (exception triggers)
 
@@ -204,6 +206,25 @@ Thresholds that trigger escalation when breached.
 - [x] (2026-10-31) `make fmt`, `make check-fmt`, `make lint` (all three feature
   lanes), `make markdownlint`, `make spelling`, and `make nixie` pass on the
   candidate that adds these tests.
+- [x] (2026-11-05) Review 5723773001 found that the abort-only seam never
+  reaches a validator: it returns from `run_sqlite_probes` before the first
+  fetch, so a `run_sqlite_probes` that stopped validating would still pass
+  every test. Extended the seam with result injections at both fetch boundaries
+  and added `audit_rejects_an_incorrect_json_each_result` and
+  `audit_rejects_an_incorrect_recursive_cte_result` through
+  `audit_sqlite_features`.
+- [x] (2026-11-05) Added the occupied-address start-up tests
+  `run_audits_before_binding_the_listener` (Wireframe) and
+  `run_daemon_audits_before_binding_the_listener` (legacy). Binding a
+  `std::net::TcpListener` in the test and passing its address as the bind
+  address makes an audit-after-bind regression fail on the bind rather than
+  hang on a free port.
+- [x] (2026-11-05) Replaced the silence-based success criterion in the users'
+  guide with the listening announcement and the `User <name> created` line,
+  both of which are printed only after the audit passes.
+- [x] (2026-11-05) Moved the row-returning probes into
+  `src/db/audit/probes.rs`: the fetch helpers and their expected row constants
+  added enough lines to push `mod.rs` past 400 again.
 
 ## Surprises & discoveries
 
@@ -421,6 +442,32 @@ Thresholds that trigger escalation when breached.
   remediation deferred to a separate observability change covering both
   binaries and `create-user`. Date/Author: 2026-10-31, agent, in response to
   review 5722131376.
+
+- Decision: give the seam two kinds of injection — an abort and a probe
+  *result* — rather than one. Rationale: the abort returns from
+  `run_sqlite_probes` before the first fetch, which exercises the audit's
+  failure plumbing but never the validators behind it. Measured against the
+  alternative: with the abort alone, deleting either validator call leaves
+  every test passing, because the fetch helpers and validators are also tested
+  directly. A result injection is consumed at the top of the fetch helper,
+  before it awaits, so the validator downstream still runs. Single-use (`take`,
+  not copy) so a second audit run in the same test sees real data. Date/Author:
+  2026-11-05, agent, in response to review 5723773001.
+- Decision: hold an occupied loopback port in both start-up ordering tests.
+  Rationale: asserting only that the error names the audit cannot distinguish
+  audit-before-bind from bind-before-audit, because both return the audit
+  error. With the port occupied by the test, a bind-first regression fails with
+  `failed to bind wireframe server` / `Address already in use` instead. A free
+  port is actively worse: a run that dropped the audit would bind and serve
+  until the test timed out. Date/Author: 2026-11-05, agent, in response to
+  review 5723773001.
+- Decision: move the row-returning fetch helpers and their expected constants
+  to `src/db/audit/probes.rs`. Rationale: the result-injection lines pushed
+  `mod.rs` to 413, past the 400-line ceiling in `AGENTS.md`. The split is by
+  layer — `probes.rs` holds the query text, its expected rows, and the fetch
+  that produces them; `mod.rs` keeps the audit orchestration and the decision
+  logic. This follows the post-commit refactor rule rather than bundling a
+  refactor into the behavioural change. Date/Author: 2026-11-05, agent.
 
 ## Outcomes & retrospective
 
@@ -760,8 +807,8 @@ the typed raw-SQL pattern, the four documentation targets, and the build
 configuration. Probed the intended queries with the `sqlite3` CLI. No code
 changed.
 
-Stage B: red tests for EP-M1. Add a `#[cfg(test)]` module to `src/db/audit.rs`
-declaring the private validators this plan requires:
+Stage B: red tests for EP-M1. Add a `#[cfg(test)]` module, now
+`src/db/audit/tests.rs`, declaring the private validators this plan requires:
 
 ```rust
 #[cfg(feature = "sqlite")]
@@ -884,12 +931,12 @@ EP-M1 — a stronger SQLite audit with deterministic failure coverage.
 
 - Outcome: `audit_sqlite_features` checks the version floor, `json_each`, and
   recursive CTEs, each with a result check; its failure paths are covered by
-  parameterized tests that pass; `src/db/audit.rs` still compiles under both
+  parameterized tests that pass; `src/db/audit/mod.rs` still compiles under both
   `sqlite` and `postgres` feature sets.
 - Requirements and gaps: ISSUE-63-action-audit (audit half).
-- Acceptance evidence: the validator test names in the `#[cfg(test)]` module of
-  `src/db/audit.rs` pass under `make test-sqlite`, and the file remains under
-  400 lines.
+- Acceptance evidence: the validator test names in `src/db/audit/tests.rs` pass
+  under `make test-sqlite`, and every file in `src/db/audit/` remains under 400
+  lines.
 - Conformance check:
   - Requirements satisfied: the audit proves all three capabilities.
   - Design still followed: the PostgreSQL audit is untouched; the error style
@@ -1046,7 +1093,8 @@ $ sqlite3 :memory: "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL \
 Acceptance is expressed as behaviour.
 
 - Running `make test-sqlite` passes. The new validator cases in
-  `src/db/audit.rs` fail before the validators are implemented and pass after.
+  `src/db/audit/tests.rs` fail before the validators are implemented and pass
+  after.
 - Running `make test-wireframe-only` passes, proving the Wireframe path still
   compiles and behaves without the legacy networking feature.
 - Running `make test-postgres` passes, proving the PostgreSQL build is
@@ -1188,11 +1236,16 @@ No new crate is added. The work uses `diesel`, `diesel_async`, `rstest`, and
 The test surface added on top of the original plan, all under
 `#[cfg(feature = "sqlite")]` and none of it public:
 
-- `src/db/audit/test_seam.rs` — a thread-local `Cell<Option<Capability>>`
-  plus an `InjectionGuard` whose `Drop` clears the override.
-  `run_sqlite_probes` reads the seam before its first `await`, because
-  everything after that point may resume on a blocking-pool thread and a
-  thread-local read there would see a different thread's value.
+- `src/db/audit/probes.rs` — the two row-returning probes: the query text,
+  the expected row constants, and the fetch helpers that produce the rows.
+  Split out of `mod.rs` when the fetch helpers grew past the 400-line ceiling.
+- `src/db/audit/test_seam.rs` — thread-local overrides for both an *abort*
+  (a `Cell<Option<Capability>>` read at the top of `run_sqlite_probes`) and a
+  *result* (a `RefCell<Option<Vec<..>>>` per row-returning probe, taken at the
+  top of its fetch helper), plus an `InjectionGuard` whose `Drop` clears all
+  three. Every read happens before the corresponding `await`, because after
+  that point the work may resume on a different thread and a thread-local read
+  would see another thread's value.
 - `src/db/audit/tests.rs` module `version_contract` — the `proptest`
   property `acceptance_matches_the_floor` and the named case
   `the_floor_is_accepted`.

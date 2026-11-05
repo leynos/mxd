@@ -162,3 +162,62 @@ async fn setup_database_stops_before_migrating_when_the_audit_fails() {
         "no migration may run when the audit fails"
     );
 }
+
+/// A legacy start-up audit failure must beat the listener bind.
+///
+/// `run_daemon` seeds the pool, binds, announces `mxd listening on …`, and only
+/// then serves. The ordering under test is audit-then-bind: `setup_database`
+/// audits before it migrates, and `run_daemon` binds only after
+/// `setup_database` returns. Nothing else in the suite observes that: the test
+/// above stops inside `setup_database`, and every other legacy test uses the
+/// in-memory pool or never gets past argument parsing.
+///
+/// The address is bound by this test and held for the duration, so the two
+/// regressions fail promptly rather than hang. An audit before the bind
+/// returns the audit error; a bind before the audit returns a bind error
+/// instead, because the address is already taken. A free address would let a
+/// misordered run bind and accept connections until the test timed out.
+///
+/// The seam is thread-local, so the test pins the current-thread runtime
+/// flavour explicitly. The macro's default is current-thread today, but relying
+/// on that default would make a runtime-flavour change look like a product
+/// regression rather than a test-harness mistake.
+#[cfg(feature = "sqlite")]
+#[tokio::test(flavor = "current_thread")]
+async fn run_daemon_audits_before_binding_the_listener() {
+    let occupied = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .expect("occupying listener must bind");
+    let bind_addr = occupied
+        .local_addr()
+        .expect("occupied address must resolve");
+    let temp_dir = TempDir::new().expect("temporary directory must be created");
+    let cfg = crate::server::AppConfig {
+        bind: bind_addr.to_string(),
+        database: temp_dir
+            .path()
+            .join("audited.mxd.db")
+            .to_string_lossy()
+            .into_owned(),
+        argon2_m_cost: 1024,
+        argon2_t_cost: 1,
+        argon2_p_cost: 1,
+        ..crate::server::AppConfig::default()
+    };
+
+    let error = {
+        let _injection = crate::db::fail_next_audit();
+        super::run_daemon(cfg)
+            .await
+            .expect_err("an audit failure must abort start-up")
+    };
+
+    let chain = format!("{error:#}");
+    assert!(
+        chain.contains("SQLite capability audit failed"),
+        "the start-up error must carry the audit context: {chain}"
+    );
+    assert!(
+        !chain.contains("Address already in use"),
+        "the audit must run before the listener binds: {chain}"
+    );
+}
