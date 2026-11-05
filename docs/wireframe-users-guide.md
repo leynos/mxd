@@ -1361,7 +1361,8 @@ let (tx, rx) = body_channel(8);
 // rx: handler consumes via RequestBodyStream
 ```
 
-See [ADR 0002][adr-0002-ref] for the complete design rationale.
+See [Wireframe ADR 0002][wireframe-streaming-requests-adr] for the complete
+design rationale.
 
 ## Working with requests and middleware
 
@@ -2206,9 +2207,10 @@ the receiving half of a `tokio::sync::mpsc` channel to the connection actor,
 retain the sender, and push frames whenever back-pressure allows. The
 `Response::with_channel` helper constructs the pair and returns the sender
 alongside a `Response::MultiPacket`, making the ergonomic tuple pattern
-documented in ADR 0001 trivial to adopt. The library awaits channel capacity
-before accepting each frame, so producers can rely on the `send().await` future
-to coordinate flow control with the peer.
+documented in [Wireframe ADR 0001][wireframe-streaming-responses-adr] trivial
+to adopt. The library awaits channel capacity before accepting each frame, so
+producers can rely on the `send().await` future to coordinate flow control with
+the peer.
 
 ```rust
 use tokio::spawn;
@@ -2656,8 +2658,8 @@ call these helpers to maintain consistent telemetry.[^6][^7][^31][^20]
 [^44]: Implemented in `src/client/runtime.rs`, `src/client/builder.rs`,
     `src/client/config.rs`, and `src/client/error.rs`.
 [^45]: Implemented in `src/request.rs`.
-[^46]: See ADR 0002 for design rationale:
-    `docs/adr/0002-streaming-requests-and-shared-message-assembly.md`.
+[^46]: See [Wireframe ADR 0002][wireframe-streaming-requests-adr] for design
+    rationale.
 [^47]: Client preamble support implemented in `src/client/builder.rs`
     (lines 288-566) and `src/client/mod.rs` (callback types).
 [^48]: Client lifecycle hooks implemented in `src/client/hooks.rs`,
@@ -2669,8 +2671,8 @@ call these helpers to maintain consistent telemetry.[^6][^7][^31][^20]
     and `src/client/response_stream.rs` (terminator detection in
     `ResponseStream::poll_next`).
 [^50]: See Section 3.1 of the
-    [streaming design](multi-packet-and-streaming-responses-design.md) for
-    back-pressure architecture.
+    [Wireframe streaming design][wireframe-streaming-design] for back-pressure
+    architecture.
 [^51]: Implemented in `src/client/response_stream.rs` (correlation
     validation) and `src/client/error.rs`
     (`ClientError::StreamCorrelationMismatch`). Once terminated, the stream
@@ -2683,7 +2685,9 @@ call these helpers to maintain consistent telemetry.[^6][^7][^31][^20]
     `tests/features/client_request_hooks.feature`.
 
 [^53]: Implemented in `src/client/send_streaming.rs`. See
-    [ADR 0002][adr-0002-ref],
-    Section 4, for design rationale.
+    [Wireframe ADR 0002][wireframe-streaming-requests-adr], Section 4, for
+    design rationale.
 
-[adr-0002-ref]: docs/adr/0002-streaming-requests-and-shared-message-assembly.md
+[wireframe-streaming-requests-adr]: https://github.com/leynos/wireframe/blob/7049183ff8b29284ad542e16ec42ab448621aa89/docs/adr-002-streaming-requests-and-shared-message-assembly.md
+[wireframe-streaming-responses-adr]: https://github.com/leynos/wireframe/blob/7049183ff8b29284ad542e16ec42ab448621aa89/docs/adr-001-multi-packet-streaming-response-api.md
+[wireframe-streaming-design]: https://github.com/leynos/wireframe/blob/7049183ff8b29284ad542e16ec42ab448621aa89/docs/multi-packet-and-streaming-responses-design.md

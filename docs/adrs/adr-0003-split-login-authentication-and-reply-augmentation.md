@@ -1,4 +1,4 @@
-# Architectural decision record (ADR) 003: Split login authentication and reply augmentation
+# Architectural decision record (ADR) 0003: Split login authentication and reply augmentation
 
 ## Status
 
@@ -16,7 +16,7 @@ future HOPE extensions will add more reply elements. The current implementation
 keeps compatibility logic in the wireframe adapter, but the login handler still
 combines authentication and reply concerns. A structure is required that
 separates request validation from reply decoration, and that can be wired into
-the compatibility guardrails described in ADR-002.
+the compatibility guardrails described in ADR-0002.
 
 ## Decision drivers
 
@@ -40,7 +40,7 @@ the compatibility guardrails described in ADR-002.
 ### Technical requirements
 
 - Remain within wireframe modules and avoid domain-layer coupling.
-- Integrate with the guardrail routing entrypoint described in ADR-002.
+- Integrate with the guardrail routing entrypoint described in ADR-0002.
 - Keep the login reply augmentation ordering deterministic and testable.
 
 ## Options considered
@@ -62,7 +62,7 @@ creates duplication and ordering risks.
 Create an `AuthStrategy` interface for authentication workflows and a
 `LoginReplyAugmenter` for reply decoration. Select implementations based on
 compatibility metadata, and wire them into the routing entrypoint described in
-ADR-002.
+ADR-0002.
 
 | Topic                       | Option A      | Option B                    | Option C                |
 | --------------------------- | ------------- | --------------------------- | ----------------------- |
@@ -80,7 +80,7 @@ _Table 1: Trade-offs between login handling options._
 Adopt Option C. Implement an `AuthStrategy` interface that encapsulates login
 request validation and credential checking, and a `LoginReplyAugmenter` that
 handles reply decoration. Both are orchestrated by the compatibility guardrails
-in ADR-002, which ensures the hooks run in the correct order. This preserves
+in ADR-0002, which ensures the hooks run in the correct order. This preserves
 existing behaviour while making SynHX hashed authentication and HOPE reply
 fields explicit and testable.
 
@@ -103,7 +103,7 @@ Non-goals:
 1. Phase 1: Implement `AuthStrategy` and `LoginReplyAugmenter` traits with a
    default strategy that preserves current login behaviour.
 2. Phase 2: Wire the strategy and augmenter into the guardrail routing
-   entrypoint from ADR-002, keeping current tests passing.
+   entrypoint from ADR-0002, keeping current tests passing.
 3. Phase 3: Add a SynHX hashed authentication strategy and a HOPE-aware reply
    augmenter, alongside new behavioural tests.
 
@@ -124,5 +124,5 @@ Non-goals:
 
 Splitting authentication strategies from reply augmentation keeps the login
 path easy to extend while preserving a clear wireframe boundary for client
-quirks. Coupled with the guardrail entrypoint in ADR-002, it reduces the risk
+quirks. Coupled with the guardrail entrypoint in ADR-0002, it reduces the risk
 of accidental bypasses and keeps protocol evolution localized and testable.

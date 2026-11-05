@@ -12,6 +12,9 @@ members = [
 default-members = ["."]
 resolver = "2"
 
+[workspace.package]
+rust-version = "1.94.0"
+
 [workspace.dependencies]
 # Pinned to a git revision because the published 0.2.0 release requires
 # diesel-async ^0.7; the upstream default branch has migrated to
@@ -29,6 +32,7 @@ rstest-bdd-harness-tokio = "0.6.0"
 name = "mxd"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 
 [[bin]]
 name = "mxd"
@@ -71,6 +75,11 @@ name = "wireframe_xor_compat"
 path = "tests/wireframe_xor_compat.rs"
 required-features = ["test-support"]
 
+[[test]]
+name = "cli_contracts"
+path = "tests/cli_contracts.rs"
+required-features = ["legacy-networking"]
+
 [dependencies]
 mxd-concurrency = { path = "crates/mxd-concurrency" }
 bitflags = "2.10.0"
@@ -85,7 +94,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }
 cfg-if = "1"
-ortho_config = { git = "https://github.com/leynos/ortho-config", tag = "v0.3.0" }
+ortho_config = "0.10.0"
 argon2 = { version = "0.5", features = ["std"] }
 rand = "0.10.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
@@ -93,9 +102,6 @@ diesel-cte-ext = { workspace = true }
 futures-util = "0.3"
 tracing = "0.1"
 wireframe = "0.3.0"
-figment = { version = "0.10", features = ["env", "test"] }
-uncased = "0.9"
-xdg = "3"
 cli-defs = { path = "cli-defs" }
 anyhow = "1"
 async-trait = "0.1"
@@ -103,9 +109,6 @@ bincode = "2.0.1"
 bytes = "1"
 tokio-util = { version = "0.7", features = ["codec"] }
 url = { version = "2", optional = true }
-figment-json5 = { version = "0.1", optional = true }
-serde_yaml = { version = "0.9", optional = true }
-toml = { version = "0.9", optional = true }
 
 [features]
 default = ["legacy-networking", "sqlite", "toml"]
@@ -130,9 +133,9 @@ sqlite = [
     "test-util/sqlite",
 ]
 returning_clauses_for_sqlite_3_35 = ["diesel/returning_clauses_for_sqlite_3_35"]
-json5 = ["figment-json5"]
-yaml = ["figment/yaml", "serde_yaml"]
-toml = ["figment/toml", "dep:toml"]
+json5 = ["ortho_config/json5", "cli-defs/json5"]
+yaml = ["ortho_config/yaml", "cli-defs/yaml"]
+toml = ["ortho_config/toml", "cli-defs/toml"]
 lint = []
 test-support = []
 

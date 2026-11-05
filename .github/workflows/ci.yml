@@ -38,11 +38,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
       - name: Set up uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - name: Set up Rust for Merman
         run: rustup toolchain install 1.95.0
       - name: Cache Merman CLI
@@ -65,7 +65,7 @@ jobs:
       - name: Prove the spelling gate refuses a prohibited phrase
         run: make test-spelling-gate
       - name: Lint Markdown
-        uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff
+        uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34
         with:
           globs: '**/*.md'
       - name: Assert CodeScene coverage stays owned by main
@@ -139,12 +139,16 @@ jobs:
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
       - name: Cache Cargo directories
         id: rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # Before anything long runs: a lockfile the manifest does not admit is a
       # tree nothing here builds from, and every later step would silently
       # re-resolve it instead of failing.
       - name: Check the lockfile matches the manifest
         run: make check-locked
+      - name: Check Rust 1.94 compatibility
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal
+          cargo +1.94.0 check --locked --all-targets ${{ matrix.cargo_flags }}
       - name: Install cargo-nextest
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -179,6 +183,10 @@ jobs:
         run: make check-fmt
       - name: Lint with Clippy
         run: RUSTFLAGS="-D warnings" cargo clippy ${{ matrix.cargo_flags }} --workspace --all-targets -- -D warnings
+      # Pin the installer that provisions a verified Clippy snapshot. Earlier
+      # installers build the Dylint driver against a fresh clone of rust-clippy
+      # and check out its `master` branch, which upstream renamed to `main`, so
+      # that bootstrap no longer resolves.
       - name: Install Whitaker
         uses: leynos/shared-actions/.github/actions/install-whitaker@5a99aed78ce68dcebd3052b75c31e6f173162b1e
       - name: Lint with Whitaker
@@ -266,7 +274,7 @@ jobs:
           install-sqlite-deps: true
       - name: Cache Cargo directories
         id: rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Add validator bin directory to PATH
         run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
       - name: Install SynHX
@@ -355,7 +363,7 @@ jobs:
           install-postgres-deps: true
       - name: Cache Cargo directories
         id: rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Add validator bin directory to PATH
         run: echo "${HX_BIN_DIR}" >> "${GITHUB_PATH}"
       - name: Install SynHX
@@ -370,7 +378,7 @@ jobs:
           fi
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@v2.87.27
+      - uses: taiki-e/install-action@v2.87.31
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2
