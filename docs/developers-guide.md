@@ -879,13 +879,18 @@ and `fuzz.yml` install it for `make test-concurrency` and
 
 ### Cranelift backend support
 
-Cranelift is not the development backend here. The repository's test suite has
-not been measured under it, so the profile selects no `codegen-backend` and the
-configuration carries no `[unstable] codegen-backend` key. No measurement has
-been taken, and the decision is deferred to 1 April 2027. To adopt it, run the
-whole suite under it, record any failing tests here as an exception, and add
-the key and the profile selection together: the profile key needs the unstable
-gate, and Coverage selects LLVM explicitly because instrumentation needs it.
+Cranelift is the development-profile codegen backend. The full suite
+(`make test`) passes under it on 6 November 2026: the sqlite, postgres,
+wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency and
+doctest suites. `.cargo/config.toml` sets `[profile.dev] codegen-backend` and
+the `[unstable] codegen-backend` gate it needs; remove them together, because
+the profile key without the gate is refused. `rust-toolchain.toml` lists the
+`rustc-codegen-cranelift-preview` component. Coverage runs and the Whitaker
+recipes select LLVM explicitly with `CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm`,
+because instrumentation and Whitaker's driver need it. Release builds use the
+release profile, which Cranelift does not touch. Re-measure the suite on the
+next toolchain bump; if it fails, record the failing tests here as an exception
+and remove the keys.
 
 ## Runner placement
 
