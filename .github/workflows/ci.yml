@@ -137,6 +137,11 @@ jobs:
         with:
           install-postgres-deps: ${{ matrix.install_postgres_deps }}
           install-sqlite-deps: ${{ matrix.install_sqlite_deps }}
+          # The build standard: the action exports this as RUSTFLAGS, which
+          # replaces every rustflags source in .cargo/config.toml, so it
+          # restates the parallel frontend and the Linux linker.
+          install-mold: true
+          rustflags: -D warnings -Zthreads=8 -Clink-arg=-fuse-ld=mold
       - name: Cache Cargo directories
         id: rust-cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -148,7 +153,9 @@ jobs:
       - name: Check Rust 1.94 compatibility
         run: |
           rustup toolchain install 1.94.0 --profile minimal
-          cargo +1.94.0 check --locked --all-targets ${{ matrix.cargo_flags }}
+          # A stable toolchain rejects the nightly-only `-Z` flag the build
+          # standard exports, so this check clears RUSTFLAGS.
+          RUSTFLAGS= cargo +1.94.0 check --locked --all-targets ${{ matrix.cargo_flags }}
       - name: Install cargo-nextest
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -182,7 +189,7 @@ jobs:
       - name: Format
         run: make check-fmt
       - name: Lint with Clippy
-        run: RUSTFLAGS="-D warnings" cargo clippy ${{ matrix.cargo_flags }} --workspace --all-targets -- -D warnings
+        run: cargo clippy ${{ matrix.cargo_flags }} --workspace --all-targets -- -D warnings
       # Pin the installer that provisions a verified Clippy snapshot. Earlier
       # installers build the Dylint driver against a fresh clone of rust-clippy
       # and check out its `master` branch, which upstream renamed to `main`, so
@@ -200,7 +207,7 @@ jobs:
       - name: Test
         if: matrix.name == 'wireframe-only'
         run: |
-          RSTEST_TIMEOUT=20 RUSTFLAGS="-D warnings" cargo nextest run ${{ matrix.cargo_flags }} \
+          RSTEST_TIMEOUT=20 cargo nextest run ${{ matrix.cargo_flags }} \
             --filter-expr 'not package(=validator)'
       - name: Test rstest-bdd UI contracts
         if: matrix.name == 'wireframe-only'
@@ -350,6 +357,9 @@ jobs:
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
+          # trybuild's nested Cargo reads the linker flag from
+          # .cargo/config.toml, so the linker has to be present here too.
+          install-mold: true
       - name: Cache Cargo directories
         id: rust-cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3

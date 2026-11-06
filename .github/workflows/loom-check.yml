@@ -38,6 +38,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
+        with:
+          # `make test-concurrency` restates the build standard's linker flag.
+          install-mold: true
       - name: Set up uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - name: Cache Cargo directories

@@ -67,23 +67,26 @@ TOOL_PATH_PREFIX := $(shell printf '%s\n' \
   | awk 'NF { printf "%s%s", sep, $$0; sep=":" }')
 ```
 
-The lint targets prepend this prefix only for Whitaker invocations:
+The Makefile exports the prefix once, ahead of the caller's `PATH`, for every
+recipe, so the lint targets run the selected Whitaker (`$(WHITAKER)`, which a
+caller can override) behind a plain `RUSTFLAGS` assignment, with
+`CARGO_ENCODED_RUSTFLAGS` removed because Cargo gives it precedence:
 
 ```sh
-PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" \
-  RUSTFLAGS="-D warnings" \
+env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" \
   whitaker --all -- --no-default-features \
     --features "postgres test-support legacy-networking" --all-targets
 ```
 
-This keeps the same Cargo executable family, the resolved Whitaker binary, and
+The build-standard rule reads that shape as an isolated Whitaker route; a
+`PATH=` prefix written out in the recipe with Make functions in it is not read,
+and the route then counts as a gate build that lost the fast flags. The export
+keeps the same Cargo executable family, the resolved Whitaker binary, and
 user-local tools ahead of the ambient shell `PATH` while avoiding an empty
-current-directory entry. The Clippy lines still use `$(CARGO)` directly; the
-PATH override is specifically for Whitaker and tools it invokes as subprocesses
-during lint runs. Whitaker receives `--all-targets` so test-only modules
-compiled behind `#[cfg(test)]` are linted by the same structural rules as
-library and binary targets. Test targets use the resolved `$(CARGO)` path
-directly rather than rewriting `PATH`.
+current-directory entry. The Clippy lines still use `$(CARGO)` directly.
+Whitaker receives `--all-targets` so test-only modules compiled behind
+`#[cfg(test)]` are linted by the same structural rules as library and binary
+targets.
 
 To inspect the effective prefix for a local shell, ask `make` to print it:
 
@@ -846,6 +849,43 @@ version locally with `cargo binstall mdtablefix@0.6.1`.
 list, so indent the content of every list item under its marker (three columns
 for `1.` to `9.`, four for `10.` to `99.`) to keep a numbered procedure in one
 list.
+
+## The Rust build standard
+
+Development builds use the parallel `rustc` frontend (`-Zthreads=8`) and, on
+Linux, the `mold` linker (`-Clink-arg=-fuse-ld=mold`). `.cargo/config.toml`
+holds both: `[build] rustflags` carries the frontend flag, and a Linux-only
+target table repeats it beside the linker flag, because Cargo selects one
+`rustflags` source rather than merging them. An assigned `RUSTFLAGS` replaces
+every source, so each place that assigns it restates both flags:
+
+- the Makefile's gate recipes use `GATE_RUSTFLAGS`, which keeps any inherited
+  `RUSTFLAGS`, adds `-D warnings` and the standard flags, and refuses a
+  `CARGO_BUILD_TARGET` because the linker flag is chosen from the host;
+- the `build-test` job's `setup-rust` step installs `mold` and exports the same
+  flags through its `rustflags` input;
+- the Rust 1.94 compatibility step clears `RUSTFLAGS`, because a stable
+  toolchain rejects `-Z` flags;
+- the Whitaker recipes and steps keep a bare `-D warnings`, because Whitaker
+  builds its lint driver on another toolchain, which must not inherit
+  development flags.
+
+Coverage runs and release builds assign `RUSTFLAGS` without them on purpose.
+The Concordat `rust-build-defaults` rule is the check; the repository keeps no
+contract test of its own for it. Any job that runs a gate recipe on Linux needs
+`mold` installed, because `GATE_RUSTFLAGS` names the linker: `loom-check.yml`
+and `fuzz.yml` install it for `make test-concurrency` and
+`make test-fuzz-harness`.
+
+### Cranelift backend support
+
+Cranelift is not the development backend here. The repository's test suite has
+not been measured under it, so the profile selects no `codegen-backend` and the
+configuration carries no `[unstable] codegen-backend` key. No measurement has
+been taken, and the decision is deferred to 1 April 2027. To adopt it, run the
+whole suite under it, record any failing tests here as an exception, and add
+the key and the profile selection together: the profile key needs the unstable
+gate, and Coverage selects LLVM explicitly because instrumentation needs it.
 
 ## Runner placement
 

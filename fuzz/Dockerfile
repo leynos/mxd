@@ -4,9 +4,10 @@
 FROM aflplusplus/aflplusplus@sha256:07ae19760b62d785e71d42a56a267b6e1c7ca1effea6ed3694d0a469bebe5c3c AS builder
 
 # The corpus generator links the sqlite backend, whose `-lsqlite3` the AFL++
-# image does not provide.
+# image does not provide. The repository's Cargo configuration names the `mold`
+# linker for Linux builds, and `COPY . .` below brings that configuration in.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libsqlite3-dev \
+    && apt-get install -y --no-install-recommends libsqlite3-dev mold \
     && rm -rf /var/lib/apt/lists/*
 
 # The image ships cargo but not the `cargo afl` subcommand.
