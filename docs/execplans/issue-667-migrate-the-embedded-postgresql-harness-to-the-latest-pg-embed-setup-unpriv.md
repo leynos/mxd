@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Constraints`, `Tolerances`,
 `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`, and
 `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 No `PLANS.md` was found in the repository root.
 
@@ -279,13 +279,55 @@ Success is observable when:
   cleanup tests passed. CodeScene succeeded. The PostgreSQL build leg skips its
   test step, so coverage is the PostgreSQL execution evidence. Local gates were
   not rerun for this head.
-- [ ] Clear review, merge PR #668, and verify its post-merge
-  `coverage-main.yml` run before marking this plan complete. This acceptance
-  criterion remains pending while the PR is open.
+- [x] (2026-10-30) Cleared review and merged PR #668
+  ([leynos/mxd#668](https://github.com/leynos/mxd/pull/668)). CodeRabbit
+  approved the head `1322df390d284ac6967689fe46e726e40f433fd1` on base
+  `da9c7da3da9b4f69a90fb7d38d405085f5a891a8`, with no unresolved threads and
+  every required check green. The stack-aware merge landed squash commit
+  `0c0b853d365b4cf0c9389de56375097b55557cb3` on `main` and retargeted the
+  dependent PR #673 onto `main`.
+- [x] (2026-10-30) Post-merge `coverage-main.yml` run
+  [41101023280](https://github.com/leynos/mxd/actions/runs/41101023280) passed
+  at `0c0b853d365b4cf0c9389de56375097b55557cb3`: PostgreSQL coverage passed 641
+  tests with one skipped in 53.831 s, SQLite coverage passed 633 with one
+  skipped in 213.264 s, and CodeScene accepted the upload. The job waited about
+  65 minutes for an Ubicloud runner during the GitHub Actions degradation of
+  17:50-18:32 UTC, so its 33-minute wall time is not comparable with the
+  quiet-host figures above.
 
 ## Outcomes & Retrospective
 
-Not yet complete.
+Delivered: `pg-embed-setup-unpriv` 0.6.3 is the only locked version, the
+PostgreSQL leg runs at default nextest parallelism with the `pg-embed` test
+group and its `all()` override gone, and the post-merge coverage run on `main`
+is green. The parallel leg runs 499 tests in about 35 s of test time against
+288.3 s serial at 0.5.2, an 8.3x reduction, with zero timeouts.
+
+What the migration turned out to need:
+
+- The version bump itself needed no harness source changes. The blocking defect
+  was the upstream time-zone bug, and the exact `PG_VERSION_REQ=18.6.0` pin is
+  what clears it; 18.6.1 still fails every connection.
+- `0.6.3` sweeps dead cluster slots before taking the guard that orders slot
+  claims, and it creates a slot lock file before locking it. Concurrent
+  bootstraps can therefore have a just-created lock removed as stale, and the
+  loser sees `slot lock ... is already held`. The retry and shared-cluster
+  fallback in `test-util/src/postgres/` exist for that race; the diagnostics
+  render the whole cause chain so a `pg_ctl` failure is not hidden behind an
+  outer message.
+- Only the first cold cluster start in a run is slow (about 7 s); warm starts
+  take about 2 s.
+
+Lessons worth carrying forward:
+
+- A test that compiles fixture crates inside itself needs a timeout budget sized
+  against a loaded host, not a quiet one. The `rstest-bdd-ui-tests` trybuild
+  case hit its 300 s ceiling once under full compile-admission contention and
+  passed in 153.9 s on the warm rerun.
+- A stacked merge is not a plain merge: `gh pr merge` is refused, and the
+  stack-aware operation retargets the dependent PR onto the base branch. Check
+  the successor's base and CI immediately afterwards instead of assuming it
+  still points at the branch that just landed.
 
 ## Context and orientation
 
