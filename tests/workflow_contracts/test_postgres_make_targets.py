@@ -3,7 +3,7 @@
 `make test-postgres` and `make warm-postgres` are the local twins of the CI
 steps that `test_embedded_postgres.py` holds, so a local run must not differ
 from CI on the points that made CI fail: the PostgreSQL nextest profile, the
-pinned superuser password, the exact PostgreSQL bundle,
+pinned superuser password, no PostgreSQL bundle pin (the harness chooses),
 throwaway directories for the warm-up, and a warm-up that fails when it
 downloads nothing. The profile runs at default parallelism; the former
 single-slot group is removed. The test recipe is read from `make --dry-run`;

@@ -12,8 +12,8 @@ unless `PG_PASSWORD` fixes one, and a cluster directory left by one process
 then refuses the next, so each such job pins it. A cluster bootstrap failure
 is cached for the rest of a test process, so the binaries are downloaded by
 `make warm-postgres` before the tests start rather than by the first test.
-Each job also pins the PostgreSQL bundle, because the harness version alone
-does not choose a working one; see the bundle-pin contract for why.
+No job pins the PostgreSQL bundle: pg-embed-setup-unpriv 0.7.0 extracts hard
+links, so the newest bundle works; see the no-pin contract for why.
 
 The tests themselves run in parallel. pg-embed-setup-unpriv 0.6 gives every
 cluster its own data directory, so the single-slot test group that serialized
