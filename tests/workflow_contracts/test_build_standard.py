@@ -21,7 +21,7 @@ if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
 THREADS: typ.Final = "-Zthreads=8"
-MOLD: typ.Final = "-Clink-arg=-fuse-ld=mold"
+LINKER: typ.Final = "-Clink-arg=-fuse-ld=mold"
 
 
 @pytest.fixture(scope="module")
@@ -42,7 +42,7 @@ def test_the_build_table_carries_the_parallel_frontend(
 ) -> None:
     """`[build] rustflags` is the source non-Linux hosts fall through to."""
     assert THREADS in config["build"]["rustflags"]
-    assert MOLD not in config["build"]["rustflags"]
+    assert LINKER not in config["build"]["rustflags"]
 
 
 def test_a_linux_table_repeats_the_frontend_beside_the_linker(
@@ -57,7 +57,7 @@ def test_a_linux_table_repeats_the_frontend_beside_the_linker(
     assert linux, "no target table applies on Linux"
     for flags in linux:
         assert THREADS in flags
-        assert MOLD in flags
+        assert LINKER in flags
 
 
 def test_no_other_target_table_names_the_linker(
@@ -67,7 +67,7 @@ def test_no_other_target_table_names_the_linker(
     others = [
         key
         for key, table in _target_tables(config).items()
-        if "linux" not in key and MOLD in table["rustflags"]
+        if "linux" not in key and LINKER in table["rustflags"]
     ]
     assert not others, f"these target tables name the linker: {others}"
 
@@ -80,7 +80,7 @@ def test_cranelift_is_not_selected(config: cabc.Mapping[str, typ.Any]) -> None:
 
 
 def test_the_build_test_job_exports_the_standard_flags() -> None:
-    """The action's `rustflags` input restates the flags, and mold is installed."""
+    """The action's `rustflags` input restates the flags, and the linker is installed."""
     job = repository_documents()["ci.yml"]["jobs"]["build-test"]
     setup = next(
         step
@@ -91,5 +91,5 @@ def test_the_build_test_job_exports_the_standard_flags() -> None:
     )
     inputs = setup["with"]
     assert THREADS in inputs["rustflags"]
-    assert MOLD in inputs["rustflags"]
+    assert LINKER in inputs["rustflags"]
     assert str(inputs["install-mold"]).lower() == "true"

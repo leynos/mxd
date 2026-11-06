@@ -17,6 +17,12 @@ ignore = [
   "data_flavor",
   "FILP",
   "TRAK",
+  # `mold` names the linker (https://github.com/rui314/mold), not the English
+  # word; match only the identifiers and code spans that carry it, so prose
+  # stays checked.
+  "-fuse-ld=mold",
+  "\\binstall-mold\\b",
+  "`mold`",
   # Cargo, GitHub Actions and Tokio machine interfaces.
   '(?m)^\s*CARGO_TERM_COLOR: always$',
   # FORCE_COLOR is an environment variable read by markdownlint-cli2.
