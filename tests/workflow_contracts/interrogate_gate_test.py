@@ -52,14 +52,16 @@ def _tracked(*patterns: str) -> list[str]:
     """Return the Git-tracked files matching *patterns*.
 
     Git is the authority on what the repository owns: a walk would also see
-    the virtual environments CI creates beside the sources.
+    the virtual environments CI creates beside the sources. Names are read from
+    NUL-separated output, so a path containing whitespace stays whole.
     """
-    return subprocess.run(  # noqa: S603 - fixed argv, no shell
-        ["git", "-C", str(ROOT), "ls-files", *patterns],  # noqa: S607 - git from PATH
+    output = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["git", "-C", str(ROOT), "ls-files", "-z", *patterns],  # noqa: S607 - git
         capture_output=True,
         text=True,
         check=True,
-    ).stdout.split()
+    ).stdout
+    return [name for name in output.split("\0") if name]
 
 
 def _python_directories() -> set[Path]:
