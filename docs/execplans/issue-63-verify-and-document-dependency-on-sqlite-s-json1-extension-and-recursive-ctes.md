@@ -29,12 +29,19 @@ operator can check from a shell.
 The observable demonstration is: run
 
 ```sh
-make sqlite && target/debug/mxd --database mxd.db --bind 127.0.0.1:5500
+cargo build --bin mxd --features sqlite &&
+  target/debug/mxd --database mxd.db --bind 127.0.0.1:5500
 ```
 
 against a compatible SQLite library and see the server bind normally; run the
 same command against a library lacking `json_each` and see a non-zero exit with
 a message containing `SQLite JSON1 json_each probe failed`.
+
+`make sqlite` is not usable for this demonstration: `sqlite` depends on
+`target/debug/mxd`, whose own rule has no prerequisites, so make treats an
+existing binary as up to date and leaves it unchanged. A stale binary would run
+the old audit and prove nothing, which is why the command above builds
+explicitly.
 
 ## Constraints
 
@@ -129,7 +136,8 @@ Thresholds that trigger escalation when breached.
 - [x] (2026-10-13) EP-M1 committed as `00d023a`.
 - [x] (2026-10-13) EP-M2: wired the audit into the Wireframe `run` and
   `create-user`'s `run_create_user`, and added the missing context to the
-  legacy call site. Obligation V6 discharged by inspection: audit at
+  legacy call site. Obligation V6 is discharged by its three ordering tests
+  (recorded in `Verification plan`) and by this inspection: the audit at
   `src/server/wireframe/mod.rs:145` precedes `.bind(bind_addr)` at line 166;
   the audit at `src/server/admin.rs:78` precedes `apply_migrations` at line 81
   and `create_user` at line 82; the legacy audit at
@@ -468,6 +476,21 @@ Thresholds that trigger escalation when breached.
   that produces them; `mod.rs` keeps the audit orchestration and the decision
   logic. This follows the post-commit refactor rule rather than bundling a
   refactor into the behavioural change. Date/Author: 2026-11-05, agent.
+- Decision: correct the record in four places rather than leave the earlier
+  entries as written, and keep every dated entry as a statement about the
+  revision it names. Rationale: three records had drifted from the code. V6
+  still described the ordering as discharged by inspection with no automated
+  check, but `run_audits_before_binding_the_listener`,
+  `run_daemon_audits_before_binding_the_listener`, and
+  `create_user_aborts_before_writing_when_the_audit_fails` had since landed and
+  now discharge it by test. The completion record presented the `775299f`
+  measurement as if it were the full diff, and the revision note's CI result
+  named no revision at all even though later commits added Rust tests. The
+  demonstration command used `make sqlite`, which cannot rebuild an existing
+  `target/debug/mxd`. Each correction names its revision and keeps the old
+  figure as history instead of overwriting it, so a reader can still tell what
+  was true when. Date/Author: 2026-11-06, agent, in response to the inline
+  findings on review of `207a1674e531fddd96b144bbba9faef0773a82ef`.
 
 ## Outcomes & retrospective
 
@@ -553,11 +576,21 @@ trybuild `.stderr` comparison stage, and `tests/rstest-bdd-ui/Cargo.toml` does
 not depend on `mxd`, so nothing in this diff could have influenced it either
 way.
 
-Continuous integration agrees on the pushed head: the `CI` and
-`Release Dry Run` workflows both completed successfully, and the three required
+Continuous integration agrees at two separate revisions, and the two are
+recorded apart. On the first green push (`b94f9f5`, 2026-10-13) the `CI` and
+`Release Dry Run` workflows both completed successfully, the three required
 branch checks — `coverage`, `validator-sqlite`, and `build-test-result` — all
-pass. CodeScene's pull-request check also passes, having failed on every commit
-from `5ec1709` until the duplication fix in `b94f9f5`.
+passed, and CodeScene's pull-request check passed, having failed on every
+commit from `5ec1709` until the duplication fix in `b94f9f5`. That is a
+historical result: later commits added the audit module's split and its Rust
+tests, so it does not describe the head this plan now delivers.
+
+At the final head, `207a1674e531fddd96b144bbba9faef0773a82ef` on base
+`ddedb7bb934776e6d47297c7c894efe396d2d32d`, the same workflows completed
+successfully and the same three required checks passed, together with the
+`docs-tooling`, CodeQL, CodeScene, and Gecko checks. This was read from the
+head's check runs after they finished; it is hosted evidence for that head, not
+a local rerun.
 
 ### Reconciliation with the conformance basis
 
@@ -567,9 +600,10 @@ from `5ec1709` until the duplication fix in `b94f9f5`.
   real-connection `probes_execute_against_the_linked_library` proves the typed
   rows deserialize from the linked library.
 - `ISSUE-63-action-audit` -> EP-M2 -> satisfied; all three entry points audit
-  before binding or writing (V6, by inspection at
-  `src/server/wireframe/mod.rs:144-145` before `:166`, `src/server/admin.rs:78`
-  before `:81` and `:82`, and `src/server/legacy/mod.rs:166-168` before `:173`).
+  before binding or writing (V6, by its three ordering tests, and by inspection
+  at `src/server/wireframe/mod.rs:144-145` before `:166`,
+  `src/server/admin.rs:78` before `:81` and `:82`, and
+  `src/server/legacy/mod.rs:166-168` before `:173`).
 - `ISSUE-63-doc-requirements` -> EP-M3 -> satisfied; the four target documents
   plus the corrected `docs/design.md` sentence.
 - `ISSUE-63-acceptance` -> EP-M4 -> satisfied; gate logs under `/tmp`, remote
@@ -582,15 +616,21 @@ in both the code and the documentation. One deviation is outstanding and is
 recorded in `Decision log`: the scope tolerance is exceeded, because the
 approved plan's own file set is nine product files against a ceiling of 8, and
 the full diff including this plan is 10 files at a net 1461 lines against a
-ceiling of 400. That entry states the measured counts, the reason the file set
-could not be smaller, and — explicitly — that no waiver was sought or granted
-for either limb. It is therefore recorded as *unaccepted* rather than closed:
-the tolerance's own terms require escalation and a decision, and the entry asks
-the task owner for that decision instead of presuming it. The nine files
-themselves sit inside the approved plan's enumerated scope; the unmet
-obligation is the tolerance, not the file set. This is the only outstanding
-deviation, and the plan's `COMPLETE` status reflects delivered and validated
-work, not a claim that the deviation has been accepted.
+ceiling of 400. Those figures are a historical measurement at `775299f` against
+`df48e51`; they are not the current scope. Measured at this head with
+`git diff --numstat ddedb7bb934776e6d47297c7c894efe396d2d32d 207a1674e531fddd96b144bbba9faef0773a82ef`,
+the diff is 18 paths, 2799 additions, and 121 deletions; excluding this plan
+it is 17 paths, 1446 additions, and 121 deletions. Both limbs are breached by a
+wider margin than the historical figures showed, so the conclusion does not
+depend on the measurement point. That entry states the measured counts, the
+reason the file set could not be smaller, and — explicitly — that no waiver was
+sought or granted for either limb. It is therefore recorded as *unaccepted*
+rather than closed: the tolerance's own terms require escalation and a
+decision, and the entry asks the task owner for that decision instead of
+presuming it. The nine files themselves sit inside the approved plan's
+enumerated scope; the unmet obligation is the tolerance, not the file set. This
+is the only outstanding deviation, and the plan's `COMPLETE` status reflects
+delivered and validated work, not a claim that the deviation has been accepted.
 
 ### What would be done differently
 
@@ -778,17 +818,33 @@ attributes were wrong, so it is a genuine control on the unit tests being
 self-consistent.
 
 Obligation V6 (ordering): *the audit runs before the socket binds and before
-any row is written.* Method: source inspection rather than a test. Rationale: a
-subprocess test would require a broken SQLite library, which no CI runner has;
-the property is structural. Noted as a residual gap: this obligation is
-discharged by review, not by an automated check, and the ExecPlan records that
-explicitly rather than implying test coverage exists. Domain: the three entry
-points. Artefact: the diffs to `src/server/legacy/mod.rs`,
-`src/server/wireframe/mod.rs`, and `src/server/admin.rs`. Evidence: in
-`src/server/wireframe/mod.rs` the audit block appears before the
-`server.bind(bind_addr)` statement; in `src/server/admin.rs` the audit call
-appears before `apply_migrations`. Non-vacuity: not applicable to a structural
-check; stated as such.
+any row is written.* Method: an injected audit failure driven through each
+entry point, plus source inspection of the ordering. Three tests cover the
+paths: `run_audits_before_binding_the_listener` in
+`src/server/wireframe/tests.rs`,
+`run_daemon_audits_before_binding_the_listener` in
+`src/server/legacy/unit_tests.rs`, and
+`create_user_aborts_before_writing_when_the_audit_fails` in
+`src/server/admin.rs`. The two server tests bind an address in the test and
+hold it, so the outcomes separate cleanly: an audit before the bind returns the
+audit error, while a bind before the audit fails with the server's bind error
+instead. A free address would be worse than useless, because a run that dropped
+the audit would bind and serve until the test timed out. The `create-user` test
+injects the same failure and asserts both consequences — the audit context in
+the error, and a database left with no schema and no user. The seam is
+thread-local and each test holds its injection guard across the awaited call,
+so the injected failure cannot leak into a concurrently running test; the two
+server tests additionally pin the current-thread runtime flavour, because a
+multi-threaded runtime could resume the entry point on another polling thread
+after the pool is established and lose the seam. Domain: the three entry
+points. Artefact: those three tests. Evidence: the tests pass under
+`make test-sqlite`; the per-lane results are recorded in `Progress`. This is
+test coverage, not an independent execution verification of each lane: the
+results below are those this plan ran, and hosted CI on the final head is
+reported separately where it exists. Non-vacuity: each test asserts the
+discriminating outcome rather than only that an error was returned, so removing
+the audit from an entry point, or moving it after the bind or the write, fails
+that test.
 
 Axioms relied upon, not verified here: that the SQLite library answers
 `SELECT sqlite_version()` and the two probes according to its documented
@@ -958,8 +1014,9 @@ EP-M2 — the audit enforced on every entry point.
   before binding and before writing; the legacy path reports a context on
   failure.
 - Requirements and gaps: ISSUE-63-action-audit (enforcement half).
-- Acceptance evidence: `make test-wireframe-only` passes, and source inspection
-  confirms the ordering described in obligation V6.
+- Acceptance evidence: `make test-wireframe-only` passes; the three ordering
+  tests named under V6 fail if the audit moves after the bind or the write, and
+  source inspection confirms the same ordering.
 - Conformance check:
   - Requirements satisfied: all three entry points audit before side effects.
   - Design still followed: `establish_pool`, migrations, and the PostgreSQL
@@ -1119,9 +1176,9 @@ Red-Green-Refactor evidence to record in `Artefacts and notes`:
   re-run the focused test and `make lint`.
 
 Quality criteria: tests pass on all three feature configurations; every
-validator obligation V1 through V5 is discharged; V6 is discharged by recorded
-source inspection; lint and formatting gates pass; no benchmark or security
-scan is required for this change.
+validator obligation V1 through V5 is discharged; V6 is discharged by its three
+ordering tests and the recorded source inspection; lint and formatting gates
+pass; no benchmark or security scan is required for this change.
 
 ## Idempotence and recovery
 
@@ -1318,15 +1375,18 @@ branch had carried. A fifth CodeRabbit round ran over `b94f9f5`, the first
 review round to see the refactored test module; it returned no findings across
 all ten files in the diff, so the CodeScene fix introduced nothing new.
 
-2026-10-13: continuous integration on the pushed head completed green. Both
-workflows (`CI` and `Release Dry Run`) finished successfully and all three
-required branch checks (`coverage`, `validator-sqlite`, `build-test-result`)
-pass. `test-rstest-bdd-ui` was re-run and passes in 4.99 s on a warm trybuild
-cache, which supersedes the earlier timeout recorded in this plan: the timeout
-was a cold cache, not a defect. `Outcomes & retrospective` has been updated to
-carry the final run's numbers rather than the superseded ones, and the section
-that described the timeout has been reduced to the one sentence that remains
-true.
+2026-10-13: continuous integration on the then-pushed head (`b94f9f5`)
+completed green. Both workflows (`CI` and `Release Dry Run`) finished
+successfully and all three required branch checks (`coverage`,
+`validator-sqlite`, `build-test-result`) pass. `test-rstest-bdd-ui` was re-run
+and passes in 4.99 s on a warm trybuild cache, which supersedes the earlier
+timeout recorded in this plan: the timeout was a cold cache, not a defect.
+`Outcomes & retrospective` has been updated to carry the final run's numbers
+rather than the superseded ones, and the section that described the timeout has
+been reduced to the one sentence that remains true. This entry describes
+`b94f9f5` only; the audit module's Rust tests landed after it, so the result
+does not carry forward to later heads, and the final head's own results are
+recorded separately.
 
 2026-10-31: two pre-merge rows asked for tests the original plan had excluded
 as out of scope, and both requests were taken up rather than argued again. The
