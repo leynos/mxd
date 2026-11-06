@@ -25,7 +25,7 @@ use super::common::{
 
 /// How many times a cluster start is attempted when it loses a slot race.
 ///
-/// `pg-embed-setup-unpriv` 0.6.3 sweeps dead cluster slots before taking the
+/// `pg-embed-setup-unpriv` 0.6.3 swept dead cluster slots before taking the
 /// guard that orders slot claims, and it creates a slot's lock file before
 /// locking it. Two processes bootstrapping at once can therefore have the
 /// second process's just-created lock locked by the first process's sweep,

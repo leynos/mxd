@@ -105,7 +105,7 @@ installed under its resolved directory, and user-local tools under
 ## Embedded PostgreSQL in tests
 
 Every PostgreSQL test, locally and in CI, runs against an embedded cluster
-started by `pg-embed-setup-unpriv` 0.6.3. There is no external database option:
+started by `pg-embed-setup-unpriv` 0.7.0. There is no external database option:
 the `POSTGRES_TEST_URL` override and the CI `postgres:15` service container
 that fed it are gone, and a cluster that fails to start fails the test rather
 than skipping it. `make test-postgres` needs no database running.
@@ -164,50 +164,26 @@ password; it does not generate one per process and then refuse its own cluster.
 `PG_PASSWORD` to a fixed throwaway value. It is not a secret: the clusters
 listen on localhost and live only as long as the run.
 
-### The bundle is pinned exactly
+### The bundle is not pinned
 
-The harness version alone does not choose a working PostgreSQL bundle. The
-October theseus rebuilds (18.6.1 and later) are built `--with-icu` without
-`--with-system-tzdata`, so they ship their own `share/timezone` and express the
-time-zone aliases as tar hard links. The `postgresql_archive` behind 0.6.3
-extracts directories, files and symlinks but skips hard links, so
-`share/timezone/UTC` never lands. PostgreSQL then rejects
-`SET TIME ZONE 'UTC'`, which diesel's `PgConnection::establish` sends during
-connect, and every database test fails at its first connection with
-`invalid value for parameter "TimeZone": "UTC"`.
-
-`PG_VERSION_REQ` therefore pins `=18.6.0`, the August asset built
-`--with-system-tzdata` and still the original upload. The pin must be exact:
-the variable is parsed verbatim as a semver requirement and release selection
-takes the highest match, so a caret requirement would select 18.6.1 again. The
-Makefile defaults it and passes it to both `test-postgres` and `warm-postgres`,
-so the cache the warm-up fills is the one the tests read, and each CI job sets
-it next to `PG_PASSWORD`.
-
-`cluster_accepts_the_utc_time_zone` in `tests/postgres_harness_isolation.rs` is
-the regression test. Remove the pin once a `pg-embed-setup-unpriv` release can
-select `postgresql_archive` 0.22.0 or newer, which extracts hard links.
-
-### Two checkouts at once
-
-A second checkout running PostgreSQL tests at the same time still collides with
-the first, because the default install root is per user rather than per
-checkout. Give each concurrent run its own directories:
-
-```sh
-PG_RUNTIME_DIR=/var/tmp/mxd-pg-b/install PG_DATA_DIR=/var/tmp/mxd-pg-b/data \
-  make test-postgres
-```
-
-### The binaries are downloaded before the tests
+pg-embed-setup-unpriv 0.7.0 depends on `postgresql_archive` 0.22.0, which
+extracts tar hard links. The October theseus rebuilds (18.6.1 and later)
+express their time-zone aliases as hard links, which the 0.6 extractor skipped;
+every diesel connection then failed with
+`invalid value for parameter "TimeZone": "UTC"`, and the repository pinned
+`PG_VERSION_REQ` to `=18.6.0` to avoid it. With 0.7.0 the pin is gone: the
+Makefile and the CI jobs leave `PG_VERSION_REQ` unset and the harness selects
+the newest bundle. `tests/workflow_contracts/test_embedded_postgres.py` and
+`test_postgres_make_targets.py` assert that neither sets it. To try a specific
+bundle, export `PG_VERSION_REQ` with an exact requirement, such as `=17.11.0`.
 
 pg-embed-setup-unpriv caches a cluster bootstrap failure for the rest of a test
 process, so a download failing inside the suite would fail every later test in
 that process. CI installs the `pg_embedded_setup_unpriv` binary at the crate's
-version (`cargo binstall pg-embed-setup-unpriv@0.6.3`) and runs
+version (`cargo binstall pg-embed-setup-unpriv@0.7.0`) and runs
 `make warm-postgres` first. That target runs setup with throwaway install and
-data directories under `.pg-embedded/warm`, pinned to the same bundle as the
-tests, which fills the binary cache named by `PG_BINARY_CACHE_DIR`. It then
+data directories under `.pg-embedded/warm`, which selects the same bundle as
+the tests and fills the binary cache named by `PG_BINARY_CACHE_DIR`. It then
 fails if the cache is still empty, because the tool skips caching silently when
 it cannot take the cache lock. Each job sets `PG_BINARY_CACHE_DIR` once, so the
 warm-up and the tests read one cache.
@@ -251,15 +227,15 @@ cache fails the target.
 `tests/workflow_contracts/test_embedded_postgres.py` asserts that no job
 declares a service container, that no workflow mentions `POSTGRES_TEST_URL`,
 and that no Rust source reads it. For each job that runs the PostgreSQL tests,
-it asserts that the job pins `PG_PASSWORD` and `PG_VERSION_REQ`, that the step
-sets the `postgres` profile, and that `make warm-postgres` runs once earlier in
-the same job. It asserts that the profile declares no `pg-embed` group and no
-`all()` override, and keeps its 300 second and 60 minute budgets. It also
-asserts that both workflows install the helper version `Cargo.lock` holds, so
-the warm-up cannot fill a cache the tests will not read. The jobs it covers are
-the two coverage jobs, `coverage` in `ci.yml` and `coverage-upload` in
-`coverage-main.yml`; the `build-test` postgres leg no longer runs the
-PostgreSQL tests.
+it asserts that the job pins `PG_PASSWORD` and leaves `PG_VERSION_REQ` unset,
+that the step sets the `postgres` profile, and that `make warm-postgres` runs
+once earlier in the same job. It asserts that the profile declares no
+`pg-embed` group and no `all()` override, and keeps its 300 second and 60
+minute budgets. It also asserts that both workflows install the helper version
+`Cargo.lock` holds, so the warm-up cannot fill a cache the tests will not read.
+The jobs it covers are the two coverage jobs, `coverage` in `ci.yml` and
+`coverage-upload` in `coverage-main.yml`; the `build-test` postgres leg no
+longer runs the PostgreSQL tests.
 
 `tests/workflow_contracts/test_postgres_make_targets.py` holds the local twins
 of those steps. It reads the `test-postgres` recipe from `make --dry-run` and
@@ -273,8 +249,8 @@ repaired, and failure when the cache stays empty, an alias root is missing, or
 
 ## PostgreSQL migration strategy (v0.6.0)
 
-The migration to pg-embed-setup-unpriv 0.6.3 keeps the handle/guard split,
-`test_support::shared_cluster_handle()`, the template helpers, and the
+The migration to pg-embed-setup-unpriv 0.6 (now 0.7.0) keeps the handle/guard
+split, `test_support::shared_cluster_handle()`, the template helpers, and the
 `async-api` signatures mxd uses compatible. The harness adds bounded slot-race
 retries and a cached fallback for template startup; the release changes the
 cluster isolation model. The full narrative and verification steps are in

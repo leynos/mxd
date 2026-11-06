@@ -232,24 +232,18 @@ def test_the_postgres_profile_keeps_its_time_budget() -> None:
     assert profile["slow-timeout"]["period"] == "300s", profile["slow-timeout"]
 
 
-def test_every_postgres_job_pins_the_working_bundle(documents) -> None:
-    """Each job that runs the PostgreSQL tests pins the bundle exactly.
+def test_no_postgres_job_pins_the_bundle(documents) -> None:
+    """No job that runs the PostgreSQL tests pins the PostgreSQL bundle.
 
-    The harness version does not choose a working bundle. The October theseus
-    rebuilds express the time-zone aliases as tar hard links, the
-    `postgresql_archive` behind 0.6.3 skips hard links, and every diesel
-    connection then fails with `invalid value for parameter "TimeZone": "UTC"`.
-    The pin must be exact: the variable is a semver requirement and the highest
-    match wins, so a range would select the broken release again.
+    pg-embed-setup-unpriv 0.7.0 extracts hard links, so the newest bundle works
+    and the exact `PG_VERSION_REQ` pin the 0.6 harness needed is gone.
     """
     for expected in POSTGRES_TEST_STEPS:
         where = f"{expected.workflow}:{expected.job_id}"
         job = _jobs(documents[expected.workflow])[expected.job_id]
         env = job.get("env")
         assert isinstance(env, dict), f"{where} has no job env"
-        assert env.get("PG_VERSION_REQ") == "=18.6.0", (
-            f"{where} must pin PG_VERSION_REQ exactly, found {env.get('PG_VERSION_REQ')!r}"
-        )
+        assert "PG_VERSION_REQ" not in env, f"{where} pins the PostgreSQL bundle"
 
 
 def _assert_helper_install(

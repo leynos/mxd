@@ -3093,7 +3093,7 @@ end-to-end protocol compliance with real clients.
 
 ### Embedded Postgres for Testing
 
-PostgreSQL tests use `pg-embed-setup-unpriv` 0.6.3 through the fixtures in
+PostgreSQL tests use `pg-embed-setup-unpriv` 0.7.0 through the fixtures in
 `test-util/src/postgres/`. Fresh-start fixtures create independent clusters;
 each cluster has its own data directory, so the test leg runs at default
 parallelism. Template-based fixtures share a process-wide cluster handle and
