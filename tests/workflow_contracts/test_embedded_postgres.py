@@ -241,9 +241,20 @@ def test_no_postgres_job_pins_the_bundle(documents) -> None:
     for expected in POSTGRES_TEST_STEPS:
         where = f"{expected.workflow}:{expected.job_id}"
         job = _jobs(documents[expected.workflow])[expected.job_id]
-        env = job.get("env")
-        assert isinstance(env, dict), f"{where} has no job env"
-        assert "PG_VERSION_REQ" not in env, f"{where} pins the PostgreSQL bundle"
+        scopes = {
+            "workflow": documents[expected.workflow].get("env"),
+            "job": job.get("env"),
+            **{
+                f"step {step.get('name')!r}": step.get("env")
+                for step in _steps(job)
+                if step.get("name") == expected.step_name
+                or step.get("run") == WARM_COMMAND
+            },
+        }
+        for scope, env in scopes.items():
+            assert not (isinstance(env, dict) and "PG_VERSION_REQ" in env), (
+                f"{where}: the {scope} env pins the PostgreSQL bundle"
+            )
 
 
 def _assert_helper_install(

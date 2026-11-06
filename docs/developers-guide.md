@@ -239,13 +239,12 @@ longer runs the PostgreSQL tests.
 
 `tests/workflow_contracts/test_postgres_make_targets.py` holds the local twins
 of those steps. It reads the `test-postgres` recipe from `make --dry-run` and
-asserts the `postgres` profile, the default and overridden `PG_PASSWORD`, and
-the exact bundle pin and its override. It asserts that `warm-postgres` passes
-the same pin. It runs `make warm-postgres` against a stand-in
-`pg_embedded_setup_unpriv` under a fake home and asserts the throwaway
-directories, success when the cache fills and the `UTC` alias is created or
-repaired, and failure when the cache stays empty, an alias root is missing, or
-`PG_BINARY_CACHE_DIR` is unset.
+asserts the `postgres` profile and the default and overridden `PG_PASSWORD`,
+and that neither `test-postgres` nor `warm-postgres` sets `PG_VERSION_REQ`. It
+runs `make warm-postgres` against a stand-in `pg_embedded_setup_unpriv` under a
+fake home and asserts the throwaway directories, success when the cache fills
+and the `UTC` alias is created or repaired, and failure when the cache stays
+empty, an alias root is missing, or `PG_BINARY_CACHE_DIR` is unset.
 
 ## PostgreSQL migration strategy (v0.6.0)
 
