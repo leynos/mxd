@@ -357,6 +357,9 @@ jobs:
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
+          # trybuild's nested Cargo reads the linker flag from
+          # .cargo/config.toml, so the linker has to be present here too.
+          install-mold: true
       - name: Cache Cargo directories
         id: rust-cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
