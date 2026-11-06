@@ -140,6 +140,7 @@ def test_dropping_the_coverage_step_leaves_no_sqlite_run(ci: Document) -> None:
     """With the guard kept and the coverage step gone, SQLite is untested."""
 
     def drop(document: dict[str, typ.Any]) -> None:
+        """Remove the SQLite coverage step from the coverage job."""
         job = document["jobs"]["coverage"]
         job["steps"] = [
             s for s in job["steps"] if s.get("name") != "Generate coverage for SQLite"
@@ -152,6 +153,7 @@ def test_dropping_the_postgres_runs_leaves_none(ci: Document) -> None:
     """Both PostgreSQL runs gone is visible to the presence half."""
 
     def drop(document: dict[str, typ.Any]) -> None:
+        """Remove the PostgreSQL steps and disable the leg's test step."""
         job = document["jobs"]["coverage"]
         job["steps"] = [s for s in job["steps"] if "Postgres" not in str(s.get("name"))]
         leg_test = _test_step(document)
@@ -170,6 +172,7 @@ def test_a_tolerated_coverage_step_is_not_blocking(ci: Document) -> None:
     """`continue-on-error` on the surviving SQLite run makes it non-blocking."""
 
     def tolerate(document: dict[str, typ.Any]) -> None:
+        """Mark the SQLite coverage step as continue-on-error."""
         for step in document["jobs"]["coverage"]["steps"]:
             if step.get("name") == "Generate coverage for SQLite":
                 step["continue-on-error"] = True
@@ -194,6 +197,7 @@ def test_a_constant_false_condition_removes_the_sqlite_run(ci: Document) -> None
     """`if: false` on the coverage step leaves a run that never executes."""
 
     def skip(document: dict[str, typ.Any]) -> None:
+        """Give the SQLite coverage step a constant false condition."""
         for step in document["jobs"]["coverage"]["steps"]:
             if step.get("name") == "Generate coverage for SQLite":
                 step["if"] = "false"
@@ -211,6 +215,7 @@ def test_a_masked_test_command_is_not_blocking(ci: Document) -> None:
     """`|| true` on the nextest command lets failures pass."""
 
     def mask(document: dict[str, typ.Any]) -> None:
+        """Mask the test command's status with a trailing true."""
         step = _test_step(document)
         step["run"] = step["run"].replace("--filter-expr", "|| true --filter-expr")
 

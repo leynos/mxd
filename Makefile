@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres interrogate
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -160,7 +160,30 @@ typecheck-sqlite: ## Run cargo check with the sqlite backend
 typecheck-wireframe-only: ## Run cargo check with legacy networking disabled
 	$(CARGO) check $(WIREFRAME_ONLY_FEATURES)
 
-lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy and Whitaker for all feature sets
+# Interrogate measures docstring presence over every Python file the repository
+# owns. Add a new Python directory to INTERROGATE_TARGETS. No `--python` pin: a
+# managed interpreter would be downloaded, and a PyO3 build could link it.
+INTERROGATE_VERSION ?= 1.7.0
+INTERROGATE_TARGETS ?= scripts tests
+# Level 2 prints a MISSED row per undocumented definition, which the
+# `interrogate` target fails on: the rounded percentage alone passes a lone gap.
+INTERROGATE_FLAGS ?= -vv --fail-under 100
+INTERROGATE = $(UV) tool run \
+	--from 'interrogate==$(INTERROGATE_VERSION)' interrogate
+
+# Interrogate rounds its percentage to one decimal, so `--fail-under 100` alone
+# passes a lone gap in a large repository; fail on any MISSED row as well.
+interrogate: ## Enforce complete Python docstring coverage
+	@report="$$($(INTERROGATE) $(INTERROGATE_FLAGS) $(INTERROGATE_TARGETS))"; \
+	  status=$$?; \
+	  printf '%s\n' "$$report"; \
+	  test "$$status" -eq 0 || exit "$$status"; \
+	  if printf '%s\n' "$$report" | grep -q '| *MISSED *|'; then \
+	    printf '%s\n' 'interrogate: undocumented definitions remain; see the MISSED rows above' >&2; \
+	    exit 1; \
+	  fi
+
+lint: interrogate lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy and Whitaker for all feature sets
 
 lint-postgres: ## Run Clippy and Whitaker with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)

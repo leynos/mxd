@@ -56,6 +56,11 @@ jobs:
         run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Install Nixie
         run: uv tool install nixie-cli==1.1.0
+      # This workflow lints Rust per feature set instead of through `make lint`,
+      # so the docstring gate that `make lint` also reaches runs here, after
+      # `Set up uv` above.
+      - name: Enforce Python docstring coverage
+        run: make interrogate
       - name: Assert the workflow contracts
         run: make test-workflow-contracts
       - name: Enforce en-GB-oxendict spelling
