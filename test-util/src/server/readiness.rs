@@ -136,6 +136,7 @@ mod tests {
         let addr = listening_socket
             .local_addr()
             .expect("listening socket should provide a local address");
+        // nested-cargo-allow: timed `rustc --version` compiles nothing and exits at once
         let mut child = Command::new("rustc")
             .arg("--version")
             .spawn()
