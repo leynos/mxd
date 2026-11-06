@@ -313,6 +313,17 @@ The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
   rejects omitted, duplicated, or stale names.
 - `tests/rstest_bdd_migration.rs` exercises aliased errors and returned values,
   deliberate underscore fixture keys, and a genuinely suspending step.
+- The handshake scenarios in `src/wireframe/handshake_bdd.rs` are the reference
+  shape for a world that performs real network I/O. `HandshakeWorld` holds only
+  plain `Option` fields, so the world is an ordinary owned value with no
+  `RefCell`, no owned `Runtime`, and no `block_on`. Steps that touch the socket
+  are `async fn` taking `&mut HandshakeWorld`; steps that only start the server
+  or read recorded state stay synchronous and take `&mut self` or `&self`. The
+  world's `Drop` sends the shutdown signal synchronously and ignores a closed
+  receiver, so teardown never has to await. Prefer this shape for a new suite
+  that needs mutable scenario state across an await. The accompanying
+  compile-time fixture is described under
+  [compile-time scenario contracts](#compile-time-scenario-contracts).
 - Prefer async behavioural scenarios for async-sensitive suites where async
   I/O is exercised and fixture setup does not rely on embedded PostgreSQL
   cluster bootstrapping.
@@ -332,9 +343,29 @@ The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
 ### Compile-time scenario contracts
 
 The non-published `tests/rstest-bdd-ui` workspace package uses `trybuild` to
-check named `TokioHarness` selection and the diagnostic for an unknown scenario
-title. Run it directly with `make test-rstest-bdd-ui`; the aggregate
-`make test` target and the CI test lane include this package.
+check named `TokioHarness` selection, the mutable-world async step pattern, and
+the diagnostic for an unknown scenario title. Run it directly with
+`make test-rstest-bdd-ui`; the aggregate `make test` target and the CI test
+lane include this package.
+
+The fixtures and their contracts are:
+
+- `tests/ui/pass_named_harness.rs` must compile: named scenario selection with
+  `harness = rstest_bdd_harness_tokio::TokioHarness`.
+- `tests/ui/pass_mutable_world_async_steps.rs` must compile: a borrowed world
+  fixture with a synchronous `Given`, an async `When` taking `&mut World`, a
+  synchronous `Then`, and a named scenario bound to an external
+  `#[tokio::test(flavor = "current_thread")]` test. This pins the shape used by
+  `src/wireframe/handshake_bdd.rs`, so a macro regression shows up as a compile
+  failure rather than as a broken scenario at runtime.
+- `tests/ui/fail_missing_scenario.rs` must fail to compile with the recorded
+  `fail_missing_scenario.stderr` diagnostic. It is the control that proves the
+  harness really inspects compilation output instead of always passing.
+
+The mutable-world fixture uses `tokio` directly, so the UI package declares
+`tokio = "1"` as its own dev-dependency rather than inheriting it from the root
+package manifest. Extend `tests/ui.rs` whenever a fixture is added; an
+unregistered fixture silently never runs.
 
 The trybuild test compiles separate fixture crates and can take longer than an
 ordinary unit test on a cold build: trybuild runs `cargo clean --package`
