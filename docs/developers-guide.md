@@ -74,6 +74,7 @@ caller can override) behind a plain `RUSTFLAGS` assignment, with
 
 ```sh
 env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" \
+  CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm \
   whitaker --all -- --no-default-features \
     --features "postgres test-support legacy-networking" --all-targets
 ```
@@ -98,6 +99,7 @@ For a local lint invocation, the effective command shape is:
 
 ```sh
 PATH="${TOOL_PATH_PREFIX:+$TOOL_PATH_PREFIX:}$PATH" RUSTFLAGS="-D warnings" \
+  CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm \
   whitaker --all -- --features "sqlite test-support" --all-targets
 ```
 
