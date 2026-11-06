@@ -86,6 +86,7 @@ extend-ignore-re = [
     "`var\\.iamge_id` instead of `var\\.image_id`",
     "currentColor",
     "data_flavor",
+    "libsqlite3-dev\\s+mold\\b",
     "read may successed later",
 ]
 
