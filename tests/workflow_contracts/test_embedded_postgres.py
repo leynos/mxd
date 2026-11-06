@@ -12,8 +12,8 @@ unless `PG_PASSWORD` fixes one, and a cluster directory left by one process
 then refuses the next, so each such job pins it. A cluster bootstrap failure
 is cached for the rest of a test process, so the binaries are downloaded by
 `make warm-postgres` before the tests start rather than by the first test.
-Each job also pins the PostgreSQL bundle, because the harness version alone
-does not choose a working one; see the bundle-pin contract for why.
+No job pins the PostgreSQL bundle: pg-embed-setup-unpriv 0.7.0 extracts hard
+links, so the newest bundle works; see the no-pin contract for why.
 
 The tests themselves run in parallel. pg-embed-setup-unpriv 0.6 gives every
 cluster its own data directory, so the single-slot test group that serialized
@@ -232,24 +232,29 @@ def test_the_postgres_profile_keeps_its_time_budget() -> None:
     assert profile["slow-timeout"]["period"] == "300s", profile["slow-timeout"]
 
 
-def test_every_postgres_job_pins_the_working_bundle(documents) -> None:
-    """Each job that runs the PostgreSQL tests pins the bundle exactly.
+def test_no_postgres_job_pins_the_bundle(documents) -> None:
+    """No job that runs the PostgreSQL tests pins the PostgreSQL bundle.
 
-    The harness version does not choose a working bundle. The October theseus
-    rebuilds express the time-zone aliases as tar hard links, the
-    `postgresql_archive` behind 0.6.3 skips hard links, and every diesel
-    connection then fails with `invalid value for parameter "TimeZone": "UTC"`.
-    The pin must be exact: the variable is a semver requirement and the highest
-    match wins, so a range would select the broken release again.
+    pg-embed-setup-unpriv 0.7.0 extracts hard links, so the newest bundle works
+    and the exact `PG_VERSION_REQ` pin the 0.6 harness needed is gone.
     """
     for expected in POSTGRES_TEST_STEPS:
         where = f"{expected.workflow}:{expected.job_id}"
         job = _jobs(documents[expected.workflow])[expected.job_id]
-        env = job.get("env")
-        assert isinstance(env, dict), f"{where} has no job env"
-        assert env.get("PG_VERSION_REQ") == "=18.6.0", (
-            f"{where} must pin PG_VERSION_REQ exactly, found {env.get('PG_VERSION_REQ')!r}"
-        )
+        scopes = {
+            "workflow": documents[expected.workflow].get("env"),
+            "job": job.get("env"),
+            **{
+                f"step {step.get('name')!r}": step.get("env")
+                for step in _steps(job)
+                if step.get("name") == expected.step_name
+                or step.get("run") == WARM_COMMAND
+            },
+        }
+        for scope, env in scopes.items():
+            assert not (isinstance(env, dict) and "PG_VERSION_REQ" in env), (
+                f"{where}: the {scope} env pins the PostgreSQL bundle"
+            )
 
 
 def _assert_helper_install(
