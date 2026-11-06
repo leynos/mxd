@@ -68,11 +68,12 @@ TOOL_PATH_PREFIX := $(shell printf '%s\n' \
 ```
 
 The Makefile exports the prefix once, ahead of the caller's `PATH`, for every
-recipe, so the lint targets run a bare `whitaker` behind a plain `RUSTFLAGS`
-assignment:
+recipe, so the lint targets run the selected Whitaker (`$(WHITAKER)`, which a
+caller can override) behind a plain `RUSTFLAGS` assignment, with
+`CARGO_ENCODED_RUSTFLAGS` removed because Cargo gives it precedence:
 
 ```sh
-RUSTFLAGS="-D warnings" \
+env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" \
   whitaker --all -- --no-default-features \
     --features "postgres test-support legacy-networking" --all-targets
 ```

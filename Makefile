@@ -52,9 +52,9 @@ endif
 WHITAKER_BIN_DIR := $(if $(WHITAKER_PATH),$(dir $(WHITAKER_PATH)))
 TOOL_PATH_PREFIX := $(shell printf '%s\n' "$(CARGO_BIN_DIR)" "$(WHITAKER_BIN_DIR)" "$(LOCAL_BIN_DIR)" | awk 'NF { printf "%s%s", sep, $$0; sep=":" }')
 # Put the resolved Cargo, Whitaker and local tool directories ahead of the
-# caller's PATH for every recipe, so the Whitaker recipes run a bare `whitaker`
-# behind a plain `RUSTFLAGS` assignment, which is the shape the build-standard
-# rule reads as an isolated route.
+# caller's PATH for every recipe, so the Whitaker recipes need no `PATH=` prefix
+# of their own: the build-standard rule does not read a prefix with Make
+# functions in it as an isolated route.
 export PATH := $(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$(PATH)
 NIXIE ?= nixie
 UV ?= uv
@@ -85,7 +85,9 @@ STANDARD_RUSTFLAGS := -Zthreads=8$(if $(filter Linux,$(BUILD_HOST_OS)), -Clink-a
 # target would get the wrong one. Refuse that rather than guess; run a
 # cross-compiling build with `cargo` directly.
 STANDARD_TARGET_GUARD = $(if $(strip $(CARGO_BUILD_TARGET)),$(error the build standard picks `mold` from the host; unset CARGO_BUILD_TARGET, or run cargo directly))
-GATE_RUSTFLAGS = $(STANDARD_TARGET_GUARD)RUSTFLAGS="$${RUSTFLAGS:+$$RUSTFLAGS }-D warnings $(STANDARD_RUSTFLAGS)"
+# Cargo gives `CARGO_ENCODED_RUSTFLAGS` precedence over `RUSTFLAGS`, so a gate
+# removes it and lets the composed `RUSTFLAGS` govern.
+GATE_RUSTFLAGS = $(STANDARD_TARGET_GUARD)env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="$${RUSTFLAGS:+$$RUSTFLAGS }-D warnings $(STANDARD_RUSTFLAGS)"
 SQLITE_FEATURES := --features sqlite
 POSTGRES_FEATURES := --no-default-features --features "postgres legacy-networking"
 TEST_SQLITE_FEATURES := --features "sqlite test-support"
@@ -162,15 +164,15 @@ lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy and Whitaker f
 
 lint-postgres: ## Run Clippy and Whitaker with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_POSTGRES_FEATURES) --all-targets
+	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES) --all-targets
 
 lint-sqlite: ## Run Clippy and Whitaker with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_SQLITE_FEATURES) --all-targets
+	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES) --all-targets
 
 lint-wireframe-only: ## Run Clippy and Whitaker with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
-	RUSTFLAGS="-D warnings" whitaker --all -- $(WIREFRAME_ONLY_FEATURES) --all-targets
+	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES) --all-targets
 
 markdownlint: spelling ## Lint Markdown files and enforce spelling
 	$(MDLINT) "**/*.md" "#.uv-cache" "#.uv-tools"
@@ -350,7 +352,7 @@ $(POSTGRES_TARGET_DIR)/debug/$(APP):
 	$(CARGO) build $(BUILD_JOBS) --bin $(APP) $(POSTGRES_FEATURES) --target-dir $(POSTGRES_TARGET_DIR)
 
 target/release/$(APP):
-	$(CARGO) build $(BUILD_JOBS) --release --bin $(APP) $(SQLITE_FEATURES)
+	RUSTFLAGS="$${RUSTFLAGS-}" $(CARGO) build $(BUILD_JOBS) --release --bin $(APP) $(SQLITE_FEATURES)
 
 $(POSTGRES_TARGET_DIR)/release/$(APP):
-	$(CARGO) build $(BUILD_JOBS) --release --bin $(APP) $(POSTGRES_FEATURES) --target-dir $(POSTGRES_TARGET_DIR)
+	RUSTFLAGS="$${RUSTFLAGS-}" $(CARGO) build $(BUILD_JOBS) --release --bin $(APP) $(POSTGRES_FEATURES) --target-dir $(POSTGRES_TARGET_DIR)
