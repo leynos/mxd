@@ -62,6 +62,35 @@ def _dry_run(target: str, *overrides: str) -> str:
     return result.stdout
 
 
+def _recipe_environment(*overrides: str) -> dict[str, str]:
+    """Return the environment a Makefile recipe receives.
+
+    A probe target is appended with `--eval`, so exports declared in the Makefile
+    (which never appear in `--dry-run` text) show up in what the recipe sees.
+    """
+    result = _make(
+        "--eval=envprobe:\n\t@env",
+        "envprobe",
+        *overrides,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return dict(
+        line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+    )
+
+
+def test_makefile_exports_no_bundle_requirement() -> None:
+    """With the caller's variable absent, no recipe environment carries a pin."""
+    assert "PG_VERSION_REQ" not in _recipe_environment()
+
+
+def test_a_caller_supplied_bundle_requirement_is_not_rewritten() -> None:
+    """A caller's exact requirement reaches recipes as given, not replaced."""
+    assert (
+        _recipe_environment("PG_VERSION_REQ==17.11.0")["PG_VERSION_REQ"] == "=17.11.0"
+    )
+
+
 def test_test_postgres_selects_the_serializing_profile() -> None:
     """The recipe runs under the `postgres` nextest profile."""
     assert "NEXTEST_PROFILE=postgres" in _dry_run("test-postgres")
