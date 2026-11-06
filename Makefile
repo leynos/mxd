@@ -51,6 +51,11 @@ ifneq ($(wildcard $(MDLINT_FALLBACK)),)
 endif
 WHITAKER_BIN_DIR := $(if $(WHITAKER_PATH),$(dir $(WHITAKER_PATH)))
 TOOL_PATH_PREFIX := $(shell printf '%s\n' "$(CARGO_BIN_DIR)" "$(WHITAKER_BIN_DIR)" "$(LOCAL_BIN_DIR)" | awk 'NF { printf "%s%s", sep, $$0; sep=":" }')
+# Put the resolved Cargo, Whitaker and local tool directories ahead of the
+# caller's PATH for every recipe, so the Whitaker recipes run a bare `whitaker`
+# behind a plain `RUSTFLAGS` assignment, which is the shape the build-standard
+# rule reads as an isolated route.
+export PATH := $(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$(PATH)
 NIXIE ?= nixie
 UV ?= uv
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
@@ -67,6 +72,20 @@ WORKFLOW_CONTRACT_SRCS := $(wildcard tests/workflow_contracts/*.py)
 TLC_RUNNER ?= ./scripts/run-tlc.sh
 TLC_IMAGE ?= ghcr.io/leynos/mxd/mxd-tlc:latest
 RSTEST_TIMEOUT ?= 20
+# The build standard (Concordat `rust-build-defaults`): the parallel `rustc`
+# frontend and, on Linux, the `mold` linker. An assigned `RUSTFLAGS` replaces
+# every `rustflags` source in `.cargo/config.toml`, so each gate recipe that
+# assigns it restates both through `GATE_RUSTFLAGS`, keeping any inherited value
+# (CI's setup-rust exports one). The Whitaker recipes keep a bare
+# `-D warnings`: Whitaker builds its lint driver on another toolchain, which
+# must not inherit development flags.
+BUILD_HOST_OS := $(shell uname -s)
+STANDARD_RUSTFLAGS := -Zthreads=8$(if $(filter Linux,$(BUILD_HOST_OS)), -Clink-arg=-fuse-ld=mold)
+# The linker flag is chosen from the host, so a gate that compiles for another
+# target would get the wrong one. Refuse that rather than guess; run a
+# cross-compiling build with `cargo` directly.
+STANDARD_TARGET_GUARD = $(if $(strip $(CARGO_BUILD_TARGET)),$(error the build standard picks `mold` from the host; unset CARGO_BUILD_TARGET, or run cargo directly))
+GATE_RUSTFLAGS = $(STANDARD_TARGET_GUARD)RUSTFLAGS="$${RUSTFLAGS:+$$RUSTFLAGS }-D warnings $(STANDARD_RUSTFLAGS)"
 SQLITE_FEATURES := --features sqlite
 POSTGRES_FEATURES := --no-default-features --features "postgres legacy-networking"
 TEST_SQLITE_FEATURES := --features "sqlite test-support"
@@ -143,15 +162,15 @@ lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy and Whitaker f
 
 lint-postgres: ## Run Clippy and Whitaker with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
-	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES) --all-targets
+	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_POSTGRES_FEATURES) --all-targets
 
 lint-sqlite: ## Run Clippy and Whitaker with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
-	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES) --all-targets
+	RUSTFLAGS="-D warnings" whitaker --all -- $(TEST_SQLITE_FEATURES) --all-targets
 
 lint-wireframe-only: ## Run Clippy and Whitaker with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
-	PATH="$(TOOL_PATH_PREFIX)$(if $(TOOL_PATH_PREFIX),:)$$PATH" RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES) --all-targets
+	RUSTFLAGS="-D warnings" whitaker --all -- $(WIREFRAME_ONLY_FEATURES) --all-targets
 
 markdownlint: spelling ## Lint Markdown files and enforce spelling
 	$(MDLINT) "**/*.md" "#.uv-cache" "#.uv-tools"
@@ -243,7 +262,7 @@ test: test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-veri
 # cluster its own data directory, so the tests run at the default parallelism.
 # See "Embedded PostgreSQL in tests" in the developers' guide.
 test-postgres: ## Run tests with the postgres backend
-	NEXTEST_PROFILE=postgres PG_PASSWORD="$(PG_PASSWORD)" RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
+	NEXTEST_PROFILE=postgres PG_PASSWORD="$(PG_PASSWORD)" $(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
 
 warm-postgres: ## Download the embedded PostgreSQL binaries into PG_BINARY_CACHE_DIR
 	PG_RUNTIME_DIR="$(PG_WARM_DIR)/install" PG_DATA_DIR="$(PG_WARM_DIR)/data" pg_embedded_setup_unpriv
@@ -264,23 +283,23 @@ warm-postgres: ## Download the embedded PostgreSQL binaries into PG_BINARY_CACHE
 	exit "$$status"
 
 test-sqlite: ## Run tests with the sqlite backend
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_SQLITE_FEATURES)
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) $(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) $(TEST_SQLITE_FEATURES)
 
 test-wireframe-only: ## Run tests with legacy networking disabled
-	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(WIREFRAME_ONLY_FEATURES)
+	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) $(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) $(WIREFRAME_ONLY_FEATURES)
 
 test-rstest-bdd-ui: ## Run compile-time rstest-bdd scenario tests
-	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p rstest-bdd-ui-tests
+	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p rstest-bdd-ui-tests
 
 test-verification: ## Run verification crate tests
-	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p mxd-verification
+	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p mxd-verification
 
 test-fuzz-harness: ## Run the AFL harness's case-handling tests, which need no AFL runtime
-	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p fuzz
+	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p fuzz
 
 test-concurrency: ## Run the shared-state kernels' ordinary tests and doctests
-	RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) -p mxd-concurrency
-	RUSTFLAGS="-D warnings" $(CARGO) test --doc -p mxd-concurrency
+	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p mxd-concurrency
+	$(GATE_RUSTFLAGS) $(CARGO) test --doc -p mxd-concurrency
 
 check-loom: ## Lint and compile the Loom models without running them
 	RUSTFLAGS="--cfg loom -D warnings" $(CARGO) clippy -p mxd-concurrency --all-targets -- -D warnings
@@ -300,7 +319,7 @@ test-loom-runner: ## Test the Loom model runner script
 # nextest does not execute doctests; run them separately with the
 # default (sqlite) backend, mirroring the template's split.
 test-doc: ## Run documentation tests
-	RUSTFLAGS="-D warnings" $(CARGO) test --doc $(TEST_SQLITE_FEATURES)
+	$(GATE_RUSTFLAGS) $(CARGO) test --doc $(TEST_SQLITE_FEATURES)
 
 validator-sqlite-server: ## Build the sqlite wireframe server binary for validator runs
 	$(MAKE) APP=mxd-wireframe-server sqlite
