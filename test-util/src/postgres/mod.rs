@@ -7,6 +7,9 @@
 
 pub(crate) mod common;
 mod embedded;
+mod shared;
+#[cfg(test)]
+mod test_errors;
 
 use common::reset_postgres_db;
 pub use common::{DatabaseName, DatabaseNameError, DatabaseUrl, PostgresTestDbError};

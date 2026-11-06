@@ -135,6 +135,14 @@ When `--migration-timeout-secs` is unset, startup uses the built-in default
 migration timeout. A value of `0` is normalized back to that default rather
 than disabling the watchdog.
 
+Configuration values are resolved in this order: built-in defaults, discovered
+configuration files, environment variables, then values explicitly supplied on
+the command line. An explicit CLI value takes precedence even when it matches
+the built-in default. Optional discovered files may be absent; a selected file
+that cannot be read or parsed causes startup to fail with a diagnostic. Set
+`MXD_CONFIG_PATH` or pass `--config-path PATH` to select a required file; mxd
+does not fall through to automatic discovery when that selection fails.
+
 ## File metadata baseline
 
 Roadmap item 3.1.1 is an internal schema milestone rather than a new protocol
@@ -159,12 +167,14 @@ and `docs/file-sharing-design.md`.
 ## Creating users
 
 The `create-user` subcommand now runs entirely inside the library so that it is
-available to every binary. Supply both `--username` and `--password`; missing
-values produce the same `missing username`/`missing password` errors that the
-new `rstest-bdd` scenarios cover. Example:
+available to every binary. Supply the username and password as positional
+arguments. Put global configuration options such as `--database` before the
+subcommand. Missing values produce the same
+`missing username`/`missing password` errors that the new `rstest-bdd`
+scenarios cover. Example:
 
 ```sh
-cargo run --bin mxd -- create-user --username alice --password secret
+cargo run --bin mxd -- --database mxd.db create-user alice secret
 ```
 
 The command runs pending migrations before inserting the user. Errors bubble up
@@ -176,7 +186,7 @@ Integration tests and developer machines can exercise the postgres backend by
 installing the helper from crates.io and running it before `make test`:
 
 ```sh
-cargo install --locked pg-embed-setup-unpriv
+cargo install --locked pg-embed-setup-unpriv@0.7.0
 pg_embedded_setup_unpriv
 ```
 
@@ -189,6 +199,12 @@ values, allowing the helper to be re-run once and then switching between
 `cargo run --bin mxd` and `cargo run --bin mxd-wireframe-server` without
 additional setup. Refer to `docs/pg-embed-setup-unpriv-users-guide.md` for
 cluster path customization and privilege troubleshooting details.
+
+`make test-postgres` leaves the PostgreSQL bundle to the harness, which selects
+the newest release. To try another bundle, set `PG_VERSION_REQ` to an exact
+requirement, such as `PG_VERSION_REQ='=17.11.0'`: a bare version is a semver
+requirement rather than an exact pin, and selection uses the highest matching
+release.
 
 ## Behaviour coverage
 

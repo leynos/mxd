@@ -8,13 +8,22 @@ sandbox user. Unprivileged invocations keep the current identity and provision
 directories with the caller’s UID. This guide explains how to configure the
 tool and integrate it into automated test flows.
 
+This guide documents the published `pg-embed-setup-unpriv` crate from
+crates.io; mxd does not vendor it.
+
 ## Prerequisites
 
 - Linux host, VM, or container. `root` access enables the privilege-dropping
   path, but unprivileged executions are also supported.
-- Rust toolchain specified in `rust-toolchain.toml`.
+- Rust and Cargo to install the published crate. For builds from an upstream
+  source checkout, use the toolchain in that checkout’s `rust-toolchain.toml`.
 - Outbound network access to crates.io and the PostgreSQL binary archive.
-- System timezone database (package usually named `tzdata`).
+- System timezone database (package usually named `tzdata`). This matters when
+  the selected bundle does not carry its own `share/timezone`: a bundle built
+  with `--with-system-tzdata` relies on the host's, and one built without it
+  ships its own. A bundle whose own time-zone data was extracted incompletely
+  makes `SET TIME ZONE` fail; see the v0.6.0 migration guide for the defect mxd
+  pins around.
 
 ## Platform expectations
 
@@ -70,15 +79,17 @@ Troubleshooting guidance:
    budget. The helper accepts values between `1` and `600` seconds and reports
    an error when the override falls outside that range or cannot be parsed.
 
-3. Run the helper (`cargo run --release --bin pg_embedded_setup_unpriv`). The
-   command downloads the specified PostgreSQL release, ensures the directories
-   exist, applies PostgreSQL-compatible permissions (0755 for the installation
-   cache, 0700 for the runtime and data directories), and initializes the
-   cluster with the provided credentials. Invocations that begin as `root`
-   prepare directories for `nobody` and execute lifecycle commands through the
-   worker helper so the privileged operations run entirely under the sandbox
-   user. Ownership fix-ups occur on every call so running the tool twice
-   remains idempotent.
+3. Install the published helper with
+   `cargo install --locked pg-embed-setup-unpriv@0.6.3`, then run
+   `pg_embedded_setup_unpriv`. In an upstream source checkout, use
+   `cargo run --release --bin pg_embedded_setup_unpriv` instead. The command
+   downloads the specified PostgreSQL release, ensures the directories exist,
+   applies PostgreSQL-compatible permissions (0755 for the installation cache,
+   0700 for the runtime and data directories), and initializes the cluster with
+   the provided credentials. Invocations that begin as `root` prepare
+   directories and adjust ownership for `nobody`. PostgreSQL lifecycle commands
+   run through the worker helper as `nobody`. Ownership fix-ups occur on every
+   call so running the tool twice remains idempotent.
 
 4. Pass the resulting paths and credentials to the test runner. When
    `postgresql_embedded` is used directly after the setup step, it can reuse
@@ -183,8 +194,14 @@ Enable the feature in the project's `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-pg-embed-setup-unpriv = { version = "0.5.0", features = ["async-api"] }
+pg-embed-setup-unpriv = { version = "0.6.3", features = ["async-api"] }
 ```
+
+mxd holds the crate in `test-util` rather than in the root crate, behind
+`test-util`'s `postgres` feature, so a SQLite-only build never compiles it. Add
+`diesel-support` only if code depends on the crate's diesel helpers; mxd does
+not, because the harness returns connection URLs as strings and mxd opens its
+own connections.
 
 Then use `start_async()` and `stop_async()` in async tests:
 

@@ -879,7 +879,7 @@ yielding a `SendStreamingOutcome`.*
 > responses. Server-side multi-packet response production – where handlers
 > return a `(mpsc::Sender, Response)` tuple and use helpers such as
 > `Response::with_channel` – is a distinct concern governed by
-> [ADR 0001](adr-001-multi-packet-streaming-response-api.md).
+> [Wireframe ADR 0001][wireframe-streaming-responses-adr].
 
 `WireframeClient` gains two new call methods for multi-frame responses:
 
@@ -1225,3 +1225,5 @@ make nixie 2>&1 | tee nixie.log
 
 The CI workflow should publish `markdownlint.log` and `nixie.log` as build
 artefacts and mark `docs:markdownlint+nixie` as a required merge check.
+
+[wireframe-streaming-responses-adr]: https://github.com/leynos/wireframe/blob/7049183ff8b29284ad542e16ec42ab448621aa89/docs/adr-001-multi-packet-streaming-response-api.md

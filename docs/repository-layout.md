@@ -66,6 +66,8 @@ Documentation is organized by purpose and audience.
 - `execplans/3-1-1-file-node-schema-and-permission-model.md` — File metadata
   and permission-model execution plan.
 - `users-guide.md` — End-user guide for running the server.
+- `mxd-v0-2-0-change-guide.md` — Configuration and command-line changes in the
+  v0.2.0 development line.
 - `developers-guide.md` — Developer workflow and quality gates.
 
 ### Architecture and decisions
@@ -73,10 +75,10 @@ Documentation is organized by purpose and audience.
 - `documentation-style-guide.md` — Conventions for authoring documentation.
 - `adopting-hexagonal-architecture-in-the-mxd-wireframe-migration.md` —
   Hexagonal architecture adoption notes.
-- `adr-*.md` — Architectural Decision Records (ADRs):
-  - `adr-001-login-auth-reply-compatibility-layers.md`
-  - `adr-002-compatibility-guardrails-and-augmentation.md`
-  - `adr-003-login-authentication-and-reply-augmentation.md`
+- `adrs/adr-*.md` — Architectural Decision Records (ADRs):
+  - `adrs/adr-0001-separate-login-authentication-and-reply-augmentation.md`
+  - `adrs/adr-0002-compatibility-guardrails-and-augmentation.md`
+  - `adrs/adr-0003-split-login-authentication-and-reply-augmentation.md`
 
 ### Feature-specific documentation
 
@@ -90,7 +92,17 @@ Documentation is organized by purpose and audience.
 
 ### User guides
 
-- `ortho-config-users-guide.md` — Configuration system guide.
+- `ortho-config-users-guide.md` — OrthoConfig v0.10.0 configuration guide.
+- `ortho-config-v0-10-0-migration-guide.md` — OrthoConfig v0.10.0 migration
+  guide.
+- `ortho-config-v0-9-0-migration-guide.md` — Historical OrthoConfig v0.9.0
+  migration guide.
+- `ortho-config-v0-7-0-migration-guide.md` — Historical OrthoConfig v0.7.0
+  migration guide.
+- `ortho-config-v0-6-0-migration-guide.md` — Historical OrthoConfig v0.6.0
+  migration guide.
+- `ortho-config-v0-10-0-provenance.md` — Upstream source, checksums, and link
+  mappings for the imported OrthoConfig documentation.
 - `pg-embed-setup-unpriv-users-guide.md` — PostgreSQL test helper guide.
 - `pg-embed-setup-unpriv-v0-5-0-migration-guide.md` — Migration guide for
   PostgreSQL helper v0.5.0.
@@ -124,6 +136,8 @@ Documentation is organized by purpose and audience.
 
 Detailed execution plans for roadmap tasks:
 
+- `issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.md` — Migration
+  evidence and validation plan.
 - `wireframe-v0-3-0-migration.md`
 - `1-2-4-model-handshake-readiness.md`
 - `1-3-4-kani-harnesses-for-transaction-framing-invariants.md`

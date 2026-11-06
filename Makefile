@@ -238,16 +238,30 @@ test: test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-veri
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
 # timeout feature requires Send. See docs/pg-embed-setup-unpriv-users-guide.md
 # "Thread safety constraints (v0.4.0)" for details.
-# NEXTEST_PROFILE=postgres serializes the run: every embedded cluster shares
-# one data directory and pg-embed-setup-unpriv does not coordinate across the
-# processes nextest runs. See "Embedded PostgreSQL in tests" in the
-# developers' guide.
+# NEXTEST_PROFILE=postgres selects the profile with headroom for a cold cluster
+# start. It no longer serializes the run: pg-embed-setup-unpriv 0.6 gives each
+# cluster its own data directory, so the tests run at the default parallelism.
+# See "Embedded PostgreSQL in tests" in the developers' guide.
 test-postgres: ## Run tests with the postgres backend
 	NEXTEST_PROFILE=postgres PG_PASSWORD="$(PG_PASSWORD)" RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_POSTGRES_FEATURES)
 
 warm-postgres: ## Download the embedded PostgreSQL binaries into PG_BINARY_CACHE_DIR
 	PG_RUNTIME_DIR="$(PG_WARM_DIR)/install" PG_DATA_DIR="$(PG_WARM_DIR)/data" pg_embedded_setup_unpriv
 	test -n "$$(ls -A "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}")"
+	@status=0; \
+	for root in "$${PG_BINARY_CACHE_DIR:?set PG_BINARY_CACHE_DIR}" "$(PG_WARM_DIR)/install"; do \
+		find -H "$$root" -path '*/share/timezone/UCT' -exec sh -c \
+			'status=0; \
+			for uct do \
+				[ -e "$$uct" ] || [ -L "$$uct" ] || continue; \
+				utc="$${uct%UCT}UTC"; \
+				if [ -e "$$utc" ]; then continue; fi; \
+				rm -f "$$utc"; \
+				ln -s UCT "$$utc" || status=1; \
+			done; \
+			exit "$$status"' sh {} + || status=1; \
+	done; \
+	exit "$$status"
 
 test-sqlite: ## Run tests with the sqlite backend
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) RUSTFLAGS="-D warnings" $(CARGO) $(TEST_CMD) $(TEST_SQLITE_FEATURES)

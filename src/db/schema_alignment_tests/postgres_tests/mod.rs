@@ -34,7 +34,6 @@ use super::{
     seed_upgrade_backfills,
 };
 
-#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
@@ -46,7 +45,6 @@ fn postgres_fresh_migration_creates_aligned_schema() -> TestResult<()> {
     })
 }
 
-#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
@@ -60,7 +58,6 @@ fn postgres_upgrade_backfills_legacy_news_rows() -> TestResult<()> {
     })
 }
 
-#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_category_names_are_bundle_scoped() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
@@ -190,7 +187,6 @@ async fn seed_categories_for_guid_test(
     Ok(())
 }
 
-#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_guids_are_non_empty_and_unique() -> TestResult<()> {
     with_postgres_test_db(|url| async move {

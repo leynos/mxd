@@ -5,8 +5,8 @@
 //!   table; non-deleted principals remain.
 //!
 //! Utilities and execution model:
-//! - Runs against an embedded `PostgreSQL` cluster and is serialized with
-//!   `serial_test::file_serial(postgres_embedded_setup)` to avoid shared cluster race conditions.
+//! - Runs against an embedded `PostgreSQL` cluster. Each test database is created in a cluster of
+//!   its own, so these tests run concurrently with the rest of the `PostgreSQL` leg.
 
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
@@ -118,7 +118,6 @@ async fn assert_user_delete_cascades_to_assignments(
     Ok(())
 }
 
-#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn test_user_permission_cascades() -> TestResult<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()

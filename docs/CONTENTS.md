@@ -11,6 +11,8 @@ Start here for newcomers to the project.
   usage.
 - [`users-guide.md`](users-guide.md) — Guide to running the server binaries
   and using administrative commands.
+- [`mxd-v0-2-0-change-guide.md`](mxd-v0-2-0-change-guide.md) — What changed in
+  the v0.2.0 development line, and how to check a deployment's configuration.
 - [`developers-guide.md`](developers-guide.md) — Developer workflow, quality
   gates, and local setup.
 
@@ -75,11 +77,23 @@ Detailed guides for specific development concerns.
   — PostgreSQL test helper guide.
 - [`pg-embed-setup-unpriv-v0-5-0-migration-guide.md`](pg-embed-setup-unpriv-v0-5-0-migration-guide.md)
   — Migration guide for PostgreSQL helper v0.5.0.
+- [`pg-embed-setup-unpriv-v0-6-0-migration-guide.md`](pg-embed-setup-unpriv-v0-6-0-migration-guide.md)
+  — Migration guide for PostgreSQL helper v0.6.0.
 
 ### Configuration and utilities
 
 - [`ortho-config-users-guide.md`](ortho-config-users-guide.md) — Configuration
-  system using ortho-config.
+  guide for OrthoConfig v0.10.0.
+- [`ortho-config-v0-10-0-migration-guide.md`](ortho-config-v0-10-0-migration-guide.md)
+  — OrthoConfig v0.10.0 migration guide.
+- [`ortho-config-v0-9-0-migration-guide.md`](ortho-config-v0-9-0-migration-guide.md)
+  — Historical OrthoConfig v0.9.0 migration guide.
+- [`ortho-config-v0-7-0-migration-guide.md`](ortho-config-v0-7-0-migration-guide.md)
+  — Historical OrthoConfig v0.7.0 migration guide.
+- [`ortho-config-v0-6-0-migration-guide.md`](ortho-config-v0-6-0-migration-guide.md)
+  — Historical OrthoConfig v0.6.0 migration guide.
+- [`ortho-config-v0-10-0-provenance.md`](ortho-config-v0-10-0-provenance.md)
+  — Upstream source, checksums, and link mappings for the imported guides.
 - [`whitaker-users-guide.md`](whitaker-users-guide.md) — Whitaker component
   guide.
 - [`wireframe-users-guide.md`](wireframe-users-guide.md) — Wireframe library
@@ -95,18 +109,23 @@ Documents for project planning and tracking progress.
   measurable tasks.
 - [`migration-plan-moving-mxd-protocol-implementation-to-wireframe.md`](migration-plan-moving-mxd-protocol-implementation-to-wireframe.md)
   — Detailed plan for migrating protocol handling to Wireframe.
+- [`execplans/issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.md`](execplans/issue-669-migrate-from-ortho-config-v0-3-0-to-v0-10-0.md)
+  — Evidence and validation plan for the OrthoConfig v0.10.0 migration.
 - [`execplans/`](execplans/) — Execution plans for individual roadmap tasks.
 
 ## Architectural decisions
 
 Architectural Decision Records (ADRs) capture significant design decisions.
 
-- [`adr-001-login-auth-reply-compatibility-layers.md`](adr-001-login-auth-reply-compatibility-layers.md)
-  — ADR 001: Separate login authentication and reply augmentation (superseded).
-- [`adr-002-compatibility-guardrails-and-augmentation.md`](adr-002-compatibility-guardrails-and-augmentation.md)
-  — ADR 002: Compatibility guardrails and augmentation (superseded).
-- [`adr-003-login-authentication-and-reply-augmentation.md`](adr-003-login-authentication-and-reply-augmentation.md)
-  — ADR 003: Split login authentication and reply augmentation (accepted).
+- [`adrs/adr-0001-separate-login-authentication-and-reply-augmentation.md`](adrs/adr-0001-separate-login-authentication-and-reply-augmentation.md)
+  — ADR 0001: Separate login authentication and reply augmentation (superseded).
+- [`adrs/adr-0002-compatibility-guardrails-and-augmentation.md`](adrs/adr-0002-compatibility-guardrails-and-augmentation.md)
+  — ADR 0002: Compatibility guardrails and augmentation (accepted; amended by
+  ADR-0004).
+- [`adrs/adr-0003-split-login-authentication-and-reply-augmentation.md`](adrs/adr-0003-split-login-authentication-and-reply-augmentation.md)
+  — ADR 0003: Split login authentication and reply augmentation (proposed).
+- [`adrs/adr-0004-amend-adr-0002-status-summary.md`](adrs/adr-0004-amend-adr-0002-status-summary.md)
+  — ADR 0004: Amendment to the ADR 0002 status summary (accepted).
 
 ## Reference
 

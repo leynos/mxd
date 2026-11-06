@@ -3,8 +3,8 @@
 //! Verifies that the `news_articles` self-referential threading columns
 //! (`parent_article_id`, `first_child_article_id`) support valid parent-child
 //! relationships via JOIN queries and that foreign-key constraints reject
-//! references to non-existent articles.  Tests run against an embedded
-//! `PostgreSQL` cluster and are serialized via `serial_test::file_serial`.
+//! references to non-existent articles. Tests run against an embedded
+//! `PostgreSQL` cluster owned by the test, so they need no external lock.
 
 use anyhow::Context;
 use diesel::sql_query;
@@ -136,7 +136,6 @@ async fn assert_missing_references_are_rejected(
     Ok(())
 }
 
-#[serial_test::file_serial(postgres_embedded_setup)]
 #[test]
 fn postgres_article_threading_enforces_referential_integrity() -> TestResult<()> {
     with_postgres_test_db(|url| async move {
