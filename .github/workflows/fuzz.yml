@@ -32,6 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/setup-rust
+      # `make test-fuzz-harness` restates the build standard's linker flag.
+      - name: Install the fast linker
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mold
       - name: Cache Cargo directories
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 

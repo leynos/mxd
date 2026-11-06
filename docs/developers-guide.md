@@ -870,19 +870,21 @@ every source, so each place that assigns it restates both flags:
   development flags.
 
 Coverage runs and release builds assign `RUSTFLAGS` without them on purpose.
-`tests/workflow_contracts/test_build_standard.py` parses the configuration and
-the workflow and holds these properties.
+The Concordat `rust-build-defaults` rule is the check; the repository keeps no
+contract test of its own for it. Any job that runs a gate recipe on Linux needs
+`mold` installed, because `GATE_RUSTFLAGS` names the linker: `loom-check.yml`
+and `fuzz.yml` install it for `make test-concurrency` and
+`make test-fuzz-harness`.
 
 ### Cranelift backend support
 
 Cranelift is not the development backend here. The repository's test suite has
 not been measured under it, so the profile selects no `codegen-backend` and the
-configuration carries no `[unstable] codegen-backend` key; the contract above
-refuses both. No measurement has been taken, and the decision is deferred to
-1 April 2027. To adopt it, run the whole suite under it, record any failing
-tests here as an exception, and add the key and the profile selection together:
-the profile key needs the unstable gate, and Coverage selects LLVM explicitly
-because instrumentation needs it.
+configuration carries no `[unstable] codegen-backend` key. No measurement has
+been taken, and the decision is deferred to 1 April 2027. To adopt it, run the
+whole suite under it, record any failing tests here as an exception, and add
+the key and the profile selection together: the profile key needs the unstable
+gate, and Coverage selects LLVM explicitly because instrumentation needs it.
 
 ## Runner placement
 

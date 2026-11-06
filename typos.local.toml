@@ -23,6 +23,7 @@ ignore = [
   "-fuse-ld=mold",
   "\\binstall-mold\\b",
   "`mold`",
+  "--no-install-recommends\\s+mold\\b",
   # Cargo, GitHub Actions and Tokio machine interfaces.
   '(?m)^\s*CARGO_TERM_COLOR: always$',
   # FORCE_COLOR is an environment variable read by markdownlint-cli2.
