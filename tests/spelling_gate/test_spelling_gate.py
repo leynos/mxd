@@ -97,6 +97,7 @@ def tracked_tree(tmp_path: Path) -> cabc.Callable[..., Path]:
         tracked: cabc.Mapping[str, str] | None = None,
         untracked: cabc.Mapping[str, str] | None = None,
     ) -> Path:
+        """Build a Git fixture holding the policy files, then add untracked files."""
         root = tmp_path / "fixture"
         root.mkdir()
         for name in POLICY_FILES:

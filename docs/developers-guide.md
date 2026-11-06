@@ -38,6 +38,19 @@ make lint WHITAKER=/opt/custom/bin/whitaker
 The fallback is a one-time check at parse time; it does not introduce a runtime
 dependency on shell availability.
 
+## Python docstring coverage
+
+`make lint` depends on `make interrogate`, which requires a docstring on every
+module, class and function that interrogate scans in the Python files under
+`scripts` and `tests`; interrogate skips some path prefixes by default, so
+check a new file against the verbose report. The target runs interrogate 1.7.0
+through `uv tool run` with `-vv --fail-under 100`, so it needs `uv` on the
+path, and it also fails on any `MISSED` row because the rounded percentage can
+hide a single gap. CI lints Rust per feature set rather than through
+`make lint`, so the documentation job runs `make interrogate` as its own step
+after setting up uv. `tests/workflow_contracts/interrogate_gate_test.py` holds
+the wiring.
+
 ## Dependency auditing
 
 Run the dependency vulnerability audit with:

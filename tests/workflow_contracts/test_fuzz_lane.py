@@ -291,6 +291,7 @@ def triage(tmp_path: Path) -> typ.Callable[..., subprocess.CompletedProcess[str]
         fail: str = "",
         harness_path: Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
+        """Run the triage script against the stubs and return the completed process."""
         bash = shutil.which("bash")
         assert bash, "bash is required to run the triage script"
         env = {
