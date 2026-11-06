@@ -153,9 +153,12 @@ jobs:
       - name: Check Rust 1.94 compatibility
         run: |
           rustup toolchain install 1.94.0 --profile minimal
-          # A stable toolchain rejects the nightly-only `-Z` flag the build
-          # standard exports, so this check clears RUSTFLAGS.
-          RUSTFLAGS= cargo +1.94.0 check --locked --all-targets ${{ matrix.cargo_flags }}
+          # A stable toolchain rejects the nightly-only `-Z` flag and the
+          # `[unstable]` codegen-backend gate that .cargo/config.toml carries.
+          # Cargo reads configuration from the working directory upward, so
+          # run from outside the repository and name the manifest.
+          cd "$RUNNER_TEMP"
+          RUSTFLAGS= cargo +1.94.0 check --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" --locked --all-targets ${{ matrix.cargo_flags }}
       - name: Install cargo-nextest
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -197,7 +200,7 @@ jobs:
       - name: Install Whitaker
         uses: leynos/shared-actions/.github/actions/install-whitaker@5a99aed78ce68dcebd3052b75c31e6f173162b1e
       - name: Lint with Whitaker
-        run: RUSTFLAGS="-D warnings" whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
+        run: RUSTFLAGS="-D warnings" CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
       # Only the wireframe-only leg runs tests here. The sqlite and postgres
       # legs stay for their Clippy and Whitaker passes, which lint feature sets
       # nothing else lints, but the coverage job runs their suites (SQLite with
@@ -346,6 +349,8 @@ jobs:
       # cluster directory left by one test process authenticates in the next.
       # Not a secret: the cluster listens on localhost inside this job.
       PG_PASSWORD: mxd-embedded-test
+      # Coverage instrumentation needs LLVM; the development default is Cranelift.
+      CARGO_PROFILE_DEV_CODEGEN_BACKEND: llvm
       HX_BIN_DIR: ${{ github.workspace }}/.bin
       HX_WORK_ROOT: ${{ github.workspace }}/.cache/hx
       HX_SRC_LINK: ${{ github.workspace }}/.cache/synhx-client

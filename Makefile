@@ -164,15 +164,15 @@ lint: lint-postgres lint-sqlite lint-wireframe-only ## Run Clippy and Whitaker f
 
 lint-postgres: ## Run Clippy and Whitaker with the postgres backend
 	$(CARGO) clippy $(TEST_POSTGRES_FEATURES) $(CLIPPY_FLAGS)
-	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES) --all-targets
+	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm $(WHITAKER) --all -- $(TEST_POSTGRES_FEATURES) --all-targets
 
 lint-sqlite: ## Run Clippy and Whitaker with the sqlite backend
 	$(CARGO) clippy $(TEST_SQLITE_FEATURES) $(CLIPPY_FLAGS)
-	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES) --all-targets
+	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm $(WHITAKER) --all -- $(TEST_SQLITE_FEATURES) --all-targets
 
 lint-wireframe-only: ## Run Clippy and Whitaker with legacy networking disabled
 	$(CARGO) clippy $(WIREFRAME_ONLY_FEATURES) $(CLIPPY_FLAGS)
-	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES) --all-targets
+	env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm $(WHITAKER) --all -- $(WIREFRAME_ONLY_FEATURES) --all-targets
 
 markdownlint: spelling ## Lint Markdown files and enforce spelling
 	$(MDLINT) "**/*.md" "#.uv-cache" "#.uv-tools"

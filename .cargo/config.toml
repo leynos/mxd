@@ -13,6 +13,7 @@
 # on purpose.
 [unstable]
 no-embed-metadata = true
+codegen-backend = true
 
 [build]
 rustflags = ["-Zthreads=8"]
@@ -24,6 +25,7 @@ rustflags = ["-Zthreads=8"]
 rustflags = ["-Zthreads=8", "-Clink-arg=-fuse-ld=mold"]
 
 [profile.dev]
+codegen-backend = "cranelift"
 opt-level = 1          # default is 0; 1 shrinks a bit without killing compile times
 debug = 0
 debug-assertions = true
