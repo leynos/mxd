@@ -212,6 +212,9 @@ jobs:
       # default features, PostgreSQL with `legacy-networking`), so a second run
       # would only spend the minutes. Both backends stay first-class; see the
       # developers' guide, "Each backend runs once per event".
+      - name: Fetch dependencies
+        # Tests start their own cargo; fetch once so none resolves cold.
+        run: cargo fetch --locked
       - name: Test
         if: matrix.name == 'wireframe-only'
         run: |
@@ -302,6 +305,8 @@ jobs:
             echo "hx resolves to Helix, not SynHX" >&2
             exit 1
           fi
+      - name: Fetch dependencies
+        run: cargo fetch --locked
       - name: Build wireframe server for validator
         run: make validator-sqlite-server
       - name: Run validator harness
@@ -385,6 +390,8 @@ jobs:
             echo "hx resolves to Helix, not SynHX" >&2
             exit 1
           fi
+      - name: Fetch dependencies
+        run: cargo fetch --locked
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
       - uses: taiki-e/install-action@v2.88.1
