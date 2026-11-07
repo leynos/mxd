@@ -368,8 +368,26 @@ the profile without ever applying it.
 `tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py` therefore drives a
 real nextest over a disposable two-member fixture workspace, with budgets in
 seconds rather than minutes. One member matches a package override and one
-deliberately does not, so a single run exercises the per-package timeout and
-the default route's fall-through to the run ceiling.
+deliberately does not. The contracts run each member separately, so every
+outcome is attributed to the crate that produced it: the matching crate shows
+the per-package timeout, and the control shows the default route's fall-through
+to the run ceiling.
+
+The fixture declares the `rstest-bdd-ui` profile too, with second-scale
+budgets, and further contracts select it by name through `NEXTEST_PROFILE`, as
+the Make target does. They assert both halves separately: that nextest resolved
+the profile named, read back from the `with nextest profile:` banner, and that
+the outcome is the one only that profile's budgets produce. The named period is
+longer than the default one, so a run that fell back to `default` would report
+`SLOW` and then `SIGTERM` where the named profile reports `TIMEOUT`. A second
+contract gives the profile a ceiling shorter than its period and shorter than
+the default ceiling, which makes `SLOW` unreachable rather than merely
+unlikely, so its absence is structural and the `SIGTERM` that arrives early can
+only be the named profile's own `global-timeout`. The fixture's profile name is
+itself pinned to the target's by reading `NEXTEST_PROFILE=` back out of the
+Makefile, so a rename on either side fails. The harness sets `NEXTEST_PROFILE`
+rather than inheriting it, because an ambient value left over from a
+surrounding run would otherwise choose the profile the contracts are deciding.
 
 The contracts assert nextest's result words rather than elapsed time, because
 the word carries the reason. An overrunning test reports `TIMEOUT` when
@@ -377,7 +395,9 @@ the word carries the reason. An overrunning test reports `TIMEOUT` when
 `terminate-after` merely warns, and `SIGTERM` when neither applies and the
 run-wide ceiling stops the whole run. Dropping `terminate-after` from the
 fixture turns the first into the second, which is exactly the regression the
-setting guards against.
+setting guards against. Exit codes cannot make this distinction: a per-test
+timeout and a run-wide ceiling both exit 100, so only the reported word
+separates them.
 
 The fixture builds standalone leaf crates, so it neither touches the UI package
 nor queues behind the trybuild fixtures. Run it with
