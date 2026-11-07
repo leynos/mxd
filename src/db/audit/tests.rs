@@ -234,27 +234,35 @@ async fn audit_reports_injected_probe_failure(#[case] capability: Capability) {
 /// above all passing. Here the fetch helper answers with a result set the
 /// audit must reject, and only the validator the public audit still has to
 /// call can reject it.
+/// Run the public audit on a fresh in-memory connection and assert it rejected
+/// the result that `injection` arranged for, naming `capability`.
+///
+/// The guard drops when this block ends, so a leaked override cannot affect a
+/// later test on the same thread.
+async fn assert_audit_rejects_naming(injection: test_seam::InjectionGuard, capability: Capability) {
+    let mut conn = DbConnection::establish(":memory:")
+        .await
+        .expect("in-memory connection must open");
+
+    let result = {
+        let _injection = injection;
+        audit_sqlite_features(&mut conn).await
+    };
+
+    assert_rejected_naming(result, capability);
+}
+
 #[rstest]
 #[case(&[(0, "a"), (1, "b")])]
 #[case(&[(0, "a"), (1, "b"), (2, "d")])]
 #[case(&[(0, "c"), (1, "b"), (2, "a")])]
 #[tokio::test]
 async fn audit_rejects_an_incorrect_json_each_result(#[case] pairs: &[(i32, &str)]) {
-    let _injection = test_seam::inject_json_each_rows(json_each_rows(pairs));
-    let mut conn = DbConnection::establish(":memory:")
-        .await
-        .expect("in-memory connection must open");
-
-    let error = audit_sqlite_features(&mut conn)
-        .await
-        .expect_err("an incorrect probe result must be rejected");
-
-    assert!(
-        error
-            .to_string()
-            .contains(Capability::Json1JsonEach.describe()),
-        "the error must name the JSON1 capability: {error}"
-    );
+    assert_audit_rejects_naming(
+        test_seam::inject_json_each_rows(json_each_rows(pairs)),
+        Capability::Json1JsonEach,
+    )
+    .await;
 }
 
 /// The audit rejects an incorrect recursive-CTE result, for the same reason.
@@ -264,21 +272,11 @@ async fn audit_rejects_an_incorrect_json_each_result(#[case] pairs: &[(i32, &str
 #[case(&[3, 2, 1])]
 #[tokio::test]
 async fn audit_rejects_an_incorrect_recursive_cte_result(#[case] rows: &[i32]) {
-    let _injection = test_seam::inject_recursive_cte_rows(rows.to_vec());
-    let mut conn = DbConnection::establish(":memory:")
-        .await
-        .expect("in-memory connection must open");
-
-    let error = audit_sqlite_features(&mut conn)
-        .await
-        .expect_err("an incorrect probe result must be rejected");
-
-    assert!(
-        error
-            .to_string()
-            .contains(Capability::RecursiveCte.describe()),
-        "the error must name the recursive-CTE capability: {error}"
-    );
+    assert_audit_rejects_naming(
+        test_seam::inject_recursive_cte_rows(rows.to_vec()),
+        Capability::RecursiveCte,
+    )
+    .await;
 }
 
 /// The override lifts when its guard drops.
