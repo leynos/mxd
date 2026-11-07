@@ -17,9 +17,15 @@ The fixture is disposable: two member crates with no dependencies, built into
 the repository's `target` directory, and a `.config/nextest.toml` whose budgets
 are seconds rather than minutes. One crate matches a package override and one
 deliberately does not. They are run separately rather than together, so each
-outcome is attributed to the crate that produced it: the matching crate shows a
-per-package timeout, the control shows the default route's fall-through to the
-run ceiling.
+outcome is attributed to the crate that produced it.
+
+Both routes terminate, because both routes in production terminate: the default
+profile kills a test at 60 seconds and the override raises that to 900. Scaling
+the *shape* rather than only the numbers is what makes the fixture evidence.
+The override buys the matching crate a longer budget, so one test sleep sits
+between the two periods: the matching crate finishes it and the control is
+killed partway through. A fixture whose default route merely warned could not
+express that, and would leave the fall-through path untested.
 
 The `rstest-bdd-ui` profile is declared in the fixture with seconds-scale
 budgets, and a third group of contracts selects it by name. Reading the file
@@ -57,35 +63,61 @@ PROFILE = "rstest-bdd-ui"
 
 # The fixture's budgets, in seconds. They are short enough to keep the lane
 # cheap and far enough apart that ordering, not a tight window, is what the
-# contracts assert: the override must fire before the run ceiling, and the
-# control must reach the ceiling without ever being terminated per-test.
-OVERRIDE_PERIOD = 3
+# contracts assert. Each pair of numbers below is separated by at least two
+# seconds where it matters, because a loaded host can delay a report by a
+# little but cannot reorder two budgets.
+#
+# Both routes terminate, because both routes in production are terminating: the
+# default profile kills at 60 seconds and the package override raises that to
+# 900. The fixture scales that shape rather than only the numbers. Because both
+# routes report `TIMEOUT`, the outcome word cannot tell them apart here, and the
+# contracts read the second at which the kill landed instead. That is the whole
+# benefit the override buys - the same test survives longer - and it is the
+# property a fixture whose default route merely warned could not express.
+OVERRIDE_PERIOD = 6
 DEFAULT_PERIOD = 2
-GLOBAL_TIMEOUT = 6
+# The ceiling sits well above both periods, so neither route reaches it before
+# its own period fires. A contract comparing the two kill points is therefore
+# measuring the periods rather than whichever budget happened to be shortest.
+# It stays below `TEST_SLEEP` so a route that never terminates still ends at
+# the ceiling rather than outliving the test.
+GLOBAL_TIMEOUT = 30
 TEST_SLEEP = 60
 
+# A sleep that fits between the two periods: long enough for the default route
+# to kill it, short enough for the override to let it finish. Running the same
+# crate under both routes is what shows the override changes the outcome rather
+# than only the elapsed time.
+SURVIVOR_SLEEP = 4
+
 # The named profile as the fixture normally declares it. Its period is longer
-# than `DEFAULT_PERIOD`, so a run that selected the default profile by mistake
-# would report `SLOW` where this one reports `TIMEOUT`: the outcome word, not
-# the elapsed time alone, is what discriminates.
+# than `DEFAULT_PERIOD`, so a run that fell back to `default` would be killed at
+# 2 seconds where this one survives to 5. The elapsed time is what discriminates
+# here, since both routes report the same word.
 PROFILE_PERIOD = 5
 PROFILE_GLOBAL = 20
 
 # A second shape, where the profile's ceiling is shorter than its period and
-# shorter than the default ceiling. The period cannot fire before the ceiling,
-# so `SLOW` cannot be printed at all - its absence is structural rather than a
-# race - and the only reachable outcome is `SIGTERM` at the profile's ceiling.
+# shorter than every period in the file, the default route's included. Neither
+# period can fire before the ceiling, so `TIMEOUT` cannot be printed at all -
+# its absence is structural rather than a race - and the only reachable outcome
+# is `SIGTERM` at the profile's ceiling. It is also what rules out the default
+# route, which would otherwise terminate the test per-test at its own period.
 TIGHT_PROFILE_PERIOD = 30
-TIGHT_PROFILE_GLOBAL = 2
+TIGHT_PROFILE_GLOBAL = 1
 
 # The end-to-end fixture drives the real Make target, which hardcodes this
-# package name. The budgets follow the same pattern as above: a named profile
-# that terminates its test and a default route that does not, so a run that
-# failed to select the named profile fails fast with `SIGTERM` rather than
-# hanging until the harness gives up.
+# package name. Its budgets scale the same shape as above: both routes
+# terminate, the named profile's period is the longer of the two, and its
+# ceiling is above both. A run that failed to select the named profile is
+# therefore stopped early by the default route, which is a bounded failure
+# rather than a hang.
 UI_PACKAGE = "rstest-bdd-ui-tests"
-END_TO_END_PERIOD = 3
+END_TO_END_PERIOD = 6
 END_TO_END_GLOBAL = 40
+# The default route's period in that fixture, kept well below the profile's so
+# the two kill points cannot be confused under load.
+END_TO_END_DEFAULT_PERIOD = 2
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 RESULT_LINE = re.compile(
@@ -144,21 +176,29 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _member(directory: pathlib.Path, name: str) -> None:
-    """Write one fixture member whose test overruns every budget."""
+def _member(
+    directory: pathlib.Path, name: str, sleep_seconds: int = TEST_SLEEP
+) -> None:
+    """Write one fixture member whose test sleeps for `sleep_seconds`.
+
+    The default sleep overruns every budget, which is what the contracts about
+    termination need. A shorter one fits under the override's period while
+    still overrunning the default's, so the same crate can be shown to fail
+    under one route and pass under the other.
+    """
     (directory / "src").mkdir(parents=True, exist_ok=True)
     (directory / "Cargo.toml").write_text(
         f'[package]\nname = "{name}"\nversion = "0.0.0"\nedition = "2024"\n',
         encoding="utf-8",
     )
     (directory / "src" / "lib.rs").write_text(
-        "//! Fixture member for the timeout contracts.\n\n"
+        f"//! Fixture member for the timeout contracts.\n\n"
         "#[cfg(test)]\n"
         "mod tests {\n"
-        "    /// Sleeps past every budget the fixture configures.\n"
+        f"    /// Sleeps for {sleep_seconds} seconds.\n"
         "    #[test]\n"
         f"    fn {TEST_NAME}() {{\n"
-        f"        std::thread::sleep(std::time::Duration::from_secs({TEST_SLEEP}));\n"
+        f"        std::thread::sleep(std::time::Duration::from_secs({sleep_seconds}));\n"
         "    }\n"
         "}\n",
         encoding="utf-8",
@@ -172,9 +212,12 @@ def _config(
 ) -> str:
     """The fixture's nextest configuration.
 
-    `terminate` decides whether the overridden package's period kills the test.
-    Turning it off is how the "slow warning" outcome is produced without
-    changing anything else.
+    `terminate` decides whether the *default* route's period kills the test.
+    The override always does, because production's does; `False` is the shape
+    that isolates what the override contributes, by giving the control route a
+    period that only warns. Comparing a matching run against a warning control
+    is how a contract shows the kill came from the override rather than from
+    the default budget underneath it.
 
     The `rstest-bdd-ui` profile is declared here with second-scale budgets, in
     the same shape production declares it, so the behavioural contracts can
@@ -183,20 +226,17 @@ def _config(
     that parses but is never selected silently falls back to `default`. Only a
     run covers both.
     """
-    override = (
-        f'slow-timeout = {{ period = "{OVERRIDE_PERIOD}s", '
-        'terminate-after = 1, grace-period = "1s" }'
-        if terminate
-        else f'slow-timeout = {{ period = "{OVERRIDE_PERIOD}s", grace-period = "1s" }}'
-    )
+    default_termination = ', terminate-after = 1' if terminate else ""
     return (
         "[profile.default]\n"
-        f'slow-timeout = {{ period = "{DEFAULT_PERIOD}s", grace-period = "1s" }}\n'
+        f'slow-timeout = {{ period = "{DEFAULT_PERIOD}s"'
+        f'{default_termination}, grace-period = "1s" }}\n'
         f'global-timeout = "{GLOBAL_TIMEOUT}s"\n'
         "\n"
         "[[profile.default.overrides]]\n"
         f'filter = "package({OVERRIDDEN})"\n'
-        f"{override}\n"
+        f'slow-timeout = {{ period = "{OVERRIDE_PERIOD}s", '
+        'terminate-after = 1, grace-period = "1s" }\n'
         "\n"
         f"[profile.{PROFILE}]\n"
         f'slow-timeout = {{ period = "{profile_period}s", '
@@ -210,15 +250,22 @@ def _workspace(
     terminate: bool,
     profile_period: int = PROFILE_PERIOD,
     profile_global: int = PROFILE_GLOBAL,
+    sleep_seconds: int = TEST_SLEEP,
 ) -> pathlib.Path:
-    """Create the two-member fixture workspace and return its path."""
+    """Create the two-member fixture workspace and return its path.
+
+    `sleep_seconds` sets both members' tests to the same duration. Shortening
+    it to `SURVIVOR_SLEEP` lets a contract hold one identical test to both
+    routes at once: the two crates differ in nothing but their name, which is
+    all the package filter keys on, so any difference in outcome is the route.
+    """
     root.mkdir(parents=True, exist_ok=True)
     (root / "Cargo.toml").write_text(
         f'[workspace]\nresolver = "3"\nmembers = ["{OVERRIDDEN}", "{CONTROL}"]\n',
         encoding="utf-8",
     )
-    _member(root / OVERRIDDEN, OVERRIDDEN)
-    _member(root / CONTROL, CONTROL)
+    _member(root / OVERRIDDEN, OVERRIDDEN, sleep_seconds)
+    _member(root / CONTROL, CONTROL, sleep_seconds)
     (root / ".config").mkdir()
     (root / ".config" / "nextest.toml").write_text(
         _config(terminate, profile_period, profile_global), encoding="utf-8"
@@ -238,8 +285,13 @@ def _end_to_end_workspace(root: pathlib.Path, with_ceiling: bool) -> pathlib.Pat
     `with_ceiling` chooses which half under test. With it, the profile's
     ceiling is the shortest budget in the file, so reaching it can only be the
     named profile governing. Without it, the ceiling is long enough that the
-    period fires first, and the profile's own `terminate-after` is what stops
+    profile's period fires first, and its own `terminate-after` is what stops
     the test.
+
+    The default route terminates here as it does in production, and its period
+    is the shortest budget in both shapes. A run that failed to select the
+    profile would therefore still be killed, just at the wrong, earlier point -
+    so the elapsed time, not the outcome word, is what the contracts read.
 
     The same directory is reused across runs, so every write is idempotent: a
     second run must reproduce the fixture rather than fail on a leftover one.
@@ -251,13 +303,15 @@ def _end_to_end_workspace(root: pathlib.Path, with_ceiling: bool) -> pathlib.Pat
     )
     _member(root / UI_PACKAGE, UI_PACKAGE)
     (root / ".config").mkdir(exist_ok=True)
+    default_ceiling = 30
     if with_ceiling:
-        default_ceiling, profile_period, profile_ceiling = 8, 30, 2
+        profile_period, profile_ceiling = TIGHT_PROFILE_PERIOD, TIGHT_PROFILE_GLOBAL
     else:
-        default_ceiling, profile_period, profile_ceiling = 8, END_TO_END_PERIOD, 40
+        profile_period, profile_ceiling = END_TO_END_PERIOD, END_TO_END_GLOBAL
     (root / ".config" / "nextest.toml").write_text(
         "[profile.default]\n"
-        f'slow-timeout = {{ period = "{DEFAULT_PERIOD}s", grace-period = "1s" }}\n'
+        f'slow-timeout = {{ period = "{END_TO_END_DEFAULT_PERIOD}s", '
+        'terminate-after = 1, grace-period = "1s" }\n'
         f'global-timeout = "{default_ceiling}s"\n'
         "\n"
         f"[profile.{PROFILE}]\n"
@@ -484,14 +538,42 @@ def test_an_overrunning_test_is_terminated_by_the_package_override(
     """The override kills the test it matches, at its own period.
 
     `TIMEOUT` is nextest's word for a per-test termination, so this fails if
-    `terminate-after` is dropped: the same test then runs on and the run
-    reports `SIGTERM` at the ceiling instead.
+    `terminate-after` is dropped from the override: the same test then runs on
+    and the run reports `SIGTERM` at the ceiling instead.
     """
     outcomes = _run(
         _workspace(tmp_path / "terminating", terminate=True), OVERRIDDEN
     ).outcomes
     assert _last_kind(outcomes) == "TIMEOUT", _kinds(outcomes)
     assert "SIGTERM" not in _kinds(outcomes), _kinds(outcomes)
+    assert _first_time(outcomes, "TIMEOUT") >= OVERRIDE_PERIOD - 1, outcomes
+
+
+def test_the_override_lets_a_test_survive_a_budget_that_would_kill_it(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The override is time the test gains, not a relabelled outcome.
+
+    Both crates run the same test for the same short sleep, and both routes
+    terminate. The only difference between them is the package name the filter
+    matches, so the difference in result is the override itself: the control is
+    held to the default period and killed, and the matching crate runs past
+    that point and finishes.
+
+    This is what a fixture whose default route only warned could not show. It
+    is also the shape production has - the default profile kills at 60 seconds
+    and the UI package's override raises that to 900 - so a run that ignored
+    the override would fail here the way it would in CI.
+    """
+    root = _workspace(
+        tmp_path / "survivor", terminate=True, sleep_seconds=SURVIVOR_SLEEP
+    )
+    overridden = _run(root, OVERRIDDEN)
+    control = _run(root, CONTROL)
+    assert _last_kind(overridden.outcomes) == "PASS", _kinds(overridden.outcomes)
+    assert "TIMEOUT" not in _kinds(overridden.outcomes), _kinds(overridden.outcomes)
+    assert _last_kind(control.outcomes) == "TIMEOUT", _kinds(control.outcomes)
+    assert _first_time(control.outcomes, "TIMEOUT") < SURVIVOR_SLEEP, control.outcomes
 
 
 def test_a_period_without_terminate_after_only_warns(
@@ -499,47 +581,52 @@ def test_a_period_without_terminate_after_only_warns(
 ) -> None:
     """A period alone reports the test as slow and never stops it.
 
-    This is the distinction the setting exists for. Same crate, same period,
-    same sleep: only `terminate-after` changed, and nextest stops saying
-    `TIMEOUT` at the period and instead warns `SLOW` until the run ceiling
-    kills the whole run with `SIGTERM`. One `SLOW` is all that fits before the
-    ceiling here, which is the point: the period no longer acts on its own.
+    This is the distinction the setting exists for. Same crate, same overrun:
+    only the default route's `terminate-after` changed, and nextest stops
+    saying `TIMEOUT` at the period and instead warns `SLOW` until the run
+    ceiling kills the whole run with `SIGTERM`. The period no longer acts on
+    its own, so the run ends at the ceiling rather than at the period.
     """
     outcomes = _run(
-        _workspace(tmp_path / "warning", terminate=False), OVERRIDDEN
+        _workspace(tmp_path / "warning", terminate=False), CONTROL
     ).outcomes
     kinds = _kinds(outcomes)
     assert "TIMEOUT" not in kinds, kinds
     assert "SLOW" in kinds, kinds
     assert _last_kind(outcomes) == "SIGTERM", kinds
+    assert _first_time(outcomes, "SIGTERM") >= GLOBAL_TIMEOUT - 1, outcomes
 
 
-def test_a_non_matching_package_falls_through_to_the_run_ceiling(
+def test_a_non_matching_package_is_held_to_the_default_route(
     tmp_path: pathlib.Path,
 ) -> None:
     """An override does not leak to a package it does not match.
 
-    The control crate is over budget for the default period but matches no
-    override, so it warns and then meets the run-wide ceiling. A filter that
-    matched too broadly would terminate it early, and this would report
-    `TIMEOUT` rather than `SIGTERM`.
+    The control crate matches no override, so the default route's period is
+    the one that kills it. A filter that matched too broadly would give it the
+    override's longer budget, and it would be killed later instead.
     """
     outcomes = _run(_workspace(tmp_path / "control", terminate=True), CONTROL).outcomes
-    assert "TIMEOUT" not in _kinds(outcomes), _kinds(outcomes)
-    assert _last_kind(outcomes) == "SIGTERM", _kinds(outcomes)
+    assert _last_kind(outcomes) == "TIMEOUT", _kinds(outcomes)
+    assert _first_time(outcomes, "TIMEOUT") >= DEFAULT_PERIOD - 1, outcomes
+    assert _first_time(outcomes, "TIMEOUT") < OVERRIDE_PERIOD, outcomes
 
 
-def test_the_override_fires_before_the_run_ceiling(tmp_path: pathlib.Path) -> None:
+def test_the_override_extends_the_kill_point_without_reaching_the_ceiling(
+    tmp_path: pathlib.Path,
+) -> None:
     """The two budgets act in the order their values imply.
 
     Ordering rather than a fixed window is what is asserted: a loaded host can
-    delay either report, but it cannot make the shorter budget act later than
-    the longer one.
+    delay either report, but it cannot reorder two budgets. The ceiling sits
+    above both, so the later of the two kills is still a period rather than the
+    run-wide stop, which is what keeps this a comparison of the periods.
     """
     root = _workspace(tmp_path / "ordering", terminate=True)
+    control = _first_time(_run(root, CONTROL).outcomes, "TIMEOUT")
     overridden = _first_time(_run(root, OVERRIDDEN).outcomes, "TIMEOUT")
-    control = _first_time(_run(root, CONTROL).outcomes, "SIGTERM")
-    assert overridden < control, (overridden, control)
+    assert control < overridden, (control, overridden)
+    assert overridden < GLOBAL_TIMEOUT, (overridden, GLOBAL_TIMEOUT)
 
 
 def _production_overrides() -> list[dict[str, typ.Any]]:
@@ -607,10 +694,10 @@ def test_the_named_profile_selects_and_enforces_its_own_period(
     """A run under the named profile reports `TIMEOUT` at that profile's period.
 
     Two things are asserted, and they are different things: nextest announced
-    the profile by name, and the outcome is the one only that profile's budget
-    produces. The fixture's named period is longer than the default period, so
-    a run that fell back to `default` would report `SLOW` and then `SIGTERM`
-    instead of `TIMEOUT`.
+    the profile by name, and the kill landed at that profile's period rather
+    than the default's. The fixture's named period is longer than the default
+    one, and both routes terminate, so a run that fell back to `default` would
+    report the same word at a smaller number.
 
     This is the link the file-reading contracts cannot supply. They prove the
     budgets are written; this proves nextest compiles the profile, selects it,
@@ -628,9 +715,10 @@ def test_the_named_profile_ceiling_stops_the_run_when_it_comes_first(
     """The named profile's own `global-timeout` governs its run.
 
     With a ceiling shorter than its period, the period cannot fire first, so
-    `SLOW` is unreachable rather than merely unlikely and its absence is strong
-    evidence. The ceiling is also three times shorter than the default one, so
-    reaching it this early can only mean the named profile's value was in force.
+    `TIMEOUT` is unreachable rather than merely unlikely and its absence is
+    strong evidence. It is also what rules out the default route: its period is
+    far shorter than this ceiling, so a run that fell back to `default` would
+    have terminated the test per-test and reported `TIMEOUT` instead.
     """
     run = _run(
         _workspace(
@@ -655,15 +743,14 @@ def test_the_default_route_is_what_the_fixture_selects_when_asked(
     """The unnamed route really is `default`, so the comparison above is sound.
 
     The named-profile contract above argues from a difference: the same crate
-    under `default` behaves differently. That argument needs the difference to
-    exist, so this pins the other half - `default` is selected, and its shorter
-    period warns instead of terminating.
+    under `default` is killed earlier. That argument needs the difference to
+    exist, so this pins the other half - `default` is selected, and the kill
+    lands at its shorter period rather than the profile's.
     """
     run = _run(_workspace(tmp_path / "unnamed", terminate=True), CONTROL)
     assert run.profile == "default", run.profile
-    assert "TIMEOUT" not in _kinds(run.outcomes), _kinds(run.outcomes)
-    assert "SLOW" in _kinds(run.outcomes), _kinds(run.outcomes)
-    assert _last_kind(run.outcomes) == "SIGTERM", _kinds(run.outcomes)
+    assert _last_kind(run.outcomes) == "TIMEOUT", _kinds(run.outcomes)
+    assert _first_time(run.outcomes, "TIMEOUT") < PROFILE_PERIOD, run.outcomes
 
 
 # The end-to-end contracts run the shipped recipe, so they need a package the
@@ -708,9 +795,10 @@ def test_the_make_target_selects_the_profile_and_terminates_per_test() -> None:
     them. Here the recipe itself supplies `NEXTEST_PROFILE` and `-p`, and
     nextest announces the profile and stops the test at that profile's period.
 
-    The default route in this fixture cannot terminate: its period has no
-    `terminate-after`, so a run that never selected the named profile would
-    report `SLOW` and then the run ceiling's `SIGTERM`.
+    The default route in this fixture terminates too, as production's does, and
+    at a shorter period. A run that never selected the named profile would
+    therefore also report `TIMEOUT` - just earlier. The elapsed time is what
+    separates the two, so the kill point, not the word, is the assertion.
     """
     root = _end_to_end_workspace(END_TO_END_ROOT / "period", with_ceiling=False)
     output, _ = _make_target(root)
