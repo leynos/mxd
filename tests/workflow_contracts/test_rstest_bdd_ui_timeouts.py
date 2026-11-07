@@ -290,6 +290,33 @@ def _end_to_end_env() -> dict[str, str]:
     return env
 
 
+def _write_lockfile(root: pathlib.Path) -> None:
+    """Give the fixture workspace the lockfile a real checkout would have.
+
+    `test-rstest-bdd-ui` runs after the `fetch` prerequisite, which is
+    `cargo fetch --locked`. A committed `Cargo.lock` is part of what that
+    recipe assumes: it is how the suite gets a reproducible dependency set
+    offline. The fixture is generated rather than checked in, so it starts
+    without one and `--locked` refuses to create it, failing the instruction's
+    intent for a reason that has nothing to do with timeouts.
+
+    Cargo writes the file itself, so the format stays whatever the toolchain
+    produces rather than something pinned here that would drift from it.
+    """
+    completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [shutil.which("cargo"), "generate-lockfile", "--offline"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env=_end_to_end_env(),
+    )
+    if completed.returncode != 0:
+        message = f"could not write the fixture lockfile:\n{completed.stderr}"
+        raise RuntimeError(message)
+
+
 def _make_target(root: pathlib.Path) -> tuple[str, int]:
     """Run the real `test-rstest-bdd-ui` recipe in `root`, and report its output.
 
@@ -306,6 +333,7 @@ def _make_target(root: pathlib.Path) -> tuple[str, int]:
     command would select whatever stable toolchain the host defaults to and
     fail for a reason that has nothing to do with timeouts.
     """
+    _write_lockfile(root)
     completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
         [  # noqa: S607
             "make",
@@ -643,6 +671,31 @@ def test_the_default_route_is_what_the_fixture_selects_when_asked(
 # the repository's `target` directory rather than `tmp_path` for the toolchain
 # reason documented on `_make_target`.
 END_TO_END_ROOT = REPO_ROOT / "target" / "ui-gate-end-to-end"
+
+
+def test_the_make_target_supplies_the_lockfile_its_fetch_needs() -> None:
+    """A fixture without a lockfile still passes the recipe's `fetch`.
+
+    `test-rstest-bdd-ui` runs after `fetch`, which is `cargo fetch --locked`,
+    and `--locked` fails rather than writing a missing lockfile. The fixture is
+    generated, so it has none on a clean run; a lockfile left by an earlier
+    run would hide that. This contract deletes any lockfile first, so it tests
+    the clean case rather than whichever state the directory happened to be in.
+
+    The lockfile is written by Cargo, so this also pins that the version the
+    toolchain produces is one `--locked` accepts, rather than one written by
+    hand that could drift from the format.
+
+    The exit status is not the signal here. The fixture's test overruns on
+    purpose, so the recipe exits non-zero whenever it works; what has to be
+    absent is `fetch`'s complaint, and what has to be present is a nextest run
+    that got as far as reporting an outcome.
+    """
+    root = _end_to_end_workspace(END_TO_END_ROOT / "lockfile", with_ceiling=False)
+    (root / "Cargo.lock").unlink(missing_ok=True)
+    output, _ = _make_target(root)
+    assert "cannot create the lock file" not in output, output[-2000:]
+    assert _outcomes(output), output[-4000:]
 
 
 def test_the_make_target_selects_the_profile_and_terminates_per_test() -> None:
