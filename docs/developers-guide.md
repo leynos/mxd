@@ -883,7 +883,7 @@ has anything left to resolve:
   validator or coverage step.
 
 Do not make the fetch conditional on the matrix leg, and do not add
-`|| true` to it. The concordat rule `nested-cargo-offline-tests` reads a fetch
+`|| true` to it. The estate lint rule `nested-cargo-offline-tests` reads a fetch
 as proof only when it is unconditional and its failure stops the run.
 
 ## The Rust build standard
