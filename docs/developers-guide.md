@@ -361,6 +361,32 @@ a test as slow, so without it an overrunning test would run on until the
 run-wide ceiling killed the whole run. Keep the pass and compile-fail
 assertions enabled.
 
+Those contracts read the configuration; they cannot show that nextest acts on
+it. libtest ignores `.config/nextest.toml` entirely, so a `cargo test` run of
+the UI package would pass whatever the budgets said, and a Cargo stub records
+the profile without ever applying it.
+`tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py` therefore drives a
+real nextest over a disposable two-member fixture workspace, with budgets in
+seconds rather than minutes. One member matches a package override and one
+deliberately does not, so a single run exercises the per-package timeout and
+the default route's fall-through to the run ceiling.
+
+The contracts assert nextest's result words rather than elapsed time, because
+the word carries the reason. An overrunning test reports `TIMEOUT` when
+`terminate-after` kills it at its period, `SLOW` while a period without
+`terminate-after` merely warns, and `SIGTERM` when neither applies and the
+run-wide ceiling stops the whole run. Dropping `terminate-after` from the
+fixture turns the first into the second, which is exactly the regression the
+setting guards against.
+
+The fixture builds standalone leaf crates, so it neither touches the UI package
+nor queues behind the trybuild fixtures. Run it with
+`make test-rstest-bdd-ui-timeouts`, which fails rather than skips when nextest
+is absent: the suite-level skip exists so `make test-workflow-contracts` stays
+fast and Rust-free in the docs-tooling lane, and the target exists so that skip
+cannot quietly cover the lane meant to have nextest. CI runs the target in the
+wireframe-only leg, next to `make test-rstest-bdd-ui`.
+
 ## Validator toggles for pending flows
 
 The `validator` crate now ships placeholder validators for wireframe flows that
