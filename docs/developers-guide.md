@@ -878,9 +878,11 @@ anything left to resolve:
 
 - `make test` depends on the `fetch` target, which runs
   `cargo fetch --locked`. A failed fetch stops the run.
-- Every CI job that runs tests, and `coverage-main.yml`, runs the same
-  `cargo fetch --locked` as an unconditional step before its first test,
-  validator or coverage step.
+- The `ci.yml` jobs that run tests, and `coverage-main.yml`, run the same
+  `cargo fetch --locked` as an unconditional step before their first test,
+  validator or coverage step. The Loom and fuzz workflows run only
+  `make test-concurrency`, `make test-fuzz-harness` and the Loom runner, which
+  do not start a nested `cargo` of their own, and they do not fetch first.
 
 Do not make the fetch conditional on the matrix leg, and do not add `|| true`
 to it. The estate lint rule `nested-cargo-offline-tests` reads a fetch as proof
@@ -1309,10 +1311,11 @@ to cancel a real run and tight enough to catch a wedged one, until
 
 ### The lockfile gate
 
-`make check-locked` runs `cargo metadata --locked`, which is the only command
-that refuses a `Cargo.lock` the manifest does not admit. Every other cargo
-invocation may rewrite the lockfile, and silently resolves such a mismatch away
-rather than reporting it.
+`make check-locked` runs `cargo metadata --locked`, which refuses a
+`Cargo.lock` the manifest does not admit. `cargo fetch --locked`, which
+`make test` and CI run first, refuses a missing or stale lockfile in the same
+way. Every other cargo invocation may rewrite the lockfile, and silently
+resolves such a mismatch away rather than reporting it.
 
 The gate exists because the mismatch has reached `main` three times, each time
 from a lockfile-only dependency bump that crossed a major boundary the manifest

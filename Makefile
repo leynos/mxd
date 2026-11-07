@@ -279,6 +279,9 @@ tlc-handshake: ## Run TLC on handshake spec
 fetch: ## Download the locked dependencies once, so nested cargo runs offline
 	$(CARGO) fetch --locked
 
+# The suites run only after the fetch has succeeded, even under `make -j`.
+test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-verification test-fuzz-harness test-concurrency test-doc: | fetch
+
 test: fetch test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-verification test-fuzz-harness test-concurrency test-doc ## Run database, wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency-kernel, and doc suites
 
 # Note: RSTEST_TIMEOUT is intentionally omitted for postgres tests because
