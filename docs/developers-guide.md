@@ -345,8 +345,18 @@ whatever else the host is compiling. `.config/nextest.toml` therefore gives
 profile raises the run-wide `global-timeout` to 30 minutes.
 `make test-rstest-bdd-ui` selects that profile through
 `NEXTEST_PROFILE=rstest-bdd-ui`, because `global-timeout` is not one of the
-settings a per-package override can replace. Keep the pass and compile-fail
-assertions enabled.
+settings a per-package override can replace.
+
+`tests/workflow_contracts/test_rstest_bdd_ui_gate.py` pins those three parts
+together. It runs the Make target for real, with `CARGO=<stub>` standing in for
+Cargo, and reads the profile from the environment of the process the recipe
+started. A stub on the caller's `PATH` would not do: the Makefile prepends
+`$(HOME)/.cargo/bin` to `PATH` on its third line, so the real Cargo would run.
+Reading the recipe's text would not do either, since `NEXTEST_PROFILE=` moved
+onto a recipe line of its own still appears in a dry run while the runner
+inherits nothing. The remaining contracts chain the numbers, so a raised slow
+timeout that no run ceiling can accommodate fails rather than passing as a
+larger figure. Keep the pass and compile-fail assertions enabled.
 
 ## Validator toggles for pending flows
 
