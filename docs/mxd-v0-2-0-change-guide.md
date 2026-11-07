@@ -1,17 +1,35 @@
 # mxd v0.2.0 change guide
 
-This guide describes the configuration and command-line behaviour that lands in
-the mxd v0.2.0 development line. No mxd release has been published yet, so
-there is no released version to upgrade from. The guide exists so that anyone
-running the server binaries from source knows what the current behaviour is and
-can check a deployment against it.
+This guide describes the configuration, command-line, and database-startup
+behaviour that lands in the mxd v0.2.0 development line. No mxd release has
+been published yet, so there is no released version to upgrade from. The guide
+exists so that anyone running the server binaries from source knows what the
+current behaviour is and can check a deployment against it.
 
 ## Scope
 
-The changes are confined to the configuration adapter and the command-line
-surface. The Hotline protocol, the database schema, and the administrative
-commands behave as before. Only how configuration is discovered, layered, and
-selected has changed.
+Most of the change is confined to the configuration adapter and the
+command-line surface. The Hotline protocol and the database schema behave as
+before, and the administrative commands behave as before apart from the SQLite
+audit described below. Configuration discovery, layering, and selection is the
+main change.
+
+## SQLite capability audit
+
+Both server runtimes and the `create-user` subcommand now audit the SQLite
+library they link before serving requests or writing data. The library must be
+3.35.0 or later and must provide the `JSON1` extension's `json_each` function
+and recursive common table expression support. A missing capability stops the
+command with an error naming it. PostgreSQL deployments are unaffected.
+
+The audit checks the library the binary actually links, not whichever `sqlite3`
+shell is installed, so a host whose `sqlite3 --version` looks recent can still
+fail. See the
+[user guide's SQLite runtime requirements](users-guide.md#sqlite-runtime-requirements)
+for the per-build detail and the
+[recovery steps](users-guide.md#recovering-from-a-failed-start-up-audit) — the
+short version is to upgrade the shared library, or rebuild against a newer one
+when the build links SQLite statically.
 
 ## Configuration precedence
 
@@ -93,7 +111,13 @@ To confirm a deployment resolves configuration the way this guide describes:
    value took effect.
 3. Point `MXD_CONFIG_PATH` at a path that does not exist and confirm startup
    exits non-zero with a `load configuration` diagnostic.
+4. Start a server and confirm it reaches its listening announcement, which it
+   prints only after the SQLite audit has passed.
 
-The same behaviour is covered by the process-level tests in
+The configuration behaviour is covered by the process-level tests in
 `tests/cli_contracts.rs` and by the configuration loader tests in
-`src/server/cli_tests.rs`.
+`src/server/cli_tests.rs`. The audit is covered by the tests in
+`src/db/audit/tests.rs` and `src/db/audit/version_tests.rs`, and by the
+entry-point ordering tests in `src/server/legacy/unit_tests.rs`,
+`src/server/wireframe/tests.rs`, and the `tests` module of
+`src/server/admin.rs`.

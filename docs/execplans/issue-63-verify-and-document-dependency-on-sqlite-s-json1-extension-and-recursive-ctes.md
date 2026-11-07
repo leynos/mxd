@@ -233,6 +233,22 @@ Thresholds that trigger escalation when breached.
 - [x] (2026-11-05) Moved the row-returning probes into
   `src/db/audit/probes.rs`: the fetch helpers and their expected row constants
   added enough lines to push `mod.rs` past 400 again.
+- [x] (2026-11-06) Closed the version-coverage gap the refreshed pre-merge
+  table raised: added a result injection for the version fetch in
+  `src/db/audit/test_seam.rs`, made `fetch_sqlite_version` honour it, and added
+  `audit_rejects_a_version_below_the_floor` in the new
+  `src/db/audit/version_tests.rs`. Verified by mutation: with the
+  `.and_then(ensure_supported_sqlite_version)` step replaced by
+  `.map(|_version| ())`, that test fails both cases at its `expect_err` while
+  every direct-validator test still passes, and the compiler reports the
+  validator, the parser and the floor constant as dead code. Restored
+  afterwards; the focused `db::audit` suite is 43 passed, 0 failed.
+- [x] (2026-11-06) Corrected the user-facing documentation the same table
+  raised: the change guide no longer claims the changes are confined to
+  configuration and the command line, names the SQLite requirement, links to
+  the user guide's requirements and recovery sections, and adds a
+  listening-announcement verification step; the README hands the version-floor
+  rationale and the static-versus-shared detail to the users' guide.
 
 ## Surprises & discoveries
 
@@ -491,6 +507,29 @@ Thresholds that trigger escalation when breached.
   figure as history instead of overwriting it, so a reader can still tell what
   was true when. Date/Author: 2026-11-06, agent, in response to the inline
   findings on review of `207a1674e531fddd96b144bbba9faef0773a82ef`.
+- Decision: close the version-coverage gap by extending the test seam with a
+  *result* injection for the version fetch, and adding
+  `audit_rejects_a_version_below_the_floor`. Rationale: the existing abort
+  injection returns from `run_sqlite_probes` before any fetch runs, so no
+  validator was reachable through the public audit. Deleting the
+  `.and_then(ensure_supported_sqlite_version)` step left every test passing,
+  because `version_rejects_unsupported` calls the validator directly. The new
+  test drives `3.34.1` and `2.8.17` through `audit_sqlite_features` and asserts
+  the error names the version capability; removing the version step makes it
+  fail. The version tests moved to `src/db/audit/version_tests.rs` by subject,
+  keeping each test module under the repository's 400-line ceiling.
+  Date/Author: 2026-11-06, agent, in response to the refreshed pre-merge table
+  on `a595f56611f53e0521d7a3b330b209bf3667013a`.
+- Decision: also signpost the audit in `docs/mxd-v0-2-0-change-guide.md` and
+  trim `README.md`. Rationale: the change guide's Scope opened by claiming the
+  changes were "confined to the configuration adapter and the command-line
+  surface", which this work falsifies, and it named no SQLite requirement at
+  all. The README carried the full version-floor rationale and the
+  static-versus-shared explanation, both of which the users' guide now owns.
+  The README keeps the requirement and the audit, and links to the user and
+  developers' guides for the detail; the change guide gains a short section and
+  a verification step. Date/Author: 2026-11-06, agent, in response to the
+  User-Facing Documentation row on the refreshed pre-merge table.
 
 ## Outcomes & retrospective
 
