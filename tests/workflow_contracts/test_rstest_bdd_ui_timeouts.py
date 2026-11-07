@@ -226,7 +226,7 @@ def _config(
     that parses but is never selected silently falls back to `default`. Only a
     run covers both.
     """
-    default_termination = ', terminate-after = 1' if terminate else ""
+    default_termination = ", terminate-after = 1" if terminate else ""
     return (
         "[profile.default]\n"
         f'slow-timeout = {{ period = "{DEFAULT_PERIOD}s"'
@@ -587,9 +587,7 @@ def test_a_period_without_terminate_after_only_warns(
     ceiling kills the whole run with `SIGTERM`. The period no longer acts on
     its own, so the run ends at the ceiling rather than at the period.
     """
-    outcomes = _run(
-        _workspace(tmp_path / "warning", terminate=False), CONTROL
-    ).outcomes
+    outcomes = _run(_workspace(tmp_path / "warning", terminate=False), CONTROL).outcomes
     kinds = _kinds(outcomes)
     assert "TIMEOUT" not in kinds, kinds
     assert "SLOW" in kinds, kinds
