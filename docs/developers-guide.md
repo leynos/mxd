@@ -337,9 +337,89 @@ title. Run it directly with `make test-rstest-bdd-ui`; the aggregate
 `make test` target and the CI test lane include this package.
 
 The trybuild test compiles separate fixture crates and can take longer than an
-ordinary unit test on a cold build. `.config/nextest.toml` gives only
-`rstest-bdd-ui-tests` a 300-second slow timeout; keep the pass and compile-fail
+ordinary unit test on a cold build: trybuild runs `cargo clean --package`
+before every fixture build, so the fixture package is rebuilt on each run
+rather than reused from an earlier one. That build also has to queue behind
+whatever else the host is compiling. `.config/nextest.toml` therefore gives
+`rstest-bdd-ui-tests` a 900-second slow timeout, and the `rstest-bdd-ui`
+profile raises the run-wide `global-timeout` to 30 minutes.
+`make test-rstest-bdd-ui` selects that profile through
+`NEXTEST_PROFILE=rstest-bdd-ui`, because `global-timeout` is not one of the
+settings a per-package override can replace.
+
+`tests/workflow_contracts/test_rstest_bdd_ui_gate.py` pins those three parts
+together. It runs the Make target for real, with `CARGO=<stub>` standing in for
+Cargo, and reads the profile from the environment of the process the recipe
+started. A stub on the caller's `PATH` would not do: the Makefile prepends
+`$(HOME)/.cargo/bin` to `PATH` on its third line, so the real Cargo would run.
+Reading the recipe's text would not do either, since `NEXTEST_PROFILE=` moved
+onto a recipe line of its own still appears in a dry run while the runner
+inherits nothing. The remaining contracts chain the numbers, so a raised slow
+timeout that no run ceiling can accommodate fails rather than passing as a
+larger figure. They also assert `terminate-after`: a period alone only reports
+a test as slow, so without it an overrunning test would run on until the
+run-wide ceiling killed the whole run. Keep the pass and compile-fail
 assertions enabled.
+
+Those contracts read the configuration; they cannot show that nextest acts on
+it. libtest ignores `.config/nextest.toml` entirely, so a `cargo test` run of
+the UI package would pass whatever the budgets said, and a Cargo stub records
+the profile without ever applying it.
+`tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py` therefore drives a
+real nextest over a disposable two-member fixture workspace, with budgets in
+seconds rather than minutes. One member matches a package override and one
+deliberately does not. The contracts run each member separately, so every
+outcome is attributed to the crate that produced it: the matching crate shows
+the per-package timeout, and the control shows the default route's fall-through
+to the run ceiling.
+
+The fixture declares the `rstest-bdd-ui` profile too, with second-scale
+budgets, and further contracts select it by name through `NEXTEST_PROFILE`, as
+the Make target does. They assert both halves separately: that nextest resolved
+the profile named, read back from the `with nextest profile:` banner, and that
+the outcome is the one only that profile's budgets produce. The named period is
+longer than the default one, so a run that fell back to `default` would report
+`SLOW` and then `SIGTERM` where the named profile reports `TIMEOUT`. A second
+contract gives the profile a ceiling shorter than its period and shorter than
+the default ceiling, which makes `SLOW` unreachable rather than merely
+unlikely, so its absence is structural and the `SIGTERM` that arrives early can
+only be the named profile's own `global-timeout`. The fixture's profile name is
+itself pinned to the target's by reading `NEXTEST_PROFILE=` back out of the
+Makefile, so a rename on either side fails. The harness sets `NEXTEST_PROFILE`
+rather than inheriting it, because an ambient value left over from a
+surrounding run would otherwise choose the profile the contracts are deciding.
+
+The contracts assert nextest's result words rather than elapsed time, because
+the word carries the reason. An overrunning test reports `TIMEOUT` when
+`terminate-after` kills it at its period, `SLOW` while a period without
+`terminate-after` merely warns, and `SIGTERM` when neither applies and the
+run-wide ceiling stops the whole run. Dropping `terminate-after` from the
+fixture turns the first into the second, which is exactly the regression the
+setting guards against. Exit codes cannot make this distinction: a per-test
+timeout and a run-wide ceiling both exit 100, so only the reported word
+separates them.
+
+The same file also runs the shipped `test-rstest-bdd-ui` recipe end to end, with
+`make -f <repo>/Makefile` from a fixture working directory. That is the only
+arrangement that exercises the recipe itself: the profile assignment and
+`-p rstest-bdd-ui-tests` come from the shipped target rather than from the
+test, so a recipe that stopped selecting the profile fails here even though
+every file-reading contract still passes. The fixture must supply a package by
+that hardcoded name, and it lives under the repository's `target` directory
+because rustup resolves the toolchain from the working directory; outside the
+repository the recipe's nightly-only flags would be handed to a stable
+toolchain and fail for unrelated reasons. Two contracts cover the two halves
+the profile exists for: per-test termination at its period, and the run ceiling
+when that comes first. The directory is reused between runs, so every write in
+it is idempotent.
+
+The fixtures build standalone leaf crates, so they neither touch the UI package
+nor queue behind the trybuild fixtures. Run them with
+`make test-rstest-bdd-ui-timeouts`, which fails rather than skips when nextest
+is absent: the suite-level skip exists so `make test-workflow-contracts` stays
+fast and Rust-free in the docs-tooling lane, and the target exists so that skip
+cannot quietly cover the lane meant to have nextest. CI runs the target in the
+wireframe-only leg, next to `make test-rstest-bdd-ui`.
 
 ## Validator toggles for pending flows
 
