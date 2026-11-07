@@ -24,9 +24,11 @@ run ceiling.
 The `rstest-bdd-ui` profile is declared in the fixture with seconds-scale
 budgets, and a third group of contracts selects it by name. Reading the file
 proves the budgets are written down; only a run proves nextest compiles that
-profile, selects it, and enforces it. Nothing here touches the real UI package
-or the shared compile-admission queue: the fixture has no dependencies, so its
-build is a single leaf crate per member.
+profile, selects it, and enforces it. A final group runs the shipped
+`test-rstest-bdd-ui` recipe itself against a fixture, so what is exercised is
+the target production runs rather than an equivalent command written here.
+Nothing here touches the real UI package or the shared compile-admission
+queue: the fixtures have no dependencies, so each build is a single leaf crate.
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ import dataclasses
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import tomllib
 import typing as typ
@@ -75,11 +78,20 @@ PROFILE_GLOBAL = 20
 TIGHT_PROFILE_PERIOD = 30
 TIGHT_PROFILE_GLOBAL = 2
 
+# The end-to-end fixture drives the real Make target, which hardcodes this
+# package name. The budgets follow the same pattern as above: a named profile
+# that terminates its test and a default route that does not, so a run that
+# failed to select the named profile fails fast with `SIGTERM` rather than
+# hanging until the harness gives up.
+UI_PACKAGE = "rstest-bdd-ui-tests"
+END_TO_END_PERIOD = 3
+END_TO_END_GLOBAL = 40
+
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 RESULT_LINE = re.compile(
     r"^\s*(?P<kind>TIMEOUT|SIGTERM|SLOW|PASS|FAIL)"
     r".*?\[[>\s]*(?P<seconds>\d+(?:\.\d+)?)s\]"
-    r".*?(?P<package>crate-[a-z]+)\s+(?P<test>tests::\w+)"
+    r".*?(?P<package>[a-z][a-z0-9-]*)\s+(?P<test>tests::\w+)"
 )
 
 # nextest announces the profile it resolved on its banner line. Reading it back
@@ -134,7 +146,7 @@ pytestmark = pytest.mark.skipif(
 
 def _member(directory: pathlib.Path, name: str) -> None:
     """Write one fixture member whose test overruns every budget."""
-    (directory / "src").mkdir(parents=True)
+    (directory / "src").mkdir(parents=True, exist_ok=True)
     (directory / "Cargo.toml").write_text(
         f'[package]\nname = "{name}"\nversion = "0.0.0"\nedition = "2024"\n',
         encoding="utf-8",
@@ -214,6 +226,104 @@ def _workspace(
     return root
 
 
+def _end_to_end_workspace(root: pathlib.Path, with_ceiling: bool) -> pathlib.Path:
+    """Create a fixture workspace holding the package the Make target names.
+
+    The target hardcodes `-p rstest-bdd-ui-tests`, so the fixture has to supply
+    a package by that name or the target would fail before nextest ran. The
+    fixture is deliberately not the real package: it is one leaf crate with no
+    dependencies, so the end-to-end contract costs a single compile rather than
+    a build of the UI gate's trybuild harness.
+
+    `with_ceiling` chooses which half under test. With it, the profile's
+    ceiling is the shortest budget in the file, so reaching it can only be the
+    named profile governing. Without it, the ceiling is long enough that the
+    period fires first, and the profile's own `terminate-after` is what stops
+    the test.
+
+    The same directory is reused across runs, so every write is idempotent: a
+    second run must reproduce the fixture rather than fail on a leftover one.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "Cargo.toml").write_text(
+        f'[workspace]\nresolver = "3"\nmembers = ["{UI_PACKAGE}"]\n',
+        encoding="utf-8",
+    )
+    _member(root / UI_PACKAGE, UI_PACKAGE)
+    (root / ".config").mkdir(exist_ok=True)
+    if with_ceiling:
+        default_ceiling, profile_period, profile_ceiling = 8, 30, 2
+    else:
+        default_ceiling, profile_period, profile_ceiling = 8, END_TO_END_PERIOD, 40
+    (root / ".config" / "nextest.toml").write_text(
+        "[profile.default]\n"
+        f'slow-timeout = {{ period = "{DEFAULT_PERIOD}s", grace-period = "1s" }}\n'
+        f'global-timeout = "{default_ceiling}s"\n'
+        "\n"
+        f"[profile.{PROFILE}]\n"
+        f'slow-timeout = {{ period = "{profile_period}s", '
+        'terminate-after = 1, grace-period = "1s" }\n'
+        f'global-timeout = "{profile_ceiling}s"\n',
+        encoding="utf-8",
+    )
+    return root
+
+
+def _end_to_end_env() -> dict[str, str]:
+    """The environment the real Make target is run in.
+
+    Unlike `_fixture_env`, the target's own flags are left alone: this contract
+    exists to run what production runs, and the recipe's `RUSTFLAGS` and
+    `NEXTEST_PROFILE` are part of that. Only the environment that would move
+    the run somewhere else is pinned.
+
+    `CARGO_TARGET_DIR` is shared with the other fixtures so the build cache is
+    reused. `NEXTEST_PROFILE` is removed rather than set: the recipe assigns it
+    itself, and inheriting one would mask a recipe that stopped assigning it.
+    """
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"NEXTEST_PROFILE", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET"}
+    }
+    env["CARGO_TARGET_DIR"] = str(REPO_ROOT / "target" / "timeout-contract-fixtures")
+    return env
+
+
+def _make_target(root: pathlib.Path) -> tuple[str, int]:
+    """Run the real `test-rstest-bdd-ui` recipe in `root`, and report its output.
+
+    `make -f <repo>/Makefile` with a fixture working directory is what makes
+    this end-to-end: the recipe that runs is the shipped one, flags and
+    profile assignment included, and only the workspace it compiles belongs to
+    the fixture. `CARGO` is pinned to the real binary because the Makefile
+    prepends `$(HOME)/.cargo/bin` to `PATH`, which would otherwise shadow any
+    stub.
+
+    The fixture lives under the repository's `target` directory on purpose.
+    Rustup resolves the toolchain from the working directory, and the recipe's
+    flags include a nightly-only `-Z` option; outside the repository the same
+    command would select whatever stable toolchain the host defaults to and
+    fail for a reason that has nothing to do with timeouts.
+    """
+    completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [  # noqa: S607
+            "make",
+            "-f",
+            str(REPO_ROOT / "Makefile"),
+            "test-rstest-bdd-ui",
+            f"CARGO={shutil.which('cargo')}",
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=900,
+        check=False,
+        env=_end_to_end_env(),
+    )
+    return ANSI.sub("", completed.stdout + completed.stderr), completed.returncode
+
+
 def _fixture_env(profile: str | None = None) -> dict[str, str]:
     """The environment the fixture is built and run in.
 
@@ -288,19 +398,21 @@ def _run(root: pathlib.Path, package: str, profile: str | None = None) -> Run:
             f"under profile {profile or 'default'} "
             f"(exit {completed.returncode}):\n{output[-4000:]}"
         )
-    return Run(_resolved_profile(output, profile), outcomes)
+    return Run(_resolved_profile(output), outcomes)
 
 
-def _resolved_profile(output: str, requested: str | None) -> str:
-    """The profile nextest says it used, falling back to the one requested.
+def _resolved_profile(output: str) -> str:
+    """The profile nextest says it used.
 
-    The banner is the only place nextest states its choice. Older versions do
-    not print it, so the requested name stands in; the outcome contracts below
-    still discriminate through the budgets, which is the stronger evidence
-    either way.
+    The banner is the only place nextest states its choice, so a missing banner
+    is a broken harness rather than an unproven one. Falling back to the
+    requested name would make the profile assertion true by construction - it
+    would only restate what the harness asked for, and could not fail when
+    nextest ignored it.
     """
     match = PROFILE_LINE.search(output)
-    return match["profile"] if match is not None else requested or "default"
+    assert match is not None, f"nextest never announced a profile:\n{output[-2000:]}"
+    return match["profile"]
 
 
 def _outcomes(output: str) -> list[Outcome]:
@@ -524,3 +636,52 @@ def test_the_default_route_is_what_the_fixture_selects_when_asked(
     assert "TIMEOUT" not in _kinds(run.outcomes), _kinds(run.outcomes)
     assert "SLOW" in _kinds(run.outcomes), _kinds(run.outcomes)
     assert _last_kind(run.outcomes) == "SIGTERM", _kinds(run.outcomes)
+
+
+# The end-to-end contracts run the shipped recipe, so they need a package the
+# target names and a workspace the recipe's flags can build. They are kept in
+# the repository's `target` directory rather than `tmp_path` for the toolchain
+# reason documented on `_make_target`.
+END_TO_END_ROOT = REPO_ROOT / "target" / "ui-gate-end-to-end"
+
+
+def test_the_make_target_selects_the_profile_and_terminates_per_test() -> None:
+    """The shipped recipe, run for real, enforces the named profile's period.
+
+    This is the end-to-end link. `test_rstest_bdd_ui_gate.py` runs the same
+    recipe, but under a Cargo stub, so it shows the profile is assigned and not
+    that nextest honours it. The contracts above invoke nextest directly, so
+    they show the budgets are enforced but not that the shipped recipe selects
+    them. Here the recipe itself supplies `NEXTEST_PROFILE` and `-p`, and
+    nextest announces the profile and stops the test at that profile's period.
+
+    The default route in this fixture cannot terminate: its period has no
+    `terminate-after`, so a run that never selected the named profile would
+    report `SLOW` and then the run ceiling's `SIGTERM`.
+    """
+    root = _end_to_end_workspace(END_TO_END_ROOT / "period", with_ceiling=False)
+    output, _ = _make_target(root)
+    outcomes = _outcomes(output)
+    assert outcomes, output[-4000:]
+    assert _resolved_profile(output) == PROFILE, output[-2000:]
+    assert _last_kind(outcomes) == "TIMEOUT", _kinds(outcomes)
+    assert "SIGTERM" not in _kinds(outcomes), _kinds(outcomes)
+    assert _first_time(outcomes, "TIMEOUT") >= END_TO_END_PERIOD - 1, outcomes
+
+
+def test_the_make_target_enforces_the_profile_ceiling() -> None:
+    """The same recipe stops the run at the named profile's `global-timeout`.
+
+    The profile's ceiling is the shortest budget in the file and shorter than
+    its own period, so `SLOW` cannot be printed and the `SIGTERM` that arrives
+    first can only be the named profile's ceiling. This is the half an override
+    cannot supply, and the reason the profile exists at all.
+    """
+    root = _end_to_end_workspace(END_TO_END_ROOT / "ceiling", with_ceiling=True)
+    output, _ = _make_target(root)
+    outcomes = _outcomes(output)
+    assert outcomes, output[-4000:]
+    assert _resolved_profile(output) == PROFILE, output[-2000:]
+    assert "SLOW" not in _kinds(outcomes), _kinds(outcomes)
+    assert "TIMEOUT" not in _kinds(outcomes), _kinds(outcomes)
+    assert _last_kind(outcomes) == "SIGTERM", _kinds(outcomes)

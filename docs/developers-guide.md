@@ -399,8 +399,22 @@ setting guards against. Exit codes cannot make this distinction: a per-test
 timeout and a run-wide ceiling both exit 100, so only the reported word
 separates them.
 
-The fixture builds standalone leaf crates, so it neither touches the UI package
-nor queues behind the trybuild fixtures. Run it with
+The same file also runs the shipped `test-rstest-bdd-ui` recipe end to end,
+with `make -f <repo>/Makefile` from a fixture working directory. That is the
+only arrangement that exercises the recipe itself: the profile assignment and
+`-p rstest-bdd-ui-tests` come from the shipped target rather than from the
+test, so a recipe that stopped selecting the profile fails here even though
+every file-reading contract still passes. The fixture must supply a package by
+that hardcoded name, and it lives under the repository's `target` directory
+because rustup resolves the toolchain from the working directory; outside the
+repository the recipe's nightly-only flags would be handed to a stable
+toolchain and fail for unrelated reasons. Two contracts cover the two halves
+the profile exists for: per-test termination at its period, and the run ceiling
+when that comes first. The directory is reused between runs, so every write in
+it is idempotent.
+
+The fixtures build standalone leaf crates, so they neither touch the UI package
+nor queue behind the trybuild fixtures. Run them with
 `make test-rstest-bdd-ui-timeouts`, which fails rather than skips when nextest
 is absent: the suite-level skip exists so `make test-workflow-contracts` stays
 fast and Rust-free in the docs-tooling lane, and the target exists so that skip
