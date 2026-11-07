@@ -480,38 +480,77 @@ Invariants introduced or preserved:
   preamble timeout fires first and its reply code 3 is read successfully within
   the client's one-second budget. The `Err` variant is therefore reachable only
   when connect, write, or read fails outright, and no scenario exercises it.
-  Its handling is covered by `reply_code`'s "missing reply" guard, which the
-  scenarios reach only if the handshake step never stores anything.
+  Two different guards exist for the two different absences, and the scenarios
+  reach only the first. `reply_code`'s "missing reply" guard rejects a world
+  whose handshake step never ran, which is the absence of a stored value at
+  all. A stored `Err` is a separate path: `reply_code` propagates it through its
+  `.map_err(ToString::to_string)?` and never inspects bytes. That defect
+  therefore passes through `reply_code` to the `Then` step, where
+  `assert_step_ok!` converts it into a step failure; the step does not compare
+  a code, because there is no reply bytes to decode. The `Err` path stays
+  untested by the scenarios, and this gap is retained rather than claimed as
+  covered.
 - INV-3: dropping the world signals the server to shut down without awaiting
-  it. Method: the scenario runtimes are current-thread, so a dropped world
-  before the runtime drains would surface as a hung or leaked server; the suite
-  completing in roughly the same wall-clock as the baseline is the evidence.
-  This is an axiom about the runtime, not a library guarantee available for
-  proof; the observable check is that the suite still terminates promptly.
+  it. Method: a focused unit test in `src/wireframe/handshake_bdd.rs`,
+  `dropping_the_world_signals_shutdown`, constructs a world whose `shutdown`
+  field holds a live `oneshot` receiver, drops the world, and asserts the
+  receiver resolves to `Ok(())`. Non-vacuity: the test fails if `Drop` omits the
+  `send`, and it distinguishes a delivered signal from a receiver that
+  resolves only because the sender was dropped — a dropped sender yields
+  `Err(RecvError)`, so the assertion discriminates the two. Prompt suite
+  completion is not offered as evidence here: Tokio drops outstanding tasks at
+  runtime shutdown, so a suite can finish promptly even if `Drop` never sends.
+  The plan previously claimed prompt completion as this evidence, which was
+  wrong and is corrected here.
 - INV-4: the async conversion does not change the asserted protocol semantics.
   Method: exact reply-code equality against the unchanged feature file.
 
 Lemma: the step wrapper's borrow of the world does not outlive a step's
 `.await`. Method: steps request exactly one fixture and the scenario body is
 empty, so no nested borrow is expressible; the compile is the discharge, and it
-is discharged twice over — once by `src/wireframe/handshake_bdd.rs` compiling
-as part of the workspace, and once independently by the trybuild compile-pass
-fixture `tests/rstest-bdd-ui/tests/ui/pass_mutable_world_async_steps.rs`, which
-reproduces the same macro invocation shape (borrowed world fixture, synchronous
-`Given`, async `When` taking `&mut World`, synchronous `Then`, named async
-scenario) in a crate that does not depend on `mxd`. Non-vacuity: the same
-shapes that would violate this are the documented `E0499`/`E0502` cases in the
-migration guide; that fixture is a live witness that the permitted shape
-compiles, and `trybuild` fails its harness on any unexpected compile error, so
-the row cannot pass by silently skipping.
+is discharged twice over.
 
-The second fixture also guards a second obligation: that the `rstest-bdd` macro
-expansion for this pattern does not regress into the compiler ICE the issue
-named as the principal risk. Method: a compile-pass fixture under
-`-D warnings`, run by `make test-rstest-bdd-ui`. Non-vacuity: an ICE or any
-other compile failure aborts the fixture, and the `fail_missing_scenario.rs`
-fixture in the same harness demonstrates that the harness genuinely inspects
-diagnostics rather than reporting success unconditionally.
+The first discharge is `src/wireframe/handshake_bdd.rs` compiling as part of
+the workspace, which covers the real scenarios but only inside this repository.
+
+The second discharge is independent: the `fixture_scenarios` module in
+`tests/rstest-bdd-ui/tests/ui.rs`, which reproduces the same macro invocation
+shape (borrowed world fixture, synchronous `Given`, async `When` taking
+`&mut World`, synchronous `Then`, named async scenario) in a crate that does
+not depend on `mxd`. This module sits inside the UI package's only Cargo
+target, an integration test, so `cargo test` compiles it in test mode, where
+the macro-generated wrapper and its borrows are actually checked.
+
+The trybuild compile-pass fixture
+`tests/rstest-bdd-ui/tests/ui/pass_mutable_world_async_steps.rs` is a third,
+weaker witness, and the reason it is weaker is worth recording. Locked
+`trybuild` 1.0.122 builds pass fixtures as `cargo build --bin`, which
+type-checks the binary target only. The bodies of `#[test]` functions are not
+type-checked in that mode, so a scenario defined at the top level of a fixture
+contributes nothing to this lemma. That was established directly: a binary whose
+`#[test]` body contained `let _x: u32 = "not a u32";` built with exit 0. The
+fixture remains useful as a binary-level check of imports, the `tokio`
+dev-dependency, and macro use in an ordinary compilation, but it is not offered
+as the wrapper discharge.
+
+Non-vacuity: the same shapes that would violate this are the documented
+`E0499`/`E0502` cases in the migration guide. The `fixture_scenarios` module is
+a live witness that the permitted shape compiles, and it fails the gate if that
+shape stops compiling because it is compiled by `cargo test` rather than by
+`cargo build`. The prior claim that the trybuild fixture alone discharged this
+lemma was wrong, and it is corrected here.
+
+The `fixture_scenarios` module also guards a second obligation: that the
+`rstest-bdd` macro expansion for this pattern does not regress into the
+compiler ICE the issue named as the principal risk. Method: the module is
+compiled in test mode by `cargo test -p rstest-bdd-ui-tests`, that is by
+`make test-rstest-bdd-ui`. Non-vacuity: an ICE or any other compile failure
+aborts the compile of the crate, so the gate cannot pass; and the trybuild
+`fail_missing_scenario.rs` fixture in the same harness demonstrates that the
+harness genuinely inspects diagnostics rather than reporting success
+unconditionally. The binary-level trybuild pass fixture contributes a second
+observation of the same expansion, in a plain `cargo build --bin` compile that
+is independent of test mode, which is the one place it does add value.
 
 Axioms:
 
@@ -676,6 +715,44 @@ Third revision, 2026-10-13: the remaining warning-level pre-merge row, "Testing
 feature file. The Verification plan's borrow lemma and the ICE-risk obligation
 now cite that fixture as an independent discharge, and the Interfaces section
 records the one test-only dependency edge it required.
+
+Fourth revision, 2026-11-07: an ExecPlan completeness and correctness
+assessment returned three substantive defects, all of which were confirmed
+against the source before repair. First, the trybuild pass fixture could not
+discharge the borrow lemma, because locked `trybuild` builds pass fixtures with
+`cargo build --bin` and test-mode bodies are not type-checked in that mode; a
+direct experiment confirmed that a binary with a type error inside a `#[test]`
+body still builds. The wrapper contracts therefore moved to a
+`fixture_scenarios` module inside the UI package's integration test, which
+`cargo test` compiles in test mode. Second, INV-3's evidence was insufficient:
+prompt suite completion does not show that `Drop` signalled, because Tokio
+drops outstanding tasks at runtime shutdown, so a focused unit test now asserts
+that a dropped world delivers `Ok(())` to a live receiver. Third, the
+stored-`Err` description conflated the `"missing reply"` guard with error
+propagation, and the `connect_and_maybe_send` doc comment implied that `Then`
+could assert a code for an outright client failure; both descriptions are
+corrected and the residual error-path coverage gap is retained.
+
+Landing the `fixture_scenarios` module surfaced a trap worth recording, because
+it cost two gate failures and the first diagnosis was wrong. `#[scenario]`
+resolves `path` by joining it onto `CARGO_MANIFEST_DIR`
+(`rstest-bdd-macros-0.6.0/src/parsing/feature/mod.rs`), and the same `.feature`
+file therefore needs a *different* relative path from the two places that
+compile it. The trybuild fixture is compiled in a scratch crate at
+`target/tests/trybuild/rstest-bdd-ui-tests/` and needs four `../` hops; the
+`fixture_scenarios` module is compiled in `tests/rstest-bdd-ui` itself and
+needs none, so the fixture's string overshoots the worktree root and the macro
+reports "feature file not found". The module now uses package-relative
+`tests/ui/...` paths. Second, `rustfmt`'s `fn_single_line` setting rewrites a
+fixture returning a single expression back onto one line, which re-triggers
+`unused_braces` on every format; expanding the body does not survive
+`make fmt`. The module carries the same tightly scoped
+`#[allow(unused_braces)]` as `src/wireframe/handshake_bdd.rs` and
+`tests/wireframe_transaction.rs`, with the
+`#[expect(clippy::allow_attributes)]` companion those files also need, because
+`allow_attributes` is denied workspace-wide. Suppressing a lint that the
+formatter makes unavoidable is the correct resolution; contorting the source
+against the formatter is not.
 
 [issue-235]: https://github.com/leynos/mxd/issues/235
 [pr-234]: https://github.com/leynos/mxd/pull/234

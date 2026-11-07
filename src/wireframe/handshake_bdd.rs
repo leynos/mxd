@@ -80,8 +80,12 @@ impl HandshakeWorld {
 
     /// Run one handshake against the started server, if any.
     ///
-    /// A handshake that fails is still a successful step: the failure is
-    /// recorded as the reply so the `Then` step can assert on its code.
+    /// The step succeeds whenever the attempt itself completed, whether the
+    /// server answered with a success or an error code, so the `Then` step
+    /// always has a reply to decode. Only a start-up failure (no server) is
+    /// returned as an error. An outright client failure — connect, write, or
+    /// read — is stored as `Err` and is not a reply, so `Then` reports it as a
+    /// step failure rather than asserting a code for it.
     async fn connect_and_maybe_send(&mut self, bytes: Option<Vec<u8>>) -> Result<(), String> {
         let addr = self.addr.ok_or_else(|| "server not started".to_string())?;
         self.reply = Some(perform_handshake(addr, bytes).await);
@@ -172,3 +176,22 @@ async fn unsupported_version(_world: HandshakeWorld) {}
 #[scenario(path = "tests/features/wireframe_handshake_hooks.feature", index = 3)]
 #[tokio::test(flavor = "current_thread")]
 async fn handshake_timeout(_world: HandshakeWorld) {}
+
+/// `Drop` must deliver the shutdown signal, not merely release it.
+///
+/// A dropped sender and a delivered `()` are different observations: the
+/// receiver yields `Err(RecvError)` for the former and `Ok(())` for the
+/// latter, so this assertion discriminates a real send from a silent release.
+#[test]
+fn dropping_the_world_signals_shutdown() {
+    let (sender, mut receiver) = oneshot::channel();
+    // Assign into a `Default` world rather than using functional-update
+    // syntax: moving the remaining fields out of a base value is rejected for
+    // a type that implements `Drop` (`E0509`).
+    let mut world = HandshakeWorld::default();
+    world.shutdown = Some(sender);
+
+    drop(world);
+
+    assert_eq!(receiver.try_recv(), Ok(()));
+}
