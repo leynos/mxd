@@ -337,8 +337,15 @@ title. Run it directly with `make test-rstest-bdd-ui`; the aggregate
 `make test` target and the CI test lane include this package.
 
 The trybuild test compiles separate fixture crates and can take longer than an
-ordinary unit test on a cold build. `.config/nextest.toml` gives only
-`rstest-bdd-ui-tests` a 300-second slow timeout; keep the pass and compile-fail
+ordinary unit test on a cold build: trybuild runs `cargo clean --package`
+before every fixture build, so the fixture package is rebuilt on each run
+rather than reused from an earlier one. That build also has to queue behind
+whatever else the host is compiling. `.config/nextest.toml` therefore gives
+`rstest-bdd-ui-tests` a 900-second slow timeout, and the `rstest-bdd-ui`
+profile raises the run-wide `global-timeout` to 30 minutes.
+`make test-rstest-bdd-ui` selects that profile through
+`NEXTEST_PROFILE=rstest-bdd-ui`, because `global-timeout` is not one of the
+settings a per-package override can replace. Keep the pass and compile-fail
 assertions enabled.
 
 ## Validator toggles for pending flows

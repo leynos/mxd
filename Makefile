@@ -314,7 +314,10 @@ test-wireframe-only: ## Run tests with legacy networking disabled
 	RSTEST_TIMEOUT=$(RSTEST_TIMEOUT) $(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) $(WIREFRAME_ONLY_FEATURES)
 
 test-rstest-bdd-ui: ## Run compile-time rstest-bdd scenario tests
-	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p rstest-bdd-ui-tests
+	# The `rstest-bdd-ui` profile raises the run-wide timeout, which an
+	# override cannot do. See "Compile-time scenario contracts" in the
+	# developers' guide.
+	NEXTEST_PROFILE=rstest-bdd-ui $(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p rstest-bdd-ui-tests
 
 test-verification: ## Run verification crate tests
 	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p mxd-verification
