@@ -249,6 +249,16 @@ Thresholds that trigger escalation when breached.
   the user guide's requirements and recovery sections, and adds a
   listening-announcement verification step; the README hands the version-floor
   rationale and the static-versus-shared detail to the users' guide.
+- [x] (2026-11-07) CodeScene's check failed again on the same advisory rule,
+  Code Duplication in `src/db/audit/tests.rs`, naming
+  `audit_rejects_an_incorrect_json_each_result` and
+  `audit_rejects_an_incorrect_recursive_cte_result`. Both arrived on this
+  branch in `fb7c878`, so the duplication was branch-caused. Reproduced with
+  `cs review src/db/audit/tests.rs`, which reported 9.38 and named exactly
+  those two functions. Fixed in `33296e3` by extracting
+  `assert_audit_rejects_naming`; `cs review` then reports 10.0, the focused
+  `db::audit` suite is unchanged at 43 passed, `make lint-sqlite` is clean, and
+  the hosted CodeScene check passes on `33296e3` with an approving review.
 
 ## Surprises & discoveries
 
