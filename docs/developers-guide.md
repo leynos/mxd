@@ -865,6 +865,30 @@ list, so indent the content of every list item under its marker (three columns
 for `1.` to `9.`, four for `10.` to `99.`) to keep a numbered procedure in one
 list.
 
+## Fetching dependencies before tests
+
+Several tests start their own `cargo`: trybuild, the embedded-server fallback in
+`test-util`, and the validator harness. Cargo resolves dependencies, and may
+update the crates.io index, while it holds the package-cache lock in
+`$CARGO_HOME`. On a host where several repositories share one `$CARGO_HOME`, a
+nested `cargo` that resolves cold can wait on that lock for many minutes.
+
+The fix is to fetch once, before any test starts, so that no nested `cargo` has
+anything left to resolve:
+
+- `make test` depends on the `fetch` target, which runs
+  `cargo fetch --locked`. A failed fetch stops the run.
+- The `ci.yml` jobs that run tests, and `coverage-main.yml`, run the same
+  `cargo fetch --locked` as an unconditional step before their first test,
+  validator or coverage step. The Loom and fuzz workflows run
+  `make test-concurrency` and `make test-fuzz-harness`, which wait for the
+  `fetch` target through an order-only prerequisite, and the Loom runner, which
+  does not start a nested `cargo` of its own and does not fetch.
+
+Do not make the fetch conditional on the matrix leg, and do not add `|| true`
+to it. The estate lint rule `nested-cargo-offline-tests` reads a fetch as proof
+only when it is unconditional and its failure stops the run.
+
 ## The Rust build standard
 
 Development builds use the parallel `rustc` frontend (`-Zthreads=8`) and, on
@@ -1288,10 +1312,11 @@ to cancel a real run and tight enough to catch a wedged one, until
 
 ### The lockfile gate
 
-`make check-locked` runs `cargo metadata --locked`, which is the only command
-that refuses a `Cargo.lock` the manifest does not admit. Every other cargo
-invocation may rewrite the lockfile, and silently resolves such a mismatch away
-rather than reporting it.
+`make check-locked` runs `cargo metadata --locked`, which refuses a
+`Cargo.lock` the manifest does not admit. `cargo fetch --locked`, which
+`make test` and CI run first, refuses a missing or stale lockfile in the same
+way. Every other cargo invocation may rewrite the lockfile, and silently
+resolves such a mismatch away rather than reporting it.
 
 The gate exists because the mismatch has reached `main` three times, each time
 from a lockfile-only dependency bump that crossed a major boundary the manifest
