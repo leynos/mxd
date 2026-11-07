@@ -16,6 +16,8 @@ override's raised `slow-timeout` underneath the default 10-minute run ceiling.
 
 from __future__ import annotations
 
+import os
+import pathlib
 import subprocess
 import tomllib
 import typing as typ
@@ -25,9 +27,17 @@ from ci_workflow_reader import REPO_ROOT
 PROFILE = "rstest-bdd-ui"
 PACKAGE = "rstest-bdd-ui-tests"
 
-# Make runs `$(CARGO) nextest --version` while parsing. An inert command stands
-# in, because a dry run must not need a working toolchain.
-INERT_CARGO = "true"
+# Make chooses its test runner from `$(shell $(CARGO) nextest --version)`.
+# A stub named `cargo` that answers that one probe therefore makes a dry run
+# expand exactly the `nextest run` recipe CI uses, without needing a toolchain.
+# Passing `CARGO=true` instead would resolve to `cargo test`, so the assertion
+# would pass while covering the wrong command.
+CARGO_STUB = """#!/bin/sh
+if [ "$1" = "nextest" ] && [ "$2" = "--version" ]; then
+    echo "cargo-nextest stub"
+fi
+exit 0
+"""
 
 
 def _nextest_config() -> dict[str, typ.Any]:
@@ -37,15 +47,19 @@ def _nextest_config() -> dict[str, typ.Any]:
     )
 
 
-def _dry_run(target: str) -> str:
+def _dry_run(target: str, tmp_path: pathlib.Path) -> str:
     """Return the recipe make would run for `target`."""
+    cargo = tmp_path / "cargo"
+    cargo.write_text(CARGO_STUB, encoding="utf-8")
+    cargo.chmod(0o755)
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        ["make", f"CARGO={INERT_CARGO}", "--dry-run", target],  # noqa: S607
+        ["make", "--dry-run", target],  # noqa: S607
         cwd=REPO_ROOT,
         check=True,
         text=True,
         capture_output=True,
         timeout=60,
+        env={**os.environ, "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"},
     )
     return result.stdout
 
@@ -77,12 +91,30 @@ def test_the_package_override_matches_the_profile() -> None:
         assert override["slow-timeout"]["period"] == "900s", override
 
 
-def test_the_make_target_selects_the_ui_profile() -> None:
-    """`make test-rstest-bdd-ui` runs under the profile, not just the override.
+def test_the_make_target_selects_the_ui_profile(tmp_path: pathlib.Path) -> None:
+    """`make test-rstest-bdd-ui` runs nextest under the profile.
 
     The recipe is read from `make --dry-run` so that the assertion covers what
-    Make actually expands, rather than the text of the file.
+    Make actually expands, rather than the text of the file. Asserting the
+    whole invocation catches a profile assignment that is emitted but never
+    reaches `nextest`, which an independent substring check would miss.
     """
-    recipe = _dry_run("test-rstest-bdd-ui")
+    recipe = _dry_run("test-rstest-bdd-ui", tmp_path)
     assert f"NEXTEST_PROFILE={PROFILE}" in recipe, recipe
-    assert PACKAGE in recipe, recipe
+    assert f"cargo nextest run -p {PACKAGE}" in recipe, recipe
+
+
+def test_the_profile_and_override_share_one_budget() -> None:
+    """Both routes into the package allow the same slow timeout.
+
+    Whichever way a run reaches `rstest-bdd-ui-tests`, the ceiling it is held
+    to comes from the same number, so the two cannot drift apart.
+    """
+    config = _nextest_config()
+    profile_period = config["profile"][PROFILE]["slow-timeout"]["period"]
+    override_periods = {
+        override["slow-timeout"]["period"]
+        for override in config["profile"]["default"].get("overrides") or []
+        if override.get("filter") == f"package({PACKAGE})"
+    }
+    assert override_periods == {profile_period}, override_periods
