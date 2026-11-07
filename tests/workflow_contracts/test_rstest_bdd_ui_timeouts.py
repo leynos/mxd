@@ -149,6 +149,28 @@ class Run:
     outcomes: list[Outcome]
 
 
+@dataclasses.dataclass(frozen=True)
+class Shape:
+    """One fixture shape: every knob a contract may want to vary, in one value.
+
+    These four settings are not independent. Raising the sleep only means
+    something relative to the periods that might kill it, and shortening a
+    profile's ceiling only means something relative to the period it cuts
+    short. Passing them as one value keeps a call site saying *which shape*
+    rather than restating the relationship in positional arguments, where the
+    second and third numbers could be transposed and still look plausible.
+
+    The defaults are the shape most contracts want: both routes terminating, the
+    override's period the longer of the two, and a sleep that outlasts every
+    budget so termination is always observable.
+    """
+
+    terminate: bool = True
+    profile_period: int = PROFILE_PERIOD
+    profile_global: int = PROFILE_GLOBAL
+    sleep_seconds: int = TEST_SLEEP
+
+
 def _nextest_is_available() -> bool:
     """Whether a real `cargo nextest` can be run in this environment.
 
@@ -245,30 +267,26 @@ def _config(
     )
 
 
-def _workspace(
-    root: pathlib.Path,
-    terminate: bool,
-    profile_period: int = PROFILE_PERIOD,
-    profile_global: int = PROFILE_GLOBAL,
-    sleep_seconds: int = TEST_SLEEP,
-) -> pathlib.Path:
+def _workspace(root: pathlib.Path, shape: Shape = Shape()) -> pathlib.Path:
     """Create the two-member fixture workspace and return its path.
 
-    `sleep_seconds` sets both members' tests to the same duration. Shortening
-    it to `SURVIVOR_SLEEP` lets a contract hold one identical test to both
-    routes at once: the two crates differ in nothing but their name, which is
-    all the package filter keys on, so any difference in outcome is the route.
+    `shape.sleep_seconds` sets both members' tests to the same duration.
+    Shortening it to `SURVIVOR_SLEEP` lets a contract hold one identical test to
+    both routes at once: the two crates differ in nothing but their name, which
+    is all the package filter keys on, so any difference in outcome is the
+    route.
     """
     root.mkdir(parents=True, exist_ok=True)
     (root / "Cargo.toml").write_text(
         f'[workspace]\nresolver = "3"\nmembers = ["{OVERRIDDEN}", "{CONTROL}"]\n',
         encoding="utf-8",
     )
-    _member(root / OVERRIDDEN, OVERRIDDEN, sleep_seconds)
-    _member(root / CONTROL, CONTROL, sleep_seconds)
+    _member(root / OVERRIDDEN, OVERRIDDEN, shape.sleep_seconds)
+    _member(root / CONTROL, CONTROL, shape.sleep_seconds)
     (root / ".config").mkdir()
     (root / ".config" / "nextest.toml").write_text(
-        _config(terminate, profile_period, profile_global), encoding="utf-8"
+        _config(shape.terminate, shape.profile_period, shape.profile_global),
+        encoding="utf-8",
     )
     return root
 
@@ -541,9 +559,7 @@ def test_an_overrunning_test_is_terminated_by_the_package_override(
     `terminate-after` is dropped from the override: the same test then runs on
     and the run reports `SIGTERM` at the ceiling instead.
     """
-    outcomes = _run(
-        _workspace(tmp_path / "terminating", terminate=True), OVERRIDDEN
-    ).outcomes
+    outcomes = _run(_workspace(tmp_path / "terminating"), OVERRIDDEN).outcomes
     assert _last_kind(outcomes) == "TIMEOUT", _kinds(outcomes)
     assert "SIGTERM" not in _kinds(outcomes), _kinds(outcomes)
     assert _first_time(outcomes, "TIMEOUT") >= OVERRIDE_PERIOD - 1, outcomes
@@ -565,9 +581,7 @@ def test_the_override_lets_a_test_survive_a_budget_that_would_kill_it(
     and the UI package's override raises that to 900 - so a run that ignored
     the override would fail here the way it would in CI.
     """
-    root = _workspace(
-        tmp_path / "survivor", terminate=True, sleep_seconds=SURVIVOR_SLEEP
-    )
+    root = _workspace(tmp_path / "survivor", Shape(sleep_seconds=SURVIVOR_SLEEP))
     overridden = _run(root, OVERRIDDEN)
     control = _run(root, CONTROL)
     assert _last_kind(overridden.outcomes) == "PASS", _kinds(overridden.outcomes)
@@ -587,7 +601,9 @@ def test_a_period_without_terminate_after_only_warns(
     ceiling kills the whole run with `SIGTERM`. The period no longer acts on
     its own, so the run ends at the ceiling rather than at the period.
     """
-    outcomes = _run(_workspace(tmp_path / "warning", terminate=False), CONTROL).outcomes
+    outcomes = _run(
+        _workspace(tmp_path / "warning", Shape(terminate=False)), CONTROL
+    ).outcomes
     kinds = _kinds(outcomes)
     assert "TIMEOUT" not in kinds, kinds
     assert "SLOW" in kinds, kinds
@@ -604,7 +620,7 @@ def test_a_non_matching_package_is_held_to_the_default_route(
     the one that kills it. A filter that matched too broadly would give it the
     override's longer budget, and it would be killed later instead.
     """
-    outcomes = _run(_workspace(tmp_path / "control", terminate=True), CONTROL).outcomes
+    outcomes = _run(_workspace(tmp_path / "control"), CONTROL).outcomes
     assert _last_kind(outcomes) == "TIMEOUT", _kinds(outcomes)
     assert _first_time(outcomes, "TIMEOUT") >= DEFAULT_PERIOD - 1, outcomes
     assert _first_time(outcomes, "TIMEOUT") < OVERRIDE_PERIOD, outcomes
@@ -620,7 +636,7 @@ def test_the_override_extends_the_kill_point_without_reaching_the_ceiling(
     above both, so the later of the two kills is still a period rather than the
     run-wide stop, which is what keeps this a comparison of the periods.
     """
-    root = _workspace(tmp_path / "ordering", terminate=True)
+    root = _workspace(tmp_path / "ordering")
     control = _first_time(_run(root, CONTROL).outcomes, "TIMEOUT")
     overridden = _first_time(_run(root, OVERRIDDEN).outcomes, "TIMEOUT")
     assert control < overridden, (control, overridden)
@@ -701,7 +717,7 @@ def test_the_named_profile_selects_and_enforces_its_own_period(
     budgets are written; this proves nextest compiles the profile, selects it,
     and acts on it.
     """
-    run = _run(_workspace(tmp_path / "named", terminate=True), CONTROL, profile=PROFILE)
+    run = _run(_workspace(tmp_path / "named"), CONTROL, profile=PROFILE)
     assert run.profile == PROFILE, run.profile
     assert _last_kind(run.outcomes) == "TIMEOUT", _kinds(run.outcomes)
     assert _first_time(run.outcomes, "TIMEOUT") >= PROFILE_PERIOD - 1, run.outcomes
@@ -721,9 +737,10 @@ def test_the_named_profile_ceiling_stops_the_run_when_it_comes_first(
     run = _run(
         _workspace(
             tmp_path / "named-ceiling",
-            terminate=True,
-            profile_period=TIGHT_PROFILE_PERIOD,
-            profile_global=TIGHT_PROFILE_GLOBAL,
+            Shape(
+                profile_period=TIGHT_PROFILE_PERIOD,
+                profile_global=TIGHT_PROFILE_GLOBAL,
+            ),
         ),
         CONTROL,
         profile=PROFILE,
@@ -745,7 +762,7 @@ def test_the_default_route_is_what_the_fixture_selects_when_asked(
     exist, so this pins the other half - `default` is selected, and the kill
     lands at its shorter period rather than the profile's.
     """
-    run = _run(_workspace(tmp_path / "unnamed", terminate=True), CONTROL)
+    run = _run(_workspace(tmp_path / "unnamed"), CONTROL)
     assert run.profile == "default", run.profile
     assert _last_kind(run.outcomes) == "TIMEOUT", _kinds(run.outcomes)
     assert _first_time(run.outcomes, "TIMEOUT") < PROFILE_PERIOD, run.outcomes
