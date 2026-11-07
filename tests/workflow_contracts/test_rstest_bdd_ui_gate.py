@@ -23,10 +23,12 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import subprocess
 import tomllib
 import typing as typ
 
+import pytest
 import yaml
 
 from ci_workflow_reader import REPO_ROOT
@@ -62,8 +64,13 @@ fi
 exit 0
 """
 
-# nextest writes its durations in whole units, so a plain suffix table is the
-# whole grammar the contracts need to compare one timeout against another.
+# nextest parses durations with a unit grammar whose units are words, not
+# single letters: `900ms` ends in the same character as `900s`. The number and
+# the unit are therefore split apart and the unit looked up whole, so a
+# millisecond budget cannot be read as a second one.
+DURATION_PATTERN = re.compile(r"^(?P<count>\d+)(?P<unit>[A-Za-zµ]+)$")
+
+# The units these contracts need to compare one budget against another.
 DURATION_UNITS = {"s": 1, "m": 60}
 
 
@@ -144,8 +151,21 @@ def _option_value(arguments: tuple[str, ...], option: str) -> str | None:
 
 
 def _seconds(duration: str) -> int:
-    """Convert a nextest duration such as ``900s`` or ``30m`` to seconds."""
-    return int(duration[:-1]) * DURATION_UNITS[duration[-1]]
+    """Convert a nextest duration such as ``900s`` or ``30m`` to seconds.
+
+    A value this table cannot read fails here rather than in a comparison
+    downstream, and names itself, so a configuration edit reports the budget it
+    wrote instead of a `KeyError` or an `int()` failure on its first character.
+
+    >>> _seconds("30m")
+    1800
+    """
+    match = DURATION_PATTERN.match(duration)
+    unit = DURATION_UNITS.get(match["unit"]) if match else None
+    if match is None or unit is None:
+        message = f"unsupported nextest duration: {duration!r}"
+        raise ValueError(message)
+    return int(match["count"]) * unit
 
 
 def _terminate_after(slow_timeout: dict[str, typ.Any]) -> int:
@@ -258,6 +278,32 @@ def test_the_run_ceiling_covers_the_slow_timeout() -> None:
     assert default_slow < profile_slow, (default_slow, profile_slow)
     assert default_global < profile_global, (default_global, profile_global)
     assert override_slow < profile_global, (override_slow, profile_global)
+
+
+def test_an_unsupported_duration_names_the_value_it_rejected() -> None:
+    """A value this table cannot read is reported as itself.
+
+    Every assertion above subtracts one budget from another, so a duration the
+    table lacks would surface as a `KeyError` on a single character, far from
+    the configuration line that caused it. The message has to name the duration
+    for the failure to point at its own cause.
+    """
+    with pytest.raises(ValueError, match="unsupported nextest duration: '900ms'"):
+        _seconds("900ms")
+
+
+def test_a_multi_character_unit_is_split_off_whole() -> None:
+    """A unit longer than one character is read as a unit, not as a suffix.
+
+    `900ms` ends in the same letter as `900s`, so reading the last character
+    alone would treat a millisecond budget as a second one and then fail on the
+    leftover `m`. The split has to reach the end of the number, which a
+    single-character pattern would not.
+    """
+    match = DURATION_PATTERN.match("900ms")
+    assert match is not None, "the duration pattern rejected 900ms"
+    assert match["count"] == "900", match["count"]
+    assert match["unit"] == "ms", match["unit"]
 
 
 def test_the_ui_routes_terminate_a_test_that_overruns() -> None:
