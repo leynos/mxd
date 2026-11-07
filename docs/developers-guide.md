@@ -365,13 +365,23 @@ Those contracts read the configuration; they cannot show that nextest acts on
 it. libtest ignores `.config/nextest.toml` entirely, so a `cargo test` run of
 the UI package would pass whatever the budgets said, and a Cargo stub records
 the profile without ever applying it.
-`tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py` therefore drives a
-real nextest over a disposable two-member fixture workspace, with budgets in
-seconds rather than minutes. One member matches a package override and one
-deliberately does not. The contracts run each member separately, so every
-outcome is attributed to the crate that produced it: the matching crate shows
-the per-package timeout, and the control shows the default route's shorter
-per-test timeout.
+`tests/workflow_contracts/test_rstest_bdd_ui_timeout_routes.py` and
+`test_rstest_bdd_ui_timeout_profile.py` therefore drive a real nextest over a
+disposable two-member fixture workspace, with budgets in seconds rather than
+minutes. One member matches a package override and one deliberately does not.
+The contracts run each member separately, so every outcome is attributed to the
+crate that produced it: the matching crate shows the per-package timeout, and
+the control shows the default route's shorter per-test timeout.
+
+The behavioural contracts are split across those two test modules, with the
+fixture and the nextest runner in `rstest_bdd_ui_timeout_fixture.py` and
+`rstest_bdd_ui_timeout_runner.py`. The split is by subject, not by line count:
+one module covers the two routes into the package, the other the named profile
+and the end-to-end runs of the shipped recipe. They share the fixture, so a
+budget is stated once and both modules read the shape they need from it. Both
+test modules are selected by the glob in `make test-rstest-bdd-ui-timeouts` and
+excluded by the matching ignore-glob in `make test-workflow-contracts`, so a
+newly added module cannot be filed where nothing runs it.
 
 The fixture scales the shape production has, in which *both* routes terminate:
 the default profile kills at 60 seconds and the override raises that to 900.

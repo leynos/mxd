@@ -361,7 +361,7 @@ def _steps_running(needle: str) -> list[tuple[str, dict[str, typ.Any]]]:
 def test_the_behavioural_contracts_run_where_nextest_is_installed() -> None:
     """The real-nextest proof runs once, in the lane that has a Rust build.
 
-    `make test-workflow-contracts` excludes `test_rstest_bdd_ui_timeouts.py`,
+    `make test-workflow-contracts` excludes the behavioural modules,
     because the fixtures take minutes and the docs-tooling lane has no nextest.
     So the dedicated target is the only thing that runs those contracts, and
     deleting its step would leave them run by nothing at all while the suite
@@ -396,10 +396,40 @@ def test_the_fast_target_does_not_run_the_behavioural_contracts() -> None:
     """
     recipe = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
     body = recipe.split("test-workflow-contracts:", 1)[1].split("\n\n", 1)[0]
-    assert "--ignore=tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py" in body, (
-        body
-    )
+    assert (
+        "--ignore-glob='tests/workflow_contracts/test_rstest_bdd_ui_timeout_*.py'"
+        in body
+    ), body
     assert "python -m pytest tests/workflow_contracts" in body, body
+
+
+def test_the_dedicated_target_runs_every_behavioural_module() -> None:
+    """The target that pays for the fixtures runs both halves of them.
+
+    The behavioural contracts are split across two test modules and two helper
+    modules, because one file covering all of it would be the longest in the
+    suite. The split is what makes the exclusion above safe to write as a glob,
+    and it is also what makes it possible for a module to be written and never
+    run: the glob in the dedicated target has to reach the new file, and the
+    ignore-glob in the fast target has to reach it too.
+
+    Asserted as the module set rather than as a count, so adding a third
+    behavioural module without wiring it fails here rather than silently going
+    unrun.
+    """
+    recipe = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+    body = recipe.split("test-rstest-bdd-ui-timeouts:", 1)[1].split("\n\n", 1)[0]
+    assert "tests/workflow_contracts/test_rstest_bdd_ui_timeout_*.py" in body, body
+    present = sorted(
+        path.name
+        for path in (REPO_ROOT / "tests" / "workflow_contracts").glob(
+            "test_rstest_bdd_ui_timeout_*.py"
+        )
+    )
+    assert present == [
+        "test_rstest_bdd_ui_timeout_profile.py",
+        "test_rstest_bdd_ui_timeout_routes.py",
+    ], present
 
 
 def test_the_behavioural_target_refuses_to_skip_without_nextest() -> None:

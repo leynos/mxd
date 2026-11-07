@@ -143,16 +143,17 @@ check-locked: ## Refuse a lockfile the manifest does not admit
 test-workflow-contracts: ## Assert the CI workflows place and gate what they claim
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(WORKFLOW_CONTRACT_SRCS)
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(WORKFLOW_CONTRACT_SRCS)
-	# `test_rstest_bdd_ui_timeouts.py` drives a real nextest over generated
-	# fixtures and takes minutes, so it belongs to `test-rstest-bdd-ui-timeouts`
-	# rather than here. Without the exclusion this target would run it on any
-	# machine that happens to have nextest installed, which is neither fast nor
-	# Rust-free. The ruff checks above still lint it, because they are cheap.
+	# The `test_rstest_bdd_ui_timeout_*` modules drive a real nextest over
+	# generated fixtures and take minutes, so they belong to
+	# `test-rstest-bdd-ui-timeouts` rather than here. Without the exclusion this
+	# target would run them on any machine that happens to have nextest
+	# installed, which is neither fast nor Rust-free. The ruff checks above
+	# still lint them, because they are cheap.
 	@PYTHONPATH=tests/workflow_contracts $(UV_ENV) $(UV) run --no-project \
 		--python 3.14 --with pytest==9.0.2 --with pyyaml==$(PYYAML_VERSION) \
 		--with hypothesis==6.168.5 \
 		python -m pytest tests/workflow_contracts -c /dev/null --rootdir=. \
-		--ignore=tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py \
+		--ignore-glob='tests/workflow_contracts/test_rstest_bdd_ui_timeout_*.py' \
 		-p no:cacheprovider
 
 typecheck: typecheck-postgres typecheck-sqlite typecheck-wireframe-only ## Run cargo check for all feature sets
@@ -348,7 +349,7 @@ test-rstest-bdd-ui-timeouts: ## Prove nextest enforces the UI gate's time budget
 	@PYTHONPATH=tests/workflow_contracts $(UV_ENV) $(UV) run --no-project \
 		--python 3.14 --with pytest==9.0.2 --with pyyaml==$(PYYAML_VERSION) \
 		--with hypothesis==6.168.5 \
-		python -m pytest tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py \
+		python -m pytest tests/workflow_contracts/test_rstest_bdd_ui_timeout_*.py \
 		-c /dev/null --rootdir=. -p no:cacheprovider
 
 test-verification: ## Run verification crate tests
