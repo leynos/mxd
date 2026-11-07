@@ -313,6 +313,17 @@ The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
   rejects omitted, duplicated, or stale names.
 - `tests/rstest_bdd_migration.rs` exercises aliased errors and returned values,
   deliberate underscore fixture keys, and a genuinely suspending step.
+- The handshake scenarios in `src/wireframe/handshake_bdd.rs` are the reference
+  shape for a world that performs real network I/O. `HandshakeWorld` holds only
+  plain `Option` fields, so the world is an ordinary owned value with no
+  `RefCell`, no owned `Runtime`, and no `block_on`. Steps that touch the socket
+  are `async fn` taking `&mut HandshakeWorld`; steps that only start the server
+  or read recorded state stay synchronous and take `&mut self` or `&self`. The
+  world's `Drop` sends the shutdown signal synchronously and ignores a closed
+  receiver, so teardown never has to await. Prefer this shape for a new suite
+  that needs mutable scenario state across an await. The accompanying
+  compile-time fixture is described under
+  [compile-time scenario contracts](#compile-time-scenario-contracts).
 - Prefer async behavioural scenarios for async-sensitive suites where async
   I/O is exercised and fixture setup does not rely on embedded PostgreSQL
   cluster bootstrapping.
@@ -332,9 +343,57 @@ The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
 ### Compile-time scenario contracts
 
 The non-published `tests/rstest-bdd-ui` workspace package uses `trybuild` to
-check named `TokioHarness` selection and the diagnostic for an unknown scenario
-title. Run it directly with `make test-rstest-bdd-ui`; the aggregate
-`make test` target and the CI test lane include this package.
+check named `TokioHarness` selection, the mutable-world async step pattern, and
+the diagnostic for an unknown scenario title. Run it directly with
+`make test-rstest-bdd-ui`; the aggregate `make test` target and the CI test
+lane include this package.
+
+The trybuild fixtures and their contracts are:
+
+- `tests/ui/pass_named_harness.rs` must compile: named scenario selection with
+  `harness = rstest_bdd_harness_tokio::TokioHarness`.
+- `tests/ui/pass_mutable_world_async_steps.rs` must compile: a borrowed world
+  fixture with a synchronous `Given`, an async `When` taking `&mut World`, a
+  synchronous `Then`, and a named scenario bound to an external
+  `#[tokio::test(flavor = "current_thread")]` test.
+- `tests/ui/fail_missing_scenario.rs` must fail to compile with the recorded
+  `fail_missing_scenario.stderr` diagnostic. It is the control that proves the
+  harness really inspects compilation output instead of always passing.
+
+`trybuild` builds pass fixtures with `cargo build --bin`, which type-checks the
+binary target only. The bodies of `#[test]` functions are not type-checked in
+that mode, so a scenario declared at the top level of a pass fixture
+contributes nothing beyond a binary-level compile of its imports and macro use.
+The scenario wrapper contracts that matter — the macro-generated wrapper for a
+mutable-world async step, and named selection under both harness paths — are
+therefore pinned by the `fixture_scenarios` module inside
+`tests/rstest-bdd-ui/tests/ui.rs`, which is the package's integration-test
+target and is compiled by `cargo test` in test mode. Add a wrapper contract
+there, not to a fixture, when the generated function itself is what should be
+checked.
+
+The `path` in `#[scenario]` is relative to `CARGO_MANIFEST_DIR`, so the same
+`.feature` file needs a different string in each of those two places. A
+trybuild fixture is compiled in a scratch crate under
+`target/tests/trybuild/rstest-bdd-ui-tests/` and needs four `../` hops, while
+the `fixture_scenarios` module is compiled in `tests/rstest-bdd-ui` itself and
+takes a plain package-relative `tests/ui/...` path. Copying the fixture's
+string into the module overshoots the workspace root and the macro reports
+"feature file not found" at the manifest join, not at the `path` literal.
+
+The module's `world` fixture carries a tightly scoped
+`#[allow(unused_braces)]`. That is not incidental: `rustfmt`'s `fn_single_line`
+setting rewrites a single-expression fixture back onto one line on every
+`make fmt`, and the `fixture` expansion then trips `unused_braces`, which the
+workspace denies. The same suppression, with its
+`#[expect(clippy::allow_attributes)]` companion, appears on the other BDD worlds
+(`src/wireframe/handshake_bdd.rs` and `tests/wireframe_transaction.rs`); match
+that shape rather than expanding the body, which does not survive formatting.
+
+The mutable-world fixture uses `tokio` directly, so the UI package declares
+`tokio = "1"` as its own dev-dependency rather than inheriting it from the root
+package manifest. Extend `tests/ui.rs` whenever a fixture is added; an
+unregistered fixture silently never runs.
 
 The trybuild test compiles separate fixture crates and can take longer than an
 ordinary unit test on a cold build: trybuild runs `cargo clean --package`
