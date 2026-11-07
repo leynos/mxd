@@ -223,6 +223,15 @@ jobs:
       - name: Test rstest-bdd UI contracts
         if: matrix.name == 'wireframe-only'
         run: make test-rstest-bdd-ui
+      # The contracts that read `.config/nextest.toml` cannot show that nextest
+      # acts on it - libtest ignores the file, so `cargo test` would pass
+      # whatever the budgets said. These behavioural contracts drive a real
+      # nextest over a disposable two-member fixture with second-scale budgets,
+      # so they need this lane, which has a Rust build and nextest installed.
+      # They skip in the docs-tooling lane rather than fail there.
+      - name: Prove nextest enforces the UI gate time budget
+        if: matrix.name == 'wireframe-only'
+        run: make test-rstest-bdd-ui-timeouts
 
   # One stable context for the ruleset to require. The matrix legs' check
   # names are truncated by GitHub and change with the matrix, so requiring them
