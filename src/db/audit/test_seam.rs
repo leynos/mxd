@@ -13,12 +13,15 @@
 //! what an entry point above the audit needs, since those callers only have to
 //! know that an audit failure aborts them, not which probe failed.
 //!
-//! A *result* injection instead substitutes the rows a fetch helper would have
-//! returned, so the validator downstream of that fetch still runs. An abort
-//! injection cannot show that: it returns from `run_sqlite_probes` before the
-//! first fetch, leaving every validator unexercised through the public audit.
-//! If a validator call were deleted, the abort-injected tests and the direct
-//! validator tests would both still pass.
+//! A *result* injection instead substitutes what a fetch helper would have
+//! returned — a version string, or the rows of one of the two probes — so the
+//! validator downstream of that fetch still runs. An abort injection cannot
+//! show that: it returns from `run_sqlite_probes` before the first fetch,
+//! leaving every validator unexercised through the public audit. If a validator
+//! call were deleted, the abort-injected tests and the direct validator tests
+//! would both still pass. The version case needs its own result injection
+//! because the version fetch is the only way to feed the floor comparison a
+//! string the linked library would never report.
 //!
 //! Every override is a thread-local rather than a process-wide static so that
 //! tests running concurrently cannot observe it. Abort injections are read
@@ -41,6 +44,7 @@ use super::{Capability, probe_failure};
 
 thread_local! {
     static INJECTED_FAILURE: Cell<Option<Capability>> = const { Cell::new(None) };
+    static INJECTED_VERSION: RefCell<Option<String>> = const { RefCell::new(None) };
     static INJECTED_JSON_EACH: RefCell<Option<Vec<(i32, String)>>> = const { RefCell::new(None) };
     static INJECTED_RECURSIVE_CTE: RefCell<Option<Vec<i32>>> = const { RefCell::new(None) };
 }
@@ -57,6 +61,7 @@ pub(crate) struct InjectionGuard;
 impl Drop for InjectionGuard {
     fn drop(&mut self) {
         INJECTED_FAILURE.with(|cell| cell.set(None));
+        INJECTED_VERSION.with(|cell| cell.borrow_mut().take());
         INJECTED_JSON_EACH.with(|cell| cell.borrow_mut().take());
         INJECTED_RECURSIVE_CTE.with(|cell| cell.borrow_mut().take());
     }
@@ -70,6 +75,14 @@ pub(super) fn injected_failure() -> Option<(Capability, DieselError)> {
             probe_failure(capability, "injected probe failure"),
         )
     })
+}
+
+/// Take the version string a test asked the version fetch to report instead.
+///
+/// Taking rather than copying makes the override single-use, so it cannot
+/// silently apply to a second audit run the same test makes.
+pub(super) fn injected_sqlite_version() -> Option<String> {
+    INJECTED_VERSION.with(|cell| cell.borrow_mut().take())
 }
 
 /// Take the JSON1 rows a test asked the fetch helper to report instead.
@@ -98,6 +111,12 @@ pub(crate) fn fail_next_audit() -> InjectionGuard {
 /// Fail the next capability audit, naming `capability` in the reported error.
 pub(super) fn inject_failure(capability: Capability) -> InjectionGuard {
     INJECTED_FAILURE.with(|cell| cell.set(Some(capability)));
+    InjectionGuard
+}
+
+/// Make the version fetch report `version` without querying.
+pub(super) fn inject_sqlite_version(version: &str) -> InjectionGuard {
+    INJECTED_VERSION.with(|cell| *cell.borrow_mut() = Some(version.to_owned()));
     InjectionGuard
 }
 

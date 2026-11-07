@@ -169,6 +169,15 @@ async fn fetch_sqlite_version(conn: &mut DbConnection) -> Result<String, DieselE
         version: String,
     }
 
+    // Read before the query is awaited, and before any `.await` at all, so the
+    // thread-local override stays on the thread that installed it. It sits
+    // after the row type because `clippy::items_after_statements` forbids
+    // declaring an item below the first statement in a block.
+    #[cfg(test)]
+    if let Some(version) = test_seam::injected_sqlite_version() {
+        return Ok(version);
+    }
+
     sql_query("SELECT sqlite_version() AS version")
         .get_result::<SqliteVersion>(conn)
         .await
@@ -326,6 +335,14 @@ pub async fn audit_postgres_features(
     Ok(())
 }
 
-#[cfg(feature = "sqlite")]
+// `clippy` decides whether a module counts as test code by looking for a
+// literal `#[cfg(test)]` attribute; the combined form hides the test modules
+// from that check, so `allow-expect-in-tests` stops applying to them. Keep the
+// predicate in two attributes so `clippy.toml` can still tell these are tests.
 #[cfg(test)]
+#[cfg(feature = "sqlite")]
 mod tests;
+
+#[cfg(test)]
+#[cfg(feature = "sqlite")]
+mod version_tests;
