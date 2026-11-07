@@ -35,6 +35,14 @@ profile, selects it, and enforces it. A final group runs the shipped
 the target production runs rather than an equivalent command written here.
 Nothing here touches the real UI package or the shared compile-admission
 queue: the fixtures have no dependencies, so each build is a single leaf crate.
+
+This file is run by `make test-rstest-bdd-ui-timeouts`, and only by that
+target: `make test-workflow-contracts` excludes it, because the fixtures take
+minutes and the docs-tooling lane it runs in has no nextest or Rust build. That
+target fails before pytest starts if nextest is missing, so the skip in
+`_nextest_is_available` covers a direct `pytest` invocation rather than a
+repository gate. `test_rstest_bdd_ui_gate.py` pins both halves of that wiring,
+since a lane that quietly stopped running this file would look green.
 """
 
 from __future__ import annotations
@@ -45,6 +53,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import tempfile
 import tomllib
 import typing as typ
 
@@ -174,10 +183,16 @@ class Shape:
 def _nextest_is_available() -> bool:
     """Whether a real `cargo nextest` can be run in this environment.
 
-    The lane that runs `make test-workflow-contracts` has no Rust build of this
-    workspace and does not install nextest, so the behavioural contracts skip
-    there. They run in the lane that does; `test_rstest_bdd_ui_gate.py` pins
-    that wiring so the skip cannot quietly become permanent.
+    Only the dedicated `test-rstest-bdd-ui-timeouts` target runs this file, and
+    that target fails before pytest starts when nextest is missing. This probe
+    therefore protects a direct `pytest` invocation on a machine without a Rust
+    build, not a repository gate: `make test-workflow-contracts` excludes the
+    file, because it is neither fast nor Rust-free.
+
+    Only an absent binary or an absent nextest is a skip. A probe that hung, or
+    one that Cargo itself failed, is raised: folding those into `False` would
+    turn a broken toolchain into a silent skip of every behavioural contract,
+    which is exactly the failure this file exists to catch.
     """
     try:
         probe = subprocess.run(  # noqa: S603 - fixed argv, no shell
@@ -187,9 +202,14 @@ def _nextest_is_available() -> bool:
             timeout=60,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return probe.returncode == 0
+    except OSError as error:
+        pytest.skip(f"cargo is not runnable here: {error}")
+    except subprocess.TimeoutExpired as error:
+        message = "`cargo nextest --version` did not answer within 60 seconds"
+        raise RuntimeError(message) from error
+    if probe.returncode != 0:
+        pytest.skip(f"cargo nextest is unavailable: {probe.stderr.strip()}")
+    return True
 
 
 pytestmark = pytest.mark.skipif(
@@ -217,6 +237,12 @@ def _member(
         f"//! Fixture member for the timeout contracts.\n\n"
         "#[cfg(test)]\n"
         "mod tests {\n"
+        "    //! The one test nextest is asked to run.\n"
+        "    //!\n"
+        "    //! It sleeps rather than asserts, because the contracts are about\n"
+        "    //! what nextest does to a test that overruns a budget, not about\n"
+        "    //! what the test computes. The sleep is set per fixture so one\n"
+        "    //! crate can be run under both routes and outlast only one.\n"
         f"    /// Sleeps for {sleep_seconds} seconds.\n"
         "    #[test]\n"
         f"    fn {TEST_NAME}() {{\n"
@@ -590,25 +616,42 @@ def test_the_override_lets_a_test_survive_a_budget_that_would_kill_it(
     assert _first_time(control.outcomes, "TIMEOUT") < SURVIVOR_SLEEP, control.outcomes
 
 
-def test_a_period_without_terminate_after_only_warns(
+def test_the_termination_this_repository_configures_is_load_bearing(
     tmp_path: pathlib.Path,
 ) -> None:
-    """A period alone reports the test as slow and never stops it.
+    """Dropping this repository's `terminate-after` changes the outcome.
 
-    This is the distinction the setting exists for. Same crate, same overrun:
-    only the default route's `terminate-after` changed, and nextest stops
-    saying `TIMEOUT` at the period and instead warns `SLOW` until the run
-    ceiling kills the whole run with `SIGTERM`. The period no longer acts on
-    its own, so the run ends at the ceiling rather than at the period.
+    The claim under test is about `.config/nextest.toml`, not about nextest: the
+    `terminate-after` this repository sets on every route is what turns an
+    overrun into a killed test. So the contract first asserts the setting is
+    there - otherwise there would be nothing to remove - then seeds exactly one
+    mutation, deleting it from the fixture's default route, and runs the same
+    crate against both the real shape and the mutated one.
+
+    Removing it takes `TIMEOUT` away: the period still expires, but it now only
+    reports `SLOW` and the run ends at the ceiling instead. That difference is
+    the setting's contribution, and it is why a route without the setting would
+    pass a budget assertion while leaving an overrunning test running.
+
+    Only `TIMEOUT` is asserted to be absent, not how the run then ends. What
+    the run does after a warning period is nextest's business; what belongs to
+    this repository is whether its configuration stops the test at all.
     """
-    outcomes = _run(
-        _workspace(tmp_path / "warning", Shape(terminate=False)), CONTROL
-    ).outcomes
-    kinds = _kinds(outcomes)
-    assert "TIMEOUT" not in kinds, kinds
-    assert "SLOW" in kinds, kinds
-    assert _last_kind(outcomes) == "SIGTERM", kinds
-    assert _first_time(outcomes, "SIGTERM") >= GLOBAL_TIMEOUT - 1, outcomes
+    production = tomllib.loads(
+        (REPO_ROOT / ".config" / "nextest.toml").read_text(encoding="utf-8")
+    )
+    default = production["profile"]["default"]["slow-timeout"]
+    overrides = production["profile"]["default"].get("overrides") or []
+    assert default["terminate-after"] == 1, default
+    assert all(o["slow-timeout"]["terminate-after"] == 1 for o in overrides), overrides
+
+    root = _workspace(tmp_path / "warning", Shape(terminate=False))
+    mutated = _run(root, CONTROL).outcomes
+    assert "TIMEOUT" not in _kinds(mutated), _kinds(mutated)
+    assert "SLOW" in _kinds(mutated), _kinds(mutated)
+
+    unmutated = _run(_workspace(tmp_path / "unmutated"), CONTROL).outcomes
+    assert _last_kind(unmutated) == "TIMEOUT", _kinds(unmutated)
 
 
 def test_a_non_matching_package_is_held_to_the_default_route(
@@ -769,38 +812,54 @@ def test_the_default_route_is_what_the_fixture_selects_when_asked(
 
 
 # The end-to-end contracts run the shipped recipe, so they need a package the
-# target names and a workspace the recipe's flags can build. They are kept in
-# the repository's `target` directory rather than `tmp_path` for the toolchain
-# reason documented on `_make_target`.
-END_TO_END_ROOT = REPO_ROOT / "target" / "ui-gate-end-to-end"
+# target names and a workspace the recipe's flags can build. Each gets its own
+# directory beneath the repository's `target`, which is removed afterwards: the
+# location is inside the repository for the toolchain reason documented on
+# `_make_target`, and being per-test is what stops one contract from reading
+# sources or a lockfile another one left behind.
+@pytest.fixture
+def end_to_end_root() -> typ.Iterator[pathlib.Path]:
+    """A scratch workspace directory inside the repository, removed afterwards."""
+    parent = REPO_ROOT / "target"
+    parent.mkdir(exist_ok=True)
+    root = pathlib.Path(tempfile.mkdtemp(prefix="ui-gate-end-to-end-", dir=parent))
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
-def test_the_make_target_supplies_the_lockfile_its_fetch_needs() -> None:
-    """A fixture without a lockfile still passes the recipe's `fetch`.
+def test_the_harness_supplies_the_lockfile_the_recipe_fetch_needs(
+    end_to_end_root: pathlib.Path,
+) -> None:
+    """The fixture's lockfile is written by Cargo, not by hand.
 
     `test-rstest-bdd-ui` runs after `fetch`, which is `cargo fetch --locked`,
-    and `--locked` fails rather than writing a missing lockfile. The fixture is
-    generated, so it has none on a clean run; a lockfile left by an earlier
-    run would hide that. This contract deletes any lockfile first, so it tests
-    the clean case rather than whichever state the directory happened to be in.
+    and `--locked` refuses to write a missing lockfile. The fixture is generated
+    rather than checked in, so something has to supply one before the recipe
+    starts; `_make_target` does, by running `cargo generate-lockfile`. That is
+    the thing this contract names, so it asserts what the harness produces
+    rather than what the recipe complains about.
 
-    The lockfile is written by Cargo, so this also pins that the version the
-    toolchain produces is one `--locked` accepts, rather than one written by
-    hand that could drift from the format.
+    Because Cargo writes the file, this also pins that the version the installed
+    toolchain emits is one `--locked` accepts, rather than one written here that
+    could drift from the format.
 
-    The exit status is not the signal here. The fixture's test overruns on
-    purpose, so the recipe exits non-zero whenever it works; what has to be
-    absent is `fetch`'s complaint, and what has to be present is a nextest run
-    that got as far as reporting an outcome.
+    The exit status is not the signal. The fixture's test overruns on purpose,
+    so the recipe exits non-zero whenever it works; what has to be present is a
+    nextest run that got as far as reporting an outcome.
     """
-    root = _end_to_end_workspace(END_TO_END_ROOT / "lockfile", with_ceiling=False)
+    root = _end_to_end_workspace(end_to_end_root / "lockfile", with_ceiling=False)
     (root / "Cargo.lock").unlink(missing_ok=True)
+    assert not (root / "Cargo.lock").exists(), "the contract needs a clean start"
     output, _ = _make_target(root)
-    assert "cannot create the lock file" not in output, output[-2000:]
+    assert (root / "Cargo.lock").is_file(), output[-2000:]
     assert _outcomes(output), output[-4000:]
 
 
-def test_the_make_target_selects_the_profile_and_terminates_per_test() -> None:
+def test_the_make_target_selects_the_profile_and_terminates_per_test(
+    end_to_end_root: pathlib.Path,
+) -> None:
     """The shipped recipe, run for real, enforces the named profile's period.
 
     This is the end-to-end link. `test_rstest_bdd_ui_gate.py` runs the same
@@ -815,7 +874,7 @@ def test_the_make_target_selects_the_profile_and_terminates_per_test() -> None:
     therefore also report `TIMEOUT` - just earlier. The elapsed time is what
     separates the two, so the kill point, not the word, is the assertion.
     """
-    root = _end_to_end_workspace(END_TO_END_ROOT / "period", with_ceiling=False)
+    root = _end_to_end_workspace(end_to_end_root / "period", with_ceiling=False)
     output, _ = _make_target(root)
     outcomes = _outcomes(output)
     assert outcomes, output[-4000:]
@@ -825,7 +884,9 @@ def test_the_make_target_selects_the_profile_and_terminates_per_test() -> None:
     assert _first_time(outcomes, "TIMEOUT") >= END_TO_END_PERIOD - 1, outcomes
 
 
-def test_the_make_target_enforces_the_profile_ceiling() -> None:
+def test_the_make_target_enforces_the_profile_ceiling(
+    end_to_end_root: pathlib.Path,
+) -> None:
     """The same recipe stops the run at the named profile's `global-timeout`.
 
     The profile's ceiling is the shortest budget in the file and shorter than
@@ -833,7 +894,7 @@ def test_the_make_target_enforces_the_profile_ceiling() -> None:
     first can only be the named profile's ceiling. This is the half an override
     cannot supply, and the reason the profile exists at all.
     """
-    root = _end_to_end_workspace(END_TO_END_ROOT / "ceiling", with_ceiling=True)
+    root = _end_to_end_workspace(end_to_end_root / "ceiling", with_ceiling=True)
     output, _ = _make_target(root)
     outcomes = _outcomes(output)
     assert outcomes, output[-4000:]

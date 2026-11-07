@@ -345,46 +345,98 @@ def _workflow_steps() -> list[dict[str, typ.Any]]:
     ]
 
 
-def test_the_behavioural_contracts_run_where_nextest_is_installed() -> None:
-    """The real-nextest proof runs in the lane that has a Rust build.
-
-    `test_rstest_bdd_ui_timeouts.py` skips when nextest is unavailable, which
-    is what keeps `make test-workflow-contracts` fast and Rust-free in the
-    docs-tooling lane. That skip is only safe while something asserts the
-    tests run somewhere: without this contract, deleting the CI step would
-    leave every behavioural check skipped and the suite still green.
-    """
-    steps = _workflow_steps()
-    commands = [step.get("run", "") for step in steps]
-    assert any("make test-rstest-bdd-ui-timeouts" in run for run in commands), commands
-    assert any("make test-workflow-contracts" in run for run in commands), (
-        "the fast contracts must still run somewhere"
+def _steps_running(needle: str) -> list[tuple[str, dict[str, typ.Any]]]:
+    """Every (job name, step) whose `run` text contains `needle`."""
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     )
+    return [
+        (job_name, step)
+        for job_name, job in workflow["jobs"].items()
+        for step in job.get("steps") or []
+        if needle in (step.get("run") or "")
+    ]
+
+
+def test_the_behavioural_contracts_run_where_nextest_is_installed() -> None:
+    """The real-nextest proof runs once, in the lane that has a Rust build.
+
+    `make test-workflow-contracts` excludes `test_rstest_bdd_ui_timeouts.py`,
+    because the fixtures take minutes and the docs-tooling lane has no nextest.
+    So the dedicated target is the only thing that runs those contracts, and
+    deleting its step would leave them run by nothing at all while the suite
+    stayed green.
+
+    Which job, and which leg, matters as much as that the step exists. On the
+    matrix legs the target would run three times over, and it needs nextest and
+    a Rust build, which the docs-tooling job has neither of; a step that moved
+    there would be skipped or would fail for the wrong reason. The `if`
+    condition is asserted as text because that is what the workflow carries,
+    and a mutation deleting it is exactly the regression this covers.
+    """
+    matches = _steps_running("make test-rstest-bdd-ui-timeouts")
+    assert len(matches) == 1, matches
+    job_name, step = matches[0]
+    assert job_name == "build-test", job_name
+    assert step.get("if") == "matrix.name == 'wireframe-only'", step
+
+    fast = _steps_running("make test-workflow-contracts")
+    assert fast, "the fast contracts must still run somewhere"
+
+
+def test_the_fast_target_does_not_run_the_behavioural_contracts() -> None:
+    """The cheap target excludes the file the dedicated target owns.
+
+    Both targets run pytest over `tests/workflow_contracts`, so without the
+    exclusion `make test-workflow-contracts` picks up the behavioural file on
+    any machine that has nextest. It would then take minutes rather than
+    seconds and require a Rust build, in the lane chosen precisely because it
+    needs neither. The assertion is on the pytest invocation, not the target
+    as a whole, so the ruff checks above it stay free to lint the file.
+    """
+    recipe = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+    body = recipe.split("test-workflow-contracts:", 1)[1].split("\n\n", 1)[0]
+    assert "--ignore=tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py" in body, (
+        body
+    )
+    assert "python -m pytest tests/workflow_contracts" in body, body
 
 
 def test_the_behavioural_target_refuses_to_skip_without_nextest() -> None:
     """The proof target fails loudly rather than skipping on a weak lane.
 
-    The suite-level skip protects the docs-tooling lane; the target exists to
-    stop that protection from covering a lane that was meant to have nextest.
+    The suite-level skip covers a direct `pytest` run; the target exists to stop
+    that protection from covering a lane that was meant to have nextest. It
+    probes the same `$(CARGO)` the fixtures build with, so a machine where one
+    Cargo has nextest and another does not cannot pass the probe and then skip
+    every contract.
     """
     recipe = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
     target = recipe.split("test-rstest-bdd-ui-timeouts:", 1)
     assert len(target) == 2, "the behavioural target is missing"
     body = target[1].split("\n\n", 1)[0]
-    assert "nextest --version" in body, body
+    assert "$(CARGO) nextest --version" in body, body
     assert "exit 1" in body, body
+    assert "|| { " in body or "|| {" in body, body
 
 
 def test_the_docs_tooling_lane_stays_free_of_a_rust_build() -> None:
-    """The fast contracts keep their lane cheap, which is why they skip.
+    """The fast lane stays cheap, and the behavioural file never lands in it.
 
-    If this lane ever gains nextest, the skip becomes pointless and the split
+    If this lane ever gained nextest, excluding the behavioural file from
+    `make test-workflow-contracts` would stop buying anything and the split
     between the two files should be revisited - so the assumption is recorded
-    here rather than left implicit in a skipif reason.
+    here rather than left implicit in a Makefile comment.
+
+    The second assertion is the one the cheap lane actually depends on. The
+    first alone only catches a step whose text mentions `nextest`; the target
+    that runs the behavioural contracts does not, so a step invoking it here
+    would sail past a `nextest` grep and then either skip or need a Rust build.
     """
     workflow = yaml.safe_load(
         (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     )
     lane = workflow["jobs"]["docs-tooling"]
-    assert all("nextest" not in (step.get("run") or "") for step in lane["steps"])
+    runs = [step.get("run") or "" for step in lane["steps"]]
+    assert all("nextest" not in run for run in runs), runs
+    assert all("test-rstest-bdd-ui-timeouts" not in run for run in runs), runs

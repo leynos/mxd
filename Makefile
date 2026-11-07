@@ -143,10 +143,16 @@ check-locked: ## Refuse a lockfile the manifest does not admit
 test-workflow-contracts: ## Assert the CI workflows place and gate what they claim
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) format --isolated --target-version py313 --check $(WORKFLOW_CONTRACT_SRCS)
 	@$(UV_ENV) $(UV) tool run ruff@$(RUFF_VERSION) check --isolated --target-version py313 $(WORKFLOW_CONTRACT_SRCS)
+	# `test_rstest_bdd_ui_timeouts.py` drives a real nextest over generated
+	# fixtures and takes minutes, so it belongs to `test-rstest-bdd-ui-timeouts`
+	# rather than here. Without the exclusion this target would run it on any
+	# machine that happens to have nextest installed, which is neither fast nor
+	# Rust-free. The ruff checks above still lint it, because they are cheap.
 	@PYTHONPATH=tests/workflow_contracts $(UV_ENV) $(UV) run --no-project \
 		--python 3.14 --with pytest==9.0.2 --with pyyaml==$(PYYAML_VERSION) \
 		--with hypothesis==6.168.5 \
 		python -m pytest tests/workflow_contracts -c /dev/null --rootdir=. \
+		--ignore=tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py \
 		-p no:cacheprovider
 
 typecheck: typecheck-postgres typecheck-sqlite typecheck-wireframe-only ## Run cargo check for all feature sets
@@ -326,11 +332,16 @@ test-rstest-bdd-ui: ## Run compile-time rstest-bdd scenario tests
 	NEXTEST_PROFILE=rstest-bdd-ui $(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p rstest-bdd-ui-tests
 
 test-rstest-bdd-ui-timeouts: ## Prove nextest enforces the UI gate's time budget
-	# Unlike `test-workflow-contracts`, this target refuses to skip: it exists
-	# to show that a real nextest acts on the configured budgets, so a lane
-	# without nextest would silently drop the coverage it is here to provide.
+	# Unlike `test-workflow-contracts`, this target never skips: it exists to
+	# show that a real nextest acts on the configured budgets, so a lane without
+	# nextest must fail loudly rather than quietly drop the coverage it is here
+	# to provide. The probe therefore stays a hard requirement, and it is run
+	# through `$(CARGO)` because that is the Cargo the contracts themselves use
+	# (`_fixture_env` scrubs the environment but not the toolchain the fixtures
+	# are built with). The suite's own skip is disabled here for the same
+	# reason: it protects the docs-tooling lane, which this target is not.
 	# See "Compile-time scenario contracts" in the developers' guide.
-	@$(CARGO) nextest --version >/dev/null 2>&1 || { \
+	@$(CARGO) nextest --version || { \
 		echo "cargo nextest is required: this target proves nextest enforces" >&2; \
 		echo "the UI gate time budget and cannot run without it." >&2; \
 		exit 1; }

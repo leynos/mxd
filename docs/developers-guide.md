@@ -370,8 +370,18 @@ real nextest over a disposable two-member fixture workspace, with budgets in
 seconds rather than minutes. One member matches a package override and one
 deliberately does not. The contracts run each member separately, so every
 outcome is attributed to the crate that produced it: the matching crate shows
-the per-package timeout, and the control shows the default route's fall-through
-to the run ceiling.
+the per-package timeout, and the control shows the default route's shorter
+per-test timeout.
+
+The fixture scales the shape production has, in which *both* routes terminate:
+the default profile kills at 60 seconds and the override raises that to 900.
+Because both report `TIMEOUT`, the word alone cannot tell them apart, so the
+contracts read the second at which the kill landed. That difference is exactly
+what the override buys - the same test is allowed to run longer - and a fixture
+whose default route merely warned could not express it. One contract holds a
+single short sleep to both routes at once: the same test, in crates that differ
+only by the name the package filter keys on, passes under the override and is
+killed under the default.
 
 The fixture declares the `rstest-bdd-ui` profile too, with second-scale
 budgets, and further contracts select it by name through `NEXTEST_PROFILE`, as
@@ -379,23 +389,25 @@ the Make target does. They assert both halves separately: that nextest resolved
 the profile named, read back from the `with nextest profile:` banner, and that
 the outcome is the one only that profile's budgets produce. The named period is
 longer than the default one, so a run that fell back to `default` would report
-`SLOW` and then `SIGTERM` where the named profile reports `TIMEOUT`. A second
-contract gives the profile a ceiling shorter than its period and shorter than
-the default ceiling, which makes `SLOW` unreachable rather than merely
-unlikely, so its absence is structural and the `SIGTERM` that arrives early can
-only be the named profile's own `global-timeout`. The fixture's profile name is
-itself pinned to the target's by reading `NEXTEST_PROFILE=` back out of the
-Makefile, so a rename on either side fails. The harness sets `NEXTEST_PROFILE`
-rather than inheriting it, because an ambient value left over from a
-surrounding run would otherwise choose the profile the contracts are deciding.
+`TIMEOUT` at the shorter default period where the named profile reports it
+later. A second contract gives the profile a ceiling shorter than its period
+and shorter than the default ceiling, which makes `TIMEOUT` and `SLOW`
+unreachable rather than merely unlikely, so their absence is structural and the
+`SIGTERM` that arrives early can only be the named profile's own
+`global-timeout`. The fixture's profile name is itself pinned to the target's
+by reading `NEXTEST_PROFILE=` back out of the Makefile, so a rename on either
+side fails. The harness sets `NEXTEST_PROFILE` rather than inheriting it,
+because an ambient value left over from a surrounding run would otherwise
+choose the profile the contracts are deciding.
 
-The contracts assert nextest's result words rather than elapsed time, because
-the word carries the reason. An overrunning test reports `TIMEOUT` when
-`terminate-after` kills it at its period, `SLOW` while a period without
-`terminate-after` merely warns, and `SIGTERM` when neither applies and the
-run-wide ceiling stops the whole run. Dropping `terminate-after` from the
-fixture turns the first into the second, which is exactly the regression the
-setting guards against. Exit codes cannot make this distinction: a per-test
+The contracts assert nextest's result words, and the second at which each was
+reported where both routes report the same word. The word carries the reason:
+an overrunning test reports `TIMEOUT` when `terminate-after` kills it at its
+period, `SLOW` while a period without `terminate-after` merely warns, and
+`SIGTERM` when neither applies and the run-wide ceiling stops the whole run.
+One contract removes this repository's `terminate-after` from the fixture and
+asserts the word changes, which is what makes the setting's contribution
+visible rather than assumed. Exit codes cannot make the distinction: a per-test
 timeout and a run-wide ceiling both exit 100, so only the reported word
 separates them.
 
@@ -410,16 +422,22 @@ because rustup resolves the toolchain from the working directory; outside the
 repository the recipe's nightly-only flags would be handed to a stable
 toolchain and fail for unrelated reasons. Two contracts cover the two halves
 the profile exists for: per-test termination at its period, and the run ceiling
-when that comes first. The directory is reused between runs, so every write in
-it is idempotent.
+when that comes first. Each end-to-end contract gets its own scratch directory
+through a fixture, removed afterwards, so a lockfile or source file left by one
+cannot be read by another.
 
 The fixtures build standalone leaf crates, so they neither touch the UI package
 nor queue behind the trybuild fixtures. Run them with
 `make test-rstest-bdd-ui-timeouts`, which fails rather than skips when nextest
-is absent: the suite-level skip exists so `make test-workflow-contracts` stays
-fast and Rust-free in the docs-tooling lane, and the target exists so that skip
-cannot quietly cover the lane meant to have nextest. CI runs the target in the
-wireframe-only leg, next to `make test-rstest-bdd-ui`.
+is absent. `make test-workflow-contracts` excludes the file: running it needs a
+Rust build and minutes of clock, and the docs-tooling lane that runs those
+contracts has neither. The suite-level skip therefore covers only a direct
+`pytest` invocation on a machine without nextest, while the target's own probe
+is what stops a lane that was meant to have nextest from silently skipping. CI
+runs the target in the wireframe-only leg, next to `make test-rstest-bdd-ui`,
+and both steps are gated on that leg. The `build-test` ceiling is derived from
+the budgets those two steps may take rather than from a warm timing, so a
+genuinely slow run finishes instead of being cancelled.
 
 ## Validator toggles for pending flows
 
@@ -1043,10 +1061,19 @@ An Ubicloud runner is a self-hosted just-in-time runner, so GitHub's six-hour
 cap for hosted jobs does not bound it; `coverage-upload` keeps its 65-minute
 ceiling, which the embedded-PostgreSQL leg needs, until Ubicloud runs size it.
 The `ci.yml` lanes' ceilings are provisional: twice the slowest leg of run
-36971925629, their first Ubicloud run (`docs-tooling` 15, `build-test` 50,
-`validator-sqlite` 20, `coverage` 60), rounded up to 5. That run restored the
-cargo registry cache but found no compiled-artefact cache, so it is close to a
-cold build, and the ceilings are resized from three green runs of the new shape.
+36971925629, their first Ubicloud run (`docs-tooling` 15, `validator-sqlite` 20,
+`coverage` 60), rounded up to 5. That run restored the cargo registry cache
+but found no compiled-artefact cache, so it is close to a cold build, and the
+ceilings are resized from three green runs of the new shape.
+
+`build-test` is sized differently, at 100, because its two UI gates are bounded
+by configuration rather than by host speed: `rstest-bdd-ui` carries
+`global-timeout = 30m` and `test-rstest-bdd-ui-timeouts` runs three end-to-end
+builds under successive 900-second timeouts. Sizing on a warm leg would cancel
+the cold run those raised budgets exist to permit, and a cancelled leg fails
+`build-test-result`. The ceiling is the pre-gate cold figure (24) plus both
+gates' own limits. `tests/workflow_contracts/test_runner_placement.py` pins it
+in the same table as every other ceiling and records the reasoning there.
 
 Each of those four lanes ends with a `Record the lane's placement` step, under
 `always()` so a failing lane is recorded too. It writes the lane, the runner
