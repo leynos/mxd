@@ -865,6 +865,27 @@ list, so indent the content of every list item under its marker (three columns
 for `1.` to `9.`, four for `10.` to `99.`) to keep a numbered procedure in one
 list.
 
+## Fetching dependencies before tests
+
+Several tests start their own `cargo`: trybuild, the embedded-server fallback
+in `test-util`, and the validator harness. Cargo resolves dependencies, and
+may update the crates.io index, while it holds the package-cache lock in
+`$CARGO_HOME`. On a host where several repositories share one `$CARGO_HOME`, a
+nested `cargo` that resolves cold can wait on that lock for many minutes.
+
+The fix is to fetch once, before any test starts, so that no nested `cargo`
+has anything left to resolve:
+
+- `make test` depends on the `fetch` target, which runs
+  `cargo fetch --locked`. A failed fetch stops the run.
+- Every CI job that runs tests, and `coverage-main.yml`, runs the same
+  `cargo fetch --locked` as an unconditional step before its first test,
+  validator or coverage step.
+
+Do not make the fetch conditional on the matrix leg, and do not add
+`|| true` to it. The concordat rule `nested-cargo-offline-tests` reads a fetch
+as proof only when it is unconditional and its failure stops the run.
+
 ## The Rust build standard
 
 Development builds use the parallel `rustc` frontend (`-Zthreads=8`) and, on
