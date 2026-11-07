@@ -152,18 +152,35 @@ def _workspace(root: pathlib.Path, terminate: bool) -> pathlib.Path:
     return root
 
 
+def _fixture_env() -> dict[str, str]:
+    """The environment the fixture is built in.
+
+    The lane's build flags are removed rather than inherited. They are tuned for
+    this workspace - CI exports nightly-only `-Z` flags, and `make lint` carries
+    `-D warnings` - and the fixture is a plain leaf crate that must build under
+    whatever toolchain the lane has. Inheriting them made `cargo metadata` fail
+    before nextest ever ran, which is a harness failure, not a timeout result.
+
+    `RUSTC_WRAPPER` is deliberately kept: compile admission is not bypassed.
+    """
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS"}
+    }
+    env["CARGO_TARGET_DIR"] = str(REPO_ROOT / "target" / "timeout-contract-fixtures")
+    return env
+
+
 def _run(root: pathlib.Path, package: str) -> list[Outcome]:
     """Run one fixture member under the fixture's nextest configuration.
 
     A failing exit status is expected and ignored: the point of the run is what
-    nextest reports, and a timed-out test exits non-zero by design. The target
-    directory is kept under the repository's `target` so the compile lands on
-    the same disk as every other build rather than filling `/tmp`.
+    nextest reports, and a timed-out test exits non-zero by design. What is not
+    ignored is a run that reports nothing parseable, because that is a broken
+    harness rather than a result - the raw output goes into the failure so the
+    cause is readable instead of the empty list it would otherwise produce.
     """
-    env = {
-        **os.environ,
-        "CARGO_TARGET_DIR": str(REPO_ROOT / "target" / "timeout-contract-fixtures"),
-    }
     completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
         [  # noqa: S607
             "cargo",
@@ -177,9 +194,16 @@ def _run(root: pathlib.Path, package: str) -> list[Outcome]:
         text=True,
         timeout=600,
         check=False,
-        env=env,
+        env=_fixture_env(),
     )
-    return _outcomes(completed.stdout + completed.stderr)
+    output = completed.stdout + completed.stderr
+    outcomes = _outcomes(output)
+    if not outcomes:
+        raise AssertionError(
+            f"nextest reported no result for {package} in {root} "
+            f"(exit {completed.returncode}):\n{ANSI.sub('', output)[-4000:]}"
+        )
+    return outcomes
 
 
 def _outcomes(output: str) -> list[Outcome]:
@@ -283,6 +307,26 @@ def _production_overrides() -> list[dict[str, typ.Any]]:
         (REPO_ROOT / ".config" / "nextest.toml").read_text(encoding="utf-8")
     )
     return config["profile"]["default"].get("overrides") or []
+
+
+def test_the_fixture_ignores_the_lane_build_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fixture's build is insulated from the lane's `RUSTFLAGS`.
+
+    CI exports nightly-only `-Z` flags for this workspace, so inheriting them
+    made `cargo metadata` fail before nextest ran and every behavioural
+    contract reported an empty result. The wrapper is kept, so compile
+    admission still applies.
+    """
+    monkeypatch.setenv("RUSTFLAGS", "-D warnings -Zthreads=8")
+    monkeypatch.setenv("CARGO_ENCODED_RUSTFLAGS", "-Dwarnings")
+    monkeypatch.setenv("RUSTC_WRAPPER", "/usr/bin/compile-admission")
+    env = _fixture_env()
+    assert "RUSTFLAGS" not in env, env
+    assert "CARGO_ENCODED_RUSTFLAGS" not in env, env
+    assert env["RUSTC_WRAPPER"] == "/usr/bin/compile-admission", env
+    assert env["CARGO_TARGET_DIR"].endswith("timeout-contract-fixtures"), env
 
 
 def test_the_fixture_matches_the_shape_production_uses() -> None:
