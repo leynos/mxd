@@ -356,7 +356,10 @@ Reading the recipe's text would not do either, since `NEXTEST_PROFILE=` moved
 onto a recipe line of its own still appears in a dry run while the runner
 inherits nothing. The remaining contracts chain the numbers, so a raised slow
 timeout that no run ceiling can accommodate fails rather than passing as a
-larger figure. Keep the pass and compile-fail assertions enabled.
+larger figure. They also assert `terminate-after`: a period alone only reports
+a test as slow, so without it an overrunning test would run on until the
+run-wide ceiling killed the whole run. Keep the pass and compile-fail
+assertions enabled.
 
 ## Validator toggles for pending flows
 

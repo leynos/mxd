@@ -12,6 +12,11 @@ so the run-wide headroom lives in the `rstest-bdd-ui` profile, which
 `make test-rstest-bdd-ui` selects through `NEXTEST_PROFILE`. These contracts
 pin all three parts, because dropping the profile selection would leave the
 override's raised `slow-timeout` underneath the default 10-minute run ceiling.
+
+A raised `slow-timeout` is only half of a time budget: the period says when a
+test counts as slow, and `terminate-after` says whether that kills it or merely
+reports it. Both are asserted on every route into the package, so the profile
+cannot be reduced to a longer warning.
 """
 
 from __future__ import annotations
@@ -141,6 +146,38 @@ def _seconds(duration: str) -> int:
     return int(duration[:-1]) * DURATION_UNITS[duration[-1]]
 
 
+def _terminate_after(slow_timeout: dict[str, typ.Any]) -> int:
+    """How many slow periods a test may run through before it is killed.
+
+    nextest reads a missing or zero value as "never terminate": the period
+    expires, the test is reported as slow, and it keeps running until
+    something else stops it.
+    """
+    return int(slow_timeout.get("terminate-after", 0))
+
+
+def _kill_point(slow_timeout: dict[str, typ.Any]) -> int | None:
+    """The second at which a slow test is killed, or `None` if it never is.
+
+    `terminate-after` counts periods rather than seconds, so a timeout
+    declaring two periods acts at twice the period it advertises.
+    """
+    periods = _terminate_after(slow_timeout)
+    return _seconds(slow_timeout["period"]) * periods if periods > 0 else None
+
+
+def _ui_routes(
+    config: dict[str, typ.Any],
+) -> list[tuple[str, dict[str, typ.Any]]]:
+    """The slow timeouts that can govern the UI package, labelled by route."""
+    routes = [(PROFILE, config["profile"][PROFILE]["slow-timeout"])]
+    routes.extend(
+        (f"override {index}", override["slow-timeout"])
+        for index, override in enumerate(_package_overrides(config))
+    )
+    return routes
+
+
 def test_the_make_target_passes_the_profile_to_nextest(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -219,3 +256,32 @@ def test_the_run_ceiling_covers_the_slow_timeout() -> None:
     assert default_slow < profile_slow, (default_slow, profile_slow)
     assert default_global < profile_global, (default_global, profile_global)
     assert override_slow < profile_global, (override_slow, profile_global)
+
+
+def test_the_ui_routes_terminate_a_test_that_overruns() -> None:
+    """A slow UI test is stopped, at one period, on both routes into it.
+
+    A period on its own only reports a test as slow; without `terminate-after`
+    the test keeps running until the run-wide ceiling kills the entire run,
+    which is what the raised ceiling exists to postpone. The kill point is
+    asserted from the period and the count together, because a timeout of two
+    periods would advertise a period it does not act on for twice as long.
+    """
+    routes = _ui_routes(_nextest_config())
+    assert routes, f"no route into {PACKAGE}"
+    for name, slow_timeout in routes:
+        assert _terminate_after(slow_timeout) == 1, (name, slow_timeout)
+        assert _kill_point(slow_timeout) == 900, (name, slow_timeout)
+        assert slow_timeout["grace-period"] == "5s", (name, slow_timeout)
+
+
+def test_the_default_route_terminates_a_test_that_overruns() -> None:
+    """The fallback route stops an overrunning test rather than only warning.
+
+    This is the route every other package takes, and the one the UI package
+    may reach without the profile, so it has to terminate on its own terms
+    rather than relying on a ceiling far above it.
+    """
+    default = _nextest_config()["profile"]["default"]["slow-timeout"]
+    assert _terminate_after(default) == 1, default
+    assert _kill_point(default) == 60, default
