@@ -24,20 +24,47 @@ import typing as typ
 
 from ci_workflow_reader import REPO_ROOT
 
+TARGET = "test-rstest-bdd-ui"
 PROFILE = "rstest-bdd-ui"
 PACKAGE = "rstest-bdd-ui-tests"
 
-# Make chooses its test runner from `$(shell $(CARGO) nextest --version)`.
-# A stub named `cargo` that answers that one probe therefore makes a dry run
-# expand exactly the `nextest run` recipe CI uses, without needing a toolchain.
-# Passing `CARGO=true` instead would resolve to `cargo test`, so the assertion
-# would pass while covering the wrong command.
+# Make chooses its test runner from `$(shell $(CARGO) nextest --version)` and
+# then runs that command for real, so a stub standing in for Cargo has to answer
+# the probe and absorb the run. It records the profile it inherited and the
+# arguments it was handed into `$RECORDED`, which is what the contracts assert
+# on: the recipe's text says where `NEXTEST_PROFILE=` appears, but only the
+# process environment says whether nextest actually received it. Substituting
+# `CARGO=true` instead would resolve to `cargo test` and cover the wrong command
+# entirely.
+#
+# The stub is passed as `CARGO=<path>` rather than put on `PATH`. The Makefile
+# prepends `$(HOME)/.cargo/bin` to `PATH` on its third line, so a stub directory
+# on the caller's `PATH` is shadowed by the real Cargo no matter where the
+# caller puts it.
 CARGO_STUB = """#!/bin/sh
 if [ "$1" = "nextest" ] && [ "$2" = "--version" ]; then
     echo "cargo-nextest stub"
+    exit 0
 fi
+{
+    printf 'profile=%s\\n' "${NEXTEST_PROFILE-}"
+    for argument in "$@"; do
+        printf 'argument=%s\\n' "$argument"
+    done
+} > "$RECORDED"
 exit 0
 """
+
+# nextest writes its durations in whole units, so a plain suffix table is the
+# whole grammar the contracts need to compare one timeout against another.
+DURATION_UNITS = {"s": 1, "m": 60}
+
+
+class Invocation(typ.NamedTuple):
+    """What the Cargo stub was asked to do by the Make target."""
+
+    profile: str
+    arguments: tuple[str, ...]
 
 
 def _nextest_config() -> dict[str, typ.Any]:
@@ -47,21 +74,88 @@ def _nextest_config() -> dict[str, typ.Any]:
     )
 
 
-def _dry_run(target: str, tmp_path: pathlib.Path) -> str:
-    """Return the recipe make would run for `target`."""
+def _package_overrides(config: dict[str, typ.Any]) -> list[dict[str, typ.Any]]:
+    """Every default-profile override that targets the UI package."""
+    overrides = config["profile"]["default"].get("overrides") or []
+    return [
+        override
+        for override in overrides
+        if override.get("filter") == f"package({PACKAGE})"
+    ]
+
+
+def _parse_recorded(text: str) -> Invocation:
+    """Parse the stub's record into the profile and the arguments given."""
+    profile = ""
+    arguments: list[str] = []
+    for line in text.splitlines():
+        key, _, value = line.partition("=")
+        if key == "profile":
+            profile = value
+        elif key == "argument":
+            arguments.append(value)
+    return Invocation(profile, tuple(arguments))
+
+
+def _invoke_target(tmp_path: pathlib.Path) -> Invocation:
+    """Run the real Make target and report what reached the Cargo stub.
+
+    The target is executed rather than dry-run: a dry run prints the recipe
+    Make would use, but only an execution puts `NEXTEST_PROFILE` into the
+    environment of the process the recipe starts. The stub absorbs the run, so
+    no build takes place and the elapsed cost is Make's own startup.
+    """
     cargo = tmp_path / "cargo"
     cargo.write_text(CARGO_STUB, encoding="utf-8")
     cargo.chmod(0o755)
-    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        ["make", "--dry-run", target],  # noqa: S607
+    recorded = tmp_path / "recorded"
+    # The recipe's own assignment is what this contract is about, so the
+    # caller's `NEXTEST_PROFILE` is removed: a CI job that pins one would
+    # otherwise be indistinguishable from a recipe that sets it, and the
+    # contract would pass with the assignment deleted from the Makefile.
+    inherited = {k: v for k, v in os.environ.items() if k != "NEXTEST_PROFILE"}
+    subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["make", f"CARGO={cargo}", TARGET],  # noqa: S607
         cwd=REPO_ROOT,
         check=True,
         text=True,
         capture_output=True,
-        timeout=60,
-        env={**os.environ, "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"},
+        timeout=120,
+        env={**inherited, "RECORDED": str(recorded)},
     )
-    return result.stdout
+    return _parse_recorded(recorded.read_text(encoding="utf-8"))
+
+
+def _option_value(arguments: tuple[str, ...], option: str) -> str | None:
+    """Return the value that follows `option`, or `None` when it is absent."""
+    try:
+        index = arguments.index(option)
+    except ValueError:
+        return None
+    following = arguments[index + 1 : index + 2]
+    return following[0] if following else None
+
+
+def _seconds(duration: str) -> int:
+    """Convert a nextest duration such as ``900s`` or ``30m`` to seconds."""
+    return int(duration[:-1]) * DURATION_UNITS[duration[-1]]
+
+
+def test_the_make_target_passes_the_profile_to_nextest(
+    tmp_path: pathlib.Path,
+) -> None:
+    """`make test-rstest-bdd-ui` runs nextest *under* the profile.
+
+    The profile is read from the environment of the process Make actually
+    started, so this fails when the assignment never reaches `nextest` - for
+    instance if `NEXTEST_PROFILE=` were moved onto its own recipe line, where
+    Make would run it as a separate shell and the runner would inherit
+    nothing.
+    """
+    invocation = _invoke_target(tmp_path)
+    assert invocation.arguments[:2] == ("nextest", "run"), invocation
+    assert invocation.profile == PROFILE, invocation
+    assert _option_value(invocation.arguments, "-p") == PACKAGE, invocation
 
 
 def test_the_ui_profile_raises_the_run_wide_timeout() -> None:
@@ -71,8 +165,7 @@ def test_the_ui_profile_raises_the_run_wide_timeout() -> None:
     carrying a larger `global-timeout`, a cold trybuild build can still be cut
     off by the default 10-minute run ceiling.
     """
-    config = _nextest_config()
-    profile = config["profile"][PROFILE]
+    profile = _nextest_config()["profile"][PROFILE]
     assert profile["global-timeout"] == "30m", profile
     assert profile["slow-timeout"]["period"] == "900s", profile["slow-timeout"]
 
@@ -83,25 +176,10 @@ def test_the_package_override_matches_the_profile() -> None:
     A run that reaches the package without selecting the profile should still
     treat a slow trybuild build as slow rather than failed at 300 seconds.
     """
-    config = _nextest_config()
-    overrides = config["profile"]["default"].get("overrides") or []
-    matching = [o for o in overrides if o.get("filter") == f"package({PACKAGE})"]
-    assert matching, f"no override for {PACKAGE}: {overrides}"
+    matching = _package_overrides(_nextest_config())
+    assert matching, f"no override for {PACKAGE}"
     for override in matching:
         assert override["slow-timeout"]["period"] == "900s", override
-
-
-def test_the_make_target_selects_the_ui_profile(tmp_path: pathlib.Path) -> None:
-    """`make test-rstest-bdd-ui` runs nextest under the profile.
-
-    The recipe is read from `make --dry-run` so that the assertion covers what
-    Make actually expands, rather than the text of the file. Asserting the
-    whole invocation catches a profile assignment that is emitted but never
-    reaches `nextest`, which an independent substring check would miss.
-    """
-    recipe = _dry_run("test-rstest-bdd-ui", tmp_path)
-    assert f"NEXTEST_PROFILE={PROFILE}" in recipe, recipe
-    assert f"cargo nextest run -p {PACKAGE}" in recipe, recipe
 
 
 def test_the_profile_and_override_share_one_budget() -> None:
@@ -113,8 +191,31 @@ def test_the_profile_and_override_share_one_budget() -> None:
     config = _nextest_config()
     profile_period = config["profile"][PROFILE]["slow-timeout"]["period"]
     override_periods = {
-        override["slow-timeout"]["period"]
-        for override in config["profile"]["default"].get("overrides") or []
-        if override.get("filter") == f"package({PACKAGE})"
+        override["slow-timeout"]["period"] for override in _package_overrides(config)
     }
     assert override_periods == {profile_period}, override_periods
+
+
+def test_the_run_ceiling_covers_the_slow_timeout() -> None:
+    """The selected profile leaves room for the override it enables.
+
+    A raised slow timeout only helps while the run-wide ceiling sits above it:
+    below that, `terminate-after` never fires and the whole run is killed
+    instead. Each step in the chain therefore has to exceed the one it
+    replaces, and the profile's ceiling has to beat the default one rather than
+    merely restate a large number.
+    """
+    config = _nextest_config()
+    default = config["profile"]["default"]
+    profile = config["profile"][PROFILE]
+    overrides = _package_overrides(config)
+    assert overrides, f"no override for {PACKAGE}"
+    default_slow = _seconds(default["slow-timeout"]["period"])
+    default_global = _seconds(default["global-timeout"])
+    override_slow = _seconds(overrides[0]["slow-timeout"]["period"])
+    profile_slow = _seconds(profile["slow-timeout"]["period"])
+    profile_global = _seconds(profile["global-timeout"])
+    assert default_slow < override_slow, (default_slow, override_slow)
+    assert default_slow < profile_slow, (default_slow, profile_slow)
+    assert default_global < profile_global, (default_global, profile_global)
+    assert override_slow < profile_global, (override_slow, profile_global)
