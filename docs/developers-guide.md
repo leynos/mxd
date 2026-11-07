@@ -399,9 +399,9 @@ setting guards against. Exit codes cannot make this distinction: a per-test
 timeout and a run-wide ceiling both exit 100, so only the reported word
 separates them.
 
-The same file also runs the shipped `test-rstest-bdd-ui` recipe end to end,
-with `make -f <repo>/Makefile` from a fixture working directory. That is the
-only arrangement that exercises the recipe itself: the profile assignment and
+The same file also runs the shipped `test-rstest-bdd-ui` recipe end to end, with
+`make -f <repo>/Makefile` from a fixture working directory. That is the only
+arrangement that exercises the recipe itself: the profile assignment and
 `-p rstest-bdd-ui-tests` come from the shipped target rather than from the
 test, so a recipe that stopped selecting the profile fails here even though
 every file-reading contract still passes. The fixture must supply a package by
