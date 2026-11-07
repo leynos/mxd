@@ -5,9 +5,9 @@ name: Coverage (main)
 # request runs no CodeScene command at all: see "CodeScene coverage is owned
 # by `main`" in the developers' guide, and `make test-codescene-boundary`,
 # which asserts it. This workflow also advances the coverage ratchet
-# baseline: caches saved on main are readable by every pull-request run, so
-# the baseline written here is the one a pull request's ratchet compares
-# against.
+# baseline, through `coverage-baseline`: caches saved on main by an Ubicloud
+# job are readable by every Ubicloud pull-request run, so the baseline written
+# there is the one a pull request's ratchet compares against.
 
 on:
   push:
@@ -21,19 +21,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Measures coverage and uploads it to CodeScene on a GitHub-hosted runner
+  # (free on a public repository). It advances no baseline: a hosted runner
+  # writes GitHub's cache store, which the Ubicloud pull-request lanes never
+  # read. It hands the figures on as an artefact for `coverage-baseline`, and
+  # `coverage-warmup` writes the Ubicloud caches the lanes read.
   coverage-upload:
-    # Ubicloud's cache proxy is scoped by ref, so a pull request's Ubicloud
-    # lane reads a warm main scope only if a main job on Ubicloud writes it.
-    # This is that writer. The fork arm never applies on push or dispatch; it
-    # is kept so every Ubicloud lane reads the same way. The ceiling below is
-    # unchanged and is resized from the first Ubicloud runs.
-    # Dependabot pull requests run on the hosted pool too (free on a public
-    # repository). The author is tested, not the actor, which changes when
-    # someone else pushes to the branch.
-    runs-on: >-
-      ${{ (github.event.pull_request.head.repo.fork
-      || github.event.pull_request.user.login == 'dependabot[bot]')
-      && 'ubuntu-latest' || 'ubicloud-standard-2' }}
+    runs-on: ubuntu-24.04
     # The CodeScene token lives in this environment, whose deployment policy
     # admits `main` alone; the codescene environment contract holds it to
     # this job.
@@ -93,7 +87,7 @@ jobs:
       # (the default feature set and broadest suite) carries it; the
       # postgres leg is generated unratcheted.
       - name: Generate coverage for SQLite
-        uses: leynos/shared-actions/.github/actions/generate-coverage@7d751eded578e48dacf43ab173d5820e6437c474
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
@@ -102,6 +96,10 @@ jobs:
           format: lcov
           artefact-name-suffix: sqlite-main
           with-ratchet: 'true'
+          # No baseline is read or saved here; the figures travel to
+          # `coverage-baseline` as an artefact.
+          publish-baseline: never
+          baseline-artefact-name: coverage-baseline-handover
       - name: Install pg-embed-setup-unpriv
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -118,7 +116,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: make warm-postgres
       - name: Generate coverage for Postgres
-        uses: leynos/shared-actions/.github/actions/generate-coverage@7d751eded578e48dacf43ab173d5820e6437c474
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
           NEXTEST_PROFILE: postgres
@@ -138,7 +136,68 @@ jobs:
         run: echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
       - name: Upload coverage data to CodeScene
         if: steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main'
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@7d751eded578e48dacf43ab173d5820e6437c474
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
         with:
           format: lcov
           access-token: ${{ secrets.CS_ACCESS_TOKEN }}
+
+  # Checks the handed-over figures against the stored baseline and saves them
+  # under the key the pull-request ratchet restores. It runs on Ubicloud, the
+  # cache store those lanes read, compiles nothing, and runs only when
+  # `coverage-upload` passed, so a failed run never advances the baseline.
+  coverage-baseline:
+    needs: coverage-upload
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Publish the ratchet baseline
+        uses: leynos/shared-actions/.github/actions/publish-coverage-baseline@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        with:
+          artefact-name: coverage-baseline-handover
+
+  # Compiles the instrumented tests the pull-request lane builds, without
+  # running them, so that lane's cache reads on Ubicloud hit. It depends on
+  # nothing: a failing test is no reason to leave the cache cold.
+  coverage-warmup:
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 65
+    permissions:
+      contents: read
+    env:
+      CARGO_TERM_COLOR: always
+      BUILD_PROFILE: debug
+      # Coverage instrumentation needs LLVM; the development default is Cranelift.
+      CARGO_PROFILE_DEV_CODEGEN_BACKEND: llvm
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
+        with:
+          install-sqlite-deps: true
+          install-postgres-deps: true
+          install-mold: true
+      - name: Cache Cargo directories
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Fetch dependencies
+        run: cargo fetch --locked
+      - name: Build wireframe server for coverage
+        run: make validator-sqlite-server validator-postgres-server
+      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68  # v2.88.1
+        with:
+          tool: cargo-llvm-cov
+      - name: Compile the SQLite instrumented tests
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        with:
+          features: sqlite test-support
+          output-path: lcov-sqlite.info
+          format: lcov
+          build-only: 'true'
+      - name: Compile the Postgres instrumented tests
+        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        with:
+          with-default-features: false
+          features: postgres test-support legacy-networking
+          output-path: lcov-postgres.info
+          format: lcov
+          build-only: 'true'

@@ -933,7 +933,18 @@ and remove the keys.
 
 ## Runner placement
 
-`coverage-main.yml`'s `coverage-upload`, main's only cache writer, and
+`coverage-main.yml` runs on every push to `main` as three jobs.
+`coverage-upload` measures coverage and uploads it to CodeScene on a hosted
+`ubuntu-24.04` runner, which is free on a public repository. It saves no
+baseline (`publish-baseline: never`), because a hosted runner writes GitHub's
+cache store and the Ubicloud pull-request lanes never read it, and it hands the
+figures on as the `coverage-baseline-handover` artefact. `coverage-baseline`
+(`ubicloud-standard-2`, only after `coverage-upload` passed) checks them
+against the stored baseline and saves them under the key the ratchet restores.
+`coverage-warmup` (`ubicloud-standard-2`) compiles the instrumented tests
+without running them and is main's only Ubicloud cache writer. None of the
+three has a fork arm: they run on push only.
+
 `ci.yml`'s `docs-tooling`, `build-test`, `validator-sqlite` and `coverage` run
 on `ubicloud-standard-2`; `build-test-result`, a trivial aggregate, stays
 hosted. `runs-on` selects it with the runner-selection expression:
