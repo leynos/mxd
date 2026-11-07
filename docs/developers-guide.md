@@ -880,9 +880,10 @@ anything left to resolve:
   `cargo fetch --locked`. A failed fetch stops the run.
 - The `ci.yml` jobs that run tests, and `coverage-main.yml`, run the same
   `cargo fetch --locked` as an unconditional step before their first test,
-  validator or coverage step. The Loom and fuzz workflows run only
-  `make test-concurrency`, `make test-fuzz-harness` and the Loom runner, which
-  do not start a nested `cargo` of their own, and they do not fetch first.
+  validator or coverage step. The Loom and fuzz workflows run
+  `make test-concurrency` and `make test-fuzz-harness`, which wait for the
+  `fetch` target through an order-only prerequisite, and the Loom runner, which
+  does not start a nested `cargo` of its own and does not fetch.
 
 Do not make the fetch conditional on the matrix leg, and do not add `|| true`
 to it. The estate lint rule `nested-cargo-offline-tests` reads a fetch as proof
