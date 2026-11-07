@@ -1,4 +1,4 @@
-.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres interrogate
+.PHONY: help all clean build release test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness test-rstest-bdd-ui test-rstest-bdd-ui-timeouts validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres interrogate
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -318,6 +318,21 @@ test-rstest-bdd-ui: ## Run compile-time rstest-bdd scenario tests
 	# override cannot do. See "Compile-time scenario contracts" in the
 	# developers' guide.
 	NEXTEST_PROFILE=rstest-bdd-ui $(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p rstest-bdd-ui-tests
+
+test-rstest-bdd-ui-timeouts: ## Prove nextest enforces the UI gate's time budget
+	# Unlike `test-workflow-contracts`, this target refuses to skip: it exists
+	# to show that a real nextest acts on the configured budgets, so a lane
+	# without nextest would silently drop the coverage it is here to provide.
+	# See "Compile-time scenario contracts" in the developers' guide.
+	@$(CARGO) nextest --version >/dev/null 2>&1 || { \
+		echo "cargo nextest is required: this target proves nextest enforces" >&2; \
+		echo "the UI gate time budget and cannot run without it." >&2; \
+		exit 1; }
+	@PYTHONPATH=tests/workflow_contracts $(UV_ENV) $(UV) run --no-project \
+		--python 3.14 --with pytest==9.0.2 --with pyyaml==$(PYYAML_VERSION) \
+		--with hypothesis==6.168.5 \
+		python -m pytest tests/workflow_contracts/test_rstest_bdd_ui_timeouts.py \
+		-c /dev/null --rootdir=. -p no:cacheprovider
 
 test-verification: ## Run verification crate tests
 	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p mxd-verification

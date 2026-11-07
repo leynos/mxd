@@ -27,6 +27,8 @@ import subprocess
 import tomllib
 import typing as typ
 
+import yaml
+
 from ci_workflow_reader import REPO_ROOT
 
 TARGET = "test-rstest-bdd-ui"
@@ -285,3 +287,58 @@ def test_the_default_route_terminates_a_test_that_overruns() -> None:
     default = _nextest_config()["profile"]["default"]["slow-timeout"]
     assert _terminate_after(default) == 1, default
     assert _kill_point(default) == 60, default
+
+
+def _workflow_steps() -> list[dict[str, typ.Any]]:
+    """Every step of the CI workflow, flattened across its jobs."""
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    return [
+        step for job in workflow["jobs"].values() for step in job.get("steps") or []
+    ]
+
+
+def test_the_behavioural_contracts_run_where_nextest_is_installed() -> None:
+    """The real-nextest proof runs in the lane that has a Rust build.
+
+    `test_rstest_bdd_ui_timeouts.py` skips when nextest is unavailable, which
+    is what keeps `make test-workflow-contracts` fast and Rust-free in the
+    docs-tooling lane. That skip is only safe while something asserts the
+    tests run somewhere: without this contract, deleting the CI step would
+    leave every behavioural check skipped and the suite still green.
+    """
+    steps = _workflow_steps()
+    commands = [step.get("run", "") for step in steps]
+    assert any("make test-rstest-bdd-ui-timeouts" in run for run in commands), commands
+    assert any("make test-workflow-contracts" in run for run in commands), (
+        "the fast contracts must still run somewhere"
+    )
+
+
+def test_the_behavioural_target_refuses_to_skip_without_nextest() -> None:
+    """The proof target fails loudly rather than skipping on a weak lane.
+
+    The suite-level skip protects the docs-tooling lane; the target exists to
+    stop that protection from covering a lane that was meant to have nextest.
+    """
+    recipe = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+    target = recipe.split("test-rstest-bdd-ui-timeouts:", 1)
+    assert len(target) == 2, "the behavioural target is missing"
+    body = target[1].split("\n\n", 1)[0]
+    assert "nextest --version" in body, body
+    assert "exit 1" in body, body
+
+
+def test_the_docs_tooling_lane_stays_free_of_a_rust_build() -> None:
+    """The fast contracts keep their lane cheap, which is why they skip.
+
+    If this lane ever gains nextest, the skip becomes pointless and the split
+    between the two files should be revisited - so the assumption is recorded
+    here rather than left implicit in a skipif reason.
+    """
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    lane = workflow["jobs"]["docs-tooling"]
+    assert all("nextest" not in (step.get("run") or "") for step in lane["steps"])
