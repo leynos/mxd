@@ -45,7 +45,13 @@ PINNED_PLACEMENTS: typ.Final[cabc.Mapping[tuple[str, str], tuple[str, ...]]] = {
     ("ci.yml", "build-test-result"): ("ubuntu-latest",),
     ("ci.yml", "validator-sqlite"): ("ubuntu-latest", "ubicloud-standard-2"),
     ("ci.yml", "coverage"): ("ubuntu-latest", "ubicloud-standard-2"),
-    ("coverage-main.yml", "coverage-upload"): ("ubuntu-latest", "ubicloud-standard-2"),
+    # Main-branch coverage is measured on a hosted runner, where compute is
+    # free. Its baseline is published from, and its compiler cache warmed on,
+    # Ubicloud, the cache store the pull-request lanes read. These run on push
+    # only, so no fork arm applies.
+    ("coverage-main.yml", "coverage-upload"): ("ubuntu-24.04",),
+    ("coverage-main.yml", "coverage-baseline"): ("ubicloud-standard-2",),
+    ("coverage-main.yml", "coverage-warmup"): ("ubicloud-standard-2",),
     ("fuzz.yml", "fuzz"): ("ubuntu-latest",),
     ("loom-check.yml", "check"): ("ubuntu-latest",),
     ("loom.yml", "models"): ("ubuntu-latest",),
@@ -129,6 +135,8 @@ PINNED_CEILINGS: typ.Final[cabc.Mapping[tuple[str, str], int]] = {
     ("ci.yml", "validator-sqlite"): 20,
     ("ci.yml", "coverage"): 60,
     ("coverage-main.yml", "coverage-upload"): 65,
+    ("coverage-main.yml", "coverage-baseline"): 15,
+    ("coverage-main.yml", "coverage-warmup"): 65,
     ("fuzz.yml", "fuzz"): 360,
     ("loom-check.yml", "check"): 30,
     ("loom.yml", "models"): 30,

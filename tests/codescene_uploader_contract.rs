@@ -36,11 +36,10 @@ use cap_std::{ambient_authority, fs_utf8::Dir};
 /// manifest are the same code. Naming `a5765019` here would mean downgrading a
 /// pin that is already ahead of it.
 ///
-/// Moved from `82feb2b7` to the revision below: `cli-manifest.json` is the same
-/// blob at both, and the uploader still rejects a non-empty
-/// `installer-checksum`. The range adds the `mode` input and a pin of the
-/// artefact upload action, neither of which this repository's steps depend on.
-const APPROVED_PIN: &str = "7d751eded578e48dacf43ab173d5820e6437c474";
+/// Moved to the revision below so that it matches `generate-coverage`, which
+/// needs that revision for the baseline hand-over; the uploader still rejects a
+/// non-empty `installer-checksum` there.
+const APPROVED_PIN: &str = "f84a7def5646a6fc7ba77c1f486906f66a0fed96";
 
 /// The uploader reference, without its revision. The `@` separator is part of
 /// the marker so a differently owned action whose path merely starts with the
