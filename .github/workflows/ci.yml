@@ -112,11 +112,20 @@ jobs:
       ${{ (github.event.pull_request.head.repo.fork
       || github.event.pull_request.user.login == 'dependabot[bot]')
       && 'ubuntu-latest' || 'ubicloud-standard-2' }}
-    # Ceiling: twice the slowest observed run, rounded up to 5 (24 min, the wireframe-only leg, run 36971925629 on
-    # this lane's first Ubicloud run). Provisional: the run restored the cargo registry
-    # cache but found no compiled-artefact cache, so it is close to a cold build, and
-    # it is resized from three green runs of this shape.
-    timeout-minutes: 50
+    # Ceiling: the slowest cold leg before the UI gates existed (24 min, run
+    # 36971925629 on this lane's first Ubicloud run) plus what each UI gate may
+    # take at its own configured limit - 30 min for `make test-rstest-bdd-ui`,
+    # whose profile sets `global-timeout = 30m`, and 45 min for
+    # `make test-rstest-bdd-ui-timeouts`, which runs three end-to-end builds
+    # against its 900-second inner timeout. That sums to 99, rounded up to 100.
+    #
+    # The ceiling is headroom, not an expectation: both UI steps together took
+    # 2.5 min on the last green wireframe-only leg, and the behavioural file
+    # takes 14 min locally with a cold fixture build. Deriving it from the
+    # budgets rather than from a warm timing is what keeps a genuinely slow run
+    # from being cancelled, which would fail `build-test-result` and block the
+    # PR for a reason that has nothing to do with the change.
+    timeout-minutes: 100
     strategy:
       matrix:
         include:
@@ -223,6 +232,15 @@ jobs:
       - name: Test rstest-bdd UI contracts
         if: matrix.name == 'wireframe-only'
         run: make test-rstest-bdd-ui
+      # The contracts that read `.config/nextest.toml` cannot show that nextest
+      # acts on it - libtest ignores the file, so `cargo test` would pass
+      # whatever the budgets said. These behavioural contracts drive a real
+      # nextest over a disposable two-member fixture with second-scale budgets,
+      # so they need this lane, which has a Rust build and nextest installed.
+      # They skip in the docs-tooling lane rather than fail there.
+      - name: Prove nextest enforces the UI gate time budget
+        if: matrix.name == 'wireframe-only'
+        run: make test-rstest-bdd-ui-timeouts
 
   # One stable context for the ruleset to require. The matrix legs' check
   # names are truncated by GitHub and change with the matrix, so requiring them

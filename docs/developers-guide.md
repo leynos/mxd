@@ -313,6 +313,17 @@ The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
   rejects omitted, duplicated, or stale names.
 - `tests/rstest_bdd_migration.rs` exercises aliased errors and returned values,
   deliberate underscore fixture keys, and a genuinely suspending step.
+- The handshake scenarios in `src/wireframe/handshake_bdd.rs` are the reference
+  shape for a world that performs real network I/O. `HandshakeWorld` holds only
+  plain `Option` fields, so the world is an ordinary owned value with no
+  `RefCell`, no owned `Runtime`, and no `block_on`. Steps that touch the socket
+  are `async fn` taking `&mut HandshakeWorld`; steps that only start the server
+  or read recorded state stay synchronous and take `&mut self` or `&self`. The
+  world's `Drop` sends the shutdown signal synchronously and ignores a closed
+  receiver, so teardown never has to await. Prefer this shape for a new suite
+  that needs mutable scenario state across an await. The accompanying
+  compile-time fixture is described under
+  [compile-time scenario contracts](#compile-time-scenario-contracts).
 - Prefer async behavioural scenarios for async-sensitive suites where async
   I/O is exercised and fixture setup does not rely on embedded PostgreSQL
   cluster bootstrapping.
@@ -332,14 +343,170 @@ The behavioural suite uses `rstest-bdd` v0.6.0 in both the root crate and
 ### Compile-time scenario contracts
 
 The non-published `tests/rstest-bdd-ui` workspace package uses `trybuild` to
-check named `TokioHarness` selection and the diagnostic for an unknown scenario
-title. Run it directly with `make test-rstest-bdd-ui`; the aggregate
-`make test` target and the CI test lane include this package.
+check named `TokioHarness` selection, the mutable-world async step pattern, and
+the diagnostic for an unknown scenario title. Run it directly with
+`make test-rstest-bdd-ui`; the aggregate `make test` target and the CI test
+lane include this package.
+
+The trybuild fixtures and their contracts are:
+
+- `tests/ui/pass_named_harness.rs` must compile: named scenario selection with
+  `harness = rstest_bdd_harness_tokio::TokioHarness`.
+- `tests/ui/pass_mutable_world_async_steps.rs` must compile: a borrowed world
+  fixture with a synchronous `Given`, an async `When` taking `&mut World`, a
+  synchronous `Then`, and a named scenario bound to an external
+  `#[tokio::test(flavor = "current_thread")]` test.
+- `tests/ui/fail_missing_scenario.rs` must fail to compile with the recorded
+  `fail_missing_scenario.stderr` diagnostic. It is the control that proves the
+  harness really inspects compilation output instead of always passing.
+
+`trybuild` builds pass fixtures with `cargo build --bin`, which type-checks the
+binary target only. The bodies of `#[test]` functions are not type-checked in
+that mode, so a scenario declared at the top level of a pass fixture
+contributes nothing beyond a binary-level compile of its imports and macro use.
+The scenario wrapper contracts that matter — the macro-generated wrapper for a
+mutable-world async step, and named selection under both harness paths — are
+therefore pinned by the `fixture_scenarios` module inside
+`tests/rstest-bdd-ui/tests/ui.rs`, which is the package's integration-test
+target and is compiled by `cargo test` in test mode. Add a wrapper contract
+there, not to a fixture, when the generated function itself is what should be
+checked.
+
+The `path` in `#[scenario]` is relative to `CARGO_MANIFEST_DIR`, so the same
+`.feature` file needs a different string in each of those two places. A
+trybuild fixture is compiled in a scratch crate under
+`target/tests/trybuild/rstest-bdd-ui-tests/` and needs four `../` hops, while
+the `fixture_scenarios` module is compiled in `tests/rstest-bdd-ui` itself and
+takes a plain package-relative `tests/ui/...` path. Copying the fixture's
+string into the module overshoots the workspace root and the macro reports
+"feature file not found" at the manifest join, not at the `path` literal.
+
+The module's `world` fixture carries a tightly scoped
+`#[allow(unused_braces)]`. That is not incidental: `rustfmt`'s `fn_single_line`
+setting rewrites a single-expression fixture back onto one line on every
+`make fmt`, and the `fixture` expansion then trips `unused_braces`, which the
+workspace denies. The same suppression, with its
+`#[expect(clippy::allow_attributes)]` companion, appears on the other BDD worlds
+(`src/wireframe/handshake_bdd.rs` and `tests/wireframe_transaction.rs`); match
+that shape rather than expanding the body, which does not survive formatting.
+
+The mutable-world fixture uses `tokio` directly, so the UI package declares
+`tokio = "1"` as its own dev-dependency rather than inheriting it from the root
+package manifest. Extend `tests/ui.rs` whenever a fixture is added; an
+unregistered fixture silently never runs.
 
 The trybuild test compiles separate fixture crates and can take longer than an
-ordinary unit test on a cold build. `.config/nextest.toml` gives only
-`rstest-bdd-ui-tests` a 300-second slow timeout; keep the pass and compile-fail
+ordinary unit test on a cold build: trybuild runs `cargo clean --package`
+before every fixture build, so the fixture package is rebuilt on each run
+rather than reused from an earlier one. That build also has to queue behind
+whatever else the host is compiling. `.config/nextest.toml` therefore gives
+`rstest-bdd-ui-tests` a 900-second slow timeout, and the `rstest-bdd-ui`
+profile raises the run-wide `global-timeout` to 30 minutes.
+`make test-rstest-bdd-ui` selects that profile through
+`NEXTEST_PROFILE=rstest-bdd-ui`, because `global-timeout` is not one of the
+settings a per-package override can replace.
+
+`tests/workflow_contracts/test_rstest_bdd_ui_gate.py` pins those three parts
+together. It runs the Make target for real, with `CARGO=<stub>` standing in for
+Cargo, and reads the profile from the environment of the process the recipe
+started. A stub on the caller's `PATH` would not do: the Makefile prepends
+`$(HOME)/.cargo/bin` to `PATH` on its third line, so the real Cargo would run.
+Reading the recipe's text would not do either, since `NEXTEST_PROFILE=` moved
+onto a recipe line of its own still appears in a dry run while the runner
+inherits nothing. The remaining contracts chain the numbers, so a raised slow
+timeout that no run ceiling can accommodate fails rather than passing as a
+larger figure. They also assert `terminate-after`: a period alone only reports
+a test as slow, so without it an overrunning test would run on until the
+run-wide ceiling killed the whole run. Keep the pass and compile-fail
 assertions enabled.
+
+Those contracts read the configuration; they cannot show that nextest acts on
+it. libtest ignores `.config/nextest.toml` entirely, so a `cargo test` run of
+the UI package would pass whatever the budgets said, and a Cargo stub records
+the profile without ever applying it.
+`tests/workflow_contracts/test_rstest_bdd_ui_timeout_routes.py` and
+`test_rstest_bdd_ui_timeout_profile.py` therefore drive a real nextest over a
+disposable two-member fixture workspace, with budgets in seconds rather than
+minutes. One member matches a package override and one deliberately does not.
+The contracts run each member separately, so every outcome is attributed to the
+crate that produced it: the matching crate shows the per-package timeout, and
+the control shows the default route's shorter per-test timeout.
+
+The behavioural contracts are split across those two test modules, with the
+fixture and the nextest runner in `rstest_bdd_ui_timeout_fixture.py` and
+`rstest_bdd_ui_timeout_runner.py`. The split is by subject, not by line count:
+one module covers the two routes into the package, the other the named profile
+and the end-to-end runs of the shipped recipe. They share the fixture, so a
+budget is stated once and both modules read the shape they need from it. Both
+test modules are selected by the glob in `make test-rstest-bdd-ui-timeouts` and
+excluded by the matching ignore-glob in `make test-workflow-contracts`, so a
+newly added module cannot be filed where nothing runs it.
+
+The fixture scales the shape production has, in which *both* routes terminate:
+the default profile kills at 60 seconds and the override raises that to 900.
+Because both report `TIMEOUT`, the word alone cannot tell them apart, so the
+contracts read the second at which the kill landed. That difference is exactly
+what the override buys - the same test is allowed to run longer - and a fixture
+whose default route merely warned could not express it. One contract holds a
+single short sleep to both routes at once: the same test, in crates that differ
+only by the name the package filter keys on, passes under the override and is
+killed under the default.
+
+The fixture declares the `rstest-bdd-ui` profile too, with second-scale
+budgets, and further contracts select it by name through `NEXTEST_PROFILE`, as
+the Make target does. They assert both halves separately: that nextest resolved
+the profile named, read back from the `with nextest profile:` banner, and that
+the outcome is the one only that profile's budgets produce. The named period is
+longer than the default one, so a run that fell back to `default` would report
+`TIMEOUT` at the shorter default period where the named profile reports it
+later. A second contract gives the profile a ceiling shorter than its period
+and shorter than the default ceiling, which makes `TIMEOUT` and `SLOW`
+unreachable rather than merely unlikely, so their absence is structural and the
+`SIGTERM` that arrives early can only be the named profile's own
+`global-timeout`. The fixture's profile name is itself pinned to the target's
+by reading `NEXTEST_PROFILE=` back out of the Makefile, so a rename on either
+side fails. The harness sets `NEXTEST_PROFILE` rather than inheriting it,
+because an ambient value left over from a surrounding run would otherwise
+choose the profile the contracts are deciding.
+
+The contracts assert nextest's result words, and the second at which each was
+reported where both routes report the same word. The word carries the reason:
+an overrunning test reports `TIMEOUT` when `terminate-after` kills it at its
+period, `SLOW` while a period without `terminate-after` merely warns, and
+`SIGTERM` when neither applies and the run-wide ceiling stops the whole run.
+One contract removes this repository's `terminate-after` from the fixture and
+asserts the word changes, which is what makes the setting's contribution
+visible rather than assumed. Exit codes cannot make the distinction: a per-test
+timeout and a run-wide ceiling both exit 100, so only the reported word
+separates them.
+
+The same file also runs the shipped `test-rstest-bdd-ui` recipe end to end, with
+`make -f <repo>/Makefile` from a fixture working directory. That is the only
+arrangement that exercises the recipe itself: the profile assignment and
+`-p rstest-bdd-ui-tests` come from the shipped target rather than from the
+test, so a recipe that stopped selecting the profile fails here even though
+every file-reading contract still passes. The fixture must supply a package by
+that hardcoded name, and it lives under the repository's `target` directory
+because rustup resolves the toolchain from the working directory; outside the
+repository the recipe's nightly-only flags would be handed to a stable
+toolchain and fail for unrelated reasons. Two contracts cover the two halves
+the profile exists for: per-test termination at its period, and the run ceiling
+when that comes first. Each end-to-end contract gets its own scratch directory
+through a fixture, removed afterwards, so a lockfile or source file left by one
+cannot be read by another.
+
+The fixtures build standalone leaf crates, so they neither touch the UI package
+nor queue behind the trybuild fixtures. Run them with
+`make test-rstest-bdd-ui-timeouts`, which fails rather than skips when nextest
+is absent. `make test-workflow-contracts` excludes the file: running it needs a
+Rust build and minutes of clock, and the docs-tooling lane that runs those
+contracts has neither. The suite-level skip therefore covers only a direct
+`pytest` invocation on a machine without nextest, while the target's own probe
+is what stops a lane that was meant to have nextest from silently skipping. CI
+runs the target in the wireframe-only leg, next to `make test-rstest-bdd-ui`,
+and both steps are gated on that leg. The `build-test` ceiling is derived from
+the budgets those two steps may take rather than from a warm timing, so a
+genuinely slow run finishes instead of being cancelled.
 
 ## Validator toggles for pending flows
 
@@ -977,11 +1144,19 @@ push.
 `coverage-upload` runs on a GitHub-hosted runner, where the six-hour platform
 cap bounds it, and keeps its 65-minute ceiling, which the embedded-PostgreSQL
 leg needs. The `ci.yml` lanes' ceilings are provisional: twice the slowest leg
-of run 36971925629, their first Ubicloud run (`docs-tooling` 15, `build-test`
-50, `validator-sqlite` 20, `coverage` 60), rounded up to 5. That run restored
-the cargo registry cache but found no compiled-artefact cache, so it is close
-to a cold build, and the ceilings are resized from three green runs of the new
-shape.
+of run 36971925629, their first Ubicloud run (`docs-tooling` 15,
+`validator-sqlite` 20, `coverage` 60), rounded up to 5. That run restored the
+cargo registry cache but found no compiled-artefact cache, so it is close to a
+cold build, and the ceilings are resized from three green runs of the new shape.
+
+`build-test` is sized differently, at 100, because its two UI gates are bounded
+by configuration rather than by host speed: `rstest-bdd-ui` carries
+`global-timeout = 30m` and `test-rstest-bdd-ui-timeouts` runs three end-to-end
+builds under successive 900-second timeouts. Sizing on a warm leg would cancel
+the cold run those raised budgets exist to permit, and a cancelled leg fails
+`build-test-result`. The ceiling is the pre-gate cold figure (24) plus both
+gates' own limits. `tests/workflow_contracts/test_runner_placement.py` pins it
+in the same table as every other ceiling and records the reasoning there.
 
 Each of those four lanes ends with a `Record the lane's placement` step, under
 `always()` so a failing lane is recorded too. It writes the lane, the runner

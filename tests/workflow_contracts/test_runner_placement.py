@@ -117,11 +117,20 @@ def is_external_call(calls: str) -> bool:
 # from a service container to serialized embedded clusters (see the
 # developers' guide, "Embedded PostgreSQL in tests"); resize them from three
 # green runs of that shape.
+#
+# `build-test` is the exception to sizing on observed duration, because its two
+# UI gates are bounded by configuration rather than by how fast the host is:
+# `rstest-bdd-ui` sets `global-timeout = 30m`, and
+# `test-rstest-bdd-ui-timeouts` runs three end-to-end builds under successive
+# 900-second timeouts. A warm leg finishes both in about two minutes, but a
+# ceiling sized on that would cancel exactly the cold run the raised budgets
+# exist to allow, and a cancelled leg fails `build-test-result`. It is
+# therefore the pre-gate cold ceiling (24 min) plus both gates' own limits.
 PINNED_CEILINGS: typ.Final[cabc.Mapping[tuple[str, str], int]] = {
     ("audit.yml", "audit"): 20,
     ("build-and-package.yml", "build"): 45,
     ("ci.yml", "docs-tooling"): 15,
-    ("ci.yml", "build-test"): 50,
+    ("ci.yml", "build-test"): 100,
     ("ci.yml", "build-test-result"): 5,
     ("ci.yml", "validator-sqlite"): 20,
     ("ci.yml", "coverage"): 60,
