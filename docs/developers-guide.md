@@ -942,8 +942,10 @@ figures on as the `coverage-baseline-handover` artefact. `coverage-baseline`
 (`ubicloud-standard-2`, only after `coverage-upload` passed) checks them
 against the stored baseline and saves them under the key the ratchet restores.
 `coverage-warmup` (`ubicloud-standard-2`) compiles the instrumented tests
-without running them and is main's only Ubicloud cache writer. None of the
-three has a fork arm: they run on push only.
+without running them and is main's only writer of the build caches the lane
+reads on Ubicloud (the compiler cache and the llvm-cov archive);
+`coverage-baseline` writes the ratchet baseline. None of the three has a fork
+arm: they run on push only.
 
 `ci.yml`'s `docs-tooling`, `build-test`, `validator-sqlite` and `coverage` run
 on `ubicloud-standard-2`; `build-test-result`, a trivial aggregate, stays

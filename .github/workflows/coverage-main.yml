@@ -177,8 +177,10 @@ jobs:
           install-sqlite-deps: true
           install-postgres-deps: true
           install-mold: true
-      - name: Cache Cargo directories
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # No `Swatinem/rust-cache` here: its key carries the job id, so an entry
+      # written by this job is never read by ci.yml's `coverage` lane. What the
+      # lane does read from main is the setup-rust compiler cache and the
+      # action's `Linux-llvmcov-*` archive, both written by the steps below.
       - name: Fetch dependencies
         run: cargo fetch --locked
       - name: Build wireframe server for coverage
