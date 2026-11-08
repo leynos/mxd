@@ -16,6 +16,7 @@ Run via ``make test-workflow-contracts``.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -159,11 +160,17 @@ def _run_target(tmp_path: Path, script: str) -> subprocess.CompletedProcess[str]
     stub.chmod(0o755)
     make = shutil.which("make")
     assert make
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in {"CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR"}
+    }
     return subprocess.run(  # noqa: S603 - fixed argv, no shell
         [make, "-C", str(ROOT), "interrogate", f"INTERROGATE={stub}"],
         capture_output=True,
         text=True,
         check=False,
+        env=environment,
     )
 
 
@@ -180,6 +187,7 @@ def test_the_target_passes_the_configured_flags_and_targets(tmp_path: Path) -> N
     received = (tmp_path / "args.txt").read_text(encoding="utf-8").split()
     expected = (
         _variable("INTERROGATE_FLAGS").split()
+        + ["--exclude", "target/*", "--exclude", "*/target/*"]
         + _variable("INTERROGATE_TARGETS").split()
     )
     assert received == expected
