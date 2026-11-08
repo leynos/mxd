@@ -967,19 +967,21 @@ would flip the runner. A push and a dispatch have no pull request, so both
 values are empty strings (falsy) and the expression selects Ubicloud; a
 Dependabot pull request therefore builds cold on the hosted pool. Ubicloud's
 cache proxy is scoped by ref, so a pull request's Ubicloud lane reads a warm
-main scope only when a main job on Ubicloud writes it: the writer moves first,
-and the `ci.yml` lanes follow. A fork's pull request restores a hosted cache
-that main no longer refreshes; fork pull requests are rare here, and a second
-hosted writer would pay double on every main push.
+main scope only when a main job on Ubicloud writes it: `coverage-warmup` and
+`coverage-baseline` are those writers. A fork's or Dependabot's pull request
+runs on the hosted pool and restores a hosted cache that main no longer
+refreshes, so its baseline goes stale and, after eviction, reads zero; those
+lanes are rare here, and a second hosted writer would pay double on every main
+push.
 
-An Ubicloud runner is a self-hosted just-in-time runner, so GitHub's six-hour
-cap for hosted jobs does not bound it; `coverage-upload` keeps its 65-minute
-ceiling, which the embedded-PostgreSQL leg needs, until Ubicloud runs size it.
-The `ci.yml` lanes' ceilings are provisional: twice the slowest leg of run
-36971925629, their first Ubicloud run (`docs-tooling` 15, `build-test` 50,
-`validator-sqlite` 20, `coverage` 60), rounded up to 5. That run restored the
-cargo registry cache but found no compiled-artefact cache, so it is close to a
-cold build, and the ceilings are resized from three green runs of the new shape.
+`coverage-upload` runs on a GitHub-hosted runner, where the six-hour platform
+cap bounds it, and keeps its 65-minute ceiling, which the embedded-PostgreSQL
+leg needs. The `ci.yml` lanes' ceilings are provisional: twice the slowest leg
+of run 36971925629, their first Ubicloud run (`docs-tooling` 15, `build-test`
+50, `validator-sqlite` 20, `coverage` 60), rounded up to 5. That run restored
+the cargo registry cache but found no compiled-artefact cache, so it is close
+to a cold build, and the ceilings are resized from three green runs of the new
+shape.
 
 Each of those four lanes ends with a `Record the lane's placement` step, under
 `always()` so a failing lane is recorded too. It writes the lane, the runner
