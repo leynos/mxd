@@ -1086,11 +1086,12 @@ and `fuzz.yml` install it for `make test-concurrency` and
 ### Cranelift backend support
 
 Cranelift is the development-profile codegen backend. The full suite
-(`make test`) passes under it on 6 November 2026: the sqlite, postgres,
-wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency and
-doctest suites. `.cargo/config.toml` sets `[profile.dev] codegen-backend` and
-the `[unstable] codegen-backend` gate it needs; remove them together, because
-the profile key without the gate is refused. `rust-toolchain.toml` lists the
+(`make test`) passes under it on `nightly-2026-11-06`, measured on
+9 November 2026: the sqlite, postgres, wireframe-only, rstest-bdd UI,
+verification, fuzz-harness, concurrency and doctest suites.
+`.cargo/config.toml` sets `[profile.dev] codegen-backend` and the
+`[unstable] codegen-backend` gate it needs; remove them together, because the
+profile key without the gate is refused. `rust-toolchain.toml` lists the
 `rustc-codegen-cranelift-preview` component. Coverage runs and the Whitaker
 recipes select LLVM explicitly with `CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm`,
 because instrumentation and Whitaker's driver need it. Release builds use the
