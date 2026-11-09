@@ -2004,8 +2004,8 @@ transactions:
 
 ## Toolchain updates
 
-`rust-toolchain.toml` pins a dated nightly. Dependabot's `rust-toolchain`
-entry in `.github/dependabot.yml` (directory `/`, daily, the `dependencies` and
+`rust-toolchain.toml` pins a dated nightly. Dependabot's `rust-toolchain` entry
+in `.github/dependabot.yml` (directory `/`, daily, the `dependencies` and
 `rust-toolchain` labels, one `minor-and-patch` catch-all group) opens a pull
 request when a newer toolchain exists. Review it like any other change: CI
 builds and tests the project on the new toolchain. Dated nightly versions carry

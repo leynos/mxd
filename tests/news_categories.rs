@@ -189,7 +189,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
 /// # Examples
 ///
 /// ```
-/// list_news_categories_empty().unwrap(); 
+/// list_news_categories_empty().unwrap();
 /// ```
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
