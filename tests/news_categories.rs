@@ -30,7 +30,6 @@ use test_util::{
 };
 mod common;
 
-#[expect(clippy::expect_used, reason = "test helper: size and UTF-8 assertions")]
 fn list_categories(
     addr: SocketAddr,
     path: Option<&str>,
@@ -189,7 +188,7 @@ fn list_news_categories_invalid_path() -> Result<(), AnyError> {
 /// # Examples
 ///
 /// ```
-/// list_news_categories_empty().unwrap(); 
+/// list_news_categories_empty().unwrap();
 /// ```
 #[expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #[test]
@@ -209,6 +208,6 @@ fn list_news_categories_empty() -> Result<(), AnyError> {
 
     let addr = server.bind_addr();
     let (_, names) = list_categories(addr, None)?;
-    assert!(names.is_empty());
+    assert_eq!(names, Vec::<String>::new());
     Ok(())
 }

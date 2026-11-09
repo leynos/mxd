@@ -350,7 +350,7 @@ mod tests {
         let state = SystemState::new(3);
         assert_eq!(state.sessions.len(), 3);
         assert_eq!(state.queues.len(), 3);
-        assert!(state.effects.is_empty());
+        assert_eq!(state.effects, Vec::<Effect>::new());
     }
 
     #[test]

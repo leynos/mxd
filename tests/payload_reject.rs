@@ -1,4 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::panic_in_result_fn, reason = "test assertions")]
 #![expect(clippy::big_endian_bytes, reason = "network protocol")]
 

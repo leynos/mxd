@@ -258,8 +258,8 @@ mod tests {
         let model = SessionModel::default();
         assert_eq!(model.num_clients, 2);
         assert_eq!(model.max_queue_depth, 2);
-        assert!(!model.user_ids.is_empty());
-        assert!(!model.privilege_sets.is_empty());
+        assert_ne!(model.user_ids, Vec::<u32>::new());
+        assert_ne!(model.privilege_sets, Vec::<u64>::new());
     }
 
     #[test]
@@ -293,7 +293,7 @@ mod tests {
 
         // Should have login actions and send request actions
         // No logout or deliver actions (not authenticated, queues empty)
-        assert!(!actions.is_empty());
+        assert_ne!(actions, Vec::<Action>::new());
         assert!(actions.iter().any(|a| matches!(a, Action::Login { .. })));
         assert!(
             actions

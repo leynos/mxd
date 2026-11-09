@@ -64,7 +64,7 @@ fn error_reply_preserves_header_fields(#[case] ty: u16, #[case] id: u32, #[case]
     assert_eq!(reply.header().ty, ty);
     assert_eq!(reply.header().id, id);
     assert_eq!(reply.header().error, error_code);
-    assert!(reply.payload().is_empty());
+    assert_eq!(reply.payload(), Vec::<u8>::new());
 }
 
 /// Tests that malformed input returns an error with `ERR_INTERNAL`.
@@ -164,7 +164,7 @@ fn error_transaction_sets_reply_flag() {
     assert_eq!(err_tx.header.ty, 370);
     assert_eq!(err_tx.header.id, 42);
     assert_eq!(err_tx.header.error, ERR_INTERNAL);
-    assert!(err_tx.payload.is_empty());
+    assert_eq!(err_tx.payload, Vec::<u8>::new());
 }
 
 fn test_router() -> WireframeRouter {
