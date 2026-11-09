@@ -153,14 +153,14 @@ JOIN json_each({source}) seg ON seg.key = tree.idx
     #[fixture]
     fn expected_bundle_step_sql() -> String {
         let sql = expected_step_sql("JOIN");
-        debug_assert!(!sql.is_empty());
+        debug_assert_ne!(sql, "");
         sql
     }
 
     #[fixture]
     fn expected_category_step_sql() -> String {
         let sql = expected_step_sql("LEFT JOIN");
-        debug_assert!(!sql.is_empty());
+        debug_assert_ne!(sql, "");
         sql
     }
 

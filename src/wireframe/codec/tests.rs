@@ -76,7 +76,7 @@ async fn decodes_valid_single_frame(#[case] total: u32, #[case] data: u32) {
         .await
         .expect("transaction must decode");
 
-    assert!(leftover.is_empty());
+    assert_eq!(leftover, Vec::<u8>::new());
     assert_eq!(tx.header().total_size, total);
     assert_eq!(tx.payload().len(), total as usize);
 }
@@ -97,7 +97,7 @@ async fn decodes_opaque_file_list_payload(#[case] is_reply: u8) {
             .await
             .expect("file-list request should decode");
 
-        assert!(leftover.is_empty());
+        assert_eq!(leftover, Vec::<u8>::new());
         assert_eq!(tx.header().ty, header.ty);
         assert_eq!(tx.header().is_reply, is_reply);
         assert_eq!(tx.header().id, header.id);

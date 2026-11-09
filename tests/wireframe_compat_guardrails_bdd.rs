@@ -279,7 +279,6 @@ fn when_xor_login(world: &GuardrailWorld) {
 #[when("the client requests the file name list")]
 fn when_file_list(world: &GuardrailWorld) { world.send(TransactionType::GetFileNameList, 2, &[]); }
 
-#[expect(clippy::expect_used, reason = "test assertion")]
 fn assert_banner_fields(world: &GuardrailWorld, should_include: bool) {
     if world.is_skipped() {
         return;
@@ -326,7 +325,6 @@ fn then_login_succeeds(world: &GuardrailWorld) {
     });
 }
 
-#[expect(clippy::expect_used, reason = "test assertion")]
 #[then("the login fails without banner fields")]
 fn then_login_fails_without_banner(world: &GuardrailWorld) {
     if world.is_skipped() {
@@ -359,7 +357,6 @@ fn then_xor_enabled(world: &GuardrailWorld) {
     assert!(router.xor().is_enabled(), "XOR encoding should be enabled");
 }
 
-#[expect(clippy::expect_used, reason = "test assertion")]
 #[then("the reply contains file names")]
 fn then_reply_has_files(world: &GuardrailWorld) {
     if world.is_skipped() {

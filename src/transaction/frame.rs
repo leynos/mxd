@@ -55,7 +55,7 @@ async fn write_timeout_all<W: AsyncWrite + Unpin>(
 #[must_use = "handle the result"]
 #[expect(clippy::indexing_slicing, reason = "length is checked before indexing")]
 #[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
+pub const fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
     if buf.len() < 4 {
         return Err(TransactionError::ShortBuffer);
     }
@@ -69,7 +69,7 @@ pub fn read_u32(buf: &[u8]) -> Result<u32, TransactionError> {
 #[must_use = "handle the result"]
 #[expect(clippy::indexing_slicing, reason = "length is checked before indexing")]
 #[expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-pub fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
+pub const fn read_u16(buf: &[u8]) -> Result<u16, TransactionError> {
     if buf.len() < 2 {
         return Err(TransactionError::ShortBuffer);
     }

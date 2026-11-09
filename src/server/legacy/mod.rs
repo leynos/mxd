@@ -14,10 +14,6 @@
     reason = "intentional error output for diagnostics"
 )]
 #![expect(
-    clippy::integer_division_remainder_used,
-    reason = "tokio::select! macro usage"
-)]
-#![expect(
     clippy::let_underscore_must_use,
     reason = "shutdown signal send is fire-and-forget"
 )]

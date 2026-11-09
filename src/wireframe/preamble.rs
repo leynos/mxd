@@ -95,7 +95,7 @@ mod tests {
             .await
             .expect("handshake must decode");
 
-        assert!(leftover.is_empty());
+        assert_eq!(leftover, Vec::<u8>::new());
         assert_eq!(
             preamble.handshake.sub_protocol,
             u32::from_be_bytes(*b"CHAT")
@@ -148,7 +148,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            DecodeError::UnexpectedEnd { additional: _ } | DecodeError::Io { additional: _, .. }
+            DecodeError::UnexpectedEnd { additional: _ } | DecodeError::Io { .. }
         ));
     }
 }

@@ -96,7 +96,7 @@ fn process_transaction_bytes_client_info_text_unknown_user_uses_internal_error()
     ))?;
 
     assert_eq!(reply.header.error, crate::commands::ERR_INTERNAL_SERVER);
-    assert!(reply.payload.is_empty());
+    assert_eq!(reply.payload, Vec::<u8>::new());
     Ok(())
 }
 
