@@ -1805,7 +1805,7 @@ The workspace declares `rust-version = "1.94.0"` because the complete locked
 application and test graph includes dependencies whose declared floors reach
 Rust 1.94.0. OrthoConfig v0.10.0 itself requires Rust 1.89.0, but that is not
 the effective floor for these packages. CI checks the feature lanes on stable
-1.94.0 as well as the repository's pinned `nightly-2026-03-26` toolchain.
+1.94.0 as well as the repository's pinned nightly toolchain.
 
 Dependabot's Cargo updater does not raise `Cargo.toml`. Its
 `versioning-strategy` accepts only `lockfile-only` and `auto`. The
@@ -1822,7 +1822,7 @@ toolchain was also older than serial_test 4's `rust-version = "1.93.1"` and
 Cargo's MSRV-aware resolver resolved the bump back to 3.x. Automerge landed the
 second while `make check-locked` failed because `build-test` is not a required
 check, and pull request 576 restored the lockfile. The toolchain has since
-moved to `nightly-2026-03-26`, so the floor no longer applies, but the manifest
+moved to a dated nightly, so the floor no longer applies, but the manifest
 still requires 3.
 
 The Cargo entry therefore ignores `serial_test` at `>= 4`, with a comment
@@ -2004,7 +2004,7 @@ transactions:
 
 ## Toolchain updates
 
-`rust-toolchain.toml` pins `nightly-2026-03-26`. Dependabot's `rust-toolchain`
+`rust-toolchain.toml` pins a dated nightly. Dependabot's `rust-toolchain`
 entry in `.github/dependabot.yml` (directory `/`, daily, the `dependencies` and
 `rust-toolchain` labels, one `minor-and-patch` catch-all group) opens a pull
 request when a newer toolchain exists. Review it like any other change: CI
