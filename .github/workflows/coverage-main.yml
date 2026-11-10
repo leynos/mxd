@@ -83,7 +83,7 @@ jobs:
         run: cargo fetch --locked
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941  # v2.89.1
+      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2  # v2.90.0
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
@@ -189,7 +189,7 @@ jobs:
         run: cargo fetch --locked
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941  # v2.89.1
+      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2  # v2.90.0
         with:
           tool: cargo-llvm-cov
       - name: Compile the SQLite instrumented tests
