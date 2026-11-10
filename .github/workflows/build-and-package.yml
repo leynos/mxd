@@ -70,7 +70,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          man_src=$(find target -path "*/build/$BIN_NAME-*/out/$BIN_NAME.1" -print -quit)
+          # Cargo's build-script output is build/<pkg>-<hash>/out in the old
+          # layout and build/<pkg>/<hash>/out in the new one.
+          man_src=$(find target \( -path "*/build/$BIN_NAME-*/out/$BIN_NAME.1" \
+            -o -path "*/build/$BIN_NAME/*/out/$BIN_NAME.1" \) -print -quit)
           if [[ -z "$man_src" ]]; then
             echo "::error::Man page not found in build output"
             exit 1

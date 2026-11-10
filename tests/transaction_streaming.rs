@@ -101,10 +101,6 @@ fn given_transaction_sizes(world: &StreamingWorld, total: u32, data: u32) {
 }
 
 #[given("a fragmented transaction with total size {total} across {count} fragments")]
-#[expect(
-    clippy::expect_used,
-    reason = "fixture construction should fail immediately with explicit context"
-)]
 fn given_fragmented_transaction(world: &StreamingWorld, total: usize, count: usize) {
     assert!(count > 0, "fragment count must be positive");
     let payload = build_payload(total);
@@ -125,10 +121,6 @@ fn given_fragmented_transaction(world: &StreamingWorld, total: usize, count: usi
 }
 
 #[given("a fragmented transaction with mismatched continuation headers")]
-#[expect(
-    clippy::expect_used,
-    reason = "fixture construction should fail immediately with explicit context"
-)]
 fn given_mismatched_continuation(world: &StreamingWorld) {
     let bytes = mismatched_continuation_bytes().expect("failed to build mismatched fixture bytes");
     world.set_bytes(bytes);

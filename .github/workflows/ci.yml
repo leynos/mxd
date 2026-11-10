@@ -412,7 +412,7 @@ jobs:
         run: cargo fetch --locked
       - name: Build wireframe server for coverage
         run: make validator-sqlite-server validator-postgres-server
-      - uses: taiki-e/install-action@v2.88.1
+      - uses: taiki-e/install-action@v2.89.1
         with:
           tool: cargo-llvm-cov
       - uses: oven-sh/setup-bun@v2

@@ -48,7 +48,7 @@ fn session_default_is_unauthenticated() {
     assert!(!session.is_authenticated());
     assert!(session.privileges.is_empty());
     assert_eq!(session.phase, SessionPhase::Unauthenticated);
-    assert!(session.display_name.is_empty());
+    assert_eq!(session.display_name, "");
     assert_eq!(session.icon_id, 0);
     assert!(session.connection_flags.is_empty());
     assert!(session.auto_response.is_none());

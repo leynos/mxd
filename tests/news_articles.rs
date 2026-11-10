@@ -52,7 +52,6 @@ fn send_transaction(stream: &mut TcpStream, tx: &Transaction) -> Result<(), AnyE
     Ok(())
 }
 
-#[expect(clippy::expect_used, reason = "infallible: payload size fits u32")]
 fn send_transaction_with_params(
     stream: &mut TcpStream,
     ty: TransactionType,
@@ -93,7 +92,6 @@ fn receive_transaction(stream: &mut TcpStream) -> Result<(FrameHeader, ParamList
     Ok((hdr, params))
 }
 
-#[expect(clippy::expect_used, reason = "test assertion helper")]
 fn assert_field_utf8(params: &ParamList, field_id: FieldId, expected: &str, context: &str) {
     let bytes = params
         .iter()
