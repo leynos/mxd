@@ -111,8 +111,10 @@ To confirm a deployment resolves configuration the way this guide describes:
    value took effect.
 3. Point `MXD_CONFIG_PATH` at a path that does not exist and confirm startup
    exits non-zero with a `load configuration` diagnostic.
-4. Start a server and confirm it reaches its listening announcement, which it
-   prints only after the SQLite audit has passed.
+4. Start a SQLite-backed server and confirm it reaches its listening
+   announcement, which it prints only after the SQLite audit has passed. A
+   PostgreSQL build runs a different audit instead, so its announcement
+   confirms the PostgreSQL check rather than the SQLite one.
 
 The configuration behaviour is covered by the process-level tests in
 `tests/cli_contracts.rs` and by the configuration loader tests in

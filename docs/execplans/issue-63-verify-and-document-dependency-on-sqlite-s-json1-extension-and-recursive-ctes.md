@@ -634,12 +634,23 @@ commit from `5ec1709` until the duplication fix in `b94f9f5`. That is a
 historical result: later commits added the audit module's split and its Rust
 tests, so it does not describe the head this plan now delivers.
 
-At the final head, `207a1674e531fddd96b144bbba9faef0773a82ef` on base
+At an earlier head, `207a1674e531fddd96b144bbba9faef0773a82ef` on base
 `ddedb7bb934776e6d47297c7c894efe396d2d32d`, the same workflows completed
 successfully and the same three required checks passed, together with the
-`docs-tooling`, CodeQL, CodeScene, and Gecko checks. This was read from the
-head's check runs after they finished; it is hosted evidence for that head, not
-a local rerun.
+`docs-tooling`, CodeQL, CodeScene, and Gecko checks. That result is historical
+and covers that revision only; it is not evidence for the head this plan now
+delivers, because three later commits added the version-floor test through the
+public audit, the documentation corrections, and the de-duplication.
+
+At the current delivered head, `455eca6d1e86c8d7ccb66ce716089df14421f936` on
+the same base, every check completed successfully with nothing pending: the
+three ruleset-required checks (`coverage`, `validator-sqlite`,
+`build-test-result`), `build-test` in all three lanes, `docs-tooling`, CodeQL,
+both CodeQL analysis jobs, both `release / build-linux` jobs, Gecko, and
+CodeScene. The `wireframe-only` `build-test` lane also ran
+`make test-rstest-bdd-ui` as a successful step, which is what covers the one
+leg the local gate run could not finish. Those readings are hosted evidence for
+this head, not a local rerun.
 
 ### Reconciliation with the conformance basis
 
@@ -666,20 +677,24 @@ recorded in `Decision log`: the scope tolerance is exceeded, because the
 approved plan's own file set is nine product files against a ceiling of 8, and
 the full diff including this plan is 10 files at a net 1461 lines against a
 ceiling of 400. Those figures are a historical measurement at `775299f` against
-`df48e51`; they are not the current scope. Measured at this head with
+`df48e51`; they are not the current scope. Measured at `207a1674` with
 `git diff --numstat ddedb7bb934776e6d47297c7c894efe396d2d32d 207a1674e531fddd96b144bbba9faef0773a82ef`,
-the diff is 18 paths, 2799 additions, and 121 deletions; excluding this plan
-it is 17 paths, 1446 additions, and 121 deletions. Both limbs are breached by a
-wider margin than the historical figures showed, so the conclusion does not
-depend on the measurement point. That entry states the measured counts, the
-reason the file set could not be smaller, and — explicitly — that no waiver was
-sought or granted for either limb. It is therefore recorded as *unaccepted*
-rather than closed: the tolerance's own terms require escalation and a
-decision, and the entry asks the task owner for that decision instead of
-presuming it. The nine files themselves sit inside the approved plan's
-enumerated scope; the unmet obligation is the tolerance, not the file set. This
-is the only outstanding deviation, and the plan's `COMPLETE` status reflects
-delivered and validated work, not a claim that the deviation has been accepted.
+the diff was 18 paths, 2799 additions, and 121 deletions; excluding this plan
+it was 17 paths, 1446 additions, and 121 deletions. At the current delivered
+head `455eca6d`, the same command against the same base reports 20 paths, 3021
+additions, and 134 deletions; excluding this plan it is 19 paths, 1559
+additions, and 134 deletions. Each count covers the revision named beside it.
+Both limbs are breached by a wider margin than the historical figures showed,
+so the conclusion does not depend on the measurement point. That entry states
+the measured counts, the reason the file set could not be smaller, and —
+explicitly — that no waiver was sought or granted for either limb. It is
+therefore recorded as *unaccepted* rather than closed: the tolerance's own
+terms require escalation and a decision, and the entry asks the task owner for
+that decision instead of presuming it. The nine files themselves sit inside the
+approved plan's enumerated scope; the unmet obligation is the tolerance, not
+the file set. This is the only outstanding deviation, and the plan's `COMPLETE`
+status reflects delivered and validated work, not a claim that the deviation
+has been accepted.
 
 ### What would be done differently
 
