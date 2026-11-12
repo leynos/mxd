@@ -54,7 +54,7 @@ jobs:
       MXD_TEST_BIND_HOST: "127.0.0.1"
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
+      - uses: leynos/shared-actions/.github/actions/setup-rust@0eabb6bc07148981de5da395e30cd78d83f5c7c2
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
@@ -91,7 +91,7 @@ jobs:
       # (the default feature set and broadest suite) carries it; the
       # postgres leg is generated unratcheted.
       - name: Generate coverage for SQLite
-        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        uses: leynos/shared-actions/.github/actions/generate-coverage@0eabb6bc07148981de5da395e30cd78d83f5c7c2
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/debug/mxd-wireframe-server
         with:
@@ -120,7 +120,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: make warm-postgres
       - name: Generate coverage for Postgres
-        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        uses: leynos/shared-actions/.github/actions/generate-coverage@0eabb6bc07148981de5da395e30cd78d83f5c7c2
         env:
           MXD_VALIDATOR_SERVER_BINARY: ${{ github.workspace }}/target/postgres/debug/mxd-wireframe-server
           NEXTEST_PROFILE: postgres
@@ -140,7 +140,7 @@ jobs:
         run: echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
       - name: Upload coverage data to CodeScene
         if: steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main'
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@0eabb6bc07148981de5da395e30cd78d83f5c7c2
         with:
           format: lcov
           access-token: ${{ secrets.CS_ACCESS_TOKEN }}
@@ -157,7 +157,7 @@ jobs:
       contents: read
     steps:
       - name: Publish the ratchet baseline
-        uses: leynos/shared-actions/.github/actions/publish-coverage-baseline@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        uses: leynos/shared-actions/.github/actions/publish-coverage-baseline@0eabb6bc07148981de5da395e30cd78d83f5c7c2
         with:
           artefact-name: coverage-baseline-handover
 
@@ -176,7 +176,7 @@ jobs:
       CARGO_PROFILE_DEV_CODEGEN_BACKEND: llvm
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
+      - uses: leynos/shared-actions/.github/actions/setup-rust@0eabb6bc07148981de5da395e30cd78d83f5c7c2
         with:
           install-sqlite-deps: true
           install-postgres-deps: true
@@ -193,14 +193,14 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - name: Compile the SQLite instrumented tests
-        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        uses: leynos/shared-actions/.github/actions/generate-coverage@0eabb6bc07148981de5da395e30cd78d83f5c7c2
         with:
           features: sqlite test-support
           output-path: lcov-sqlite.info
           format: lcov
           build-only: 'true'
       - name: Compile the Postgres instrumented tests
-        uses: leynos/shared-actions/.github/actions/generate-coverage@f84a7def5646a6fc7ba77c1f486906f66a0fed96
+        uses: leynos/shared-actions/.github/actions/generate-coverage@0eabb6bc07148981de5da395e30cd78d83f5c7c2
         with:
           with-default-features: false
           features: postgres test-support legacy-networking
