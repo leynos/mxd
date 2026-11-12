@@ -212,7 +212,7 @@ jobs:
       # and check out its `master` branch, which upstream renamed to `main`, so
       # that bootstrap no longer resolves.
       - name: Install Whitaker
-        uses: leynos/shared-actions/.github/actions/install-whitaker@5a99aed78ce68dcebd3052b75c31e6f173162b1e
+        uses: leynos/shared-actions/.github/actions/install-whitaker@0eabb6bc07148981de5da395e30cd78d83f5c7c2
       - name: Lint with Whitaker
         run: RUSTFLAGS="-D warnings" CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm whitaker --all -- ${{ matrix.cargo_flags }} --all-targets
       # Only the wireframe-only leg runs tests here. The sqlite and postgres
