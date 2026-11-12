@@ -805,6 +805,69 @@ been moved onto the intended v0.3.0 module path.
 
 ## Database module
 
+### Backend feature audits (`src/db/audit/`)
+
+The audit module proves, before the application serves requests or writes user
+data, that the database library it actually links provides the capabilities the
+code depends on. It is a read-only boundary: it runs fixed probes and returns
+an error naming the first capability that failed. Moving the failure from the
+first query to startup is the point of the module, so a call site that swallows
+its error defeats it.
+
+The module is split so that each file has one reason to change:
+
+- `mod.rs` — orchestration, the version floor, and the public entry points.
+  `audit_sqlite_features` chains the version fetch through
+  `ensure_supported_sqlite_version` into `run_sqlite_probes`, so the floor
+  check runs before any probe on a library that might not support the probe
+  syntax. `audit_postgres_features` covers the PostgreSQL backend.
+  `MINIMUM_SQLITE_VERSION` is `(3, 35, 0)` because the `sqlite` feature enables
+  Diesel's `returning_clauses_for_sqlite_3_35`, which emits `RETURNING` clauses
+  older libraries reject at run time. `Capability` enumerates what is probed
+  and pairs each variant with the operator-facing `describe()` and `label()`
+  text; `report_probe_failure` is the single place that emits the structured
+  warning.
+- `probes.rs` — the row-returning probe text and the constant rows each probe
+  must produce. Query text and expectation sit together so a change to one is
+  made against the other. The probes read no table, which is why they cannot be
+  made to fail from database state.
+- `test_seam.rs` — test-only failure injection, compiled only under
+  `#[cfg(all(test, feature = "sqlite"))]`. It exists because those pure probes
+  cannot be made to fail on demand; without it the audit's failure path could
+  not be exercised at all. The combined attribute form is fine here; it is the
+  test modules below that must not use it.
+- `tests.rs` — probe and validator tests. `version_tests.rs` — the version floor
+  and its `version_contract` property.
+
+The test seam offers two kinds of injection, and the distinction matters when
+adding a test. An *abort* injection (`fail_next_audit`, `inject_failure`) stops
+the probe run before any query executes; it is what an entry point above the
+audit needs, since such callers only have to know that a failure aborts them. A
+*result* injection (`inject_sqlite_version`, `inject_json_each_rows`,
+`inject_recursive_cte_rows`) substitutes what a fetch helper would have
+returned, so the validator downstream of that fetch still runs. An abort
+injection cannot show that, because it returns before the first fetch: a
+deleted validator call would leave both the abort-injected tests and the direct
+validator tests passing. Every override is a thread-local, and each injection
+returns an `InjectionGuard` that resets it on drop, so a leaked override cannot
+reach a later test on the same thread. Read a result injection at the top of
+its own fetch helper and an abort injection at the top of `run_sqlite_probes`,
+before that function's first `await`; the read has to stay on the thread that
+installed it.
+
+Two module-attribute forms are load-bearing here and should not be collapsed.
+`mod tests;` and `mod version_tests;` are registered as two separate attributes,
+`#[cfg(test)]` and `#[cfg(feature = "sqlite")]`, because `clippy.toml`'s
+`allow-expect-in-tests` only recognizes a literal `#[cfg(test)]`; the combined
+`#[cfg(all(test, feature = "sqlite"))]` form silently switches it off and the
+helpers then fail `expect_used`.
+
+Call sites run the audit at their own boundary: `src/server/legacy/mod.rs`
+before migrations, `src/server/wireframe/mod.rs` before the listener binds, and
+`src/server/admin.rs` before `create-user` writes anything. Only the legacy
+server audits PostgreSQL, and only in a build compiled without the `sqlite`
+feature; the Wireframe server never does.
+
 ### Hierarchical path traversal (`src/db/file_path.rs`)
 
 The `file_path` module provides backend-agnostic helpers for resolving
