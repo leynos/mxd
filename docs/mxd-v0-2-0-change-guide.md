@@ -112,9 +112,12 @@ To confirm a deployment resolves configuration the way this guide describes:
 3. Point `MXD_CONFIG_PATH` at a path that does not exist and confirm startup
    exits non-zero with a `load configuration` diagnostic.
 4. Start a SQLite-backed server and confirm it reaches its listening
-   announcement, which it prints only after the SQLite audit has passed. A
-   PostgreSQL build runs a different audit instead, so its announcement
-   confirms the PostgreSQL check rather than the SQLite one.
+   announcement, which it prints only after the SQLite audit has passed. That
+   is the only audit either server runtime announces. The legacy server also
+   audits PostgreSQL, but only in a build compiled without the `sqlite`
+   feature, and it announces nothing for that audit. The Wireframe server never
+   audits PostgreSQL, so in that runtime a PostgreSQL announcement confirms no
+   database check at all.
 
 The configuration behaviour is covered by the process-level tests in
 `tests/cli_contracts.rs` and by the configuration loader tests in
