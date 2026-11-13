@@ -22,6 +22,20 @@
 //! the legacy server runs it, and only in a build compiled without the
 //! `sqlite` feature.
 //!
+//! The `SQLite` entry point is called from three places, each of which owns a
+//! different failure boundary: `src/server/admin.rs` before `create-user` writes
+//! anything, `src/server/legacy/mod.rs` at start-up, and
+//! `src/server/wireframe/mod.rs` after the pool is established and before the
+//! listener binds. All three reach it through the re-export at `src/db/mod.rs`,
+//! as does the `PostgreSQL` entry point.
+//!
+//! Probe text and its expected rows live in the private `probes` submodule,
+//! which keeps a query and the answer it must produce next to each other.
+//! Testing this module needs a way to fail an audit on demand, which the pure
+//! probes cannot provide; `src/db/mod.rs` therefore re-exports the test-only
+//! `fail_next_audit` from `test_seam`, so an entry point above the audit can
+//! inject a failure without widening the audit's surface.
+//!
 //! The probes are pure expressions that read no table, so no database state
 //! can make them fail on demand. The test-only `test_seam` module exists for
 //! that reason: without it the failure path could not be exercised at all, and
