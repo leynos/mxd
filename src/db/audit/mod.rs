@@ -1,4 +1,31 @@
-//! Backend feature audits ensure required DB capabilities are available.
+//! Backend feature audits: prove the linked database provides what the code uses.
+//!
+//! The audits run once, at process start-up and before `create-user` writes
+//! anything, so a library that lacks a required capability fails the command
+//! rather than the first query that happens to need it. Each audit is
+//! read-only: it executes fixed probes and returns an error naming the first
+//! capability that failed, leaving the caller to decide how to report it.
+//!
+//! The [`audit_sqlite_features`] audit enforces three things against the
+//! library the binary actually links, not whichever `sqlite3` shell is
+//! installed:
+//!
+//! - the library is at least [`MINIMUM_SQLITE_VERSION`] (3.35.0), because the `sqlite` Cargo
+//!   feature enables Diesel's `returning_clauses_for_sqlite_3_35`, which emits `RETURNING` clauses
+//!   that older libraries reject at run time;
+//! - the `JSON1` extension's `json_each` table-valued function runs and returns the rows the path
+//!   resolver will consume, rather than merely existing;
+//! - recursive common table expressions evaluate to the expected rows, which is what the file-node
+//!   path traversal depends on.
+//!
+//! The [`audit_postgres_features`] audit covers the `PostgreSQL` backend. Only
+//! the legacy server runs it, and only in a build compiled without the
+//! `sqlite` feature.
+//!
+//! The probes are pure expressions that read no table, so no database state
+//! can make them fail on demand. The test-only `test_seam` module exists for
+//! that reason: without it the failure path could not be exercised at all, and
+//! a regression reducing an audit to a no-op would leave every test passing.
 
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 use diesel::QueryableByName;
