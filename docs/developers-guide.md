@@ -817,16 +817,16 @@ its error defeats it.
 The module is split so that each file has one reason to change:
 
 - `mod.rs` — orchestration, the version floor, and the public entry points.
-  `audit_sqlite_features` chains the version fetch through
-  `ensure_supported_sqlite_version` into `run_sqlite_probes`, so the floor
-  check runs before any probe on a library that might not support the probe
-  syntax. `audit_postgres_features` covers the PostgreSQL backend.
-  `MINIMUM_SQLITE_VERSION` is `(3, 35, 0)` because the `sqlite` feature enables
-  Diesel's `returning_clauses_for_sqlite_3_35`, which emits `RETURNING` clauses
-  older libraries reject at run time. `Capability` enumerates what is probed
-  and pairs each variant with the operator-facing `describe()` and `label()`
-  text; `report_probe_failure` is the single place that emits the structured
-  warning.
+  `audit_sqlite_features` delegates to `run_sqlite_probes`, which fetches and
+  checks the version first and only then runs the JSON1 and recursive-CTE
+  probes, so the floor check runs before any probe on a library that might not
+  support the probe syntax. `audit_postgres_features` covers the PostgreSQL
+  backend. `MINIMUM_SQLITE_VERSION` is `(3, 35, 0)` because the `sqlite`
+  feature enables Diesel's `returning_clauses_for_sqlite_3_35`, which emits
+  `RETURNING` clauses older libraries reject at run time. `Capability`
+  enumerates what is probed and pairs each variant with the operator-facing
+  `describe()` and `label()` text; `report_probe_failure` is the single place
+  that emits the structured warning.
 - `probes.rs` — the row-returning probe text and the constant rows each probe
   must produce. Query text and expectation sit together so a change to one is
   made against the other. The probes read no table, which is why they cannot be
@@ -835,7 +835,12 @@ The module is split so that each file has one reason to change:
   `#[cfg(all(test, feature = "sqlite"))]`. It exists because those pure probes
   cannot be made to fail on demand; without it the audit's failure path could
   not be exercised at all. The combined attribute form is fine here; it is the
-  test modules below that must not use it.
+  test modules below that must not use it. Because `audit` is a private module,
+  `src/db/mod.rs` re-exports `fail_next_audit` for entry points that need to
+  drive their own failure path without widening the audit's surface. Every
+  injection is a thread-local whose guard resets on drop, so a test that uses
+  one must run on a current-thread runtime — `#[tokio::test]`'s default — or
+  the read and the drop can land on different polling threads.
 - `tests.rs` — probe and validator tests. `version_tests.rs` — the version floor
   and its `version_contract` property.
 
