@@ -1,0 +1,54 @@
+name: Proofs
+
+# The `kani.rs` modules under `src/` hold nine Kani proof harnesses. Proof code
+# that no job runs is a comment, so this workflow runs them: on a pull request
+# that touches what they verify or how they are run, and weekly. It is its own
+# workflow rather than a job in `ci.yml`, whose triggers are unconditional and
+# whose job set is pinned by the workflow contracts.
+on:
+  schedule:
+    - cron: '23 4 * * 3' # Weekly, Wednesday 04:23 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'cli-defs/**'
+      - 'tools/kani/**'
+      - 'tools/rust-prover-tools/**'
+      - 'Makefile'
+      - '.github/workflows/proofs.yml'
+
+# A second push to a pull request supersedes the run already in flight; a
+# scheduled or dispatched run is never replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  kani:
+    name: Kani
+    # GitHub-hosted: the job needs no compiler cache and compute there is free.
+    runs-on: ubuntu-24.04
+    # A cold run is about four minutes, nearly all of it compilation. The
+    # ceiling is a runaway guard.
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The shared action installs Kani through the pinned rust-prover-tools,
+      # which owns the archive digests. tools/kani/VERSION names the release.
+      - name: Install Kani
+        uses: leynos/shared-actions/.github/actions/install-prover-tools@88ac795de687eda016db24983f87a25d6db49fdb
+        with:
+          tools: kani
+          runner-image: ubuntu2404
+      - name: Run the Kani harnesses
+        run: make kani

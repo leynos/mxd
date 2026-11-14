@@ -1802,11 +1802,12 @@ condition, fails the contract.
 
 ## Dependabot and the Cargo toolchain floor
 
-The workspace declares `rust-version = "1.94.0"` because the complete locked
-application and test graph includes dependencies whose declared floors reach
-Rust 1.94.0. OrthoConfig v0.10.0 itself requires Rust 1.89.0, but that is not
-the effective floor for these packages. CI checks the feature lanes on stable
-1.94.0 as well as the repository's pinned nightly toolchain.
+mxd is a server application, so the workspace declares no `rust-version`: the
+repository's pinned nightly toolchain is the only toolchain it supports, and no
+other crate in the estate depends on it as a library. The declaration was
+removed because Kani's bundled toolchain is older than the one the workspace
+builds on, and Cargo refuses to compile a package whose `rust-version` exceeds
+the compiler's (see "Kani proofs"). CI no longer checks a separate stable floor.
 
 Dependabot's Cargo updater does not raise `Cargo.toml`. Its
 `versioning-strategy` accepts only `lockfile-only` and `auto`. The
@@ -1895,6 +1896,24 @@ their own key, apart from the ordinary build's.
 The kernels' unit tests are compiled only outside `--cfg loom`, because a Loom
 mutex used outside a Loom model panics. For the same reason the lane selects
 the model targets with `--test` and never runs the doctests under Loom.
+
+## Kani proofs
+
+The `kani.rs` modules under `src/` (header validation, transaction reading, the
+Wireframe codec, compatibility and compatibility policy) hold nine
+`#[kani::proof]` harnesses, compiled only under `cfg(kani)`. `make kani` runs
+them with `cargo-kani -p mxd` and fails if any harness does not verify.
+`.github/workflows/proofs.yml` runs the same target on pull requests that touch
+the code, the Kani pin or the workflow, and weekly.
+
+Kani comes from the shared `rust-prover-tools` package. The package revision is
+in `tools/rust-prover-tools/REF` and the Kani release in `tools/kani/VERSION`;
+CI installs it with the shared `install-prover-tools` action, and
+`make install-kani` does the same on a developer host. Kani compiles the crate
+with its own bundled toolchain, which is older than the repository's nightly,
+so the workspace declares no `rust-version`: Cargo would otherwise refuse the
+package before Kani compiled anything. Verification takes about ten seconds;
+most of a run is the compile.
 
 ## Spelling policy
 

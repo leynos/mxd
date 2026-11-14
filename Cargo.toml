@@ -12,9 +12,6 @@ members = [
 default-members = ["."]
 resolver = "2"
 
-[workspace.package]
-rust-version = "1.94.0"
-
 [workspace.dependencies]
 # Pinned to a git revision because the published 0.2.0 release requires
 # diesel-async ^0.7; the upstream default branch has migrated to
@@ -32,7 +29,6 @@ rstest-bdd-harness-tokio = "0.6.0"
 name = "mxd"
 version = "0.1.0"
 edition = "2024"
-rust-version.workspace = true
 
 [[bin]]
 name = "mxd"

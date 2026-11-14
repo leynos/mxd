@@ -1,4 +1,4 @@
-.PHONY: help all clean build release fetch test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness test-rstest-bdd-ui test-rstest-bdd-ui-timeouts validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres interrogate
+.PHONY: help all clean build release fetch test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness test-rstest-bdd-ui test-rstest-bdd-ui-timeouts validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres interrogate install-kani kani
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -395,6 +395,30 @@ test-loom-runner: ## Test the Loom model runner script
 		--with pytest==9.0.2 --with cmd-mox==0.2.0 --with "cyclopts>=4,<5" \
 		python -m pytest tests/loom_runner scripts/run_loom_models.py --doctest-modules \
 		-c /dev/null --rootdir=. -p no:cacheprovider -p cmd_mox.pytest_plugin
+
+# The shared rust-prover-tools package owns Kani acquisition. CI installs it
+# through the shared install-prover-tools action; `install-kani` is the local
+# equivalent. The package revision is read from one file, and the Kani release
+# from tools/kani/VERSION.
+override PROVER_TOOLS_REF := $(strip $(shell awk '/^ref:/ { print $$2; exit }' tools/rust-prover-tools/REF))
+PROVER_TOOLS ?= $(UV) tool run --python 3.14 \
+	--from git+https://github.com/leynos/rust-prover-tools@$(PROVER_TOOLS_REF) prover-tools
+# The prebuilt Kani covers Linux x86_64 only, so any other host builds it.
+KANI_HOST_KERNEL := $(shell uname -s)
+KANI_HOST_MACHINE := $(shell uname -m)
+KANI_INSTALL_FLAGS ?= $(if $(and $(filter Linux,$(KANI_HOST_KERNEL)),$(filter x86_64,$(KANI_HOST_MACHINE))),,--compile)
+# Kani drives `rustc` through its own bundled toolchain, so the repository's
+# nightly flags (`-Zthreads`, `mold`) neither apply nor are honoured there.
+# Naming the front-end directly keeps `rustup` from installing the
+# repository's own toolchain first.
+KANI ?= cargo-kani
+KANI_FLAGS ?= -p mxd
+
+install-kani: ## Install the pinned Kani release (front-end in CARGO_HOME/bin, bundle in KANI_HOME)
+	$(PROVER_TOOLS) kani install --repo-root . $(KANI_INSTALL_FLAGS)
+
+kani: ## Run the Kani proof harnesses on an installed Kani
+	RUSTFLAGS="-D warnings" $(KANI) kani $(KANI_FLAGS)
 
 # nextest does not execute doctests; run them separately with the
 # default (sqlite) backend, mirroring the template's split.
