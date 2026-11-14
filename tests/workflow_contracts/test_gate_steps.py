@@ -51,6 +51,7 @@ PINNED_GATES: typ.Final[tuple[tuple[str, str, str], ...]] = (
     ("loom-check.yml", "check", "make check-loom"),
     ("loom-check.yml", "check", "make test-concurrency"),
     ("loom-check.yml", "check", "make test-loom-runner"),
+    ("proofs.yml", "kani", "make kani"),
 )
 
 

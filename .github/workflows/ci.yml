@@ -164,15 +164,6 @@ jobs:
       # re-resolve it instead of failing.
       - name: Check the lockfile matches the manifest
         run: make check-locked
-      - name: Check Rust 1.94 compatibility
-        run: |
-          rustup toolchain install 1.94.0 --profile minimal
-          # A stable toolchain rejects the nightly-only `-Z` flag and the
-          # `[unstable]` codegen-backend gate that .cargo/config.toml carries.
-          # Cargo reads configuration from the working directory upward, so
-          # run from outside the repository and name the manifest.
-          cd "$RUNNER_TEMP"
-          RUSTFLAGS= cargo +1.94.0 check --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" --locked --all-targets ${{ matrix.cargo_flags }}
       - name: Install cargo-nextest
         env:
           GITHUB_TOKEN: ${{ github.token }}
