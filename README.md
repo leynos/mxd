@@ -21,10 +21,19 @@ Tokio keeps everything asynchronous, and this project aims to be the skeleton
 for a more complete Hotline implementation. See the `docs/` directory for a
 dive into the protocol and how we juggle SQLite and PostgreSQL migrations.
 
-If you use SQLite as the persistence engine, ensure your build of SQLite
-includes the `JSON1` extension and support for recursive common table
-expressions (CTEs). The server verifies these features on startup and will fail
-to run if they are missing.
+If you use SQLite as the persistence engine, the linked SQLite library must be
+**3.35.0 or later** and must provide the `JSON1` extension's `json_each`
+function and support for recursive common table expressions. The legacy server,
+the Wireframe server, and the `create-user` subcommand each audit the library
+they are running against before serving requests or writing data, and exit with
+an error naming any missing capability.
+
+The requirements apply to the library linked into the binary, not to whichever
+`sqlite3` tool happens to be installed. See the
+[user guide's SQLite runtime requirements](docs/users-guide.md#sqlite-runtime-requirements)
+for which library a given build uses, and the
+[developers' guide](docs/developers-guide.md) for how to check the candidate
+library before building.
 
 When using PostgreSQL, run against a server version **14 or newer**. The daemon
 checks this at startup and refuses to launch on older versions.
