@@ -218,15 +218,18 @@ project:
     validating Rust formatting across the workspace without modifying files.
     It then runs `mdtablefix --check` over the Markdown files Git tracks or
     does not ignore, excluding the imported upstream rstest-bdd guides.
-  - `make lint` runs `make interrogate` first. That target needs `uv` and
-    fails on any Python definition under `scripts` and `tests` without a
-    docstring, and on any `MISSED` row, since interrogate rounds its percentage
-    to one decimal. `tests/workflow_contracts/interrogate_gate_test.py` asserts
-    the wiring, and CI runs the same target as its own step. For each of the
-    SQLite, PostgreSQL, and wireframe-only feature sets, `make lint` then runs:
+  - `make lint` has `make interrogate` as a prerequisite. That target needs
+    `uv` and fails on any Python definition under `scripts` and `tests` without
+    a docstring, and on any `MISSED` row, since interrogate rounds its
+    percentage to one decimal. `tests/workflow_contracts/interrogate_gate_test.py`
+    asserts the wiring, and CI runs the same target as its own step. For each of
+    the SQLite (`--features "sqlite test-support"`), PostgreSQL
+    (`--no-default-features --features "postgres test-support legacy-networking"`),
+    and wireframe-only (`--no-default-features --features "sqlite toml test-support"`)
+    feature sets, `make lint` runs:
 
     ```sh
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy <feature set> --workspace --all-targets -- -D warnings
     ```
 
     followed by Whitaker over the same features with `RUSTFLAGS="-D warnings"`
@@ -236,12 +239,14 @@ project:
     warnings fail the command. `make lint` does not run `cargo doc`.
   - `make test` runs `cargo fetch --locked` first, then the PostgreSQL, SQLite,
     wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency, and
-    documentation test suites. Each suite runs `cargo nextest run` when
-    `cargo nextest` is installed and `cargo test` otherwise. The gate appends
-    `-D warnings` and the build standard to any inherited `RUSTFLAGS`: the
-    `-Zthreads=8` rustc frontend flag and, on Linux, the `mold` linker
-    (`-Clink-arg=-fuse-ld=mold`). Nextest does not run doctests, so
-    `make test` runs them separately with `cargo test --doc`.
+    documentation test suites. Each suite except the documentation suite runs
+    `cargo nextest run` when `cargo nextest` is installed and `cargo test`
+    otherwise. The gate appends `-D warnings` and the build standard to any
+    inherited `RUSTFLAGS`: the `-Zthreads=8` rustc frontend flag and, on Linux,
+    the `mold` linker (`-Clink-arg=-fuse-ld=mold`). The documentation suite runs
+    `cargo test --doc` with the SQLite features, because nextest does not run
+    doctests. The concurrency suite also runs its doctests with
+    `cargo test --doc -p mxd-concurrency`.
     Use `make fmt` (`cargo fmt --all`, then `mdtablefix` and `markdownlint --fix`)
     to apply formatting fixes reported by the formatter check.
 - Clippy warnings MUST be disallowed.
