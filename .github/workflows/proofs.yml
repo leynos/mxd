@@ -12,6 +12,9 @@ on:
   pull_request:
     paths:
       - 'src/**'
+      - 'build.rs'
+      - 'migrations/**'
+      - 'crates/mxd-concurrency/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'cli-defs/**'
