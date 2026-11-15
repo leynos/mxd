@@ -34,15 +34,16 @@ impl ServerTarget {
     /// The prebuilt binary to run: the one named, if it is a file, else the
     /// one the process environment names.
     ///
-    /// The named binary is returned as an absolute path, because
-    /// `Command::new` searches `PATH` for a bare name such as `server-test`
-    /// even when a file of that name sits in the working directory.
+    /// Either binary is returned as an absolute path, because `Command::new`
+    /// searches `PATH` for a bare name such as `server-test` even when a file
+    /// of that name sits in the working directory. A path that cannot be made
+    /// absolute is not launched: the harness falls back instead of guessing.
     pub(super) fn binary(&self) -> Option<PathBuf> {
         self.binary
             .as_deref()
             .filter(|path| is_binary_file(path))
-            .map(launchable_path)
-            .or_else(resolve_server_binary)
+            .and_then(launchable_path)
+            .or_else(|| resolve_server_binary().and_then(|path| launchable_path(&path)))
     }
 }
 
@@ -55,10 +56,10 @@ fn is_binary_file(path: &Path) -> bool {
 }
 
 /// The path to hand to `Command::new` so the OS runs this file and does not
-/// search `PATH` for its name.
-fn launchable_path(path: &Path) -> PathBuf {
-    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
-}
+/// search `PATH` for its name, or `None` when it cannot be made absolute.
+///
+/// A symbolic link stays a link: `std::path::absolute` does not resolve it.
+fn launchable_path(path: &Path) -> Option<PathBuf> { std::path::absolute(path).ok() }
 
 #[cfg(test)]
 mod tests {
@@ -119,7 +120,7 @@ mod tests {
     #[case::bare_name("server-test")]
     #[case::dot_slash("./server-test")]
     fn a_relative_name_is_launched_by_absolute_path(#[case] name: &str) {
-        let launchable = launchable_path(Path::new(name));
+        let launchable = launchable_path(Path::new(name)).expect("the working directory exists");
 
         assert!(
             launchable.is_absolute(),
@@ -150,5 +151,23 @@ mod tests {
                 .is_some_and(|path| path.is_absolute() && path.ends_with("relative-server")),
             "{found:?} should be the file, by absolute path"
         );
+    }
+
+    #[cfg(unix)]
+    #[rstest]
+    fn a_relative_symbolic_link_stays_a_link_and_becomes_absolute() {
+        let dir = TempDir::new_in(".").expect("temporary directory in the working directory");
+        let file = dir.path().join("real-server");
+        let link = dir.path().join("linked-server");
+        std::fs::write(&file, b"").expect("write the stand-in binary");
+        std::os::unix::fs::symlink(&file, &link).expect("create the link");
+        let working_directory = std::env::current_dir().expect("working directory");
+        let relative = link
+            .strip_prefix(working_directory)
+            .expect("the temporary directory is inside the working directory");
+
+        let found = target(Some(relative)).binary();
+
+        assert_eq!(found.as_deref(), Some(link.as_path()));
     }
 }
