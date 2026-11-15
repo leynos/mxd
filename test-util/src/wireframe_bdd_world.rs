@@ -8,6 +8,7 @@ use std::{
     cell::{Cell, RefCell},
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
@@ -35,6 +36,8 @@ pub struct WireframeBddWorld {
     reply: RefCell<Option<Result<Transaction, String>>>,
     io_timeout: Cell<Duration>,
     handshake_sub_version: Cell<u16>,
+    /// The prebuilt server binary to launch, when the scenario names one.
+    server_binary: Option<PathBuf>,
 }
 
 impl Default for WireframeBddWorld {
@@ -42,7 +45,8 @@ impl Default for WireframeBddWorld {
 }
 
 impl WireframeBddWorld {
-    /// Create a fresh wireframe BDD world.
+    /// Create a fresh wireframe BDD world that resolves its server binary from
+    /// the process environment, then falls back to `cargo run`.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -51,6 +55,20 @@ impl WireframeBddWorld {
             reply: RefCell::new(None),
             io_timeout: Cell::new(DEFAULT_IO_TIMEOUT),
             handshake_sub_version: Cell::new(0),
+            server_binary: None,
+        }
+    }
+
+    /// Create a fresh wireframe BDD world that launches `server_binary`.
+    ///
+    /// The path is an argument rather than an environment variable that the
+    /// scenario sets, so scenarios running on parallel threads do not queue
+    /// behind a lock to say which server to run.
+    #[must_use]
+    pub fn with_server_binary(server_binary: impl Into<PathBuf>) -> Self {
+        Self {
+            server_binary: Some(server_binary.into()),
+            ..Self::new()
         }
     }
 
@@ -72,9 +90,12 @@ impl WireframeBddWorld {
     pub fn setup_db(&self, setup: SetupFn) -> Result<(), AnyError> {
         self.reply.borrow_mut().take();
 
-        let server =
-            TestServer::start_with_setup("./Cargo.toml", |db| setup(DatabaseUrl::from(db)))
-                .context("failed to start wireframe test server")?;
+        let server = TestServer::start_with_binary_and_setup(
+            "./Cargo.toml",
+            self.server_binary.as_deref(),
+            |db| setup(DatabaseUrl::from(db)),
+        )
+        .context("failed to start wireframe test server")?;
 
         self.server.borrow_mut().replace(server);
         self.reconnect()

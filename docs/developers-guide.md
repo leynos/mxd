@@ -604,7 +604,9 @@ re-exports the public surface of each module.
   wait for the Hotline prompt and terminate the session.
 - `harness.rs`: orchestrates these pieces by running policy and prerequisite
   checks via `ValidatorHarness::prepare()`, launching the wireframe server with
-  `start_server_with_setup()`, opening the PTY client with `spawn_hx()`, and
+  `start_server_with_setup()` (which passes the resolved binary to
+  `TestServer::start_with_binary_and_setup` and never sets a process-wide
+  environment variable), opening the PTY client with `spawn_hx()`, and
   exporting PTY expect/send helpers used directly by tests.
 
 ### Key public types

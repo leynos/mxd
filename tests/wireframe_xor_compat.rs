@@ -8,15 +8,7 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenarios, then, when};
-use test_util::{
-    AnyError,
-    SetupFn,
-    WireframeBddWorld,
-    build_frame,
-    ensure_server_binary_env,
-    setup_files_db,
-    setup_news_db,
-};
+use test_util::{AnyError, SetupFn, WireframeBddWorld, build_frame, setup_files_db, setup_news_db};
 
 struct XorWorld {
     base: WireframeBddWorld,
@@ -26,9 +18,9 @@ struct XorWorld {
 const UNKNOWN_MESSAGE_TRANSACTION_TYPE: TransactionType = TransactionType::Other(900);
 
 impl XorWorld {
-    const fn new() -> Self {
+    fn new(server_binary: &str) -> Self {
         Self {
-            base: WireframeBddWorld::new(),
+            base: WireframeBddWorld::with_server_binary(server_binary),
         }
     }
 
@@ -54,10 +46,8 @@ impl XorWorld {
 
 #[fixture]
 fn world() -> XorWorld {
-    if let Err(error) = ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server")) {
-        panic!("failed to configure wireframe test binary path: {error}");
-    }
-    XorWorld::new()
+    let server_binary = env!("CARGO_BIN_EXE_mxd-wireframe-server");
+    XorWorld::new(server_binary)
 }
 
 #[given("a routing context with user accounts")]
