@@ -5,8 +5,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use argon2::Argon2;
+#[cfg(feature = "sqlite")]
+use diesel_async::{AsyncConnection, RunQueryDsl};
 #[cfg(all(feature = "postgres", not(feature = "sqlite")))]
 use rstest::rstest;
+#[cfg(feature = "sqlite")]
+use tempfile::TempDir;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -74,4 +78,146 @@ async fn handle_accept_result_shares_argon2_between_clients() -> Result<()> {
     assert_eq!(Arc::strong_count(&argon2), strong_before + 1);
 
     Ok(())
+}
+
+/// Count the rows in a table, or return `None` when it does not exist.
+///
+/// `sqlite_master` is consulted first so that a missing table reads as "nothing
+/// was written" rather than as a query error; `COUNT(*)` always yields a row, so
+/// `BigInt` is the correct `sql_type` for the aggregate.
+#[cfg(feature = "sqlite")]
+async fn count_rows(conn: &mut crate::db::DbConnection, table: &str) -> Option<i64> {
+    use diesel::{
+        QueryableByName,
+        sql_query,
+        sql_types::{BigInt, Text},
+    };
+
+    #[derive(QueryableByName)]
+    struct RowCount {
+        #[diesel(sql_type = BigInt)]
+        total: i64,
+    }
+
+    #[derive(QueryableByName)]
+    struct TableExists {
+        #[diesel(sql_type = BigInt)]
+        present: i64,
+    }
+
+    let exists = sql_query(
+        "SELECT COUNT(*) AS present FROM sqlite_master WHERE type = 'table' AND name = ?",
+    )
+    .bind::<Text, _>(table)
+    .get_result::<TableExists>(conn)
+    .await
+    .expect("sqlite_master must be queryable");
+    if exists.present == 0 {
+        return None;
+    }
+
+    let query = format!("SELECT COUNT(*) AS total FROM \"{table}\"");
+    let count = sql_query(query)
+        .get_result::<RowCount>(conn)
+        .await
+        .expect("row count must be readable once the table exists");
+    Some(count.total)
+}
+
+/// A legacy start-up audit failure must stop the migration runner.
+///
+/// `setup_database` audits before it calls `apply_migrations`, and that ordering
+/// is what makes the check worth having: a library that cannot execute the
+/// probes must fail the server rather than migrate a schema the server cannot
+/// then use. Nothing else in the suite reaches this ordering, because every
+/// other test either uses the in-memory pool or never gets past argument
+/// parsing.
+///
+/// The assertion is on table absence rather than a zero row count, so it cannot
+/// pass vacuously on a migration table that was created and left empty.
+#[cfg(feature = "sqlite")]
+#[tokio::test]
+async fn setup_database_stops_before_migrating_when_the_audit_fails() {
+    let temp_dir = TempDir::new().expect("temporary directory must be created");
+    let database = temp_dir.path().join("audited.mxd.db");
+
+    let error = {
+        let _injection = crate::db::fail_next_audit();
+        super::setup_database(&database.to_string_lossy(), None)
+            .await
+            .expect_err("an audit failure must abort start-up")
+    };
+
+    assert!(
+        format!("{error:#}").contains("SQLite capability audit failed"),
+        "the start-up error must carry the audit context: {error:#}"
+    );
+
+    let mut conn = crate::db::DbConnection::establish(&database.to_string_lossy())
+        .await
+        .expect("the database file must be openable");
+    assert_eq!(
+        count_rows(&mut conn, "__diesel_schema_migrations").await,
+        None,
+        "no migration may run when the audit fails"
+    );
+}
+
+/// A legacy start-up audit failure must beat the listener bind.
+///
+/// `run_daemon` seeds the pool, binds, announces `mxd listening on …`, and only
+/// then serves. The ordering under test is audit-then-bind: `setup_database`
+/// audits before it migrates, and `run_daemon` binds only after
+/// `setup_database` returns. Nothing else in the suite observes that: the test
+/// above stops inside `setup_database`, and every other legacy test uses the
+/// in-memory pool or never gets past argument parsing.
+///
+/// The address is bound by this test and held for the duration, so the two
+/// regressions fail promptly rather than hang. An audit before the bind
+/// returns the audit error; a bind before the audit returns a bind error
+/// instead, because the address is already taken. A free address would let a
+/// misordered run bind and accept connections until the test timed out.
+///
+/// The seam is thread-local, so the test pins the current-thread runtime
+/// flavour explicitly. The macro's default is current-thread today, but relying
+/// on that default would make a runtime-flavour change look like a product
+/// regression rather than a test-harness mistake.
+#[cfg(feature = "sqlite")]
+#[tokio::test(flavor = "current_thread")]
+async fn run_daemon_audits_before_binding_the_listener() {
+    let occupied = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .expect("occupying listener must bind");
+    let bind_addr = occupied
+        .local_addr()
+        .expect("occupied address must resolve");
+    let temp_dir = TempDir::new().expect("temporary directory must be created");
+    let cfg = crate::server::AppConfig {
+        bind: bind_addr.to_string(),
+        database: temp_dir
+            .path()
+            .join("audited.mxd.db")
+            .to_string_lossy()
+            .into_owned(),
+        argon2_m_cost: 1024,
+        argon2_t_cost: 1,
+        argon2_p_cost: 1,
+        ..crate::server::AppConfig::default()
+    };
+
+    let error = {
+        let _injection = crate::db::fail_next_audit();
+        super::run_daemon(cfg)
+            .await
+            .expect_err("an audit failure must abort start-up")
+    };
+
+    let chain = format!("{error:#}");
+    assert!(
+        chain.contains("SQLite capability audit failed"),
+        "the start-up error must carry the audit context: {chain}"
+    );
+    assert!(
+        !chain.contains("Address already in use"),
+        "the audit must run before the listener binds: {chain}"
+    );
 }

@@ -215,8 +215,14 @@ SQLite paths.
 - For features that SQLite simply lacks (JSONB, expression indexes, row-level
   security) you must either introduce conditional code paths or limit those
   features to the Postgres deployment.
-- When using SQLite, ensure your SQLite build was compiled with the `JSON1`
-  extension and support for recursive CTEs.
+- When using SQLite, ensure the linked library is **3.35.0 or later**,
+  provides the `JSON1` extension's `json_each` function, and supports recursive
+  CTEs. The version floor comes from the `returning_clauses_for_sqlite_3_35`
+  Diesel feature, which this project enables so that `INSERT … RETURNING`
+  clauses are available; it is a compile-time declaration, so the start-up
+  audit checks the version at run time instead. The audit runs both `json_each`
+  and a recursive CTE and inspects their rows, because a library can accept the
+  syntax and still compute the wrong answer.
 - When using PostgreSQL, ensure the server version is **14 or greater**. The
   application performs a runtime check and fails on older versions.
 

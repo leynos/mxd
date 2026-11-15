@@ -1439,12 +1439,14 @@ Common Table Expressions (CTEs) to handle certain queries elegantly:
   [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L449-L457)).
   This single query replaces what could be multiple queries or complex logic
   in Rust, and it runs efficiently inside the database. We verify on startup
-  that SQLite has support for **recursive CTEs** (the code runs a quick
-  `WITH RECURSIVE c(x)...` query on SQLite to ensure the build includes that
-  feature)(
-  [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L134-L143)
+  that the linked SQLite library is at least 3.35.0 and provides both features
+  the query needs: the JSON1 `json_each` function, and support for **recursive
+  CTEs**. The audit runs each as a probe and inspects the returned rows, so a
+  library that accepts the syntax but computes the wrong answer is rejected
+  rather than trusted(
+  [9](https://github.com/leynos/mxd/blob/207a1674e531fddd96b144bbba9faef0773a82ef/src/db/audit/probes.rs#L61-L99)
   )(
-  [9](https://github.com/leynos/mxd/blob/88d1cfb3097b2d96f2b7c9d1382f6b374d7eb90c/src/db.rs#L146-L154)).
+  [9](https://github.com/leynos/mxd/blob/207a1674e531fddd96b144bbba9faef0773a82ef/src/db/audit/mod.rs#L245-L265)).
 
 - For threaded articles, one possible use of recursive CTE is retrieving an
   entire thread (all descendants of a root post). Currently, we store links so

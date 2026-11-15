@@ -7,6 +7,8 @@ use std::{
 
 use argon2::Argon2;
 use rstest::{fixture, rstest};
+#[cfg(feature = "sqlite")]
+use tempfile::TempDir;
 use tokio::runtime::Builder;
 use wireframe::WireframeError;
 
@@ -132,6 +134,76 @@ fn app_factory_rejects_missing_peer_address() {
     else {
         panic!("missing peer address must fail closed with the proper error variant");
     };
+}
+
+/// A Wireframe start-up audit failure must beat the listener bind.
+///
+/// The audit sits between `establish_pool` and `WireframeServer::bind`, and
+/// that ordering is the whole point of the check: an incompatible library must
+/// fail startup, not the first query. Asserting only that `run` returns the
+/// audit error cannot detect a misordering, because a run that bound first and
+/// audited second would still report the audit failure.
+///
+/// The address is therefore bound by this test and held for the duration. With
+/// an occupied address the outcomes separate cleanly: an audit before the bind
+/// returns the audit error, while a bind before the audit fails with
+/// `failed to bind wireframe server`. A free address would be worse than
+/// useless here, because a run that dropped the audit would bind and serve
+/// until the test timed out instead of failing.
+///
+/// The audit seam is thread-local, so the runtime flavour is load-bearing:
+/// under a multi-threaded runtime `run` could resume on a different polling
+/// thread after the pool is established and lose the guard. The flavour is
+/// spelled out rather than left to the macro default, because a future tokio
+/// change to that default would silently make this test pass for the wrong
+/// reason. On a current-thread runtime the whole of `run` is polled on this
+/// thread, including the awaits inside the audit.
+///
+/// Migration ordering is deliberately not asserted: this path establishes a
+/// pool and runs no migrations at all.
+#[cfg(feature = "sqlite")]
+#[tokio::test(flavor = "current_thread")]
+async fn run_audits_before_binding_the_listener() {
+    let occupied = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+        .expect("occupying listener must bind");
+    let bind_addr = occupied
+        .local_addr()
+        .expect("occupied address must resolve");
+    let temp_dir = TempDir::new().expect("temporary directory must be created");
+    let config = AppConfig {
+        bind: bind_addr.to_string(),
+        database: temp_dir
+            .path()
+            .join("audited.mxd.db")
+            .to_string_lossy()
+            .into_owned(),
+        // Cheap Argon2 parameters: the audit fails first, but a misordered run
+        // would reach key derivation and the default cost is needlessly slow.
+        argon2_m_cost: 1024,
+        argon2_t_cost: 1,
+        argon2_p_cost: 1,
+        ..AppConfig::default()
+    };
+    let bootstrap = WireframeBootstrap::prepare(config).expect("bootstrap must prepare");
+
+    let error = {
+        // Held across the whole `run` call, including its awaits.
+        let _injection = crate::db::fail_next_audit();
+        bootstrap
+            .run()
+            .await
+            .expect_err("an audit failure must abort startup")
+    };
+
+    let chain = format!("{error:#}");
+    assert!(
+        chain.contains("SQLite capability audit failed"),
+        "the error must carry the audit context: {chain}"
+    );
+    assert!(
+        !chain.contains("failed to bind wireframe server"),
+        "the audit must run before the listener binds: {chain}"
+    );
 }
 
 #[rstest]
