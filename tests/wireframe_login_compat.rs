@@ -9,13 +9,7 @@ use mxd::{
 };
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenarios, then, when};
-use test_util::{
-    SetupFn,
-    WireframeBddWorld,
-    build_frame,
-    ensure_server_binary_env,
-    setup_login_db,
-};
+use test_util::{SetupFn, WireframeBddWorld, build_frame, setup_login_db};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClientVersion(u16);
@@ -79,9 +73,9 @@ impl std::fmt::Display for AssertionError {
 impl std::error::Error for AssertionError {}
 
 impl LoginCompatWorld {
-    const fn new() -> Self {
+    fn new(server_binary: &str) -> Self {
         Self {
-            base: WireframeBddWorld::new(),
+            base: WireframeBddWorld::with_server_binary(server_binary),
         }
     }
 
@@ -237,10 +231,8 @@ impl LoginCompatWorld {
 
 #[fixture]
 fn world() -> LoginCompatWorld {
-    if let Err(error) = ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server")) {
-        panic!("failed to configure wireframe test binary path: {error}");
-    }
-    LoginCompatWorld::new()
+    let server_binary = env!("CARGO_BIN_EXE_mxd-wireframe-server");
+    LoginCompatWorld::new(server_binary)
 }
 
 #[given("a routing context with user accounts")]

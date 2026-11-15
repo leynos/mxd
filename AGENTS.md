@@ -364,8 +364,9 @@ project:
   acceptable where a trait object would be disproportionate. Production code
   must not reach for `std::env::var`/`var_os` outside that composition root. In
   this repository `mockable` is not a dependency: configuration tests inject
-  OrthoConfig's `MapEnv`, and where injection is not available the accepted
-  local form is the `with_env_var` guard in `test-util`.
+  OrthoConfig's `MapEnv`, and the test server harness takes the server binary
+  as an argument (`TestServer::start_with_binary_and_setup`) rather than
+  reading it from an environment variable that a test sets.
 - **Process-wide locks are not an escape hatch.** Serializing environment
   mutation behind a shared `Mutex`, `OnceLock`, or `serial_test` attribute is
   not an accepted fallback. It serializes the suite, defeats property-based

@@ -6,22 +6,23 @@
 use std::{
     ffi::OsString,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
 
 mod binary;
 mod env;
 mod readiness;
+mod target;
 
-use binary::resolve_server_binary;
-pub use env::{DbUrl, ManifestPath, ensure_server_binary_env, with_env_var};
+pub use env::{DbUrl, ManifestPath};
 #[cfg(unix)]
 use nix::{
     sys::signal::{Signal, kill},
     unistd::Pid,
 };
 use readiness::wait_for_server;
+use target::ServerTarget;
 use tempfile::TempDir;
 use tracing::{debug, info, warn};
 
@@ -74,12 +75,12 @@ where
 
 /// Constructs the base `cargo run` command for launching the server with the
 /// requested manifest, bind address, and database URL, enabling the active backend.
-fn build_server_command(manifest_path: &ManifestPath, addr: SocketAddr, db_url: &DbUrl) -> Command {
-    if let Some(bin) = resolve_server_binary() {
+fn build_server_command(target: &ServerTarget, addr: SocketAddr, db_url: &DbUrl) -> Command {
+    if let Some(bin) = target.binary() {
         return server_binary_command(bin, addr, db_url);
     }
     debug!("falling back to cargo run");
-    cargo_run_command(manifest_path, addr, db_url)
+    cargo_run_command(target.manifest_path(), addr, db_url)
 }
 
 /// Builds a command that executes an already-built wireframe server binary bound
@@ -155,7 +156,7 @@ fn resolve_bind_host() -> Result<String, AnyError> {
     reason = "best-effort cleanup; error already being propagated"
 )]
 fn launch_server_process(
-    manifest_path: &ManifestPath,
+    target: &ServerTarget,
     bind_host: &str,
     db_url: &DbUrl,
 ) -> Result<(Child, SocketAddr), AnyError> {
@@ -179,7 +180,7 @@ fn launch_server_process(
             attempt,
             "launching server"
         );
-        let mut child = build_server_command(manifest_path, addr, db_url).spawn()?;
+        let mut child = build_server_command(target, addr, db_url).spawn()?;
         debug!("spawned server process, waiting for readiness");
         match wait_for_server(&mut child, readiness_addr) {
             Ok(()) => {
@@ -240,7 +241,6 @@ impl TestServer {
     /// # Errors
     ///
     /// Returns an error if setup, database initialization, or launch fails.
-    #[expect(clippy::shadow_reuse, reason = "standard Into pattern")]
     pub fn start_with_setup<F>(
         manifest_path: impl Into<ManifestPath>,
         setup: F,
@@ -248,7 +248,37 @@ impl TestServer {
     where
         F: FnOnce(&DbUrl) -> Result<(), AnyError>,
     {
-        let manifest_path = manifest_path.into();
+        Self::start_with_binary_and_setup(manifest_path, None, setup)
+    }
+
+    /// Launches a server from the prebuilt binary at `binary`, running the
+    /// setup callback with the database URL before starting.
+    ///
+    /// The binary is an argument, so no test changes the process environment to
+    /// say which server to run, and concurrent tests do not queue behind a
+    /// lock. With `None`, or a `binary` that is not a regular file, the harness
+    /// falls back to the process environment and then to `cargo run`, as
+    /// `start_with_setup` does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if setup, database initialization, or launch fails.
+    pub fn start_with_binary_and_setup<F>(
+        manifest_path: impl Into<ManifestPath>,
+        binary: Option<&Path>,
+        setup: F,
+    ) -> Result<Self, AnyError>
+    where
+        F: FnOnce(&DbUrl) -> Result<(), AnyError>,
+    {
+        let target = ServerTarget::new(manifest_path.into(), binary);
+        Self::start_target(&target, setup)
+    }
+
+    fn start_target<F>(target: &ServerTarget, setup: F) -> Result<Self, AnyError>
+    where
+        F: FnOnce(&DbUrl) -> Result<(), AnyError>,
+    {
         let bind_host = resolve_bind_host()?;
         ensure_single_backend();
         #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
@@ -256,7 +286,7 @@ impl TestServer {
             let temp = TempDir::new()?;
             let db_url = setup_sqlite(&temp, setup)?;
             Self::launch_with(
-                &manifest_path,
+                target,
                 &bind_host,
                 db_url,
                 move |child, bind_addr, db_url_value| Self {
@@ -275,7 +305,7 @@ impl TestServer {
             let db_url = DbUrl::from(db.url.as_ref());
             setup(&db_url)?;
             Self::launch_with(
-                &manifest_path,
+                target,
                 &bind_host,
                 db_url,
                 move |child, bind_addr, db_url_value| Self {
@@ -291,7 +321,7 @@ impl TestServer {
     }
 
     fn launch_with<F>(
-        manifest_path: &ManifestPath,
+        target: &ServerTarget,
         bind_host: &str,
         db_url: DbUrl,
         build_self: F,
@@ -299,7 +329,7 @@ impl TestServer {
     where
         F: FnOnce(Child, SocketAddr, DbUrl) -> Self,
     {
-        let (child, bind_addr) = launch_server_process(manifest_path, bind_host, &db_url)?;
+        let (child, bind_addr) = launch_server_process(target, bind_host, &db_url)?;
         Ok(build_self(child, bind_addr, db_url))
     }
 

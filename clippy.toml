@@ -11,3 +11,16 @@ allow-expect-in-tests = true
 # nightly that Whitaker lints on cannot compile. Clippy's `msrv` keeps its
 # suggestions to what both toolchains accept.
 msrv = "1.94.0"
+
+# No code changes the process-wide environment or working directory (concordat
+# rule `rust-test-environment`). Tests inject an environment, pass a path, or
+# run a subprocess with `Command::env` and `Command::current_dir`: a
+# process-wide change forces the tests that share a process to run one at a
+# time. A site that cannot move yet carries
+# `#[expect(clippy::disallowed_methods, reason = "..")]`, which warns once the
+# site is migrated.
+disallowed-methods = [
+  { path = "std::env::set_var", reason = "inject an environment or use Command::env in a subprocess" },
+  { path = "std::env::remove_var", reason = "inject an environment or use Command::env in a subprocess" },
+  { path = "std::env::set_current_dir", reason = "pass the directory in, or use Command::current_dir in a subprocess" },
+]

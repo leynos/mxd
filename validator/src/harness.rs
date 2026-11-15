@@ -10,7 +10,7 @@ use std::{
 };
 
 use expectrl::{Expect, Regex, session::OsSession as Session};
-use test_util::{AnyError, TestServer, with_env_var};
+use test_util::{AnyError, TestServer};
 
 use crate::{
     hx_client::{HxClientError, expect_hotline_prompt, spawn_hx_session, terminate_hx},
@@ -18,7 +18,6 @@ use crate::{
     server_binary::{ServerBinaryError, resolve_wireframe_server_binary},
 };
 
-const SERVER_BINARY_ENV: &str = "CARGO_BIN_EXE_mxd-wireframe-server";
 const DEFAULT_EXPECT_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_EXPECT_TIMEOUT: Duration = Duration::from_secs(20);
 const DEFAULT_MANIFEST_PATH: &str = "../Cargo.toml";
@@ -54,20 +53,23 @@ impl ValidatorHarness {
     #[must_use]
     pub fn server_binary(&self) -> &Path { self.server_binary.as_path() }
 
-    /// Start a test server with the shared wireframe binary environment set.
+    /// Start a test server from the harness's explicit wireframe binary.
+    ///
+    /// The binary is passed to the server harness, not set in the process
+    /// environment, so concurrent validator tests do not queue behind a lock.
     ///
     /// # Errors
     ///
-    /// Returns an error if database setup, server launch, or environment
-    /// mutation fails.
+    /// Returns an error if database setup or server launch fails.
     pub fn start_server_with_setup<F>(&self, setup: F) -> Result<TestServer, AnyError>
     where
         F: FnOnce(&str) -> Result<(), AnyError>,
     {
-        let binary = self.server_binary.display().to_string();
-        with_env_var(SERVER_BINARY_ENV, Some(&binary), || {
-            TestServer::start_with_setup(DEFAULT_MANIFEST_PATH, |db| setup(db.as_str()))
-        })
+        TestServer::start_with_binary_and_setup(
+            DEFAULT_MANIFEST_PATH,
+            Some(self.server_binary.as_path()),
+            |db| setup(db.as_str()),
+        )
     }
 
     /// Spawn a `SynHX` session and wait for the standard prompt.

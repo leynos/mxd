@@ -14,7 +14,6 @@ use test_util::{
     WireframeBddWorld,
     build_frame,
     collect_strings,
-    ensure_server_binary_env,
     setup_files_db,
     setup_news_categories_nested_db,
     setup_news_categories_root_db,
@@ -32,9 +31,9 @@ struct RoutingWorld {
 fn noop_setup(_: test_util::DatabaseUrl) -> Result<(), AnyError> { Ok(()) }
 
 impl RoutingWorld {
-    const fn new() -> Self {
+    fn new(server_binary: &str) -> Self {
         Self {
-            base: WireframeBddWorld::new(),
+            base: WireframeBddWorld::with_server_binary(server_binary),
         }
     }
 
@@ -75,10 +74,8 @@ impl RoutingWorld {
 
 #[fixture]
 fn world() -> RoutingWorld {
-    if let Err(error) = ensure_server_binary_env(env!("CARGO_BIN_EXE_mxd-wireframe-server")) {
-        panic!("failed to configure wireframe test binary path: {error}");
-    }
-    RoutingWorld::new()
+    let server_binary = env!("CARGO_BIN_EXE_mxd-wireframe-server");
+    RoutingWorld::new(server_binary)
 }
 
 #[given("a wireframe server handling transactions")]
