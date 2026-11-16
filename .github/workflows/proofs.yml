@@ -49,7 +49,7 @@ jobs:
       # The shared action installs Kani through the pinned rust-prover-tools,
       # which owns the archive digests. tools/kani/VERSION names the release.
       - name: Install Kani
-        uses: leynos/shared-actions/.github/actions/install-prover-tools@88ac795de687eda016db24983f87a25d6db49fdb
+        uses: leynos/shared-actions/.github/actions/install-prover-tools@1123a35f1cc7810f65bfffa5ea4c8b981d6c0090
         with:
           tools: kani
           runner-image: ubuntu2404
