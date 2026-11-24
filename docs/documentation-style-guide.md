@@ -36,9 +36,6 @@ consistent, and easy to maintain across projects.
   releasing an update".
 - Avoid first and second person personal pronouns outside the `README.md`
   file.
-- Byte-for-byte upstream documents identified in a migration provenance
-  record retain their source voice. Locally written notes remain subject to
-  this rule.
 
 ## Headings
 
@@ -104,8 +101,6 @@ and `docs/documentation-style-guide.md`, plus a primary design document under
 migration guide per release that changes observable behaviour.
 
 ### Contents file
-
-In mxd, the existing index is `docs/CONTENTS.md`.
 
 Use a dedicated contents file, typically `docs/contents.md`, as the index for
 the documentation set.
@@ -187,11 +182,6 @@ this means operators, end users, or integrators.
   that loader between integration tests and behaviour-driven scenarios, so a
   documented example becomes a contract the implementation must satisfy and
   cannot drift from the behaviour it claims.
-
-  In mxd, apply this rule to new project-authored user guides and to new or
-  substantively changed examples in existing guides. Existing examples and
-  library guides predate the shared loader and are not yet covered; migrate
-  them when their examples are changed.
 
 ### Migration guide
 
@@ -387,6 +377,11 @@ Name RFC files using the pattern `rfcs/rfc-nnnn-title-slug.md`, relative to the
 - Number RFCs sequentially in allocation order rather than by date.
 - Do not renumber existing RFCs after publication. Gaps are acceptable when
   numbers are reserved, drafted on another branch, or intentionally skipped.
+  Exception: where two RFCs share a number, renumber the later one (by first
+  appearance in history; if both first appear in the same commit, the one whose
+  title sorts later alphabetically) to the next free number, record "Renumbered
+  from NNNN on YYYY-MM-DD (duplicate number)" under its title, and update every
+  inbound link, including number-only references.
 - Keep the slug stable once the RFC is published. If the title changes
   materially, rename the file, keep the number, and update every inbound link.
 
@@ -444,7 +439,7 @@ proposal:
 - Update links when RFC filenames change, especially cross-references from one
   RFC to another.
 
-### RFC template
+#### RFC template
 
 ```markdown
 # RFC 0001: <title>
@@ -539,7 +534,12 @@ Name ADR files using the pattern `adrs/adr-nnnn-title-slug.md`, relative to the
   `Architectural decision record (ADR) nnnn:` prefix, following the same slug
   rules as RFC filenames.
 - Number ADRs sequentially in allocation order rather than by date, and do not
-  renumber an ADR after publication.
+  renumber an ADR after publication. Exception: where two ADRs share a number,
+  renumber the later one (by first appearance in history; if both first appear
+  in the same commit, the one whose title sorts later alphabetically) to the
+  next free number, record "Renumbered from NNNN on YYYY-MM-DD (duplicate
+  number)" under its title, and update every inbound link, including
+  number-only references.
 
 ### Required sections
 
@@ -587,8 +587,11 @@ Include these sections as appropriate to the decision's complexity:
 - Use tables to compare options when multiple dimensions are relevant. Include
   a caption below the table (e.g. “_Table 1: Trade-offs between X and Y._”).
 - Include code snippets with language identifiers when illustrating technical
-  approaches. Use `no_run` for illustrative Rust code that should not be
-  executed.
+  approaches. In Rustdoc, `no_run` still compiles the snippet, so reserve it
+  for complete Rust code that compiles but does not execute, for example
+  because it needs external resources, environment-specific setup, or a
+  long-running service. Use `ignore` for an incomplete snippet or one that
+  cannot compile: `ignore` skips both compilation and execution.
 - Add screen reader descriptions before complex diagrams or code blocks.
 - Reference external sources using inline links or footnotes.
 
@@ -722,9 +725,16 @@ contents of the manual.
 - Document any panics or errors with `# Panics` or `# Errors` as appropriate.
 - Place examples under `# Examples`. Let examples run as documentation tests
   when they can execute correctly, so the compiler verifies that they compile
-  and behave as documented. Mark examples with `no_run` only when they
-  genuinely cannot execute, such as examples that require external resources,
-  incomplete snippets, or environment-specific setup.
+  and behave as documented.
+- Import the documented item in each example. Rustdoc compiles a doctest as an
+  external crate that depends on the documented crate, so a bare call to the
+  item cannot resolve; use a hidden `# use crate_name::item;` line.
+- Use `no_run` for complete examples that must compile but must not execute,
+  such as examples that require external resources, environment-specific setup,
+  or a long-running service.
+- Use `ignore` for examples that are incomplete or otherwise cannot compile.
+  `no_run` only suppresses execution, so it cannot carry uncompilable code;
+  `ignore` skips both compilation and execution.
 - Put function attributes after the doc comment.
 
 ```rust,no_run
@@ -740,7 +750,7 @@ contents of the manual.
 /// # Examples
 ///
 /// ```rust
-/// # use example::add;
+/// # use mycrate::add;
 /// assert_eq!(add(2, 3), 5);
 /// ```
 #[inline]
@@ -748,6 +758,9 @@ pub fn add(a: i32, b: i32) -> i32 {
     a + b
 }
 ```
+
+Only the outer fence needs `no_run`, because it is a complete item that must
+compile but is not a program to execute; the inner doctest compiles and runs.
 
 ## Diagrams and images
 
