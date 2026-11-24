@@ -5,17 +5,19 @@
 
 use std::{
     ffi::OsString,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener},
+    net::SocketAddr,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
 
 mod binary;
 mod env;
+mod launch;
 mod readiness;
 mod target;
 
 pub use env::{DbUrl, ManifestPath};
+use launch::launch_server_process;
 #[cfg(unix)]
 use nix::{
     sys::signal::{Signal, kill},
@@ -24,7 +26,7 @@ use nix::{
 use readiness::wait_for_server;
 use target::ServerTarget;
 use tempfile::TempDir;
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 use crate::AnyError;
 #[cfg(feature = "postgres")]
@@ -37,7 +39,6 @@ use crate::postgres::PostgresTestDb;
 const SERVER_BINARY_NAME: &str = "mxd-wireframe-server";
 const DEFAULT_BIND_HOST: &str = "127.0.0.1";
 const TEST_BIND_HOST_ENV: &str = "MXD_TEST_BIND_HOST";
-const MAX_SERVER_LAUNCH_ATTEMPTS: u8 = 3;
 
 #[cfg(not(any(feature = "sqlite", feature = "postgres")))]
 compile_error!("Either feature 'sqlite' or 'postgres' must be enabled");
@@ -142,69 +143,6 @@ fn resolve_bind_host() -> Result<String, AnyError> {
     value
         .into_string()
         .map_err(|_| anyhow::anyhow!("{TEST_BIND_HOST_ENV} must be valid UTF-8"))
-}
-
-/// Spawns the configured server process on an ephemeral port and waits for the
-/// socket to accept connections before returning the child handle and chosen
-/// port.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "process spawning with cleanup on failure has inherent complexity"
-)]
-#[expect(
-    clippy::let_underscore_must_use,
-    reason = "best-effort cleanup; error already being propagated"
-)]
-fn launch_server_process(
-    target: &ServerTarget,
-    bind_host: &str,
-    db_url: &DbUrl,
-) -> Result<(Child, SocketAddr), AnyError> {
-    for attempt in 1..=MAX_SERVER_LAUNCH_ATTEMPTS {
-        let socket = TcpListener::bind((bind_host, 0))?;
-        let addr = socket.local_addr()?;
-        let readiness_addr = match addr.ip() {
-            IpAddr::V4(ip) if ip.is_unspecified() => {
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), addr.port())
-            }
-            IpAddr::V6(ip) if ip.is_unspecified() => {
-                SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), addr.port())
-            }
-            _ => addr,
-        };
-        drop(socket);
-
-        info!(
-            port = addr.port(),
-            db_url = %db_url,
-            attempt,
-            "launching server"
-        );
-        let mut child = build_server_command(target, addr, db_url).spawn()?;
-        debug!("spawned server process, waiting for readiness");
-        match wait_for_server(&mut child, readiness_addr) {
-            Ok(()) => {
-                info!(port = addr.port(), attempt, "server ready");
-                return Ok((child, addr));
-            }
-            Err(error) => {
-                warn!(error = %error, attempt, "wait_for_server failed");
-                let _ = child.kill();
-                let _ = child.wait();
-                if attempt == MAX_SERVER_LAUNCH_ATTEMPTS {
-                    return Err(error);
-                }
-                warn!(
-                    attempt,
-                    max_attempts = MAX_SERVER_LAUNCH_ATTEMPTS,
-                    "retrying server launch after readiness failure"
-                );
-            }
-        }
-    }
-    Err(anyhow::anyhow!(
-        "exhausted server launch attempts without readiness success"
-    ))
 }
 
 /// Integration test server wrapper that spawns the `mxd` process with the

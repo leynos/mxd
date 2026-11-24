@@ -1774,14 +1774,6 @@ automates pull-request housekeeping rather than building, and cancelling an
 auto-merge mid-flight is a hazard with no minutes to win. `release.yml` keeps
 its own `release-${{ github.ref }}` group, which queues rather than cancels.
 
-`tests/workflow_contracts/test_pull_request_concurrency.py` discovers every
-workflow declaring a `pull_request` trigger and asserts that its concurrency
-block is exactly the one above, by whole-value equality, so a run id anywhere
-but the fallback position, a `github.ref` fallback, a constant group, and a
-literal `true` all fail. A floor of the five known workflows keeps discovery
-from emptying into a vacuous pass, and unit cases drive the judgement with each
-refused shape, since the workflows as they stand exercise only the accepted one.
-
 ### A callee may not request more than its caller grants
 
 GitHub checks a reusable-workflow call before it starts any job. If a job of
