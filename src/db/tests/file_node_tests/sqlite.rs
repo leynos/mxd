@@ -34,10 +34,6 @@ use crate::{
 /// # Errors
 ///
 /// Propagates any database error encountered during the scenario.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "scenario-style test body is clearer kept as a linear flow"
-)]
 #[cfg(feature = "sqlite")]
 pub(crate) async fn legacy_file_acl_visibility_fallback_body(
     conn: &mut DbConnection,
@@ -136,10 +132,6 @@ async fn insert_legacy_file(conn: &mut DbConnection) -> Result<i32, AnyError> {
 /// # Errors
 ///
 /// Propagates any database error encountered during the scenario.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "scenario-style test body is clearer kept as a linear flow"
-)]
 pub(crate) async fn visible_root_files_merge_body(conn: &mut DbConnection) -> Result<(), AnyError> {
     create_user(
         conn,
@@ -153,30 +145,12 @@ pub(crate) async fn visible_root_files_merge_body(conn: &mut DbConnection) -> Re
         .await?
         .ok_or_else(|| anyhow::anyhow!("merge-user missing"))?;
 
-    let permission_id = seed_permission(conn, &crate::db::download_file_permission()).await?;
     let node_id = create_modern_file_node(conn, merge_user.id).await?;
     let legacy_id = insert_legacy_file(conn).await?;
     let visible_before_grants = list_visible_root_file_nodes_for_user(conn, merge_user.id).await?;
     assert_eq!(visible_before_grants.len(), 0);
 
-    grant_resource_permission(
-        conn,
-        &NewResourcePermission {
-            resource_type: "file_node",
-            resource_id: node_id,
-            principal_type: "user",
-            principal_id: merge_user.id,
-            permission_id,
-        },
-    )
-    .await?;
-    diesel::insert_into(legacy_file_acl::file_acl)
-        .values((
-            legacy_file_acl::file_id.eq(legacy_id),
-            legacy_file_acl::user_id.eq(merge_user.id),
-        ))
-        .execute(conn)
-        .await?;
+    grant_modern_and_legacy_access(conn, merge_user.id, node_id, legacy_id).await?;
 
     let visible = list_visible_root_file_nodes_for_user(conn, merge_user.id).await?;
     let visible_names = visible
@@ -184,6 +158,36 @@ pub(crate) async fn visible_root_files_merge_body(conn: &mut DbConnection) -> Re
         .map(|node| node.name)
         .collect::<Vec<_>>();
     assert_eq!(visible_names, vec!["legacy.txt", "modern.txt"]);
+    Ok(())
+}
+
+/// Grant `user_id` download access to the modern node and a legacy `file_acl`
+/// row for the legacy file.
+async fn grant_modern_and_legacy_access(
+    conn: &mut DbConnection,
+    user_id: i32,
+    node_id: i32,
+    legacy_id: i32,
+) -> Result<(), AnyError> {
+    let permission_id = seed_permission(conn, &crate::db::download_file_permission()).await?;
+    grant_resource_permission(
+        conn,
+        &NewResourcePermission {
+            resource_type: "file_node",
+            resource_id: node_id,
+            principal_type: "user",
+            principal_id: user_id,
+            permission_id,
+        },
+    )
+    .await?;
+    diesel::insert_into(legacy_file_acl::file_acl)
+        .values((
+            legacy_file_acl::file_id.eq(legacy_id),
+            legacy_file_acl::user_id.eq(user_id),
+        ))
+        .execute(conn)
+        .await?;
     Ok(())
 }
 

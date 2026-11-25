@@ -52,10 +52,6 @@ enum LaunchOutcome {
 }
 
 /// Starts the server process listening on `addr`.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "the tracing macros expand to branches that the lint counts"
-)]
 fn spawn_server(
     target: &ServerTarget,
     addr: SocketAddr,
@@ -74,10 +70,6 @@ fn spawn_server(
 }
 
 /// Waits for `child` to accept connections, killing and reaping it on failure.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "the tracing macros expand to branches that the lint counts"
-)]
 fn await_readiness(mut child: Child, addr: SocketAddr, attempt: u8) -> LaunchOutcome {
     match wait_for_server(&mut child, readiness_address(addr)) {
         Ok(()) => {

@@ -5,10 +5,6 @@
 //! codes when validation fails.
 
 #![expect(clippy::big_endian_bytes, reason = "network protocol uses big-endian")]
-#![expect(
-    clippy::cognitive_complexity,
-    reason = "login flow requires multiple validation steps"
-)]
 
 use std::net::SocketAddr;
 
