@@ -167,6 +167,68 @@ fn resolves_paths_and_aliases() -> Result<(), AnyError> {
     })
 }
 
+/// Create the `everyone` group with `member_id` in it, and grant the group
+/// download permission on a new shared root file owned by that member.
+async fn seed_group_download_grant(
+    conn: &mut DbConnection,
+    member_id: i32,
+) -> Result<(), AnyError> {
+    let permission_id = seed_permission(conn, &download_file_permission()).await?;
+
+    let group_id = create_group(conn, &NewGroup { name: "everyone" }).await?;
+    let _added = add_user_to_group(
+        conn,
+        &NewUserGroup {
+            user_id: member_id,
+            group_id,
+        },
+    )
+    .await?;
+
+    let node_id = create_shared_root_file(conn, member_id).await?;
+
+    let _granted = grant_resource_permission(
+        conn,
+        &NewResourcePermission {
+            resource_type: "file_node",
+            resource_id: node_id,
+            principal_type: "group",
+            principal_id: group_id,
+            permission_id,
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+/// Assert the group member sees exactly the shared file and the non-member
+/// sees nothing.
+async fn assert_group_grant_visibility(
+    conn: &mut DbConnection,
+    member_id: i32,
+    outsider_id: i32,
+) -> Result<(), AnyError> {
+    let visible = list_visible_root_file_nodes_for_user(conn, member_id).await?;
+    ensure!(
+        visible.len() == 1,
+        "group acl should expose one visible file node"
+    );
+    let node = visible
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("visible node missing after acl grant"))?;
+    ensure!(
+        node.name == "shared.txt",
+        "group acl should expose the expected file"
+    );
+
+    let outsider_visible = list_visible_root_file_nodes_for_user(conn, outsider_id).await?;
+    ensure!(
+        outsider_visible.is_empty(),
+        "user without acl membership should not see visible root file nodes"
+    );
+    Ok(())
+}
+
 #[test]
 fn group_acl_grants_root_visibility() -> Result<(), AnyError> {
     with_test_db(|runtime, db| {
@@ -176,51 +238,8 @@ fn group_acl_grants_root_visibility() -> Result<(), AnyError> {
             let alice = fetch_alice(&mut conn).await?;
             let bob = create_named_user(&mut conn, "bob").await?;
 
-            let permission_id = seed_permission(&mut conn, &download_file_permission()).await?;
-
-            let group_id = create_group(&mut conn, &NewGroup { name: "everyone" }).await?;
-            let _added = add_user_to_group(
-                &mut conn,
-                &NewUserGroup {
-                    user_id: alice.id,
-                    group_id,
-                },
-            )
-            .await?;
-
-            let node_id = create_shared_root_file(&mut conn, alice.id).await?;
-
-            let _granted = grant_resource_permission(
-                &mut conn,
-                &NewResourcePermission {
-                    resource_type: "file_node",
-                    resource_id: node_id,
-                    principal_type: "group",
-                    principal_id: group_id,
-                    permission_id,
-                },
-            )
-            .await?;
-
-            let visible = list_visible_root_file_nodes_for_user(&mut conn, alice.id).await?;
-            ensure!(
-                visible.len() == 1,
-                "group acl should expose one visible file node"
-            );
-            let node = visible
-                .first()
-                .ok_or_else(|| anyhow::anyhow!("visible node missing after acl grant"))?;
-            ensure!(
-                node.name == "shared.txt",
-                "group acl should expose the expected file"
-            );
-
-            let bob_visible = list_visible_root_file_nodes_for_user(&mut conn, bob.id).await?;
-            ensure!(
-                bob_visible.is_empty(),
-                "user without acl membership should not see visible root file nodes"
-            );
-            Ok(())
+            seed_group_download_grant(&mut conn, alice.id).await?;
+            assert_group_grant_visibility(&mut conn, alice.id, bob.id).await
         })
     })
 }
