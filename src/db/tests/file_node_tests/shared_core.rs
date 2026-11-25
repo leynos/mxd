@@ -320,7 +320,10 @@ async fn create_reviewers_group_with_member(
     user_id: i32,
 ) -> Result<i32, AnyError> {
     let group_id = create_group(conn, &NewGroup { name: "reviewers" }).await?;
-    assert!(add_user_to_group(conn, &NewUserGroup { user_id, group_id }).await?);
+    assert!(
+        add_user_to_group(conn, &NewUserGroup { user_id, group_id }).await?,
+        "setup requires a newly inserted membership for user {user_id} in group {group_id}"
+    );
     Ok(group_id)
 }
 
