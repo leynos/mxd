@@ -26,10 +26,6 @@ use crate::{
 /// # Errors
 ///
 /// Propagates any database error encountered during the scenario.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "scenario-style test body is clearer kept as a linear flow"
-)]
 pub(crate) async fn file_node_acl_flow_body(conn: &mut DbConnection) -> Result<(), AnyError> {
     let user = NewUser {
         username: "carol",
@@ -80,10 +76,6 @@ pub(crate) async fn file_node_acl_flow_body(conn: &mut DbConnection) -> Result<(
 /// # Errors
 ///
 /// Propagates any database error encountered during the scenario.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "scenario-style test body is clearer kept as a linear flow"
-)]
 pub(crate) async fn resolve_file_node_path_and_alias_body(
     conn: &mut DbConnection,
 ) -> Result<(), AnyError> {
@@ -166,10 +158,6 @@ pub(crate) async fn resolve_file_node_path_and_alias_body(
 /// # Errors
 ///
 /// Propagates any database error encountered during the scenario.
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "scenario-style test body is clearer kept as a linear flow"
-)]
 pub(crate) async fn group_acl_visibility_body(conn: &mut DbConnection) -> Result<(), AnyError> {
     let erin_id = create_user_id(conn, "erin").await?;
     let group_id = create_reviewers_group_with_member(conn, erin_id).await?;
