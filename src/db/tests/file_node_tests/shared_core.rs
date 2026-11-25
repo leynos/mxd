@@ -171,46 +171,10 @@ pub(crate) async fn resolve_file_node_path_and_alias_body(
     reason = "scenario-style test body is clearer kept as a linear flow"
 )]
 pub(crate) async fn group_acl_visibility_body(conn: &mut DbConnection) -> Result<(), AnyError> {
-    create_user(
-        conn,
-        &NewUser {
-            username: "erin",
-            password: "hash",
-        },
-    )
-    .await?;
-    let erin = get_user_by_name(conn, "erin")
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("user missing"))?;
-
-    let group_id = create_group(conn, &NewGroup { name: "reviewers" }).await?;
-    assert!(
-        add_user_to_group(
-            conn,
-            &NewUserGroup {
-                user_id: erin.id,
-                group_id,
-            },
-        )
-        .await?
-    );
-
-    let node_id = create_file_node(
-        conn,
-        &NewFileNode {
-            kind: FileNodeKind::File.as_str(),
-            name: "shared.txt",
-            parent_id: None,
-            alias_target_id: None,
-            object_key: Some("objects/shared.txt"),
-            size: Some(11),
-            comment: None,
-            is_dropbox: false,
-            creator_id: erin.id,
-        },
-    )
-    .await?;
-    let visible_before_grant = list_visible_root_file_nodes_for_user(conn, erin.id).await?;
+    let erin_id = create_user_id(conn, "erin").await?;
+    let group_id = create_reviewers_group_with_member(conn, erin_id).await?;
+    let node_id = create_shared_file_node(conn, erin_id).await?;
+    let visible_before_grant = list_visible_root_file_nodes_for_user(conn, erin_id).await?;
     assert_eq!(visible_before_grant.len(), 0);
 
     let permission_id = seed_download_permission(conn).await?;
@@ -229,7 +193,7 @@ pub(crate) async fn group_acl_visibility_body(conn: &mut DbConnection) -> Result
         .await?
     );
 
-    let visible = list_visible_root_file_nodes_for_user(conn, erin.id).await?;
+    let visible = list_visible_root_file_nodes_for_user(conn, erin_id).await?;
     assert_eq!(visible.len(), 1);
     assert_eq!(visible[0].name, "shared.txt");
     Ok(())
@@ -347,6 +311,43 @@ async fn create_user_id(conn: &mut DbConnection, name: &'static str) -> Result<i
         .await?
         .map(|user| user.id)
         .ok_or_else(|| anyhow::anyhow!("user missing"))
+}
+
+/// Create the `reviewers` group and add `user_id` to it, asserting the
+/// membership was newly recorded.
+async fn create_reviewers_group_with_member(
+    conn: &mut DbConnection,
+    user_id: i32,
+) -> Result<i32, AnyError> {
+    let group_id = create_group(conn, &NewGroup { name: "reviewers" }).await?;
+    assert!(
+        add_user_to_group(conn, &NewUserGroup { user_id, group_id }).await?,
+        "setup requires a newly inserted membership for user {user_id} in group {group_id}"
+    );
+    Ok(group_id)
+}
+
+/// Create the root `shared.txt` file node owned by `creator_id`.
+async fn create_shared_file_node(
+    conn: &mut DbConnection,
+    creator_id: i32,
+) -> Result<i32, AnyError> {
+    let node_id = create_file_node(
+        conn,
+        &NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "shared.txt",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some("objects/shared.txt"),
+            size: Some(11),
+            comment: None,
+            is_dropbox: false,
+            creator_id,
+        },
+    )
+    .await?;
+    Ok(node_id)
 }
 
 async fn create_group_with_member(conn: &mut DbConnection, user_id: i32) -> Result<i32, AnyError> {

@@ -85,6 +85,47 @@ pub(crate) async fn legacy_file_acl_visibility_fallback_body(
     Ok(())
 }
 
+/// Create the root `modern.txt` file node owned by `creator_id`.
+async fn create_modern_file_node(
+    conn: &mut DbConnection,
+    creator_id: i32,
+) -> Result<i32, AnyError> {
+    let node_id = create_file_node(
+        conn,
+        &NewFileNode {
+            kind: FileNodeKind::File.as_str(),
+            name: "modern.txt",
+            parent_id: None,
+            alias_target_id: None,
+            object_key: Some("objects/modern.txt"),
+            size: Some(11),
+            comment: None,
+            is_dropbox: false,
+            creator_id,
+        },
+    )
+    .await?;
+    Ok(node_id)
+}
+
+/// Insert the legacy `legacy.txt` row into `files` and return its id.
+async fn insert_legacy_file(conn: &mut DbConnection) -> Result<i32, AnyError> {
+    diesel::insert_into(legacy_files::files)
+        .values((
+            legacy_files::name.eq("legacy.txt"),
+            legacy_files::object_key.eq("objects/legacy.txt"),
+            legacy_files::size.eq(7_i64),
+        ))
+        .execute(conn)
+        .await?;
+    let legacy_id = legacy_files::files
+        .filter(legacy_files::name.eq("legacy.txt"))
+        .select(legacy_files::id)
+        .first::<i32>(conn)
+        .await?;
+    Ok(legacy_id)
+}
+
 /// Verify that modern `file_nodes` and legacy `files` rows are merged and
 /// deduplicated correctly in `list_visible_root_file_nodes_for_user`.
 ///
@@ -113,34 +154,8 @@ pub(crate) async fn visible_root_files_merge_body(conn: &mut DbConnection) -> Re
         .ok_or_else(|| anyhow::anyhow!("merge-user missing"))?;
 
     let permission_id = seed_permission(conn, &crate::db::download_file_permission()).await?;
-    let node_id = create_file_node(
-        conn,
-        &NewFileNode {
-            kind: FileNodeKind::File.as_str(),
-            name: "modern.txt",
-            parent_id: None,
-            alias_target_id: None,
-            object_key: Some("objects/modern.txt"),
-            size: Some(11),
-            comment: None,
-            is_dropbox: false,
-            creator_id: merge_user.id,
-        },
-    )
-    .await?;
-    diesel::insert_into(legacy_files::files)
-        .values((
-            legacy_files::name.eq("legacy.txt"),
-            legacy_files::object_key.eq("objects/legacy.txt"),
-            legacy_files::size.eq(7_i64),
-        ))
-        .execute(conn)
-        .await?;
-    let legacy_id = legacy_files::files
-        .filter(legacy_files::name.eq("legacy.txt"))
-        .select(legacy_files::id)
-        .first::<i32>(conn)
-        .await?;
+    let node_id = create_modern_file_node(conn, merge_user.id).await?;
+    let legacy_id = insert_legacy_file(conn).await?;
     let visible_before_grants = list_visible_root_file_nodes_for_user(conn, merge_user.id).await?;
     assert_eq!(visible_before_grants.len(), 0);
 
