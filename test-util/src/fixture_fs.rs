@@ -203,35 +203,28 @@ pub fn read_to_string(path: &Path) -> io::Result<String> {
 mod tests {
     //! Unit tests for the fixture filesystem helpers.
 
+    use rstest::rstest;
     use tempfile::TempDir;
 
     use super::*;
 
-    #[test]
-    fn written_file_reads_back() {
-        let dir = TempDir::new().expect("temporary directory");
-        let path = dir.path().join("file.txt");
+    type Writer = fn(&Path, &[u8]) -> io::Result<()>;
 
-        write_file(&path, b"hello").expect("write file");
+    #[rstest]
+    #[case::existing_directory(write_file, &["file.txt"])]
+    #[case::missing_parents(write_file_creating_parents, &["a", "b", "file.txt"])]
+    fn written_file_reads_back(#[case] writer: Writer, #[case] components: &[&str]) {
+        let dir = TempDir::new().expect("temporary directory");
+        let path = components
+            .iter()
+            .fold(dir.path().to_path_buf(), |acc, part| acc.join(part));
+
+        writer(&path, b"hello").expect("write file");
 
         assert_eq!(
             read_to_string(&path).expect("read file"),
             "hello",
             "a written file should read back unchanged"
-        );
-    }
-
-    #[test]
-    fn parents_are_created_on_request() {
-        let dir = TempDir::new().expect("temporary directory");
-        let path = dir.path().join("a").join("b").join("file.txt");
-
-        write_file_creating_parents(&path, b"nested").expect("write file");
-
-        assert_eq!(
-            read_to_string(&path).expect("read file"),
-            "nested",
-            "missing parent directories should be created"
         );
     }
 
