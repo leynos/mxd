@@ -220,6 +220,9 @@ jobs:
         run: |
           RSTEST_TIMEOUT=20 cargo nextest run ${{ matrix.cargo_flags }} \
             --filter-expr 'not package(=validator)'
+      - name: Test helper crates
+        if: matrix.name == 'wireframe-only'
+        run: make test-helper-crates
       - name: Test rstest-bdd UI contracts
         if: matrix.name == 'wireframe-only'
         run: make test-rstest-bdd-ui
