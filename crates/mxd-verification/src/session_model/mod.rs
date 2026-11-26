@@ -215,6 +215,8 @@ impl Model for SessionModel {
 
 #[cfg(test)]
 mod tests {
+    //! Model-checking tests for the session model.
+
     use std::collections::BTreeSet;
 
     use stateright::{Checker, HasDiscoveries};

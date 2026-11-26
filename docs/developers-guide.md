@@ -88,9 +88,13 @@ caller can override) behind a plain `RUSTFLAGS` assignment, with
 ```sh
 env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" \
   CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm \
-  whitaker --all -- --no-default-features \
+  whitaker --all -- --workspace --no-default-features \
     --features "postgres test-support legacy-networking" --all-targets
 ```
+
+`--workspace` is required: the workspace sets `default-members = ["."]`, so
+without it Cargo selects only the root package and the member crates
+(`validator`, `test-util`, `mxd-verification` and the rest) go unlinted.
 
 The build-standard rule reads that shape as an isolated Whitaker route; a
 `PATH=` prefix written out in the recipe with Make functions in it is not read,
@@ -113,7 +117,7 @@ For a local lint invocation, the effective command shape is:
 ```sh
 PATH="${TOOL_PATH_PREFIX:+$TOOL_PATH_PREFIX:}$PATH" RUSTFLAGS="-D warnings" \
   CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm \
-  whitaker --all -- --features "sqlite test-support" --all-targets
+  whitaker --all -- --workspace --features "sqlite test-support" --all-targets
 ```
 
 That prefix means Cargo subcommands installed under `~/.cargo/bin`, Whitaker
@@ -1030,6 +1034,20 @@ fails the build. Fix a finding by extracting named helpers, never by raising
 the threshold. A Whitaker suite installed before the lint existed does not
 register it and silently leaves the gate inactive, so rerun
 `whitaker-installer` to refresh the suite after updating a checkout.
+
+### Whole-workspace Whitaker and capability-scoped file access
+
+`make lint` and CI pass `--workspace` to Whitaker, so every member crate is
+linted, including `validator`, `test-util` and `mxd-verification`. Its
+`no_std_fs_operations` lint rejects ambient `std::fs` calls; in-source `allow`
+attributes do not silence it. Stage and read fixture files through
+`test_util::fixture_fs` instead. It opens a file's parent directory as a
+`cap_std` `Dir` and performs the operation through that handle, so the ambient
+authority is requested in one place. Permitted callers are tests that stage
+fixtures and the validator's configuration read, which follows symbolic links
+like `std::fs::read_to_string`. Production code in the server takes explicit
+capability handles and does not use this module. A new test crate that needs a
+different shape of access extends `fixture_fs` rather than excluding itself.
 
 ### Markdown formatting
 

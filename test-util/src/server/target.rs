@@ -89,7 +89,7 @@ mod tests {
     fn a_named_file_is_the_program_that_launches() {
         let dir = TempDir::new().expect("temporary directory");
         let binary = dir.path().join("distinguishable-server");
-        std::fs::write(&binary, b"").expect("write the stand-in binary");
+        crate::fixture_fs::write_file(&binary, b"").expect("write the stand-in binary");
 
         let command = launch_command(&target(Some(&binary)));
 
@@ -133,7 +133,7 @@ mod tests {
     fn a_named_relative_file_is_returned_by_absolute_path() {
         let dir = TempDir::new_in(".").expect("temporary directory in the working directory");
         let absolute = dir.path().join("relative-server");
-        std::fs::write(&absolute, b"").expect("write the stand-in binary");
+        crate::fixture_fs::write_file(&absolute, b"").expect("write the stand-in binary");
         let working_directory = std::env::current_dir().expect("working directory");
         let binary = absolute
             .strip_prefix(working_directory)
@@ -159,7 +159,7 @@ mod tests {
         let dir = TempDir::new_in(".").expect("temporary directory in the working directory");
         let file = dir.path().join("real-server");
         let link = dir.path().join("linked-server");
-        std::fs::write(&file, b"").expect("write the stand-in binary");
+        crate::fixture_fs::write_file(&file, b"").expect("write the stand-in binary");
         std::os::unix::fs::symlink(&file, &link).expect("create the link");
         let working_directory = std::env::current_dir().expect("working directory");
         let relative = link

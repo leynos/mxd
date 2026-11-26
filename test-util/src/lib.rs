@@ -11,6 +11,7 @@ pub type AnyError = anyhow::Error;
 pub mod postgres;
 
 mod bdd_helpers;
+pub mod fixture_fs;
 mod fixtures;
 mod protocol;
 mod server;

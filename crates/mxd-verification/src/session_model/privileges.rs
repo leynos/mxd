@@ -67,6 +67,8 @@ pub const fn has_privilege(privileges: u64, required: u64) -> bool {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for the privilege model.
+
     use rstest::rstest;
 
     use super::*;

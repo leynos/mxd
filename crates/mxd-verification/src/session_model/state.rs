@@ -258,6 +258,8 @@ impl SystemState {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for the session-model state transitions.
+
     use rstest::rstest;
 
     use super::*;

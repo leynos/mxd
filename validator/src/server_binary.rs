@@ -166,16 +166,15 @@ fn candidate_binary_paths(workspace_root: &Path, backend: ValidatorBackend) -> V
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    //! Unit tests for server-binary resolution.
 
     use tempfile::TempDir;
+    use test_util::fixture_fs::write_file_creating_parents;
 
     use super::*;
 
     fn touch_binary(path: &Path) {
-        let parent = path.parent().expect("binary path should have a parent");
-        fs::create_dir_all(parent).expect("create binary directory");
-        fs::write(path, b"binary").expect("write binary");
+        write_file_creating_parents(path, b"binary").expect("write binary");
     }
 
     #[test]

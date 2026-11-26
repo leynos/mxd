@@ -216,10 +216,9 @@ mod tests {
     //! These tests cover the lightweight output classifier plus resolver behaviour
     //! around missing overrides and accepted executable paths.
 
-    use std::{fs, os::unix::fs::PermissionsExt};
-
     use rstest::rstest;
     use tempfile::TempDir;
+    use test_util::fixture_fs::write_executable;
 
     use super::*;
 
@@ -268,19 +267,8 @@ mod tests {
     fn timeout_probe_is_treated_as_non_helix() {
         let temp_dir = TempDir::new().expect("create temp dir");
         let hx_script = temp_dir.path().join("hx");
-        {
-            use std::io::Write as _;
-
-            let mut file = fs::File::create(&hx_script).expect("create timeout script");
-            file.write_all(b"#!/usr/bin/env sh\nsleep 2\n")
-                .expect("write timeout script");
-            file.sync_all().expect("sync timeout script to disk");
-        }
-        let mut permissions = fs::metadata(&hx_script)
-            .expect("read timeout script metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&hx_script, permissions).expect("make timeout script executable");
+        write_executable(&hx_script, b"#!/usr/bin/env sh\nsleep 2\n")
+            .expect("write executable timeout script");
 
         let resolved = resolve_hx_binary_with_env(None, Some(hx_script.clone()))
             .expect("timeout probe should still accept non-Helix hx");
