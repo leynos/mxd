@@ -129,6 +129,8 @@ pub fn login(stream: &mut TcpStream, username: &str, password: &str) -> std::io:
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for the protocol test helpers.
+
     use rstest::rstest;
 
     use super::*;

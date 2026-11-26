@@ -16,15 +16,16 @@ fn scenario_selection_and_harness_compile_contracts_are_stable() {
     cases.compile_fail("tests/ui/fail_missing_scenario.rs");
 }
 
-/// Scenario wrappers pinned in test mode, where they are actually type-checked.
-///
-/// Feature paths here resolve against this package's manifest directory
-/// (`tests/rstest-bdd-ui`), which is why they carry fewer `../` hops than the
-/// trybuild fixtures. Those fixtures are compiled in a scratch crate nested
-/// under `target/tests/trybuild/`, so the same file needs a longer relative
-/// path from there. Both forms reach the same `.feature` files.
 #[cfg(test)]
 mod fixture_scenarios {
+    //! Scenario wrappers pinned in test mode, where they are actually type-checked.
+    //!
+    //! Feature paths here resolve against this package's manifest directory
+    //! (`tests/rstest-bdd-ui`), which is why they carry fewer `../` hops than the
+    //! trybuild fixtures. Those fixtures are compiled in a scratch crate nested
+    //! under `target/tests/trybuild/`, so the same file needs a longer relative
+    //! path from there. Both forms reach the same `.feature` files.
+
     use rstest::fixture;
     use rstest_bdd_macros::{given, scenario, then, when};
 

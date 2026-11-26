@@ -96,6 +96,8 @@ fn wait_for_listening(addr: SocketAddr, timeout: Duration) -> Result<(), AnyErro
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for server readiness probing.
+
     use std::{
         net::{SocketAddr, TcpListener},
         process::Command,

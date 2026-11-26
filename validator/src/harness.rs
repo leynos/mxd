@@ -259,6 +259,8 @@ impl From<ServerBinaryError> for PrerequisiteError {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for the validator harness error formatting.
+
     use super::{format_expect_error, interpret_no_match_result};
 
     #[test]

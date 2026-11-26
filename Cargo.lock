@@ -4490,6 +4490,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argon2",
+ "cap-std",
  "chrono",
  "diesel",
  "diesel-async",

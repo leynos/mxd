@@ -7,11 +7,11 @@
 
 use std::{
     env,
-    fs,
     path::{Path, PathBuf},
 };
 
 use serde::Deserialize;
+use test_util::fixture_fs::read_to_string;
 use thiserror::Error;
 
 /// Environment variable that points at an alternate validator config file.
@@ -112,11 +112,10 @@ impl ValidatorConfig {
     }
 
     fn from_file(path: &Path) -> Result<Self, ValidatorConfigError> {
-        let contents =
-            fs::read_to_string(path).map_err(|source| ValidatorConfigError::ReadConfig {
-                path: path.to_path_buf(),
-                source,
-            })?;
+        let contents = read_to_string(path).map_err(|source| ValidatorConfigError::ReadConfig {
+            path: path.to_path_buf(),
+            source,
+        })?;
         let parsed: FileConfig =
             toml::from_str(&contents).map_err(|source| ValidatorConfigError::ParseConfig {
                 path: path.to_path_buf(),
@@ -225,10 +224,13 @@ fn parse_bool_env(env_var: &'static str, value: &str) -> Result<bool, ValidatorC
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for validator configuration loading.
+
     use std::collections::BTreeMap;
 
     use rstest::{fixture, rstest};
     use tempfile::TempDir;
+    use test_util::fixture_fs::write_file;
 
     use super::*;
 
@@ -260,7 +262,7 @@ mod tests {
 
     fn write_config(temp_dir: &TempDir, contents: &str) -> PathBuf {
         let path = config_path(temp_dir);
-        fs::write(&path, contents).expect("write validator config");
+        write_file(&path, contents.as_bytes()).expect("write validator config");
         path
     }
 

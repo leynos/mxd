@@ -219,6 +219,8 @@ pub fn can_deliver_out_of_order() -> Property<SessionModel> {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for the session-model properties.
+
     use super::*;
 
     #[test]

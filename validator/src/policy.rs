@@ -112,6 +112,8 @@ fn ci_env_enables_fail_closed(value: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for the validator flow policy.
+
     use std::collections::BTreeMap;
 
     use rstest::rstest;
