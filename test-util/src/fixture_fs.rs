@@ -84,7 +84,11 @@ fn nearest_existing_ancestor(dir: &Path) -> io::Result<PathBuf> {
 /// let dir = tempfile::tempdir()?;
 /// let path = dir.path().join("note.txt");
 /// write_file(&path, b"hello")?;
-/// assert_eq!(read_to_string(&path)?, "hello");
+/// assert_eq!(
+///     read_to_string(&path)?,
+///     "hello",
+///     "the file reads back as written"
+/// );
 /// # Ok::<(), std::io::Error>(())
 /// ```
 pub fn write_file(path: &Path, contents: &[u8]) -> io::Result<()> {
@@ -109,7 +113,7 @@ pub fn write_file(path: &Path, contents: &[u8]) -> io::Result<()> {
 /// let dir = tempfile::tempdir()?;
 /// let path = dir.path().join("a").join("b").join("note.txt");
 /// write_file_creating_parents(&path, b"nested")?;
-/// assert_eq!(read_to_string(&path)?, "nested");
+/// assert_eq!(read_to_string(&path)?, "nested", "the parents were created");
 /// # Ok::<(), std::io::Error>(())
 /// ```
 pub fn write_file_creating_parents(path: &Path, contents: &[u8]) -> io::Result<()> {
@@ -148,7 +152,7 @@ pub fn write_file_creating_parents(path: &Path, contents: &[u8]) -> io::Result<(
 /// let path = dir.path().join("run.sh");
 /// write_executable(&path, b"#!/bin/sh\n")?;
 /// let mode = std::fs::metadata(&path)?.permissions().mode();
-/// assert_eq!(mode & 0o777, 0o755);
+/// assert_eq!(mode & 0o777, 0o755, "the script is executable");
 /// # Ok::<(), std::io::Error>(())
 /// ```
 pub fn write_executable(path: &Path, contents: &[u8]) -> io::Result<()> {
@@ -175,12 +179,17 @@ pub fn write_executable(path: &Path, contents: &[u8]) -> io::Result<()> {
 /// let dir = tempfile::tempdir()?;
 /// let path = dir.path().join("note.txt");
 /// write_file(&path, b"hello")?;
-/// assert_eq!(read_to_string(&path)?, "hello");
+/// assert_eq!(
+///     read_to_string(&path)?,
+///     "hello",
+///     "the file reads back as written"
+/// );
 /// # Ok::<(), std::io::Error>(())
 /// ```
 pub fn read_to_string(path: &Path) -> io::Result<String> {
     let mut current = path.to_path_buf();
-    for _ in 0..MAX_LINK_HOPS {
+    // Up to `MAX_LINK_HOPS` links are followed, then the final target is read.
+    for _ in 0..=MAX_LINK_HOPS {
         let (dir, name) = open_parent(&current)?;
         // `read_link_contents` fails for anything that is not a symbolic link.
         let Ok(target) = dir.read_link_contents(&name) else {
@@ -296,6 +305,41 @@ mod tests {
             read_to_string(&relative_link).expect("read through relative link"),
             "value = 1",
             "a relative link that leaves its directory should be followed"
+        );
+    }
+
+    #[rstest]
+    #[case::at_the_limit(40, true)]
+    #[case::beyond_the_limit(41, false)]
+    fn link_chains_are_followed_up_to_the_limit(#[case] links: usize, #[case] readable: bool) {
+        let dir = TempDir::new().expect("temporary directory");
+        write_file(&dir.path().join("link-0"), b"end").expect("write target");
+        for index in 1..=links {
+            std::os::unix::fs::symlink(
+                format!("link-{}", index - 1),
+                dir.path().join(format!("link-{index}")),
+            )
+            .expect("create link");
+        }
+
+        let outcome = read_to_string(&dir.path().join(format!("link-{links}")));
+
+        assert_eq!(
+            outcome.is_ok(),
+            readable,
+            "a chain of {links} links should be readable: {readable}"
+        );
+    }
+
+    #[test]
+    fn a_missing_first_component_resolves_to_the_working_directory() {
+        let existing = nearest_existing_ancestor(Path::new("no-such-top-level-dir/sub"))
+            .expect("the working directory exists");
+
+        assert_eq!(
+            existing,
+            Path::new("."),
+            "a relative path with no existing component starts at the working directory"
         );
     }
 

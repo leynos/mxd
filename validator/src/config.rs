@@ -230,7 +230,7 @@ mod tests {
 
     use rstest::{fixture, rstest};
     use tempfile::TempDir;
-    use test_util::fixture_fs::write_file;
+    use test_util::fixture_fs::{write_file, write_file_creating_parents};
 
     use super::*;
 
@@ -323,6 +323,23 @@ mod tests {
             ValidatorConfig::load_from_sources(path.as_deref(), &case.env).expect("load config");
 
         assert_eq!(config.is_enabled(case.validator), case.expected_enabled);
+    }
+
+    #[rstest]
+    fn a_symlinked_config_file_outside_its_directory_is_loaded(temp_config_dir: TempDir) {
+        let real = write_config(&temp_config_dir, "[validators]\nchat = true\n");
+        let links = temp_config_dir.path().join("links");
+        write_file_creating_parents(&links.join("keep"), b"").expect("create link directory");
+        let link = links.join("validator.toml");
+        std::os::unix::fs::symlink(&real, &link).expect("create config link");
+
+        let config = ValidatorConfig::load_from_sources(Some(&link), &FakeEnv::default())
+            .expect("load config through the link");
+
+        assert!(
+            config.is_enabled(PendingValidator::Chat),
+            "a symlinked configuration file should be read like the file it names"
+        );
     }
 
     #[test]
