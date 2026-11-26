@@ -88,9 +88,13 @@ caller can override) behind a plain `RUSTFLAGS` assignment, with
 ```sh
 env -u CARGO_ENCODED_RUSTFLAGS RUSTFLAGS="-D warnings" \
   CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm \
-  whitaker --all -- --no-default-features \
+  whitaker --all -- --workspace --no-default-features \
     --features "postgres test-support legacy-networking" --all-targets
 ```
+
+`--workspace` is required: the workspace sets `default-members = ["."]`, so
+without it Cargo selects only the root package and the member crates
+(`validator`, `test-util`, `mxd-verification` and the rest) go unlinted.
 
 The build-standard rule reads that shape as an isolated Whitaker route; a
 `PATH=` prefix written out in the recipe with Make functions in it is not read,
@@ -113,7 +117,7 @@ For a local lint invocation, the effective command shape is:
 ```sh
 PATH="${TOOL_PATH_PREFIX:+$TOOL_PATH_PREFIX:}$PATH" RUSTFLAGS="-D warnings" \
   CARGO_UNSTABLE_CODEGEN_BACKEND=true CARGO_PROFILE_DEV_CODEGEN_BACKEND=llvm \
-  whitaker --all -- --features "sqlite test-support" --all-targets
+  whitaker --all -- --workspace --features "sqlite test-support" --all-targets
 ```
 
 That prefix means Cargo subcommands installed under `~/.cargo/bin`, Whitaker
