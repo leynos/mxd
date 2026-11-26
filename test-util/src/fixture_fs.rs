@@ -69,6 +69,22 @@ fn nearest_existing_ancestor(dir: &Path) -> io::Result<PathBuf> {
         })
 }
 
+/// The part of `parent` below its nearest existing ancestor `existing`.
+///
+/// A relative `parent` whose ancestor is the working directory (`.`) is wholly
+/// missing; `.` itself has nothing missing.
+fn missing_suffix<'a>(parent: &'a Path, existing: &Path) -> io::Result<&'a Path> {
+    if parent == Path::new(".") {
+        Ok(Path::new(""))
+    } else if existing == Path::new(".") && parent.is_relative() {
+        Ok(parent)
+    } else {
+        parent
+            .strip_prefix(existing)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
+    }
+}
+
 /// Write `contents` to the file at `path`, creating or truncating it.
 ///
 /// # Errors
@@ -119,15 +135,7 @@ pub fn write_file(path: &Path, contents: &[u8]) -> io::Result<()> {
 pub fn write_file_creating_parents(path: &Path, contents: &[u8]) -> io::Result<()> {
     let (parent, _) = parent_and_name(path)?;
     let existing = nearest_existing_ancestor(&parent)?;
-    let missing = if parent == Path::new(".") {
-        Path::new("")
-    } else if existing == Path::new(".") && parent.is_relative() {
-        parent.as_path()
-    } else {
-        parent
-            .strip_prefix(&existing)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?
-    };
+    let missing = missing_suffix(&parent, &existing)?;
     if !missing.as_os_str().is_empty() {
         Dir::open_ambient_dir(&existing, ambient_authority())?.create_dir_all(missing)?;
     }
@@ -340,6 +348,25 @@ mod tests {
             existing,
             Path::new("."),
             "a relative path with no existing component starts at the working directory"
+        );
+    }
+
+    #[rstest]
+    #[case::wholly_missing_relative("no-such-top-level-dir/sub", ".", "no-such-top-level-dir/sub")]
+    #[case::working_directory_itself(".", ".", "")]
+    #[case::below_an_existing_directory("/tmp/a/b", "/tmp", "a/b")]
+    fn the_missing_suffix_is_what_lies_below_the_existing_ancestor(
+        #[case] parent: &str,
+        #[case] existing: &str,
+        #[case] expected: &str,
+    ) {
+        let missing = missing_suffix(Path::new(parent), Path::new(existing))
+            .expect("the existing ancestor is a prefix of the parent");
+
+        assert_eq!(
+            missing,
+            Path::new(expected),
+            "{parent} below {existing} should leave {expected} to create"
         );
     }
 
