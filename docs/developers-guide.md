@@ -1035,6 +1035,20 @@ the threshold. A Whitaker suite installed before the lint existed does not
 register it and silently leaves the gate inactive, so rerun
 `whitaker-installer` to refresh the suite after updating a checkout.
 
+### Whole-workspace Whitaker and capability-scoped file access
+
+`make lint` and CI pass `--workspace` to Whitaker, so every member crate is
+linted, including `validator`, `test-util` and `mxd-verification`. Its
+`no_std_fs_operations` lint rejects ambient `std::fs` calls; in-source `allow`
+attributes do not silence it. Stage and read fixture files through
+`test_util::fixture_fs` instead. It opens a file's parent directory as a
+`cap_std` `Dir` and performs the operation through that handle, so the ambient
+authority is requested in one place. Permitted callers are tests that stage
+fixtures and the validator's configuration read, which follows symbolic links
+like `std::fs::read_to_string`. Production code in the server takes explicit
+capability handles and does not use this module. A new test crate that needs a
+different shape of access extends `fixture_fs` rather than excluding itself.
+
 ### Markdown formatting
 
 `make fmt` and `make check-fmt` run `mdtablefix` over the Markdown files Git
