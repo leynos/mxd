@@ -1,4 +1,4 @@
-.PHONY: help all clean build release fetch test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness test-rstest-bdd-ui test-rstest-bdd-ui-timeouts validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency check-loom test-loom test-loom-runner warm-postgres interrogate install-kani kani
+.PHONY: help all clean build release fetch test test-doc test-postgres test-sqlite test-wireframe-only test-verification test-fuzz-harness test-rstest-bdd-ui test-rstest-bdd-ui-timeouts validator-sqlite-server validator-postgres-server test-validator-sqlite test-validator-postgres lint lint-postgres lint-sqlite lint-wireframe-only typecheck typecheck-postgres typecheck-sqlite typecheck-wireframe-only fmt check-fmt markdownlint nixie audit rust-audit corpus sqlite postgres sqlite-release postgres-release tlc tlc-handshake spelling test-codescene-boundary test-spelling-gate test-workflow-contracts check-locked test-dependabot-policy test-concurrency test-helper-crates check-loom test-loom test-loom-runner warm-postgres interrogate install-kani kani
 
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(HOME)/.bun/bin:$(PATH)
 
@@ -306,9 +306,9 @@ fetch: ## Download the locked dependencies once, so nested cargo runs offline
 	$(CARGO) fetch --locked
 
 # The suites run only after the fetch has succeeded, even under `make -j`.
-test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-verification test-fuzz-harness test-concurrency test-doc: | fetch
+test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-verification test-fuzz-harness test-concurrency test-helper-crates test-doc: | fetch
 
-test: fetch test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-verification test-fuzz-harness test-concurrency test-doc ## Run database, wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency-kernel, and doc suites
+test: fetch test-postgres test-sqlite test-wireframe-only test-rstest-bdd-ui test-verification test-fuzz-harness test-concurrency test-helper-crates test-doc ## Run database, wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency-kernel, helper-crate, and doc suites
 
 # Note: RSTEST_TIMEOUT is intentionally omitted for postgres tests because
 # TestCluster is !Send (uses ScopedEnv with PhantomData<*const ()>) and rstest's
@@ -376,6 +376,14 @@ test-verification: ## Run verification crate tests
 
 test-fuzz-harness: ## Run the AFL harness's case-handling tests, which need no AFL runtime
 	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p fuzz
+
+# The root package's `default-members = ["."]` keeps `cargo nextest run` off the
+# helper crates, so they get a run of their own (DF12-120). `validator` is the
+# one member left out of this and the feature-set runs: its tests need a built
+# server and run through `make test-validator-sqlite`.
+test-helper-crates: ## Run the CLI-definition and test-utility crates' own tests
+	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p cli-defs -p test-util
+	$(GATE_RUSTFLAGS) $(CARGO) test --doc -p cli-defs -p test-util
 
 test-concurrency: ## Run the shared-state kernels' ordinary tests and doctests
 	$(GATE_RUSTFLAGS) $(CARGO) $(TEST_CMD) -p mxd-concurrency

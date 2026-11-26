@@ -1889,12 +1889,13 @@ which `mxd::presence::PresenceRegistry` and the Wireframe adapter's
 connection-context registry are built on. `docs/verification-strategy.md`
 states what they assert and what stays outside them.
 
-| Target                  | What it runs                                                                |
-| ----------------------- | --------------------------------------------------------------------------- |
-| `make test-concurrency` | The kernels' ordinary tests and doctests. Part of `make test`.              |
-| `make check-loom`       | Clippy and a `--no-run` build of the models under `--cfg loom`.             |
-| `make test-loom`        | The models, at `LOOM_MAX_PREEMPTIONS=3`, checked against the expected list. |
-| `make test-loom-runner` | Ruff and the tests for `scripts/run_loom_models.py`.                        |
+| Target                    | What it runs                                                                |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `make test-concurrency`   | The kernels' ordinary tests and doctests. Part of `make test`.              |
+| `make test-helper-crates` | The `cli-defs` and `test-util` tests and doctests. Part of `make test`.     |
+| `make check-loom`         | Clippy and a `--no-run` build of the models under `--cfg loom`.             |
+| `make test-loom`          | The models, at `LOOM_MAX_PREEMPTIONS=3`, checked against the expected list. |
+| `make test-loom-runner`   | Ruff and the tests for `scripts/run_loom_models.py`.                        |
 
 `make test-loom` runs `cargo test` under `scripts/run_loom_models.py`, which
 compares the models the run reports as passed with
