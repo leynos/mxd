@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
+      - uses: leynos/shared-actions/.github/actions/setup-rust@bd052c68a4792e92c3272fb1b6ea3b594f3ab7f3
       - name: Install cargo-audit
         env:
           GITHUB_TOKEN: ${{ github.token }}
