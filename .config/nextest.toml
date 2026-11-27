@@ -1,4 +1,39 @@
 # .config/nextest.toml
+
+# Setup scripts are experimental in the nextest versions the CI lane may
+# install, so the configuration opts in; newer versions accept the entry.
+experimental = ["setup-scripts"]
+
+# The trybuild test compiles the fixture crates' dependency tree (rstest-bdd,
+# tokio and the macros) in `<target>/tests/trybuild`, a tree that no plain
+# build fills. On a cold target directory its timed body pays for all of that,
+# and the timeout then fails an assertion that is sound. This script runs the
+# same test once, before any test starts and outside the timed body, so the
+# timed run reuses the result. It builds with the same package, features and
+# profile as the test, and the `RUSTFLAGS` the gate exports reach it too.
+# A failing run fails the script, and nextest then reports that failure rather
+# than running the suite.
+#
+# The script gets the 900 seconds the test itself has, because it now does the
+# cold work the test did, so the named profile's cold route loses nothing. The
+# test that runs after it only rebuilds the fixture package (1.3 s measured), so
+# the 30-minute ceiling of that profile is not asked to hold two cold builds.
+#
+# Setup time counts towards the run-wide `global-timeout`. The script is
+# selected on the default profile, so the coverage run (`cargo llvm-cov nextest
+# --workspace`, default profile) reaches it as well. That run's 10-minute
+# ceiling bounded the same cold build when it ran inside the test, and bounds
+# it now; this change moves the work and does not add to it. Raising that
+# ceiling would move the pinned job ceilings and the documented 30-minute
+# chain, so it is left for its own change.
+[scripts.setup.warm-rstest-bdd-ui]
+command = "cargo test --offline --locked -p rstest-bdd-ui-tests --test ui -- --test-threads=1"
+slow-timeout = { period = "900s", terminate-after = 1, grace-period = "5s" }
+
+[[profile.default.scripts]]
+filter = "package(rstest-bdd-ui-tests)"
+setup = "warm-rstest-bdd-ui"
+
 [profile.default]
 # Kill any test once it crosses 60s.
 slow-timeout = { period = "60s", terminate-after = 1, grace-period = "5s" }

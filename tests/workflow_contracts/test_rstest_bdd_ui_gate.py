@@ -280,6 +280,24 @@ def test_the_run_ceiling_covers_the_slow_timeout() -> None:
     assert override_slow < profile_global, (override_slow, profile_global)
 
 
+def test_the_warm_up_script_keeps_the_cold_allowance_the_test_had() -> None:
+    """The script does the cold work, so it gets the test's slow timeout.
+
+    The named profile's cold route must lose nothing by moving the build out of
+    the test body: the script's allowance equals the test's, and the profile's
+    run-wide ceiling stays above it.
+    """
+    config = _nextest_config()
+    scripts = config["scripts"]["setup"]
+    assert len(scripts) == 1, scripts
+    (script,) = scripts.values()
+    script_slow = _seconds(script["slow-timeout"]["period"])
+    override_slow = _seconds(_package_overrides(config)[0]["slow-timeout"]["period"])
+    profile_global = _seconds(config["profile"][PROFILE]["global-timeout"])
+    assert script_slow == override_slow, (script_slow, override_slow)
+    assert script_slow < profile_global, (script_slow, profile_global)
+
+
 def test_an_unsupported_duration_names_the_value_it_rejected() -> None:
     """A value this table cannot read is reported as itself.
 
