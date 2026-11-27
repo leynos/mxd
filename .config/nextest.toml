@@ -14,16 +14,21 @@ experimental = ["setup-scripts"]
 # A failing run fails the script, and nextest then reports that failure rather
 # than running the suite.
 #
+# The script gets the 900 seconds the test itself has, because it now does the
+# cold work the test did, so the named profile's cold route loses nothing. The
+# test that runs after it only rebuilds the fixture package (1.3 s measured), so
+# the 30-minute ceiling of that profile is not asked to hold two cold builds.
+#
 # Setup time counts towards the run-wide `global-timeout`. The script is
 # selected on the default profile, so the coverage run (`cargo llvm-cov nextest
-# --workspace`, default profile) reaches it as well as the named profile. The
-# allowance therefore equals the default profile's 10-minute ceiling, which is
-# all that run could ever give it, and the named profile's 30-minute ceiling
-# holds it with the test's own 900 seconds and 300 seconds of headroom. The
-# work moves out of the timed body rather than being added to the run.
+# --workspace`, default profile) reaches it as well. That run's 10-minute
+# ceiling bounded the same cold build when it ran inside the test, and bounds
+# it now; this change moves the work and does not add to it. Raising that
+# ceiling would move the pinned job ceilings and the documented 30-minute
+# chain, so it is left for its own change.
 [scripts.setup.warm-rstest-bdd-ui]
 command = "cargo test --offline --locked -p rstest-bdd-ui-tests --test ui -- --test-threads=1"
-slow-timeout = { period = "600s", terminate-after = 1, grace-period = "5s" }
+slow-timeout = { period = "900s", terminate-after = 1, grace-period = "5s" }
 
 [[profile.default.scripts]]
 filter = "package(rstest-bdd-ui-tests)"
