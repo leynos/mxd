@@ -61,6 +61,18 @@ pub fn argon2_from_config(cfg: &AppConfig) -> Result<Argon2<'static>> {
     Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
+/// Create a user from the parsed command line.
+///
+/// On the `sqlite` feature the linked library is audited before migrations run
+/// and before the row is inserted, so an unsupported `SQLite` fails the command
+/// without applying migrations or storing the user. The connection is opened
+/// first, which can create a missing database file.
+///
+/// # Errors
+///
+/// Returns an error if the username or password is missing, if the password
+/// cannot be hashed, if the `SQLite` capability audit fails, or if the
+/// migration or insert fails.
 async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
     let username = args.username.ok_or_else(|| anyhow!("missing username"))?;
     let password = args.password.ok_or_else(|| anyhow!("missing password"))?;
@@ -72,6 +84,12 @@ async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
         password: &hashed,
     };
     let mut conn = DbConnection::establish(&cfg.database).await?;
+    // Audit before migrating or writing, so an incompatible library fails
+    // before it can touch the database.
+    #[cfg(feature = "sqlite")]
+    crate::db::audit_sqlite_features(&mut conn)
+        .await
+        .context("SQLite capability audit failed")?;
     apply_migrations(&mut conn, &cfg.database, cfg.migration_timeout_secs).await?;
     create_user(&mut conn, &new_user)
         .await
@@ -83,7 +101,13 @@ async fn run_create_user(args: CreateUserArgs, cfg: &AppConfig) -> Result<()> {
 #[cfg(test)]
 mod tests {
     //! Tests for this module.
+    #[cfg(feature = "sqlite")]
+    use diesel::{QueryableByName, sql_query, sql_types::BigInt};
+    #[cfg(feature = "sqlite")]
+    use diesel_async::RunQueryDsl;
     use rstest::rstest;
+    #[cfg(feature = "sqlite")]
+    use tempfile::TempDir;
 
     use super::*;
 
@@ -123,5 +147,101 @@ mod tests {
             .expect_err("command must fail");
 
         assert!(err.to_string().contains(expected));
+    }
+
+    /// Count the rows in a table, or return `None` when it does not exist.
+    ///
+    /// The count is taken through `sqlite_master` first so that a missing table
+    /// reads as "nothing was written" rather than as a query error. `COUNT(*)`
+    /// always yields a row, so `sql_type = BigInt` is correct here even though
+    /// Diesel's `Row::get` may otherwise misread an aggregate.
+    #[cfg(feature = "sqlite")]
+    async fn count_rows(conn: &mut DbConnection, table: &str) -> Option<i64> {
+        #[derive(QueryableByName)]
+        struct RowCount {
+            #[diesel(sql_type = BigInt)]
+            total: i64,
+        }
+
+        #[derive(QueryableByName)]
+        struct TableExists {
+            #[diesel(sql_type = BigInt)]
+            present: i64,
+        }
+
+        let exists = sql_query(
+            "SELECT COUNT(*) AS present FROM sqlite_master WHERE type = 'table' AND name = ?",
+        )
+        .bind::<diesel::sql_types::Text, _>(table)
+        .get_result::<TableExists>(conn)
+        .await
+        .expect("sqlite_master must be queryable");
+        if exists.present == 0 {
+            return None;
+        }
+
+        let query = format!("SELECT COUNT(*) AS total FROM \"{table}\"");
+        let count = sql_query(query)
+            .get_result::<RowCount>(conn)
+            .await
+            .expect("row count must be readable once the table exists");
+        Some(count.total)
+    }
+
+    /// An audit failure must abort `create-user` before it writes anything.
+    ///
+    /// `run_command_rejects_missing_fields` returns before the connection is
+    /// opened, so no existing test reaches the audit. Deleting the audit call,
+    /// or moving it after `apply_migrations` or `create_user`, would leave the
+    /// suite green. This test injects a probe failure and checks the two
+    /// observable consequences: the command reports the audit context, and the
+    /// database is left without a schema and without a user.
+    ///
+    /// The injected failure is thread-local and is read before the audit's
+    /// first `await`, so it cannot leak into a concurrently running test.
+    #[cfg(feature = "sqlite")]
+    #[tokio::test]
+    async fn create_user_aborts_before_writing_when_the_audit_fails() {
+        let temp_dir = TempDir::new().expect("temporary directory must be created");
+        let database = temp_dir.path().join("audited.mxd.db");
+        let cfg = AppConfig {
+            database: database.to_string_lossy().into_owned(),
+            // Cheap Argon2 parameters: hashing happens before the audit, and
+            // this test is about ordering, not key stretching strength.
+            argon2_m_cost: 1024,
+            argon2_t_cost: 1,
+            argon2_p_cost: 1,
+            ..AppConfig::default()
+        };
+        let args = CreateUserArgs {
+            username: Some("audited".to_owned()),
+            password: Some("secret".to_owned()),
+        };
+
+        let error = {
+            let _injection = crate::db::fail_next_audit();
+            run_create_user(args, &cfg)
+                .await
+                .expect_err("an audit failure must abort the command")
+        };
+
+        assert!(
+            format!("{error:#}").contains("SQLite capability audit failed"),
+            "the command must report the audit context: {error:#}"
+        );
+
+        let mut conn = DbConnection::establish(&cfg.database)
+            .await
+            .expect("the database file must be openable");
+        assert_eq!(
+            count_rows(&mut conn, "__diesel_schema_migrations").await,
+            None,
+            "no migration may run when the audit fails"
+        );
+        assert_eq!(
+            count_rows(&mut conn, "users").await,
+            None,
+            "no user table may exist when the audit fails"
+        );
     }
 }

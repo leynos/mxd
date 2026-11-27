@@ -15,6 +15,15 @@ mod insert;
 mod migrations;
 mod paths;
 
+/// Fail the next `SQLite` capability audit from a test in another module.
+///
+/// Re-exported rather than reached through `db::audit::test_seam` because
+/// `audit` is a private module, so an entry point that calls
+/// [`audit_sqlite_features`] can drive its own failure path without widening
+/// the audit's own public surface. Compiled only for tests.
+#[cfg(all(test, feature = "sqlite"))]
+pub(crate) use self::audit::test_seam::fail_next_audit;
+
 #[cfg(test)]
 mod schema_alignment_tests;
 
