@@ -13,7 +13,7 @@
 //!
 //! ```
 //! use mxd_verification::session_model::SessionModel;
-//! use stateright::Checker;
+//! use stateright::{Checker, Model};
 //!
 //! let model = SessionModel::default();
 //! let checker = model.checker().spawn_bfs().join();
