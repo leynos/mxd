@@ -238,8 +238,9 @@ project:
     so they do not take the development build flags. Clippy and Whitaker
     warnings fail the command. `make lint` does not run `cargo doc`.
   - `make test` runs `cargo fetch --locked` first, then the PostgreSQL, SQLite,
-    wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency, and
-    documentation test suites. Each suite except the documentation suite runs
+    wireframe-only, rstest-bdd UI, verification, fuzz-harness, concurrency,
+    workspace-member (`cli-defs` and `test-util`), and documentation test
+    suites. Each suite except the documentation suite runs
     `cargo nextest run` when `cargo nextest` is installed and `cargo test`
     otherwise. The gate appends `-D warnings` and the build standard to any
     inherited `RUSTFLAGS`: the `-Zthreads=8` rustc frontend flag and, on Linux,
