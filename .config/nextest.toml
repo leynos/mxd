@@ -12,10 +12,18 @@ experimental = ["setup-scripts"]
 # timed run reuses the result. It builds with the same package, features and
 # profile as the test, and the `RUSTFLAGS` the gate exports reach it too.
 # A failing run fails the script, and nextest then reports that failure rather
-# than running the suite. The allowance matches the test's own.
+# than running the suite.
+#
+# Setup time counts towards the run-wide `global-timeout`. The script is
+# selected on the default profile, so the coverage run (`cargo llvm-cov nextest
+# --workspace`, default profile) reaches it as well as the named profile. The
+# allowance therefore equals the default profile's 10-minute ceiling, which is
+# all that run could ever give it, and the named profile's 30-minute ceiling
+# holds it with the test's own 900 seconds and 300 seconds of headroom. The
+# work moves out of the timed body rather than being added to the run.
 [scripts.setup.warm-rstest-bdd-ui]
 command = "cargo test --offline --locked -p rstest-bdd-ui-tests --test ui -- --test-threads=1"
-slow-timeout = { period = "900s", terminate-after = 1, grace-period = "5s" }
+slow-timeout = { period = "600s", terminate-after = 1, grace-period = "5s" }
 
 [[profile.default.scripts]]
 filter = "package(rstest-bdd-ui-tests)"
