@@ -423,7 +423,7 @@ kani: ## Run the Kani proof harnesses on an installed Kani
 # nextest does not execute doctests; run them separately with the
 # default (sqlite) backend, mirroring the template's split.
 test-doc: ## Run documentation tests
-	$(GATE_RUSTFLAGS) $(CARGO) test --doc $(TEST_SQLITE_FEATURES)
+	$(GATE_RUSTFLAGS) $(CARGO) test --doc --workspace $(TEST_SQLITE_FEATURES)
 
 validator-sqlite-server: ## Build the sqlite wireframe server binary for validator runs
 	$(MAKE) APP=mxd-wireframe-server sqlite

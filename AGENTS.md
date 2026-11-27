@@ -244,8 +244,8 @@ project:
     otherwise. The gate appends `-D warnings` and the build standard to any
     inherited `RUSTFLAGS`: the `-Zthreads=8` rustc frontend flag and, on Linux,
     the `mold` linker (`-Clink-arg=-fuse-ld=mold`). The documentation suite runs
-    `cargo test --doc` with the SQLite features, because nextest does not run
-    doctests. The concurrency suite also runs its doctests with
+    `cargo test --doc --workspace` with the SQLite features, because nextest does
+    not run doctests. The concurrency suite also runs its doctests with
     `cargo test --doc -p mxd-concurrency`.
     Use `make fmt` (`cargo fmt --all`, then `mdtablefix` and `markdownlint --fix`)
     to apply formatting fixes reported by the formatter check.
