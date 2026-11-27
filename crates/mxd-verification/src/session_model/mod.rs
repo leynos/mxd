@@ -23,7 +23,10 @@
 //!     .target_state_count(500)
 //!     .spawn_bfs()
 //!     .join();
-//! assert!(checker.unique_state_count() > 0);
+//! assert!(
+//!     checker.unique_state_count() > 1,
+//!     "expected the model to reach a state beyond the initial state"
+//! );
 //! ```
 //!
 //! # Model configuration
