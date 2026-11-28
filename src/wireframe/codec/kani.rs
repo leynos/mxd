@@ -3,7 +3,24 @@
 use super::{for_each_fragment_range, validate_header};
 use crate::transaction::{MAX_FRAME_DATA, MAX_PAYLOAD_SIZE, kani_support::any_frame_header};
 
+// Kani 0.68's `assert!` expands to a statement with a trailing semicolon, which
+// newer rustc flags in expression position; upstream Kani main has fixed it.
+// This module is compiled under `cfg(kani)` only, so the allow reaches no other
+// build. `unknown_lints` is allowed too because Kani 0.67's older rustc does not
+// know the lint name, and `expect` would be unfulfilled there.
+#[allow(
+    unknown_lints,
+    semicolon_in_expressions_from_non_local_macros,
+    reason = "Kani 0.68's assert! expansion ends in a semicolon; see \
+              https://github.com/leynos/rust-prover-tools/issues/285"
+)]
 const _: () = assert!(MAX_PAYLOAD_SIZE <= u32::MAX as usize);
+#[allow(
+    unknown_lints,
+    semicolon_in_expressions_from_non_local_macros,
+    reason = "Kani 0.68's assert! expansion ends in a semicolon; see \
+              https://github.com/leynos/rust-prover-tools/issues/285"
+)]
 const _: () = assert!(MAX_FRAME_DATA <= u32::MAX as usize);
 const MAX_TOTAL_U32: u32 = MAX_PAYLOAD_SIZE as u32;
 const MAX_DATA_U32: u32 = MAX_FRAME_DATA as u32;
