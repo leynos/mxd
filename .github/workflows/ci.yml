@@ -422,6 +422,7 @@ jobs:
           format: lcov
           artefact-name-suffix: sqlite
           with-ratchet: 'true'
+          publish-artefact: 'false'
       - name: Install pg-embed-setup-unpriv
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -448,6 +449,7 @@ jobs:
           output-path: lcov-postgres.info
           format: lcov
           artefact-name-suffix: postgres
+          publish-artefact: 'false'
       - name: Merge coverage results
         run: bun x lcov-result-merger 'lcov-*.info' > lcov.info
       # One line per lane in the job summary, so a lane's placement and cache
